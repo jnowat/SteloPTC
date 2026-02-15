@@ -1,0 +1,43 @@
+# Rust
+/src-tauri/target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+
+# Database files (local testing)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Backup files
+backups/
+
+# Logs
+*.log
