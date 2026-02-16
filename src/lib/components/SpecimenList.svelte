@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listSpecimens, searchSpecimens, deleteSpecimen, listSpecies, exportSpecimensCsv, exportSpecimensJson } from '../api';
   import { navigateTo, addNotification } from '../stores/app';
   import { selectedSpecimenId } from '../stores/app';
@@ -19,7 +20,7 @@
 
   const stages = ['explant', 'callus', 'suspension', 'protoplast', 'shoot', 'root', 'embryogenic', 'plantlet', 'acclimatized', 'stock'];
 
-  $effect(() => {
+  onMount(() => {
     load();
     loadSpecies();
   });

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { createSpecimen, listSpecies } from '../api';
   import { addNotification } from '../stores/app';
 
@@ -30,7 +31,7 @@
     { value: 'other', label: 'Other' },
   ];
 
-  $effect(() => {
+  onMount(() => {
     listSpecies().then(s => species = s).catch(() => {});
   });
 

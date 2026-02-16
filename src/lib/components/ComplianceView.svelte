@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listComplianceRecords, getComplianceFlags, createComplianceRecord } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
@@ -17,7 +18,7 @@
   const recordTypes = ['disease_test', 'permit', 'phytosanitary_cert', 'inspection', 'quarantine', 'movement_permit', 'pest_risk', 'export_cert', 'other'];
   const agencies = ['USDA_APHIS', 'TX_AG', 'FL_FDACS', 'other'];
 
-  $effect(() => { load(); });
+  onMount(() => { load(); });
 
   async function load() {
     loading = true;

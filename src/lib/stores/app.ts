@@ -4,18 +4,30 @@ export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 're
 
 export const currentView = writable<View>('dashboard');
 export const selectedSpecimenId = writable<string | null>(null);
-export const darkMode = writable<boolean>(
-  localStorage.getItem('stelo_dark') === 'true' ||
-  window.matchMedia('(prefers-color-scheme: dark)').matches
-);
+
+function getInitialDarkMode(): boolean {
+  try {
+    const stored = localStorage.getItem('stelo_dark');
+    if (stored !== null) return stored === 'true';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  } catch {
+    return false;
+  }
+}
+
+export const darkMode = writable<boolean>(getInitialDarkMode());
 export const notifications = writable<Array<{ id: string; message: string; type: 'info' | 'warning' | 'error' | 'success'; timestamp: number }>>([]);
 
 darkMode.subscribe((value) => {
-  localStorage.setItem('stelo_dark', String(value));
-  if (value) {
-    document.documentElement.classList.add('dark');
-  } else {
-    document.documentElement.classList.remove('dark');
+  try {
+    localStorage.setItem('stelo_dark', String(value));
+    if (value) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  } catch {
+    // DOM not available
   }
 });
 

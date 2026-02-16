@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listSpecies, createSpecies } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
@@ -8,7 +9,7 @@
   let showForm = $state(false);
   let form = $state({ genus: '', species_name: '', common_name: '', species_code: '', default_subculture_interval_days: '28', notes: '' });
 
-  $effect(() => { load(); });
+  onMount(() => { load(); });
 
   async function load() {
     loading = true;

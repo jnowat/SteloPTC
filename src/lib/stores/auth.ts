@@ -9,15 +9,27 @@ export interface User {
   is_active: boolean;
 }
 
-export const token = writable<string | null>(localStorage.getItem('stelo_token'));
+function getStoredToken(): string | null {
+  try {
+    return localStorage.getItem('stelo_token');
+  } catch {
+    return null;
+  }
+}
+
+export const token = writable<string | null>(getStoredToken());
 export const currentUser = writable<User | null>(null);
 export const isLoggedIn = derived(token, ($token) => $token !== null);
 
 token.subscribe((value) => {
-  if (value) {
-    localStorage.setItem('stelo_token', value);
-  } else {
-    localStorage.removeItem('stelo_token');
+  try {
+    if (value) {
+      localStorage.setItem('stelo_token', value);
+    } else {
+      localStorage.removeItem('stelo_token');
+    }
+  } catch {
+    // localStorage unavailable
   }
 });
 

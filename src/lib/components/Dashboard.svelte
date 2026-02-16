@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { getSpecimenStats, getActiveReminders, getComplianceFlags } from '../api';
   import { navigateTo, addNotification } from '../stores/app';
 
@@ -7,7 +8,7 @@
   let flags = $state<any[]>([]);
   let loading = $state(true);
 
-  $effect(() => {
+  onMount(() => {
     loadDashboard();
   });
 

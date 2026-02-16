@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listUsers, createUser, updateUserRole } from '../api';
   import { addNotification } from '../stores/app';
 
@@ -9,7 +10,7 @@
 
   const roles = ['admin', 'supervisor', 'tech', 'guest'];
 
-  $effect(() => { load(); });
+  onMount(() => { load(); });
 
   async function load() {
     loading = true;

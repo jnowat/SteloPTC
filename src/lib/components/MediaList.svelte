@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listMedia, createMediaBatch, deleteMediaBatch } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
@@ -13,7 +14,7 @@
     volume_prepared_ml: '', sterilization_method: 'autoclave', notes: '',
   });
 
-  $effect(() => { load(); });
+  onMount(() => { load(); });
 
   async function load() {
     loading = true;

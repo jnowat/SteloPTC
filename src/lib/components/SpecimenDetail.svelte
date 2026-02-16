@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { untrack } from 'svelte';
   import { getSpecimen, listSubcultures, createSubculture, listMedia, listComplianceRecords } from '../api';
   import { selectedSpecimenId, navigateTo, addNotification } from '../stores/app';
 
@@ -32,7 +33,7 @@
   ];
 
   $effect(() => {
-    if ($selectedSpecimenId) loadAll($selectedSpecimenId);
+    if ($selectedSpecimenId) untrack(() => loadAll($selectedSpecimenId));
   });
 
   async function loadAll(id: string) {

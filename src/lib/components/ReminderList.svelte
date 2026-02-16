@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { listReminders, createReminder, dismissReminder } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
@@ -14,7 +15,7 @@
 
   const types = ['subculture_due', 'media_expiry', 'disease_test', 'permit_expiry', 'quarantine_review', 'custom'];
 
-  $effect(() => { load(); });
+  onMount(() => { load(); });
 
   async function load() {
     loading = true;

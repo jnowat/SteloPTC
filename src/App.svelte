@@ -1,6 +1,8 @@
 <script lang="ts">
-  import { isLoggedIn, token, currentUser, setAuth, clearAuth } from './lib/stores/auth';
-  import { currentView, darkMode, notifications, navigateTo } from './lib/stores/app';
+  import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
+  import { isLoggedIn, token, currentUser, clearAuth } from './lib/stores/auth';
+  import { currentView, darkMode, navigateTo } from './lib/stores/app';
   import { getCurrentUser, logout as apiLogout } from './lib/api';
   import Login from './lib/components/Login.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
@@ -15,9 +17,10 @@
   import AuditLog from './lib/components/AuditLog.svelte';
   import Notifications from './lib/components/Notifications.svelte';
 
-  // Try to restore session on load
-  $effect(() => {
-    if ($token && !$currentUser) {
+  // Try to restore session on mount (once only)
+  onMount(() => {
+    const savedToken = get(token);
+    if (savedToken) {
       getCurrentUser().then((user) => {
         currentUser.set(user);
       }).catch(() => {

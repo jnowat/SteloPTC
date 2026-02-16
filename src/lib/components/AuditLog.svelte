@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { getAuditLog } from '../api';
   import { addNotification } from '../stores/app';
 
@@ -10,7 +11,7 @@
   let filterEntity = $state('');
   let filterAction = $state('');
 
-  $effect(() => { load(); });
+  onMount(() => { load(); });
 
   async function load() {
     loading = true;
