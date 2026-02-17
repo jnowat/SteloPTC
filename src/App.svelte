@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { isLoggedIn, token, currentUser, clearAuth } from './lib/stores/auth';
+  import { isLoggedIn, token, currentUser, clearAuth, initializing } from './lib/stores/auth';
   import { currentView, darkMode, navigateTo } from './lib/stores/app';
   import { getCurrentUser, logout as apiLogout } from './lib/api';
   import Login from './lib/components/Login.svelte';
@@ -17,15 +17,20 @@
   import AuditLog from './lib/components/AuditLog.svelte';
   import Notifications from './lib/components/Notifications.svelte';
 
+  let startupError = '';
+
   // Try to restore session on mount (once only)
   onMount(() => {
     const savedToken = get(token);
     if (savedToken) {
       getCurrentUser().then((user) => {
         currentUser.set(user);
+        initializing.set(false);
       }).catch(() => {
         clearAuth();
       });
+    } else {
+      initializing.set(false);
     }
   });
 
@@ -59,7 +64,15 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="app" class:dark={$darkMode}>
-  {#if !$isLoggedIn}
+  {#if $initializing}
+    <div class="init-screen">
+      <div class="init-content">
+        <h1 class="init-title">SteloPTC</h1>
+        <div class="init-spinner"></div>
+        <p>Restoring session...</p>
+      </div>
+    </div>
+  {:else if !$isLoggedIn}
     <Login />
   {:else}
     <div class="layout">
@@ -116,6 +129,42 @@
   .app.dark {
     background: #0f172a;
     color: #e2e8f0;
+  }
+
+  .init-screen {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    width: 100vw;
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f4c2d 100%);
+  }
+
+  .init-content {
+    text-align: center;
+    color: #94a3b8;
+  }
+
+  .init-title {
+    font-size: 32px;
+    font-weight: 800;
+    color: #f1f5f9;
+    letter-spacing: -0.5px;
+    margin-bottom: 20px;
+  }
+
+  .init-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid #334155;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin: 0 auto 16px;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 
   .layout {

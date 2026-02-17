@@ -1,7 +1,6 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicedoc/tauri/refs/heads/dev/crates/tauri-config-schema/schema.json",
   "productName": "SteloPTC",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "identifier": "com.stelolab.ptc",
   "build": {
     "frontendDist": "../dist",
