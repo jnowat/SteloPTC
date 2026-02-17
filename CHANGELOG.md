@@ -5,6 +5,24 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.3] - 2026-02-17
+
+### Fixed
+
+- **White/blank screen on startup (Windows 11)**: Complete rewrite of the application boot sequence to eliminate all blank-screen failure modes.
+  - `main.ts` no longer removes the loading screen before Svelte mounts. The loader now stays visible until the app successfully renders, using a CSS class (`body.app-ready`) to hide it only after confirmed mount.
+  - Added `try-catch` around the entire mount process so any JavaScript error during initialization shows a visible error message instead of a blank screen.
+  - Added global `window.onerror` and `window.onunhandledrejection` handlers inline in `index.html` (before any module code) to catch and display import failures, Svelte compilation errors, or any other uncaught exceptions.
+  - Loading screen is now `position: fixed` with `z-index: 99999` to guarantee visibility regardless of CSS state.
+  - Error display integrated into the loader screen with styled error box, replacing the spinner when an error occurs.
+- **App.svelte startup error handling**: `onMount` session restore is now wrapped in `try-catch`, and the `startupError` variable (previously declared but unused) now properly displays errors with a branded error screen.
+- **Added `:global(.btn:disabled)` style**: Disabled buttons now visually indicate their state with reduced opacity.
+- **InventoryManager.svelte**: Replaced no-op `$effect` and repeated `filteredItems()` function calls with proper `$derived` reactive values for better Svelte 5 compatibility.
+
+### Changed
+
+- Version bumped to 0.1.3 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.2] - 2026-02-17
 
 ### Added
