@@ -1,10 +1,6 @@
 name: Build Windows .exe + .msi
 
-on:
-  push:
-    branches: [ main, master ]
-  release:
-    types: [ created ]
+on: [push, pull_request]
 
 jobs:
   build-windows:
@@ -26,13 +22,13 @@ jobs:
           node-version: 20
           cache: 'npm'
 
-      - name: Install frontend dependencies
+      - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
       - name: Build frontend
         run: npm run build
 
-      - name: Build Tauri app (Windows)
+      - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -40,7 +36,7 @@ jobs:
           projectPath: src-tauri
           includeRelease: true
 
-      - name: Upload .exe and .msi
+      - name: Upload Windows files
         uses: actions/upload-artifact@v4
         with:
           name: SteloPTC-Windows
