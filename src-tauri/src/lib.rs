@@ -13,7 +13,15 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let db = Database::new().expect("Failed to initialize database");
+    let db = match Database::new() {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("Failed to initialize database: {}", e);
+            // Fall back to in-memory database so the app can at least start
+            Database::new_in_memory()
+                .expect("Failed to create even an in-memory database")
+        }
+    };
 
     let state = AppState {
         db: Mutex::new(db),
@@ -73,9 +81,9 @@ pub fn run() {
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
-            let db = state.db.lock().unwrap();
-            db.run_migrations().expect("Failed to run migrations");
-            db.seed_defaults().expect("Failed to seed defaults");
+            let db = state.db.lock().map_err(|e| format!("DB lock error: {}", e))?;
+            db.run_migrations().map_err(|e| format!("Migration error: {}", e))?;
+            db.seed_defaults().map_err(|e| format!("Seed error: {}", e))?;
             Ok(())
         })
         .run(tauri::generate_context!())

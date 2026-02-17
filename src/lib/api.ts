@@ -12,7 +12,7 @@ async function call<T>(command: string, args: Record<string, unknown> = {}): Pro
   try {
     return await invoke<T>(command, { token: getToken(), ...args });
   } catch (e: unknown) {
-    const msg = typeof e === 'string' ? e : (e as Error).message || 'Unknown error';
+    const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : 'Unknown error');
     if (msg.includes('Session expired') || msg.includes('invalid')) {
       clearAuth();
     }
@@ -22,7 +22,12 @@ async function call<T>(command: string, args: Record<string, unknown> = {}): Pro
 
 // Auth (login doesn't need token)
 export async function login(username: string, password: string) {
-  return invoke<{ token: string; user: any }>('login', { username, password });
+  try {
+    return await invoke<{ token: string; user: any }>('login', { username, password });
+  } catch (e: unknown) {
+    const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : 'Login failed');
+    throw new Error(msg);
+  }
 }
 
 export async function getCurrentUser() {

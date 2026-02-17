@@ -20,6 +20,8 @@ function getStoredToken(): string | null {
 export const token = writable<string | null>(getStoredToken());
 export const currentUser = writable<User | null>(null);
 export const isLoggedIn = derived(token, ($token) => $token !== null);
+// Tracks whether we are restoring a saved session on startup
+export const initializing = writable<boolean>(getStoredToken() !== null);
 
 token.subscribe((value) => {
   try {
@@ -36,9 +38,11 @@ token.subscribe((value) => {
 export function setAuth(newToken: string, user: User) {
   token.set(newToken);
   currentUser.set(user);
+  initializing.set(false);
 }
 
 export function clearAuth() {
   token.set(null);
   currentUser.set(null);
+  initializing.set(false);
 }

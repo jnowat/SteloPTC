@@ -63,6 +63,6 @@ fn dirs_next() -> Option<PathBuf> {
     } else {
         std::env::var("HOME")
             .ok()
-            .map(|p| PathBuf::from(p).join(".stelobtc"))
+            .map(|p| PathBuf::from(p).join(".steloptc"))
     }
 }

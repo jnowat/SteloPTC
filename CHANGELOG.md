@@ -5,6 +5,25 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-02-17
+
+### Fixed
+
+- **White screen on startup**: Added loading screen in `index.html` so the app never shows a blank white page while JavaScript initializes.
+- **Session restoration race condition**: App now shows a branded loading/spinner state while validating a saved session token, instead of prematurely rendering the authenticated UI which could cause a flash or crash.
+- **Initialization state tracking**: Added `initializing` store to `auth.ts` so `App.svelte` can distinguish between "not logged in" and "checking saved session".
+- **Graceful database fallback**: `lib.rs` no longer panics on database initialization failure; falls back to in-memory database so the app window still appears.
+- **Setup error propagation**: Replaced `unwrap()`/`expect()` in Tauri `setup` hook with proper `Result` error propagation to avoid silent panics.
+- **API error handling**: Improved error coercion in `api.ts` using `instanceof Error` checks for more reliable error messages.
+- **Login error handling**: Wrapped `login()` in try-catch for consistent error messages on auth failures.
+- **Database path typo**: Fixed Linux/macOS data directory from `.stelobtc` to `.steloptc`.
+- **Removed invalid `$schema`**: Removed incorrect schema URL from `tauri.conf.json` that pointed to a non-official repository.
+- **Loading screen cleanup**: `main.ts` now removes the HTML loading screen once Svelte mounts, preventing visual overlap.
+
+### Changed
+
+- Version bumped to 0.1.1 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.0] - 2026-02-15
 
 ### Added
