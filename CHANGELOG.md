@@ -5,6 +5,19 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.4] - 2026-02-17
+
+### Fixed
+
+- **Blank/dark screen in release builds (.exe/.msi)**: Two root causes identified and fixed:
+  1. `tauri.conf.json` had `devUrl: "http://localhost:1420"` — release builds were attempting to load the frontend from a dev server that doesn't exist in production. Set `devUrl` to `null` so production builds always load from the bundled `frontendDist` (`../dist`).
+  2. `InventoryManager.svelte` had broken syntax (`function filtered: any[]` and `let filtered = $derived(filtered)`) that caused `vite build` to fail with "Unexpected token", meaning no `dist/` folder was generated for the release build to bundle.
+- **InventoryManager.svelte**: Fixed `$derived` to use a proper function call (`$derived(getFilteredItems())`) instead of a circular self-reference.
+
+### Changed
+
+- Version bumped to 0.1.4 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.3] - 2026-02-17
 
 ### Fixed

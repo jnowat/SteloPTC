@@ -152,7 +152,7 @@
     return categories.find(c => c.value === val)?.label || val;
   }
 
-  function filtered: any[] {
+  function getFilteredItems(): any[] {
     let result = items;
     if (filterCategory) result = result.filter(i => i.category === filterCategory);
     if (filterLowStock) result = result.filter(i => isLowStock(i));
@@ -167,7 +167,7 @@
     return result;
   }
 
-  let filtered = $derived(filtered);
+  let filtered = $derived(getFilteredItems());
   let lowStockCount = $derived(items.filter(isLowStock).length);
 </script>
 
