@@ -15,10 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `vite.config.ts`: Added `build.target` for modern WebView2/WebKitGTK/WKWebView engines, with conditional minification and sourcemaps based on `TAURI_DEBUG`.
   - `svelte.config.js`: Added `compilerOptions: { generate: "client" }` as a redundant safety net.
 - **GitHub Actions workflow** (`build-windows.yml`):
-  - Removed redundant `npm run build` step (Tauri's `beforeBuildCommand` already handles this).
-  - Removed incorrect `projectPath: src-tauri` parameter (tauri-action auto-detects the project root).
-  - Removed unnecessary `cargo install tauri-cli` step (tauri-action installs the CLI).
-  - Fixed artifact upload paths for MSI and NSIS bundles.
+  - **Transient 502 failures**: NSIS bundler downloads `nsis_tauri_utils.dll` from GitHub Releases, which frequently returns HTTP 502 Bad Gateway — breaking the entire CI build even though the MSI was already produced. Fixed by building MSI only (`--bundles msi`) and skipping the redundant NSIS installer.
+  - Added retry logic (up to 3 attempts with 15 s/30 s backoff) around `cargo tauri build` so transient WiX download failures also recover automatically.
+  - Added `swatinem/rust-cache` for Rust compilation caching (cuts repeat build times significantly).
+  - Replaced `tauri-apps/tauri-action@v0` with direct `cargo tauri build` invocation for full control over retry/bundle flags.
+  - Uploads both the standalone `.exe` and the `.msi` installer as artifacts.
 
 ### Changed
 
