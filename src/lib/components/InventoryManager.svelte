@@ -152,7 +152,7 @@
     return categories.find(c => c.value === val)?.label || val;
   }
 
-  function filteredItems(): any[] {
+  function filtered: any[] {
     let result = items;
     if (filterCategory) result = result.filter(i => i.category === filterCategory);
     if (filterLowStock) result = result.filter(i => isLowStock(i));
@@ -167,10 +167,8 @@
     return result;
   }
 
-  $effect(() => {
-    // Reactivity trigger for filtered items
-    filterCategory; filterLowStock; searchQuery; items;
-  });
+  let filtered = $derived(filtered);
+  let lowStockCount = $derived(items.filter(isLowStock).length);
 </script>
 
 <div>
@@ -271,9 +269,9 @@
       Low stock only
     </label>
     <span style="font-size:12px; color:#6b7280;">
-      {filteredItems().length} item{filteredItems().length !== 1 ? 's' : ''}
-      {#if items.filter(isLowStock).length > 0}
-        &middot; <span class="low-stock-count">{items.filter(isLowStock).length} low stock</span>
+      {filtered.length} item{filtered.length !== 1 ? 's' : ''}
+      {#if lowStockCount > 0}
+        &middot; <span class="low-stock-count">{lowStockCount} low stock</span>
       {/if}
     </span>
   </div>
@@ -302,7 +300,7 @@
 
   {#if loading}
     <div class="empty-state">Loading inventory...</div>
-  {:else if filteredItems().length === 0}
+  {:else if filtered.length === 0}
     <div class="empty-state">{items.length === 0 ? 'No inventory items yet' : 'No items match filters'}</div>
   {:else}
     <div class="card" style="overflow-x:auto;">
@@ -321,7 +319,7 @@
           </tr>
         </thead>
         <tbody>
-          {#each filteredItems() as item}
+          {#each filtered as item}
             <tr>
               <td>
                 <strong>{item.name}</strong>

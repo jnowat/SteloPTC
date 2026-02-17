@@ -20,17 +20,23 @@
 
   let startupError = '';
 
-  // Try to restore session on mount (once only)
   onMount(() => {
-    const savedToken = get(token);
-    if (savedToken) {
-      getCurrentUser().then((user) => {
-        currentUser.set(user);
+    try {
+      const savedToken = get(token);
+      if (savedToken) {
+        getCurrentUser().then((user) => {
+          currentUser.set(user);
+          initializing.set(false);
+        }).catch((err) => {
+          console.warn('Session restore failed:', err);
+          clearAuth();
+        });
+      } else {
         initializing.set(false);
-      }).catch(() => {
-        clearAuth();
-      });
-    } else {
+      }
+    } catch (err: any) {
+      console.error('Startup error:', err);
+      startupError = err.message || 'Failed to initialize application';
       initializing.set(false);
     }
   });
@@ -65,7 +71,18 @@
 <svelte:window onkeydown={handleKeydown} />
 
 <div class="app" class:dark={$darkMode}>
-  {#if $initializing}
+  {#if startupError}
+    <div class="init-screen">
+      <div class="init-content">
+        <h1 class="init-title">SteloPTC</h1>
+        <div class="error-box">
+          <strong>Startup Error</strong>
+          <p>{startupError}</p>
+        </div>
+        <p style="margin-top: 16px;">Try restarting the application.</p>
+      </div>
+    </div>
+  {:else if $initializing}
     <div class="init-screen">
       <div class="init-content">
         <h1 class="init-title">SteloPTC</h1>
@@ -170,6 +187,24 @@
     to { transform: rotate(360deg); }
   }
 
+  .error-box {
+    margin: 16px auto;
+    padding: 16px 24px;
+    max-width: 480px;
+    background: rgba(220, 38, 38, 0.15);
+    border: 1px solid rgba(220, 38, 38, 0.4);
+    border-radius: 8px;
+    color: #fca5a5;
+    font-size: 13px;
+    text-align: left;
+    line-height: 1.6;
+  }
+  .error-box strong {
+    display: block;
+    color: #fef2f2;
+    margin-bottom: 6px;
+  }
+
   .layout {
     display: flex;
     height: 100vh;
@@ -196,6 +231,7 @@
     transition: all 0.15s;
   }
   :global(.btn:hover) { background: #f3f4f6; }
+  :global(.btn:disabled) { opacity: 0.5; cursor: not-allowed; }
   :global(.btn-primary) { background: #2563eb; color: white; border-color: #2563eb; }
   :global(.btn-primary:hover) { background: #1d4ed8; }
   :global(.btn-danger) { background: #dc2626; color: white; border-color: #dc2626; }
