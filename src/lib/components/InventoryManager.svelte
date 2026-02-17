@@ -200,7 +200,17 @@
           </div>
           <div class="form-group">
             <label>Unit *</label>
-            <input type="text" bind:value={form.unit} placeholder="g, mL, pcs, etc." required />
+            <input type="text" list="unit-options" bind:value={form.unit} placeholder="g, mg, mL..." required />
+            <datalist id="unit-options">
+              <option value="g">g (grams)</option>
+              <option value="mg">mg (milligrams)</option>
+              <option value="mL">mL (milliliters)</option>
+              <option value="L">L (liters)</option>
+              <option value="units">units</option>
+              <option value="pcs">pcs (pieces)</option>
+              <option value="µg">µg (micrograms)</option>
+              <option value="µL">µL (microliters)</option>
+            </datalist>
           </div>
         </div>
         <div class="form-row-3">

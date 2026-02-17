@@ -1,20 +1,26 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listMedia, createMediaBatch, deleteMediaBatch } from '../api';
+  import { listMedia, createMediaBatch, deleteMediaBatch, listInventory } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
   let media = $state<any[]>([]);
+  let inventoryItems = $state<any[]>([]);
   let loading = $state(true);
   let showForm = $state(false);
   let form = $state({
     name: '', preparation_date: new Date().toISOString().split('T')[0],
-    expiration_date: '', basal_salts: 'MS', basal_salts_concentration: '1.0',
+    expiration_date: '',
+    basal_salts: localStorage.getItem('media_lastBasalSalts') || 'MS',
+    basal_salts_concentration: localStorage.getItem('media_lastConc') || '1.0',
     sucrose_g_per_l: '30', agar_g_per_l: '8', ph_before_autoclave: '5.7',
     volume_prepared_ml: '', sterilization_method: 'autoclave', notes: '',
   });
 
-  onMount(() => { load(); });
+  // Reagent traceability rows
+  let reagentRows = $state<{ item_id: string; lot_number: string; amount: string; unit: string }[]>([]);
+
+  onMount(() => { load(); loadInventory(); });
 
   async function load() {
     loading = true;
@@ -23,8 +29,49 @@
     finally { loading = false; }
   }
 
+  async function loadInventory() {
+    try { inventoryItems = await listInventory(); }
+    catch (_e) {}
+  }
+
+  function addReagentRow() {
+    reagentRows = [...reagentRows, { item_id: '', lot_number: '', amount: '', unit: 'g/L' }];
+  }
+
+  function removeReagentRow(i: number) {
+    reagentRows = reagentRows.filter((_, idx) => idx !== i);
+  }
+
+  function onReagentItemChange(i: number, item_id: string) {
+    const inv = inventoryItems.find(it => it.id === item_id);
+    reagentRows = reagentRows.map((r, idx) =>
+      idx === i ? { ...r, item_id, lot_number: inv?.lot_number || '', unit: inv?.unit || 'g/L' } : r
+    );
+  }
+
+  function buildReagentNotes(): string {
+    const lines = reagentRows
+      .filter(r => r.item_id && r.amount)
+      .map(r => {
+        const inv = inventoryItems.find(it => it.id === r.item_id);
+        const name = inv?.name || r.item_id;
+        const lot = r.lot_number ? ` [Lot: ${r.lot_number}]` : '';
+        return `  ${name}${lot}: ${r.amount} ${r.unit}`;
+      });
+    return lines.length > 0 ? `Reagents:\n${lines.join('\n')}` : '';
+  }
+
   async function handleCreate(e: Event) {
     e.preventDefault();
+
+    // Save last-used values
+    localStorage.setItem('media_lastBasalSalts', form.basal_salts);
+    localStorage.setItem('media_lastConc', form.basal_salts_concentration);
+
+    // Append reagent traceability to notes
+    const reagentNotes = buildReagentNotes();
+    const combinedNotes = [reagentNotes, form.notes].filter(Boolean).join('\n');
+
     try {
       await createMediaBatch({
         name: form.name,
@@ -37,11 +84,19 @@
         ph_before_autoclave: form.ph_before_autoclave ? parseFloat(form.ph_before_autoclave) : undefined,
         volume_prepared_ml: form.volume_prepared_ml ? parseFloat(form.volume_prepared_ml) : undefined,
         sterilization_method: form.sterilization_method || undefined,
-        notes: form.notes || undefined,
+        notes: combinedNotes || undefined,
       });
       addNotification('Media batch created', 'success');
       showForm = false;
-      form = { name: '', preparation_date: new Date().toISOString().split('T')[0], expiration_date: '', basal_salts: 'MS', basal_salts_concentration: '1.0', sucrose_g_per_l: '30', agar_g_per_l: '8', ph_before_autoclave: '5.7', volume_prepared_ml: '', sterilization_method: 'autoclave', notes: '' };
+      reagentRows = [];
+      form = {
+        name: '', preparation_date: new Date().toISOString().split('T')[0],
+        expiration_date: '',
+        basal_salts: localStorage.getItem('media_lastBasalSalts') || 'MS',
+        basal_salts_concentration: localStorage.getItem('media_lastConc') || '1.0',
+        sucrose_g_per_l: '30', agar_g_per_l: '8', ph_before_autoclave: '5.7',
+        volume_prepared_ml: '', sterilization_method: 'autoclave', notes: '',
+      };
       load();
     } catch (e: any) { addNotification(e.message, 'error'); }
   }
@@ -82,7 +137,9 @@
   {#if showForm}
     <div class="card" style="margin-bottom:16px;">
       <form onsubmit={handleCreate}>
-        <h3 style="margin-bottom:16px;">New Media Batch</h3>
+        <h3 style="margin-bottom:16px;">Create New Media Batch</h3>
+
+        <!-- Name + Prep Date -->
         <div class="form-row">
           <div class="form-group">
             <label>Name *</label>
@@ -93,50 +150,52 @@
             <input type="date" bind:value={form.preparation_date} required />
           </div>
         </div>
+
+        <!-- Basal Salts section -->
         <div class="form-row-3">
           <div class="form-group">
             <label>Basal Salts</label>
             <select bind:value={form.basal_salts}>
-              <option value="MS">Murashige & Skoog (MS)</option>
+              <option value="MS">Murashige &amp; Skoog (MS)</option>
               <option value="1/2 MS">Half-strength MS</option>
               <option value="WPM">Woody Plant Medium</option>
               <option value="B5">Gamborg's B5</option>
               <option value="N6">Chu's N6</option>
-              <option value="LS">Linsmaier & Skoog</option>
+              <option value="LS">Linsmaier &amp; Skoog</option>
               <option value="White">White's Medium</option>
-              <option value="DKW">Driver & Kuniyuki</option>
+              <option value="DKW">Driver &amp; Kuniyuki</option>
               <option value="custom">Custom</option>
             </select>
           </div>
           <div class="form-group">
-            <label>Concentration</label>
-            <input type="number" step="0.1" bind:value={form.basal_salts_concentration} />
+            <label>Basal Salts Concentration (g/L)</label>
+            <input type="number" step="0.1" bind:value={form.basal_salts_concentration} style="max-width:120px;" />
           </div>
           <div class="form-group">
             <label>Expiration Date</label>
             <input type="date" bind:value={form.expiration_date} />
           </div>
         </div>
-        <div class="form-row-3">
-          <div class="form-group">
+
+        <!-- Sucrose / Agar / pH - compact -->
+        <div class="compact-row">
+          <div class="form-group compact-field">
             <label>Sucrose (g/L)</label>
             <input type="number" step="0.1" bind:value={form.sucrose_g_per_l} />
           </div>
-          <div class="form-group">
+          <div class="form-group compact-field">
             <label>Agar (g/L)</label>
             <input type="number" step="0.1" bind:value={form.agar_g_per_l} />
           </div>
-          <div class="form-group">
+          <div class="form-group compact-field">
             <label>pH (pre-autoclave)</label>
             <input type="number" step="0.01" bind:value={form.ph_before_autoclave} />
           </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
+          <div class="form-group compact-field">
             <label>Volume Prepared (mL)</label>
             <input type="number" bind:value={form.volume_prepared_ml} />
           </div>
-          <div class="form-group">
+          <div class="form-group compact-sterilization">
             <label>Sterilization</label>
             <select bind:value={form.sterilization_method}>
               <option value="autoclave">Autoclave</option>
@@ -146,10 +205,65 @@
             </select>
           </div>
         </div>
+
+        <!-- Reagents / Inventory Traceability -->
+        <div class="form-group" style="margin-top:8px;">
+          <label>Stock Reagents Used</label>
+          {#if reagentRows.length > 0}
+            <div class="reagent-table">
+              <div class="reagent-header">
+                <span>Reagent</span>
+                <span>Lot #</span>
+                <span>Amount</span>
+                <span>Unit</span>
+                <span></span>
+              </div>
+              {#each reagentRows as row, i}
+                <div class="reagent-row">
+                  <select
+                    bind:value={row.item_id}
+                    onchange={() => onReagentItemChange(i, row.item_id)}
+                  >
+                    <option value="">Select reagent...</option>
+                    {#each inventoryItems as inv}
+                      <option value={inv.id}>{inv.name}</option>
+                    {/each}
+                  </select>
+                  <input
+                    type="text"
+                    bind:value={row.lot_number}
+                    placeholder="Lot #"
+                    style="max-width:110px;"
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    bind:value={row.amount}
+                    placeholder="0"
+                    style="max-width:90px;"
+                  />
+                  <input
+                    type="text"
+                    bind:value={row.unit}
+                    placeholder="g/L"
+                    style="max-width:70px;"
+                  />
+                  <button type="button" class="btn btn-sm btn-danger" onclick={() => removeReagentRow(i)}>✕</button>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          <button type="button" class="btn btn-sm" onclick={addReagentRow} style="margin-top:6px;">
+            + Add Reagent
+          </button>
+        </div>
+
+        <!-- Notes (wide) -->
         <div class="form-group">
           <label>Notes</label>
-          <textarea bind:value={form.notes} rows="2"></textarea>
+          <textarea bind:value={form.notes} rows="2" placeholder="QC notes, observations..."></textarea>
         </div>
+
         <div style="text-align:right;">
           <button type="submit" class="btn btn-primary">Create Batch</button>
         </div>
@@ -224,4 +338,49 @@
 <style>
   .expired { color: #dc2626; font-weight: 600; }
   .expiring { color: #d97706; font-weight: 600; }
+
+  /* Compact row for numeric fields */
+  .compact-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 0;
+  }
+  .compact-field {
+    flex: 0 0 130px;
+  }
+  .compact-sterilization {
+    flex: 0 0 180px;
+  }
+
+  /* Reagent traceability table */
+  .reagent-table {
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .reagent-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 0.8fr 0.6fr 36px;
+    gap: 8px;
+    padding: 6px 10px;
+    background: #f8fafc;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6b7280;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  .reagent-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr 0.8fr 0.6fr 36px;
+    gap: 8px;
+    padding: 6px 10px;
+    border-bottom: 1px solid #f1f5f9;
+    align-items: center;
+  }
+  .reagent-row:last-child {
+    border-bottom: none;
+  }
 </style>

@@ -216,7 +216,7 @@
                 </div>
                 <div class="form-row-3">
                   <div class="form-group">
-                    <label>Temperature (C)</label>
+                    <label>Temperature (°C)</label>
                     <input type="number" step="0.1" bind:value={subcultureForm.temperature_c} />
                   </div>
                   <div class="form-group">
