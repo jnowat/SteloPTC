@@ -77,12 +77,14 @@ This starts the Vite dev server and launches the Tauri window with hot-reload.
 ### 3. Build for Production
 
 ```bash
-cargo tauri build
+cargo tauri build --bundles msi
 ```
 
-**Windows**: Produces an `.exe` installer and standalone binary in `src-tauri/target/release/`.
+**Windows**: Produces a standalone `.exe` in `src-tauri/target/release/` and an `.msi` installer in `src-tauri/target/release/bundle/msi/`.
 
 **Linux**: Produces `.deb` and `.AppImage` in `src-tauri/target/release/bundle/`.
+
+> **CI Note**: The GitHub Actions workflow builds MSI only (skips NSIS) to avoid transient 502 errors from GitHub-hosted NSIS tool downloads. Both the standalone `.exe` and `.msi` installer are uploaded as build artifacts.
 
 ### Default Login
 
