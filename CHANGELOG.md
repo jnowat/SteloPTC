@@ -5,6 +5,25 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.5] - 2026-02-17
+
+### Fixed
+
+- **`lifecycle_function_unavailable` error in release builds**: The MSI/exe showed "mount(...) is not available on the server" instead of the login screen. Root cause: the Vite production build was resolving Svelte 5's package exports to the **server** entry point (where `mount()` does not exist) instead of the **browser/client** entry point.
+  - `vite.config.ts`: Added `compilerOptions: { generate: "client" }` to the Svelte plugin to force client-side code generation — this is a Tauri desktop app with no SSR.
+  - `vite.config.ts`: Added `resolve: { conditions: ["browser"] }` so the bundler resolves Svelte 5's conditional package exports to the client-side APIs (`mount`, `onMount`, `onDestroy`, etc.).
+  - `vite.config.ts`: Added `build.target` for modern WebView2/WebKitGTK/WKWebView engines, with conditional minification and sourcemaps based on `TAURI_DEBUG`.
+  - `svelte.config.js`: Added `compilerOptions: { generate: "client" }` as a redundant safety net.
+- **GitHub Actions workflow** (`build-windows.yml`):
+  - Removed redundant `npm run build` step (Tauri's `beforeBuildCommand` already handles this).
+  - Removed incorrect `projectPath: src-tauri` parameter (tauri-action auto-detects the project root).
+  - Removed unnecessary `cargo install tauri-cli` step (tauri-action installs the CLI).
+  - Fixed artifact upload paths for MSI and NSIS bundles.
+
+### Changed
+
+- Version bumped to 0.1.5 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.4] - 2026-02-17
 
 ### Fixed
