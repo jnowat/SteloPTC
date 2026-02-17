@@ -14,6 +14,8 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens -- from in
 - **Compliance**: Built-in flagging rules (e.g., citrus HLB testing, expired permits, quarantine status). Tracks permits, disease tests, chain of custody, and agency-specific records for USDA APHIS, TX Ag, and FL FDACS.
 - **Reminders**: User-configurable rules and calendar-based reminders with urgency levels, snooze/escalation, and recurring schedules.
 - **User Roles**: Admin, Supervisor, Tech, Guest -- with granular permissions and full audit logging of all changes.
+- **Inventory Management**: Full supply tracking with categories, stock levels, reorder alerts, and stock adjustments with audit trail.
+- **Database Backup**: On-demand database backup from the dashboard with WAL checkpointing for data integrity.
 - **Export**: CSV and JSON export for analysis in R, Python, or SPSS.
 - **Dark Mode**: System-aware with manual toggle.
 - **Keyboard Shortcuts**: Ctrl+1-4 for quick navigation.
@@ -112,6 +114,7 @@ SteloPTC/
 │       │   ├── SpeciesManager.svelte
 │       │   ├── UserManager.svelte
 │       │   ├── AuditLog.svelte
+│       │   ├── InventoryManager.svelte
 │       │   └── Notifications.svelte
 │       └── stores/               # Svelte stores
 │           ├── auth.ts
@@ -134,7 +137,9 @@ SteloPTC/
 │           ├── compliance.rs
 │           ├── species.rs
 │           ├── audit.rs
-│           └── export.rs
+│           ├── export.rs
+│           ├── inventory.rs
+│           └── backup.rs
 ├── LICENSE                       # Commercial license
 ├── CHANGELOG.md
 └── README.md
@@ -145,7 +150,7 @@ SteloPTC/
 The application uses SQLite by default, stored at:
 
 - **Windows**: `%APPDATA%\SteloPTC\stelo_ptc.db`
-- **Linux/macOS**: `~/.stelobtc/stelo_ptc.db`
+- **Linux/macOS**: `~/.steloptc/stelo_ptc.db`
 
 ### Schema Overview
 
@@ -164,12 +169,12 @@ The application uses SQLite by default, stored at:
 | `attachments`        | File attachment metadata                         |
 | `reminders`          | Scheduled reminders and rules                    |
 | `compliance_records` | Regulatory test/permit/inspection records        |
-| `inventory_items`    | Basic supply inventory                           |
+| `inventory_items`    | Supply inventory with reorder alerts             |
 | `audit_log`          | Immutable audit trail                            |
 
 ### Backup
 
-The database file can be backed up by copying it while the application is closed. WAL mode ensures read consistency during operation. Automated backup to network shares is planned for a future release.
+Database backups can be created from the Dashboard (supervisor/admin only). Backups are stored in a `backups/` subdirectory alongside the database file. The backup process checkpoints the WAL first to ensure a complete, consistent copy. You can also manually copy the database file while the application is closed.
 
 ## User Roles
 
@@ -201,9 +206,9 @@ Additional compliance rules can be added by extending `src-tauri/src/commands/co
 - [ ] Excel multi-sheet import/export
 - [ ] PDF report generation (export certificates, inspection logs)
 - [ ] Local AI analysis (NLP note summaries, image contamination detection)
-- [ ] Inventory management with reorder alerts
+- [x] Inventory management with reorder alerts
 - [ ] Offline mode with LAN sync
-- [ ] Automated nightly backups
+- [x] Database backup (on-demand from dashboard)
 
 ## License
 

@@ -18,6 +18,7 @@
     { id: 'reminders', label: 'Reminders', icon: '&#128276;' },
     { id: 'compliance', label: 'Compliance', icon: '&#128203;' },
     { id: 'species', label: 'Species', icon: '&#127807;' },
+    { id: 'inventory', label: 'Inventory', icon: '&#128230;' },
     { id: 'users', label: 'Users', icon: '&#128101;', roles: ['admin'] },
     { id: 'audit', label: 'Audit Log', icon: '&#128220;', roles: ['admin', 'supervisor'] },
   ];
@@ -32,7 +33,7 @@
 <aside class="sidebar">
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.1</span>
+    <span class="version">v0.1.2</span>
   </div>
 
   <nav class="nav">

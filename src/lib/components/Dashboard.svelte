@@ -1,12 +1,15 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSpecimenStats, getActiveReminders, getComplianceFlags } from '../api';
+  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup } from '../api';
   import { navigateTo, addNotification } from '../stores/app';
+  import { currentUser } from '../stores/auth';
 
   let stats = $state<any>(null);
   let reminders = $state<any[]>([]);
   let flags = $state<any[]>([]);
+  let lowStock = $state<any[]>([]);
   let loading = $state(true);
+  let backingUp = $state(false);
 
   onMount(() => {
     loadDashboard();
@@ -15,18 +18,32 @@
   async function loadDashboard() {
     loading = true;
     try {
-      const [s, r, f] = await Promise.all([
+      const [s, r, f, ls] = await Promise.all([
         getSpecimenStats(),
         getActiveReminders(),
         getComplianceFlags(),
+        getLowStockAlerts(),
       ]);
       stats = s;
       reminders = r;
       flags = f;
+      lowStock = ls;
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
       loading = false;
+    }
+  }
+
+  async function handleBackup() {
+    backingUp = true;
+    try {
+      const path = await createBackup();
+      addNotification(`Backup saved to: ${path}`, 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      backingUp = false;
     }
   }
 
@@ -81,6 +98,10 @@
       <div class="stat-card alert">
         <div class="stat-value">{flags.length}</div>
         <div class="stat-label">Compliance Flags</div>
+      </div>
+      <div class="stat-card" class:warn={lowStock.length > 0}>
+        <div class="stat-value">{lowStock.length}</div>
+        <div class="stat-label">Low Stock Items</div>
       </div>
     </div>
 
@@ -172,6 +193,44 @@
               </div>
             {/each}
           </div>
+        {/if}
+      </div>
+
+      <div class="panel">
+        <h3>Inventory Alerts</h3>
+        {#if lowStock.length === 0}
+          <p class="empty-state">All stock levels OK</p>
+        {:else}
+          <div class="flag-list">
+            {#each lowStock.slice(0, 8) as item}
+              <div class="flag-item">
+                <span class="badge badge-yellow">Low</span>
+                <div>
+                  <div class="flag-accession">{item.name}</div>
+                  <div class="flag-message">
+                    {item.current_stock} {item.unit} remaining (min: {item.minimum_stock})
+                  </div>
+                </div>
+              </div>
+            {/each}
+          </div>
+          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('inventory')}>
+            View inventory
+          </button>
+        {/if}
+      </div>
+
+      <div class="panel">
+        <h3>Database Backup</h3>
+        <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+          Create a backup of the database to the default backup directory.
+        </p>
+        {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
+          <button class="btn btn-primary" onclick={handleBackup} disabled={backingUp}>
+            {backingUp ? 'Backing up...' : 'Backup Now'}
+          </button>
+        {:else}
+          <p style="font-size:12px; color:#6b7280;">Supervisor or admin access required.</p>
         {/if}
       </div>
     </div>

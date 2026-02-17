@@ -40,6 +40,10 @@ impl Database {
         Ok(Database { conn })
     }
 
+    pub fn db_path() -> PathBuf {
+        Self::default_path()
+    }
+
     fn default_path() -> PathBuf {
         let mut path = dirs_next().unwrap_or_else(|| PathBuf::from("."));
         path.push("stelo_ptc.db");

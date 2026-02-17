@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
 
-export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 'reminders' | 'compliance' | 'species' | 'users' | 'audit' | 'settings';
+export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 'reminders' | 'compliance' | 'species' | 'inventory' | 'users' | 'audit' | 'settings';
 
 export const currentView = writable<View>('dashboard');
 export const selectedSpecimenId = writable<string | null>(null);
