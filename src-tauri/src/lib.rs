@@ -78,6 +78,16 @@ pub fn run() {
             // Export/Import
             commands::export::export_specimens_csv,
             commands::export::export_specimens_json,
+            // Inventory
+            commands::inventory::list_inventory,
+            commands::inventory::create_inventory_item,
+            commands::inventory::update_inventory_item,
+            commands::inventory::delete_inventory_item,
+            commands::inventory::adjust_stock,
+            commands::inventory::get_low_stock_alerts,
+            // Backup
+            commands::backup::create_backup,
+            commands::backup::list_backups,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

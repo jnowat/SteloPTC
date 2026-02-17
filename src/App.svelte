@@ -15,6 +15,7 @@
   import SpeciesManager from './lib/components/SpeciesManager.svelte';
   import UserManager from './lib/components/UserManager.svelte';
   import AuditLog from './lib/components/AuditLog.svelte';
+  import InventoryManager from './lib/components/InventoryManager.svelte';
   import Notifications from './lib/components/Notifications.svelte';
 
   let startupError = '';
@@ -95,6 +96,8 @@
           <SpeciesManager />
         {:else if $currentView === 'users'}
           <UserManager />
+        {:else if $currentView === 'inventory'}
+          <InventoryManager />
         {:else if $currentView === 'audit'}
           <AuditLog />
         {:else}

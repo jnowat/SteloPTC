@@ -177,3 +177,37 @@ export async function exportSpecimensCsv() {
 export async function exportSpecimensJson() {
   return call<string>('export_specimens_json');
 }
+
+// Inventory
+export async function listInventory() {
+  return call<any[]>('list_inventory');
+}
+
+export async function createInventoryItem(request: any) {
+  return call<any>('create_inventory_item', { request });
+}
+
+export async function updateInventoryItem(request: any) {
+  return call<any>('update_inventory_item', { request });
+}
+
+export async function deleteInventoryItem(id: string) {
+  return call<void>('delete_inventory_item', { id });
+}
+
+export async function adjustStock(id: string, adjustment: number, reason?: string) {
+  return call<any>('adjust_stock', { id, adjustment, reason: reason ?? null });
+}
+
+export async function getLowStockAlerts() {
+  return call<any[]>('get_low_stock_alerts');
+}
+
+// Backup
+export async function createBackup(destination?: string) {
+  return call<string>('create_backup', { destination: destination ?? null });
+}
+
+export async function listBackups() {
+  return call<any[]>('list_backups');
+}

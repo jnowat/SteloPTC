@@ -5,6 +5,36 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.2] - 2026-02-17
+
+### Added
+
+- **Inventory Management**: Full CRUD for lab supply inventory with category-based organization (media ingredients, vessels, hormones, chemicals, consumables, equipment).
+  - Stock level tracking with minimum stock and reorder point thresholds.
+  - Stock adjustment with positive/negative amounts and audit-logged reasons.
+  - Low-stock alerts displayed on the dashboard.
+  - Search, category filter, and low-stock-only filter on the Inventory page.
+  - Expiration date tracking with visual expired indicators.
+  - Supplier, catalog number, lot number, and storage location fields.
+  - Role-based access: Tech+ can create/edit/adjust, Supervisor+ can delete.
+- **Database Backup**: On-demand database backup from the dashboard.
+  - WAL checkpoint before copy ensures backup integrity.
+  - Backups stored in `backups/` subdirectory with timestamped filenames.
+  - Backup list retrieval for future restore UI.
+  - Audit-logged backup events.
+  - Supervisor/admin role required.
+- **Dashboard Enhancements**: New low-stock inventory alerts panel and backup button on the dashboard.
+
+### Fixed
+
+- **README database path**: Corrected Linux/macOS data directory from `.stelobtc` to `.steloptc` in documentation.
+
+### Changed
+
+- Version bumped to 0.1.2 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+- Updated README roadmap to mark inventory management and database backup as completed.
+- Updated README project structure to include new files.
+
 ## [0.1.1] - 2026-02-17
 
 ### Fixed

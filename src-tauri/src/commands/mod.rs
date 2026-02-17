@@ -7,3 +7,5 @@ pub mod compliance;
 pub mod species;
 pub mod audit;
 pub mod export;
+pub mod inventory;
+pub mod backup;
