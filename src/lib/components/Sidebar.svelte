@@ -33,7 +33,7 @@
 <aside class="sidebar">
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.5</span>
+    <span class="version">v0.1.6</span>
   </div>
 
   <nav class="nav">
@@ -58,10 +58,10 @@
     </div>
     <div class="footer-actions">
       <button class="icon-btn" onclick={ontoggleDark} title="Toggle dark mode">
-        {isDark ? '&#9728;' : '&#127769;'}
+        {@html isDark ? '&#9728;' : '&#127769;'}
       </button>
       <button class="icon-btn" onclick={onlogout} title="Logout">
-        &#10140;
+        {@html '&#10140;'}
       </button>
     </div>
   </div>

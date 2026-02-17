@@ -5,6 +5,30 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-02-17
+
+### Added
+
+- **Shoot Meristem / Root Meristem stages**: Two new stage options ("Shoot Meristem", "Root Meristem") added to the specimen stage selector.
+- **Health Status slider**: Replaced the free-text health status field in New Specimen with a color-coded 0–4 range slider (0 = Dead, 1 = Poor, 2 = Fair, 3 = Good, 4 = Healthy) with a gradient track and live label display.
+- **Structured location entry**: Location field now shows four dropdowns — Room (1–5), Rack (A–D), Shelf (1–5), Tray (A–F) — that compose a human-readable location string on save (e.g., "Room 2 / Rack B / Shelf 3 / Tray C").
+- **Initial Media Batch field on new specimen**: Specimen creation form now includes a Media Batch dropdown; the selected batch is recorded in the specimen notes for traceability.
+- **Auto-populate last-used form values**: New Specimen form remembers the last Room, Rack, Shelf, Tray, Health, Species, Stage, Propagation Method, and Media Batch selections via `localStorage` and pre-fills them on next use.
+- **Media Logs – Basal Salts auto-populate**: Last-used Basal Salts type and concentration are remembered and pre-filled on the next media batch form.
+- **Stock Reagent traceability section**: New Specimen Media Batch creation form includes a "+ Add Reagent" builder that lets you select inventory items, auto-fills their lot number, and records amount + unit. Reagent details are appended to batch notes as a structured traceable log.
+- **Inventory unit datalist**: Unit field now provides a dropdown suggestion list (g, mg, mL, L, units, pcs, µg, µL) while still allowing free-text entry.
+
+### Fixed
+
+- **Sidebar icon rendering**: Dark mode toggle (☀/🌙) and logout (➤) buttons were rendering raw HTML entity strings (e.g., `&#9728;`) as literal text instead of the actual symbols. Fixed by using Svelte's `{@html ...}` interpolation. This was the "extra text in the lower left corner that changes with dark mode" bug.
+- **Temperature label**: Subculture form now correctly shows "Temperature (°C)" instead of "Temperature (C)".
+
+### Changed
+
+- **Media Logs form layout**: pH, Agar, Sucrose, and Volume Prepared fields are now compact fixed-width inputs instead of stretching to fill the full grid column. Sterilization selector is also narrow. Notes textarea remains full width.
+- **Basal Salts Concentration label**: Changed from "Concentration" to "Basal Salts Concentration (g/L)" for clarity.
+- Version bumped to 0.1.6 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.5] - 2026-02-17
 
 ### Fixed
