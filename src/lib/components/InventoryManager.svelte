@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem, adjustStock } from '../api';
+  import { listInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem, adjustStock, listPreparedSolutions, createPreparedSolution, updatePreparedSolution, deletePreparedSolution } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
@@ -18,9 +18,21 @@
     current_stock: '0', minimum_stock: '0', reorder_point: '',
     supplier: '', catalog_number: '', lot_number: '',
     storage_location: '', expiration_date: '', cost_per_unit: '', notes: '',
+    physical_state: 'solid',
+    concentration: '', concentration_unit: 'mg/L',
   });
 
   let adjustForm = $state({ amount: '', reason: '' });
+
+  let solutions = $state<any[]>([]);
+  let showSolutionForm = $state(false);
+  let solutionForm = $state({
+    name: '', source_item_id: '', concentration: '', concentration_unit: 'µM',
+    solvent: '', volume_ml: '', prepared_by: '', preparation_date: new Date().toISOString().split('T')[0],
+    expiration_date: '', storage_conditions: '', lot_number: '', notes: '',
+    source_amount_used: '',
+  });
+  let editingSolutionId = $state<string | null>(null);
 
   const categories = [
     { value: 'media_ingredient', label: 'Media Ingredient' },
@@ -32,13 +44,17 @@
     { value: 'other', label: 'Other' },
   ];
 
-  onMount(() => { load(); });
+  onMount(() => {
+    load();
+    listPreparedSolutions().then(s => solutions = s).catch(() => {});
+  });
 
   async function load() {
     loading = true;
     try { items = await listInventory(); }
     catch (e: any) { addNotification(e.message, 'error'); }
     finally { loading = false; }
+    listPreparedSolutions().then(s => solutions = s).catch(() => {});
   }
 
   function resetForm() {
@@ -47,6 +63,8 @@
       current_stock: '0', minimum_stock: '0', reorder_point: '',
       supplier: '', catalog_number: '', lot_number: '',
       storage_location: '', expiration_date: '', cost_per_unit: '', notes: '',
+      physical_state: 'solid',
+      concentration: '', concentration_unit: 'mg/L',
     };
     editingId = null;
   }
@@ -66,6 +84,9 @@
       expiration_date: item.expiration_date || '',
       cost_per_unit: item.cost_per_unit != null ? String(item.cost_per_unit) : '',
       notes: item.notes || '',
+      physical_state: item.physical_state || 'solid',
+      concentration: item.concentration != null ? String(item.concentration) : '',
+      concentration_unit: item.concentration_unit || 'mg/L',
     };
     editingId = item.id;
     showForm = true;
@@ -90,6 +111,9 @@
           expiration_date: form.expiration_date || undefined,
           cost_per_unit: form.cost_per_unit ? parseFloat(form.cost_per_unit) : undefined,
           notes: form.notes || undefined,
+          physical_state: form.physical_state,
+          concentration: form.physical_state === 'liquid' && form.concentration ? parseFloat(form.concentration) : undefined,
+          concentration_unit: form.physical_state === 'liquid' && form.concentration ? form.concentration_unit || undefined : undefined,
         });
         addNotification('Inventory item updated', 'success');
       } else {
@@ -107,6 +131,9 @@
           expiration_date: form.expiration_date || undefined,
           cost_per_unit: form.cost_per_unit ? parseFloat(form.cost_per_unit) : undefined,
           notes: form.notes || undefined,
+          physical_state: form.physical_state,
+          concentration: form.physical_state === 'liquid' && form.concentration ? parseFloat(form.concentration) : undefined,
+          concentration_unit: form.physical_state === 'liquid' && form.concentration ? form.concentration_unit || undefined : undefined,
         });
         addNotification('Inventory item created', 'success');
       }
@@ -169,6 +196,63 @@
 
   let filtered = $derived(getFilteredItems());
   let lowStockCount = $derived(items.filter(isLowStock).length);
+
+  function resetSolutionForm() {
+    solutionForm = {
+      name: '', source_item_id: '', concentration: '', concentration_unit: 'µM',
+      solvent: '', volume_ml: '', prepared_by: '', preparation_date: new Date().toISOString().split('T')[0],
+      expiration_date: '', storage_conditions: '', lot_number: '', notes: '',
+      source_amount_used: '',
+    };
+    editingSolutionId = null;
+  }
+
+  async function handleSolutionSubmit(e: Event) {
+    e.preventDefault();
+    try {
+      await createPreparedSolution({
+        name: solutionForm.name,
+        source_item_id: solutionForm.source_item_id || undefined,
+        concentration: solutionForm.concentration ? parseFloat(solutionForm.concentration) : undefined,
+        concentration_unit: solutionForm.concentration_unit || undefined,
+        solvent: solutionForm.solvent || undefined,
+        volume_ml: solutionForm.volume_ml ? parseFloat(solutionForm.volume_ml) : undefined,
+        prepared_by: solutionForm.prepared_by || undefined,
+        preparation_date: solutionForm.preparation_date || undefined,
+        expiration_date: solutionForm.expiration_date || undefined,
+        storage_conditions: solutionForm.storage_conditions || undefined,
+        lot_number: solutionForm.lot_number || undefined,
+        notes: solutionForm.notes || undefined,
+        source_amount_used: solutionForm.source_amount_used ? parseFloat(solutionForm.source_amount_used) : undefined,
+      });
+      addNotification('Prepared solution created', 'success');
+      showSolutionForm = false;
+      resetSolutionForm();
+      listPreparedSolutions().then(s => solutions = s).catch(() => {});
+    } catch (e: any) { addNotification(e.message, 'error'); }
+  }
+
+  async function handleSolutionDelete(id: string) {
+    if (!confirm('Delete this prepared solution?')) return;
+    try {
+      await deletePreparedSolution(id);
+      addNotification('Prepared solution deleted', 'success');
+      listPreparedSolutions().then(s => solutions = s).catch(() => {});
+    } catch (e: any) { addNotification(e.message, 'error'); }
+  }
+
+  async function handleSolutionUpdate(sol: any, newVolumeRemaining: string) {
+    try {
+      await updatePreparedSolution({
+        id: sol.id,
+        volume_remaining_ml: newVolumeRemaining ? parseFloat(newVolumeRemaining) : undefined,
+      });
+      addNotification('Volume updated', 'success');
+      listPreparedSolutions().then(s => solutions = s).catch(() => {});
+    } catch (e: any) { addNotification(e.message, 'error'); }
+  }
+
+  let solutionVolumeInputs = $state<Record<string, string>>({});
 </script>
 
 <div>
@@ -199,6 +283,19 @@
             </select>
           </div>
           <div class="form-group">
+            <label>Physical State</label>
+            <div style="display:flex; gap:16px; align-items:center; margin-top:4px;">
+              <label style="display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; cursor:pointer; font-weight:normal;">
+                <input type="radio" bind:group={form.physical_state} value="solid" style="width:auto;" /> Solid
+              </label>
+              <label style="display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; cursor:pointer; font-weight:normal;">
+                <input type="radio" bind:group={form.physical_state} value="liquid" style="width:auto;" /> Liquid / Solution
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
             <label>Unit *</label>
             <input type="text" list="unit-options" bind:value={form.unit} placeholder="g, mg, mL..." required />
             <datalist id="unit-options">
@@ -212,8 +309,6 @@
               <option value="µL">µL (microliters)</option>
             </datalist>
           </div>
-        </div>
-        <div class="form-row-3">
           <div class="form-group">
             <label>Current Stock</label>
             <input type="number" step="0.01" bind:value={form.current_stock} />
@@ -222,12 +317,35 @@
             <label>Minimum Stock</label>
             <input type="number" step="0.01" bind:value={form.minimum_stock} />
           </div>
+        </div>
+        {#if form.physical_state === 'liquid'}
+        <div class="form-row">
+          <div class="form-group" style="flex:2;">
+            <label>Stock Concentration</label>
+            <input type="number" step="any" bind:value={form.concentration} placeholder="e.g., 10" />
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label>Unit</label>
+            <select bind:value={form.concentration_unit}>
+              <option value="nM">nM</option>
+              <option value="µM">µM</option>
+              <option value="mM">mM</option>
+              <option value="M">M</option>
+              <option value="ng/mL">ng/mL</option>
+              <option value="µg/mL">µg/mL</option>
+              <option value="mg/mL">mg/mL</option>
+              <option value="mg/L">mg/L</option>
+              <option value="g/L">g/L</option>
+              <option value="%">% (v/v or w/v)</option>
+            </select>
+          </div>
+        </div>
+        {/if}
+        <div class="form-row-3">
           <div class="form-group">
             <label>Reorder Point</label>
             <input type="number" step="0.01" bind:value={form.reorder_point} placeholder="Optional" />
           </div>
-        </div>
-        <div class="form-row-3">
           <div class="form-group">
             <label>Supplier</label>
             <input type="text" bind:value={form.supplier} placeholder="e.g., Sigma-Aldrich" />
@@ -236,12 +354,12 @@
             <label>Catalog Number</label>
             <input type="text" bind:value={form.catalog_number} />
           </div>
+        </div>
+        <div class="form-row-3">
           <div class="form-group">
             <label>Lot Number</label>
             <input type="text" bind:value={form.lot_number} />
           </div>
-        </div>
-        <div class="form-row-3">
           <div class="form-group">
             <label>Storage Location</label>
             <input type="text" bind:value={form.storage_location} placeholder="e.g., Shelf B-3" />
@@ -250,6 +368,8 @@
             <label>Expiration Date</label>
             <input type="date" bind:value={form.expiration_date} />
           </div>
+        </div>
+        <div class="form-row-3">
           <div class="form-group">
             <label>Cost per Unit ($)</label>
             <input type="number" step="0.01" bind:value={form.cost_per_unit} />
@@ -319,6 +439,7 @@
           <tr>
             <th>Name</th>
             <th>Category</th>
+            <th>State</th>
             <th>Stock</th>
             <th>Min</th>
             <th>Supplier</th>
@@ -338,6 +459,14 @@
                 {/if}
               </td>
               <td><span class="badge badge-gray">{getCategoryLabel(item.category)}</span></td>
+              <td>
+                <span class="badge {item.physical_state === 'liquid' ? 'badge-blue' : 'badge-gray'}">
+                  {item.physical_state === 'liquid' ? 'Liquid' : 'Solid'}
+                </span>
+                {#if item.physical_state === 'liquid' && item.concentration}
+                  <div style="font-size:11px; color:#6b7280; margin-top:2px;">{item.concentration} {item.concentration_unit || ''}</div>
+                {/if}
+              </td>
               <td class:low-stock={isLowStock(item)}>
                 <strong>{item.current_stock}</strong> {item.unit}
               </td>
@@ -379,6 +508,185 @@
       </table>
     </div>
   {/if}
+
+  <!-- Prepared Solutions Section -->
+  <div style="margin-top:32px;">
+    <div class="page-header" style="margin-bottom:16px;">
+      <h2 style="margin:0;">Prepared Stock Solutions</h2>
+      {#if $currentUser?.role !== 'guest'}
+        <button class="btn btn-primary" onclick={() => { if (showSolutionForm) { showSolutionForm = false; resetSolutionForm(); } else { resetSolutionForm(); showSolutionForm = true; } }}>
+          {showSolutionForm ? 'Cancel' : '+ New Solution'}
+        </button>
+      {/if}
+    </div>
+
+    {#if showSolutionForm}
+      <div class="card" style="margin-bottom:16px;">
+        <form onsubmit={handleSolutionSubmit}>
+          <h3 style="margin-bottom:16px;">New Prepared Solution</h3>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Solution Name *</label>
+              <input type="text" bind:value={solutionForm.name} placeholder="e.g., 10 mM BAP stock" required />
+            </div>
+            <div class="form-group">
+              <label>Source Inventory Item</label>
+              <select bind:value={solutionForm.source_item_id}>
+                <option value="">— None —</option>
+                {#each items as item}
+                  <option value={item.id}>{item.name}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Source Amount Used</label>
+              <input type="number" step="any" bind:value={solutionForm.source_amount_used} placeholder="Amount deducted from stock" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group" style="flex:2;">
+              <label>Concentration</label>
+              <input type="number" step="any" bind:value={solutionForm.concentration} placeholder="e.g., 10" />
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Unit</label>
+              <select bind:value={solutionForm.concentration_unit}>
+                <option value="nM">nM</option>
+                <option value="µM">µM</option>
+                <option value="mM">mM</option>
+                <option value="M">M</option>
+                <option value="ng/mL">ng/mL</option>
+                <option value="µg/mL">µg/mL</option>
+                <option value="mg/mL">mg/mL</option>
+                <option value="mg/L">mg/L</option>
+                <option value="g/L">g/L</option>
+                <option value="%">% (v/v or w/v)</option>
+              </select>
+            </div>
+            <div class="form-group" style="flex:2;">
+              <label>Solvent</label>
+              <input type="text" bind:value={solutionForm.solvent} placeholder="e.g., DMSO, dH2O" />
+            </div>
+            <div class="form-group" style="flex:1;">
+              <label>Volume (mL)</label>
+              <input type="number" step="any" bind:value={solutionForm.volume_ml} placeholder="e.g., 10" />
+            </div>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Prepared By</label>
+              <input type="text" bind:value={solutionForm.prepared_by} placeholder="Name or initials" />
+            </div>
+            <div class="form-group">
+              <label>Preparation Date</label>
+              <input type="date" bind:value={solutionForm.preparation_date} />
+            </div>
+            <div class="form-group">
+              <label>Expiration Date</label>
+              <input type="date" bind:value={solutionForm.expiration_date} />
+            </div>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label>Lot Number</label>
+              <input type="text" bind:value={solutionForm.lot_number} />
+            </div>
+            <div class="form-group">
+              <label>Storage Conditions</label>
+              <input type="text" bind:value={solutionForm.storage_conditions} placeholder="e.g., -20°C, dark" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Notes</label>
+            <textarea bind:value={solutionForm.notes} rows="2"></textarea>
+          </div>
+          <div style="text-align:right;">
+            <button type="submit" class="btn btn-primary">Create Solution</button>
+          </div>
+        </form>
+      </div>
+    {/if}
+
+    {#if solutions.length === 0}
+      <div class="empty-state">No prepared solutions yet</div>
+    {:else}
+      <div class="card" style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Source Item</th>
+              <th>Concentration</th>
+              <th>Volume Remaining</th>
+              <th>Prepared By</th>
+              <th>Date</th>
+              <th>Expires</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each solutions as sol}
+              <tr>
+                <td>
+                  <strong>{sol.name}</strong>
+                  {#if sol.lot_number}
+                    <div style="font-size:11px; color:#6b7280;">Lot: {sol.lot_number}</div>
+                  {/if}
+                  {#if sol.storage_conditions}
+                    <div style="font-size:11px; color:#6b7280;">{sol.storage_conditions}</div>
+                  {/if}
+                </td>
+                <td>
+                  {#if sol.source_item_id}
+                    {items.find(i => i.id === sol.source_item_id)?.name || sol.source_item_id}
+                  {:else}
+                    —
+                  {/if}
+                </td>
+                <td>
+                  {#if sol.concentration != null}
+                    {sol.concentration} {sol.concentration_unit || ''}
+                  {:else}
+                    —
+                  {/if}
+                </td>
+                <td>
+                  <div style="display:flex; gap:4px; align-items:center;">
+                    <input
+                      type="number"
+                      step="any"
+                      style="width:72px; padding:2px 6px; font-size:13px;"
+                      value={solutionVolumeInputs[sol.id] ?? (sol.volume_remaining_ml != null ? String(sol.volume_remaining_ml) : (sol.volume_ml != null ? String(sol.volume_ml) : ''))}
+                      oninput={(e) => { solutionVolumeInputs[sol.id] = (e.target as HTMLInputElement).value; }}
+                      placeholder="mL"
+                    />
+                    <span style="font-size:12px; color:#6b7280;">mL</span>
+                    {#if $currentUser?.role !== 'guest'}
+                      <button class="btn btn-sm" onclick={() => handleSolutionUpdate(sol, solutionVolumeInputs[sol.id] ?? '')}>Update</button>
+                    {/if}
+                  </div>
+                </td>
+                <td>{sol.prepared_by || '—'}</td>
+                <td>{sol.preparation_date || '—'}</td>
+                <td>
+                  {#if sol.expiration_date}
+                    <span class:expired={isExpired(sol.expiration_date)}>{sol.expiration_date}</span>
+                  {:else}
+                    —
+                  {/if}
+                </td>
+                <td>
+                  {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
+                    <button class="btn btn-sm btn-danger" onclick={() => handleSolutionDelete(sol.id)}>Del</button>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+    {/if}
+  </div>
 </div>
 
 <style>

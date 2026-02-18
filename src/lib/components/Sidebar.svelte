@@ -33,7 +33,7 @@
 <aside class="sidebar">
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.8</span>
+    <span class="version">v0.1.9</span>
   </div>
 
   <nav class="nav">

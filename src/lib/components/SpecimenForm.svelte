@@ -9,10 +9,15 @@
   let mediaBatches = $state<any[]>([]);
   let loading = $state(false);
 
-  // Health status slider (0=Dead, 4=Healthy)
+  // Health status slider (0=Dead … 4=Healthy, -1=Unknown/Awaiting)
+  let healthUnknown = $state(localStorage.getItem('spec_lastHealthUnknown') === 'true');
   let healthValue = $state(parseInt(localStorage.getItem('spec_lastHealth') || '4'));
   const healthLabels = ['Dead', 'Poor', 'Fair', 'Good', 'Healthy'];
   const healthColors = ['#dc2626', '#d97706', '#ca8a04', '#65a30d', '#16a34a'];
+
+  function effectiveHealth(): string {
+    return healthUnknown ? '-1' : String(healthValue);
+  }
 
   // Location parts
   let locRoom = $state(localStorage.getItem('spec_lastRoom') || '');
@@ -28,6 +33,7 @@
     source_plant: '',
     propagation_method: localStorage.getItem('spec_lastPropMethod') || '',
     media_batch_id: localStorage.getItem('spec_lastMediaBatch') || '',
+    employee_id: '',
     notes: '',
   });
 
@@ -38,6 +44,7 @@
     { value: 'protoplast', label: 'Protoplast' },
     { value: 'shoot', label: 'Shoot' },
     { value: 'shoot_meristem', label: 'Shoot Meristem' },
+    { value: 'apical_meristem', label: 'Apical Meristem' },
     { value: 'root', label: 'Root' },
     { value: 'root_meristem', label: 'Root Meristem' },
     { value: 'embryogenic', label: 'Embryogenic' },
@@ -90,6 +97,7 @@
     localStorage.setItem('spec_lastShelf', locShelf);
     localStorage.setItem('spec_lastTray', locTray);
     localStorage.setItem('spec_lastHealth', String(healthValue));
+    localStorage.setItem('spec_lastHealthUnknown', String(healthUnknown));
     localStorage.setItem('spec_lastSpecies', form.species_id);
     localStorage.setItem('spec_lastStage', form.stage);
     localStorage.setItem('spec_lastPropMethod', form.propagation_method);
@@ -112,7 +120,8 @@
         source_plant: form.source_plant || undefined,
         location: location || undefined,
         propagation_method: form.propagation_method || undefined,
-        health_status: String(healthValue),
+        health_status: effectiveHealth(),
+        employee_id: form.employee_id || undefined,
         notes: notes || undefined,
       });
       addNotification('Specimen created', 'success');
@@ -213,25 +222,33 @@
   <div class="form-group">
     <label>Health Status</label>
     <div class="health-slider-wrap">
-      <input
-        type="range"
-        min="0"
-        max="4"
-        step="1"
-        bind:value={healthValue}
-        class="health-slider"
-        style="--track-color: {healthColors[healthValue]};"
-      />
-      <div class="health-ticks">
-        {#each healthLabels as lbl, i}
-          <span class="health-tick" class:active={healthValue === i} style={healthValue === i ? `color:${healthColors[i]};` : ''}>
-            {i} {lbl}
-          </span>
-        {/each}
-      </div>
-      <div class="health-display" style="color:{healthColors[healthValue]};">
-        {healthValue} – {healthLabels[healthValue]}
-      </div>
+      <label class="unknown-toggle">
+        <input type="checkbox" bind:checked={healthUnknown} style="width:auto;" />
+        Unknown / Awaiting Assessment
+      </label>
+      {#if healthUnknown}
+        <div class="health-display" style="color:#7c3aed;">? – Unknown / Awaiting Assessment</div>
+      {:else}
+        <input
+          type="range"
+          min="0"
+          max="4"
+          step="1"
+          bind:value={healthValue}
+          class="health-slider"
+          style="--track-color: {healthColors[healthValue]};"
+        />
+        <div class="health-ticks">
+          {#each healthLabels as lbl, i}
+            <span class="health-tick" class:active={healthValue === i} style={healthValue === i ? `color:${healthColors[i]};` : ''}>
+              {i} {lbl}
+            </span>
+          {/each}
+        </div>
+        <div class="health-display" style="color:{healthColors[healthValue]};">
+          {healthValue} – {healthLabels[healthValue]}
+        </div>
+      {/if}
     </div>
   </div>
 
@@ -255,6 +272,11 @@
       <label for="source_plant">Source Plant</label>
       <input id="source_plant" type="text" bind:value={form.source_plant} placeholder="e.g., Mother plant #12" />
     </div>
+  </div>
+
+  <div class="form-group">
+    <label for="employee_id">Employee ID / Badge #</label>
+    <input id="employee_id" type="text" bind:value={form.employee_id} placeholder="e.g., EMP-042" />
   </div>
 
   <div class="form-group">
@@ -285,7 +307,6 @@
     font-size: 11px;
     font-weight: 600;
     color: #6b7280;
-    text-transform: uppercase;
     letter-spacing: 0.4px;
   }
   .location-preview {
@@ -299,6 +320,17 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  .unknown-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #7c3aed;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
   }
   .health-slider {
     -webkit-appearance: none;

@@ -30,6 +30,8 @@ pub struct Subculture {
     pub observations: Option<String>,
     pub performed_by: Option<String>,
     pub performer_name: Option<String>,
+    pub employee_id: Option<String>,
+    pub health_status: Option<String>,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -59,6 +61,8 @@ pub struct CreateSubcultureRequest {
     pub exposure_duration_hours: Option<f64>,
     pub notes: Option<String>,
     pub observations: Option<String>,
+    pub employee_id: Option<String>,
+    pub health_status: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

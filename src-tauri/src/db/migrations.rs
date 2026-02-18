@@ -18,6 +18,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])?;
     }
 
+    if current < 2 {
+        migration_002_v019(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?;
+    }
+
     Ok(())
 }
 
@@ -333,6 +338,132 @@ fn migration_001_initial(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
+fn migration_002_v019(conn: &Connection) -> DbResult<()> {
+    // Step 1: Disable FK enforcement for table recreation
+    conn.execute("PRAGMA foreign_keys = OFF", [])?;
+
+    // Step 2: Recreate specimens table with expanded stage constraint + employee_id
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS specimens_v2 (
+            id TEXT PRIMARY KEY,
+            accession_number TEXT NOT NULL UNIQUE,
+            species_id TEXT NOT NULL REFERENCES species(id),
+            project_id TEXT REFERENCES projects(id),
+            stage TEXT NOT NULL DEFAULT 'explant' CHECK(stage IN (
+                'explant','callus','suspension','protoplast',
+                'shoot','shoot_meristem','apical_meristem',
+                'root','root_meristem',
+                'embryogenic','plantlet','acclimatized','stock','archived','custom'
+            )),
+            custom_stage TEXT,
+            provenance TEXT,
+            source_plant TEXT,
+            initiation_date TEXT NOT NULL,
+            location TEXT,
+            location_details TEXT,
+            propagation_method TEXT CHECK(propagation_method IN (
+                'microprop','somatic_embryogenesis','organogenesis',
+                'meristem_culture','anther_culture','protoplast_fusion','other'
+            )),
+            acclimatization_status TEXT CHECK(acclimatization_status IN (
+                'not_applicable','in_vitro','hardening','greenhouse','field','completed'
+            )),
+            health_status TEXT DEFAULT 'healthy',
+            disease_status TEXT,
+            quarantine_flag INTEGER NOT NULL DEFAULT 0,
+            quarantine_release_date TEXT,
+            permit_number TEXT,
+            permit_expiry TEXT,
+            ip_flag INTEGER NOT NULL DEFAULT 0,
+            ip_notes TEXT,
+            environmental_notes TEXT,
+            subculture_count INTEGER NOT NULL DEFAULT 0,
+            parent_specimen_id TEXT REFERENCES specimens_v2(id),
+            qr_code_data TEXT,
+            notes TEXT,
+            is_archived INTEGER NOT NULL DEFAULT 0,
+            archived_at TEXT,
+            employee_id TEXT,
+            created_by TEXT REFERENCES users(id),
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO specimens_v2 (
+            id, accession_number, species_id, project_id, stage, custom_stage,
+            provenance, source_plant, initiation_date, location, location_details,
+            propagation_method, acclimatization_status, health_status, disease_status,
+            quarantine_flag, quarantine_release_date, permit_number, permit_expiry,
+            ip_flag, ip_notes, environmental_notes, subculture_count, parent_specimen_id,
+            qr_code_data, notes, is_archived, archived_at, created_by, created_at, updated_at
+        )
+        SELECT
+            id, accession_number, species_id, project_id,
+            CASE WHEN stage NOT IN (
+                'explant','callus','suspension','protoplast',
+                'shoot','shoot_meristem','apical_meristem',
+                'root','root_meristem',
+                'embryogenic','plantlet','acclimatized','stock','archived','custom'
+            ) THEN 'custom' ELSE stage END,
+            custom_stage, provenance, source_plant, initiation_date, location, location_details,
+            propagation_method, acclimatization_status, health_status, disease_status,
+            quarantine_flag, quarantine_release_date, permit_number, permit_expiry,
+            ip_flag, ip_notes, environmental_notes, subculture_count, parent_specimen_id,
+            qr_code_data, notes, is_archived, archived_at, created_by, created_at, updated_at
+        FROM specimens;
+
+        DROP TABLE specimens;
+        ALTER TABLE specimens_v2 RENAME TO specimens;
+
+        CREATE INDEX IF NOT EXISTS idx_specimens_accession ON specimens(accession_number);
+        CREATE INDEX IF NOT EXISTS idx_specimens_species ON specimens(species_id);
+        CREATE INDEX IF NOT EXISTS idx_specimens_project ON specimens(project_id);
+        CREATE INDEX IF NOT EXISTS idx_specimens_stage ON specimens(stage);
+        CREATE INDEX IF NOT EXISTS idx_specimens_quarantine ON specimens(quarantine_flag);
+        CREATE INDEX IF NOT EXISTS idx_specimens_archived ON specimens(is_archived);
+    ")?;
+
+    // Step 3: Re-enable FK enforcement
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+
+    // Step 4: Add new columns via ALTER TABLE (safe, non-destructive)
+    conn.execute_batch("
+        ALTER TABLE inventory_items ADD COLUMN physical_state TEXT DEFAULT 'solid';
+        ALTER TABLE inventory_items ADD COLUMN concentration REAL;
+        ALTER TABLE inventory_items ADD COLUMN concentration_unit TEXT;
+
+        ALTER TABLE media_batches ADD COLUMN employee_id TEXT;
+
+        ALTER TABLE subcultures ADD COLUMN employee_id TEXT;
+        ALTER TABLE subcultures ADD COLUMN health_status TEXT;
+
+        ALTER TABLE media_hormones ADD COLUMN amount_used REAL;
+        ALTER TABLE media_hormones ADD COLUMN amount_unit TEXT;
+
+        CREATE TABLE IF NOT EXISTS prepared_solutions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            source_item_id TEXT REFERENCES inventory_items(id),
+            source_item_name TEXT,
+            concentration REAL NOT NULL,
+            concentration_unit TEXT NOT NULL,
+            solvent TEXT,
+            volume_ml REAL NOT NULL,
+            volume_remaining_ml REAL NOT NULL,
+            prepared_by TEXT,
+            preparation_date TEXT NOT NULL,
+            expiration_date TEXT,
+            storage_conditions TEXT,
+            lot_number TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+    ")?;
+
+    Ok(())
+}
+
 pub fn seed_defaults(conn: &Connection) -> DbResult<()> {
     // Check if already seeded
     let count: i64 = conn
@@ -433,24 +564,6 @@ pub fn seed_defaults(conn: &Connection) -> DbResult<()> {
             )?;
         }
     }
-
-    // Seed common hormones for media
-    let hormones = vec![
-        ("BAP", "cytokinin"),
-        ("NAA", "auxin"),
-        ("IBA", "auxin"),
-        ("2,4-D", "auxin"),
-        ("TDZ", "cytokinin"),
-        ("Kinetin", "cytokinin"),
-        ("GA3", "gibberellin"),
-        ("IAA", "auxin"),
-        ("Zeatin", "cytokinin"),
-        ("Picloram", "auxin"),
-    ];
-
-    // Store hormones as a reference (we just seed them as known names in documentation)
-    // They're used in the media_hormones table as free-form entries with suggestions
-    let _ = hormones; // hormones are used dynamically in the media_hormones table
 
     Ok(())
 }

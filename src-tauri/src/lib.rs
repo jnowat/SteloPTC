@@ -85,6 +85,11 @@ pub fn run() {
             commands::inventory::delete_inventory_item,
             commands::inventory::adjust_stock,
             commands::inventory::get_low_stock_alerts,
+            // Prepared Solutions
+            commands::inventory::list_prepared_solutions,
+            commands::inventory::create_prepared_solution,
+            commands::inventory::update_prepared_solution,
+            commands::inventory::delete_prepared_solution,
             // Backup
             commands::backup::create_backup,
             commands::backup::list_backups,

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, resetDatabase } from '../api';
-  import { navigateTo, addNotification } from '../stores/app';
+  import { navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
   let stats = $state<any>(null);
@@ -257,6 +257,20 @@
       </div>
 
       {#if $currentUser?.role === 'admin'}
+        <div class="panel danger-panel">
+          <h3 style="color:#dc2626;">⚠ Dev Tools — Developer Mode</h3>
+          <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+            Enables in-app editing of passages and other protected records.
+            Visible only to admins. Toggle persists across sessions.
+          </p>
+          <label style="display:inline-flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
+            <input type="checkbox" bind:checked={$devMode} style="width:auto; accent-color:#dc2626;" />
+            <span style="font-weight:600; color:{$devMode ? '#dc2626' : '#6b7280'};">
+              Dev Mode {$devMode ? 'ON' : 'OFF'}
+            </span>
+          </label>
+        </div>
+
         <div class="panel danger-panel">
           <h3 style="color:#dc2626;">⚠ Dev Tools — Reset Database</h3>
           <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">

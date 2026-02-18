@@ -16,6 +16,15 @@ function getInitialDarkMode(): boolean {
 }
 
 export const darkMode = writable<boolean>(getInitialDarkMode());
+
+function getInitialDevMode(): boolean {
+  try { return localStorage.getItem('stelo_devmode') === 'true'; } catch { return false; }
+}
+export const devMode = writable<boolean>(getInitialDevMode());
+devMode.subscribe((value) => {
+  try { localStorage.setItem('stelo_devmode', String(value)); } catch { /* noop */ }
+});
+
 export const notifications = writable<Array<{ id: string; message: string; type: 'info' | 'warning' | 'error' | 'success'; timestamp: number }>>([]);
 
 darkMode.subscribe((value) => {

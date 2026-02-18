@@ -43,6 +43,7 @@ pub fn list_media(state: State<AppState>, token: String) -> Result<Vec<MediaBatc
             needs_review: row.get::<_, i32>("needs_review")? != 0,
             notes: row.get("notes")?,
             hormones: Vec::new(), // loaded separately
+            employee_id: row.get("employee_id")?,
             created_by: row.get("created_by")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
@@ -66,6 +67,8 @@ pub fn list_media(state: State<AppState>, token: String) -> Result<Vec<MediaBatc
                 supplier: row.get("supplier")?,
                 lot_number: row.get("lot_number")?,
                 reagent_batch_id: row.get("reagent_batch_id")?,
+                amount_used: row.get("amount_used")?,
+                amount_unit: row.get("amount_unit")?,
             })
         }).map_err(|e| e.to_string())?
           .filter_map(|r| r.ok())
@@ -131,6 +134,8 @@ pub fn get_media_batch(state: State<AppState>, token: String, id: String) -> Res
             supplier: row.get("supplier")?,
             lot_number: row.get("lot_number")?,
             reagent_batch_id: row.get("reagent_batch_id")?,
+            amount_used: row.get("amount_used")?,
+            amount_unit: row.get("amount_unit")?,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -160,8 +165,8 @@ pub fn create_media_batch(
          basal_salts, basal_salts_concentration, vitamins, sucrose_g_per_l, agar_g_per_l,
          gelling_agent, ph_before_autoclave, ph_after_autoclave, sterilization_method,
          volume_prepared_ml, volume_remaining_ml, storage_conditions, qc_notes,
-         supplier_info, cost_per_batch, osmolarity, conductivity, is_custom, notes, created_by)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+         supplier_info, cost_per_batch, osmolarity, conductivity, is_custom, notes, employee_id, created_by)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26)",
         params![
             id, batch_id, request.name, request.preparation_date, request.expiration_date,
             request.basal_salts, request.basal_salts_concentration, request.vitamins,
@@ -170,19 +175,47 @@ pub fn create_media_batch(
             request.volume_prepared_ml, volume_remaining, request.storage_conditions,
             request.qc_notes, request.supplier_info, request.cost_per_batch,
             request.osmolarity, request.conductivity, request.is_custom.unwrap_or(false) as i32,
-            request.notes, user.id,
+            request.notes, request.employee_id, user.id,
         ],
     ).map_err(|e| format!("Failed to create media batch: {}", e))?;
 
-    // Insert hormones
+    // Insert hormones/reagents and auto-deduct stock
     if let Some(hormones) = &request.hormones {
         for h in hormones {
             let h_id = uuid::Uuid::new_v4().to_string();
             db.conn.execute(
-                "INSERT INTO media_hormones (id, media_batch_id, hormone_name, hormone_type, concentration_mg_per_l, supplier, lot_number, reagent_batch_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![h_id, id, h.hormone_name, h.hormone_type, h.concentration_mg_per_l, h.supplier, h.lot_number, h.reagent_batch_id],
+                "INSERT INTO media_hormones
+                 (id, media_batch_id, hormone_name, hormone_type, concentration_mg_per_l,
+                  supplier, lot_number, reagent_batch_id, amount_used, amount_unit)
+                 VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
+                params![
+                    h_id, id, h.hormone_name, h.hormone_type, h.concentration_mg_per_l,
+                    h.supplier, h.lot_number, h.reagent_batch_id,
+                    h.amount_used, h.amount_unit,
+                ],
             ).map_err(|e| format!("Failed to add hormone: {}", e))?;
+
+            // Deduct from inventory if a physical amount was recorded
+            if let (Some(ref inv_id), Some(used)) = (&h.reagent_batch_id, h.amount_used) {
+                if used > 0.0 {
+                    let cur: Option<f64> = db.conn.query_row(
+                        "SELECT current_stock FROM inventory_items WHERE id = ?1",
+                        params![inv_id], |row| row.get(0),
+                    ).ok();
+                    if let Some(c) = cur {
+                        let new_stock = (c - used).max(0.0);
+                        db.conn.execute(
+                            "UPDATE inventory_items SET current_stock = ?1, updated_at = datetime('now') WHERE id = ?2",
+                            params![new_stock, inv_id],
+                        ).ok();
+                        crate::db::queries::log_audit(
+                            &db.conn, Some(&user.id), "update", "inventory_item", Some(inv_id),
+                            Some(&c.to_string()), Some(&new_stock.to_string()),
+                            Some(&format!("Used in media batch {} ({})", batch_id, h.hormone_name)),
+                        ).ok();
+                    }
+                }
+            }
         }
     }
 

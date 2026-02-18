@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
-  import { getSpecimen, listSubcultures, createSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens } from '../api';
-  import { selectedSpecimenId, navigateTo, addNotification } from '../stores/app';
+  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens } from '../api';
+  import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
 
   let specimen = $state<any>(null);
   let subcultures = $state<any[]>([]);
@@ -11,11 +11,15 @@
   let childSpecimens = $state<any[]>([]);
   let loading = $state(true);
   let showPassageForm = $state(false);
-  let expandedPassage = $state<string | null>(null);
+  let expandedPassages = $state(new Set<string>());
   let activeTab = $state<'history' | 'compliance'>('history');
   let isSplitting = $state(false);
   let splitCount = $state(2);
   let submitting = $state(false);
+
+  // Dev mode: inline edit state
+  let editingPassageId = $state<string | null>(null);
+  let passageEditForm = $state({ notes: '', observations: '', vessel_type: '', location_to: '' });
 
   // Location dropdowns for transfer destination
   let locToRoom = $state(localStorage.getItem('sc_lastRoom') || '');
@@ -41,7 +45,37 @@
     light_cycle: '',
     notes: '',
     observations: '',
+    health_status: '',
+    health_unknown: false,
+    employee_id: '',
   });
+
+  // Media date warning: show if selected media batch was prepared after the passage date
+  let mediaDateWarning = $state(false);
+
+  $effect(() => {
+    const batchId = subcultureForm.media_batch_id;
+    const passageDate = subcultureForm.date;
+    if (batchId && passageDate) {
+      const batch = mediaBatches.find((mb: any) => mb.id === batchId);
+      if (batch && batch.preparation_date && passageDate) {
+        mediaDateWarning = batch.preparation_date > passageDate;
+      } else {
+        mediaDateWarning = false;
+      }
+    } else {
+      mediaDateWarning = false;
+    }
+  });
+
+  // Health slider value for the passage form (0–4)
+  let passageHealthValue = $state(4);
+  const healthLabels = ['Dead', 'Poor', 'Fair', 'Good', 'Healthy'];
+  const healthColors = ['#dc2626', '#d97706', '#ca8a04', '#65a30d', '#16a34a'];
+
+  function effectivePassageHealth(): string {
+    return subcultureForm.health_unknown ? '-1' : String(passageHealthValue);
+  }
 
   const vesselTypes = [
     '250ml glass jar with vented lid', '500ml glass jar with vented lid',
@@ -58,7 +92,9 @@
 
   function healthInfo(val: any) {
     if (val === null || val === '' || isNaN(Number(val))) return null;
-    const i = Math.max(0, Math.min(4, Math.round(Number(val))));
+    const n = Math.round(Number(val));
+    if (n === -1) return { label: '? – Unknown / Awaiting', color: '#7c3aed' };
+    const i = Math.max(0, Math.min(4, n));
     return { label: `${i} – ${hlabels[i]}`, color: hcolors[i] };
   }
 
@@ -125,6 +161,8 @@
         location_to: locationTo || undefined,
         notes: combinedNotes || undefined,
         observations: subcultureForm.observations || undefined,
+        health_status: effectivePassageHealth() !== '' ? effectivePassageHealth() : undefined,
+        employee_id: subcultureForm.employee_id || undefined,
       });
 
       if (isSplitting && splitCount > 1) {
@@ -157,10 +195,12 @@
       showPassageForm = false;
       isSplitting = false;
       splitCount = 2;
+      passageHealthValue = 4;
       subcultureForm = {
         date: new Date().toISOString().split('T')[0],
         media_batch_id: '', vessel_type: '', temperature_c: '',
         ph: '', light_cycle: '', notes: '', observations: '',
+        health_status: '', health_unknown: false, employee_id: '',
       };
       loadAll($selectedSpecimenId!);
     } catch (e: any) {
@@ -171,7 +211,45 @@
   }
 
   function togglePassage(id: string) {
-    expandedPassage = expandedPassage === id ? null : id;
+    if (expandedPassages.has(id)) {
+      expandedPassages = new Set([...expandedPassages].filter(x => x !== id));
+    } else {
+      expandedPassages = new Set([...expandedPassages, id]);
+    }
+  }
+
+  function startEditPassage(sc: any) {
+    editingPassageId = sc.id;
+    passageEditForm = {
+      notes: sc.notes || '',
+      observations: sc.observations || '',
+      vessel_type: sc.vessel_type || '',
+      location_to: sc.location_to || '',
+    };
+  }
+
+  function cancelEditPassage() {
+    editingPassageId = null;
+    passageEditForm = { notes: '', observations: '', vessel_type: '', location_to: '' };
+  }
+
+  async function handleEditPassage(e: Event, scId: string) {
+    e.preventDefault();
+    try {
+      await updateSubculture({
+        id: scId,
+        notes: passageEditForm.notes || undefined,
+        observations: passageEditForm.observations || undefined,
+        vessel_type: passageEditForm.vessel_type || undefined,
+        location_to: passageEditForm.location_to || undefined,
+      });
+      addNotification('Passage updated.', 'success');
+      editingPassageId = null;
+      passageEditForm = { notes: '', observations: '', vessel_type: '', location_to: '' };
+      loadAll($selectedSpecimenId!);
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    }
   }
 
   function navigateToSpecimen(id: string) {
@@ -329,6 +407,11 @@
                     <option value={mb.id}>{mb.batch_id} — {mb.name}</option>
                   {/each}
                 </select>
+                {#if mediaDateWarning}
+                  <div style="color:#dc2626;font-size:12px;margin-top:4px;">
+                    ⚠ Warning: this media batch was prepared AFTER the passage date — please verify.
+                  </div>
+                {/if}
               </div>
             </div>
 
@@ -390,6 +473,46 @@
               </div>
             </div>
 
+            <!-- Health Status -->
+            <div class="form-group">
+              <label>Health Status</label>
+              <div class="health-slider-wrap">
+                <label class="unknown-toggle">
+                  <input type="checkbox" bind:checked={subcultureForm.health_unknown} style="width:auto;" />
+                  Unknown / Awaiting Assessment
+                </label>
+                {#if subcultureForm.health_unknown}
+                  <div class="health-display" style="color:#7c3aed;">? – Unknown / Awaiting Assessment</div>
+                {:else}
+                  <input
+                    type="range"
+                    min="0"
+                    max="4"
+                    step="1"
+                    bind:value={passageHealthValue}
+                    class="health-slider"
+                    style="--track-color: {healthColors[passageHealthValue]};"
+                  />
+                  <div class="health-ticks">
+                    {#each healthLabels as lbl, i}
+                      <span class="health-tick" class:active={passageHealthValue === i} style={passageHealthValue === i ? `color:${healthColors[i]};` : ''}>
+                        {i} {lbl}
+                      </span>
+                    {/each}
+                  </div>
+                  <div class="health-display" style="color:{healthColors[passageHealthValue]};">
+                    {passageHealthValue} – {healthLabels[passageHealthValue]}
+                  </div>
+                {/if}
+              </div>
+            </div>
+
+            <!-- Employee ID -->
+            <div class="form-group">
+              <label>Employee ID / Badge #</label>
+              <input type="text" bind:value={subcultureForm.employee_id} placeholder="e.g., EMP-042" />
+            </div>
+
             <!-- Observations + Notes -->
             <div class="form-row">
               <div class="form-group" style="flex:1;">
@@ -447,7 +570,7 @@
           <div class="timeline" class:with-form={showPassageForm}>
             {#each subcultures as sc, i}
               {@const color = dotColor(sc.passage_number)}
-              {@const isExpanded = expandedPassage === sc.id}
+              {@const isExpanded = expandedPassages.has(sc.id)}
               <div class="timeline-item">
                 <!-- Left: connector -->
                 <div class="timeline-left">
@@ -475,72 +598,138 @@
                         {/if}
                       </div>
                     </div>
-                    <span class="tl-chevron">{isExpanded ? '▴' : '▾'}</span>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                      {#if $devMode && isExpanded}
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          style="background:#dc2626; color:white;"
+                          onclick={(e) => { e.stopPropagation(); if (editingPassageId === sc.id) { cancelEditPassage(); } else { startEditPassage(sc); } }}
+                        >
+                          {editingPassageId === sc.id ? 'Cancel Edit' : 'Edit'}
+                        </button>
+                      {/if}
+                      <span class="tl-chevron">{isExpanded ? '▴' : '▾'}</span>
+                    </div>
                   </button>
 
                   {#if isExpanded}
                     <div class="tl-card-body">
-                      <div class="tl-detail-grid">
-                        {#if sc.media_batch_name}
-                          <div class="tl-detail-item">
-                            <span class="tl-detail-label">Media Batch</span>
-                            <span class="tl-detail-value">{sc.media_batch_name}</span>
+                      {#if $devMode && editingPassageId === sc.id}
+                        <!-- Inline edit form -->
+                        <form onsubmit={(e) => handleEditPassage(e, sc.id)} style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
+                          <div class="form-row">
+                            <div class="form-group" style="flex:2;">
+                              <label>Vessel Type</label>
+                              <select bind:value={passageEditForm.vessel_type}>
+                                <option value="">Select vessel…</option>
+                                {#each vesselTypes as v}
+                                  <option value={v}>{v}</option>
+                                {/each}
+                              </select>
+                            </div>
+                            <div class="form-group" style="flex:2;">
+                              <label>Location To</label>
+                              <input type="text" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
+                            </div>
                           </div>
-                        {/if}
-                        {#if sc.vessel_type}
-                          <div class="tl-detail-item span2">
-                            <span class="tl-detail-label">Vessel</span>
-                            <span class="tl-detail-value">{sc.vessel_type}</span>
+                          <div class="form-row">
+                            <div class="form-group" style="flex:1;">
+                              <label>Observations</label>
+                              <textarea bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
+                            </div>
+                            <div class="form-group" style="flex:1;">
+                              <label>Notes</label>
+                              <textarea bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
+                            </div>
                           </div>
-                        {/if}
-                        {#if sc.temperature_c}
-                          <div class="tl-detail-item">
-                            <span class="tl-detail-label">Temperature</span>
-                            <span class="tl-detail-value">{sc.temperature_c} °C</span>
+                          <div style="text-align:right;">
+                            <button type="button" class="btn btn-sm" onclick={cancelEditPassage} style="margin-right:6px;">Cancel</button>
+                            <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
                           </div>
-                        {/if}
-                        {#if sc.ph}
-                          <div class="tl-detail-item">
-                            <span class="tl-detail-label">pH</span>
-                            <span class="tl-detail-value">{sc.ph}</span>
-                          </div>
-                        {/if}
-                        {#if sc.light_cycle}
-                          <div class="tl-detail-item">
-                            <span class="tl-detail-label">Light Cycle</span>
-                            <span class="tl-detail-value">{sc.light_cycle} hrs on/off</span>
-                          </div>
-                        {/if}
-                        {#if sc.location_from}
-                          <div class="tl-detail-item">
-                            <span class="tl-detail-label">From Location</span>
-                            <span class="tl-detail-value">{sc.location_from}</span>
-                          </div>
-                        {/if}
-                        {#if sc.location_to}
-                          <div class="tl-detail-item">
-                            <span class="tl-detail-label">To Location</span>
-                            <span class="tl-detail-value">{sc.location_to}</span>
-                          </div>
-                        {/if}
-                        {#if sc.performer_name}
-                          <div class="tl-detail-item">
-                            <span class="tl-detail-label">Performed By</span>
-                            <span class="tl-detail-value">{sc.performer_name}</span>
-                          </div>
-                        {/if}
-                      </div>
-                      {#if sc.observations}
-                        <div class="tl-detail-text">
-                          <span class="tl-detail-label">Observations</span>
-                          <p class="tl-detail-p">{sc.observations}</p>
+                        </form>
+                      {:else}
+                        <div class="tl-detail-grid">
+                          {#if sc.media_batch_name}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">Media Batch</span>
+                              <span class="tl-detail-value">{sc.media_batch_name}</span>
+                            </div>
+                          {/if}
+                          {#if sc.vessel_type}
+                            <div class="tl-detail-item span2">
+                              <span class="tl-detail-label">Vessel</span>
+                              <span class="tl-detail-value">{sc.vessel_type}</span>
+                            </div>
+                          {/if}
+                          {#if sc.temperature_c}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">Temperature</span>
+                              <span class="tl-detail-value">{sc.temperature_c} °C</span>
+                            </div>
+                          {/if}
+                          {#if sc.ph}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">pH</span>
+                              <span class="tl-detail-value">{sc.ph}</span>
+                            </div>
+                          {/if}
+                          {#if sc.light_cycle}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">Light Cycle</span>
+                              <span class="tl-detail-value">{sc.light_cycle} hrs on/off</span>
+                            </div>
+                          {/if}
+                          {#if sc.location_from}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">From Location</span>
+                              <span class="tl-detail-value">{sc.location_from}</span>
+                            </div>
+                          {/if}
+                          {#if sc.location_to}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">To Location</span>
+                              <span class="tl-detail-value">{sc.location_to}</span>
+                            </div>
+                          {/if}
+                          {#if sc.performer_name}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">Performed By</span>
+                              <span class="tl-detail-value">{sc.performer_name}</span>
+                            </div>
+                          {/if}
+                          {#if sc.employee_id}
+                            <div class="tl-detail-item">
+                              <span class="tl-detail-label">Employee ID</span>
+                              <span class="tl-detail-value">{sc.employee_id}</span>
+                            </div>
+                          {/if}
+                          {#if sc.health_status !== null && sc.health_status !== '' && !isNaN(Number(sc.health_status))}
+                            {@const hb = healthInfo(sc.health_status)}
+                            {#if hb}
+                              <div class="tl-detail-item">
+                                <span class="tl-detail-label">Health</span>
+                                <span class="tl-detail-value">
+                                  <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">
+                                    {hb.label}
+                                  </span>
+                                </span>
+                              </div>
+                            {/if}
+                          {/if}
                         </div>
-                      {/if}
-                      {#if sc.notes}
-                        <div class="tl-detail-text">
-                          <span class="tl-detail-label">Notes</span>
-                          <p class="tl-detail-p">{sc.notes}</p>
-                        </div>
+                        {#if sc.observations}
+                          <div class="tl-detail-text">
+                            <span class="tl-detail-label">Observations</span>
+                            <p class="tl-detail-p">{sc.observations}</p>
+                          </div>
+                        {/if}
+                        {#if sc.notes}
+                          <div class="tl-detail-text">
+                            <span class="tl-detail-label">Notes</span>
+                            <p class="tl-detail-p">{sc.notes}</p>
+                          </div>
+                        {/if}
                       {/if}
                     </div>
                   {/if}
@@ -686,6 +875,70 @@
   .env-field-wide { flex: 0 0 175px; }
   .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .form-row .form-group { flex: 1; min-width: 120px; margin-bottom: 0; }
+
+  /* Health slider */
+  .health-slider-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .unknown-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #7c3aed;
+    cursor: pointer;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 500;
+  }
+  .health-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 3px;
+    background: linear-gradient(to right, #dc2626, #d97706, #ca8a04, #65a30d, #16a34a);
+    outline: none;
+    border: none !important;
+    padding: 0 !important;
+    cursor: pointer;
+  }
+  .health-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--track-color, #16a34a);
+    border: 2px solid white;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    cursor: pointer;
+  }
+  .health-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: var(--track-color, #16a34a);
+    border: 2px solid white;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    cursor: pointer;
+  }
+  .health-ticks {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #9ca3af;
+  }
+  .health-tick.active {
+    font-weight: 700;
+  }
+  .health-display {
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 2px;
+  }
 
   /* Split toggle */
   .split-toggle-row {
