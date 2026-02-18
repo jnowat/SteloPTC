@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup } from '../api';
+  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, resetDatabase } from '../api';
   import { navigateTo, addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
@@ -10,6 +10,9 @@
   let lowStock = $state<any[]>([]);
   let loading = $state(true);
   let backingUp = $state(false);
+  let showResetPanel = $state(false);
+  let resetPhrase = $state('');
+  let resetting = $state(false);
 
   onMount(() => {
     loadDashboard();
@@ -44,6 +47,25 @@
       addNotification(e.message, 'error');
     } finally {
       backingUp = false;
+    }
+  }
+
+  async function handleReset() {
+    if (resetPhrase !== 'RESET DATABASE') {
+      addNotification('Type exactly: RESET DATABASE', 'warning');
+      return;
+    }
+    resetting = true;
+    try {
+      const msg = await resetDatabase(resetPhrase);
+      addNotification(msg, 'success');
+      showResetPanel = false;
+      resetPhrase = '';
+      loadDashboard();
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      resetting = false;
     }
   }
 
@@ -233,6 +255,46 @@
           <p style="font-size:12px; color:#6b7280;">Supervisor or admin access required.</p>
         {/if}
       </div>
+
+      {#if $currentUser?.role === 'admin'}
+        <div class="panel danger-panel">
+          <h3 style="color:#dc2626;">⚠ Dev Tools — Reset Database</h3>
+          <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+            Permanently deletes all specimens, media batches, subcultures, compliance records,
+            inventory, and audit logs. Users and species definitions are preserved.
+            <strong>This cannot be undone.</strong>
+          </p>
+          {#if !showResetPanel}
+            <button class="btn btn-danger btn-sm" onclick={() => showResetPanel = true}>
+              Show Reset Controls
+            </button>
+          {:else}
+            <div class="reset-confirm">
+              <p style="font-size:12px; font-weight:600; margin-bottom:8px;">
+                Type <code>RESET DATABASE</code> to confirm:
+              </p>
+              <input
+                type="text"
+                bind:value={resetPhrase}
+                placeholder="RESET DATABASE"
+                style="margin-bottom:8px; font-family:monospace;"
+              />
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-sm" onclick={() => { showResetPanel = false; resetPhrase = ''; }}>
+                  Cancel
+                </button>
+                <button
+                  class="btn btn-danger btn-sm"
+                  onclick={handleReset}
+                  disabled={resetting || resetPhrase !== 'RESET DATABASE'}
+                >
+                  {resetting ? 'Resetting...' : 'Reset Now'}
+                </button>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -296,4 +358,15 @@
   .bar-fill { height: 100%; background: #2563eb; border-radius: 4px; transition: width 0.3s; }
   .species-fill { background: #059669; }
   .bar-value { width: 40px; text-align: right; font-size: 13px; font-weight: 700; }
+
+  .danger-panel {
+    border: 1px solid rgba(220, 38, 38, 0.35);
+    background: rgba(220, 38, 38, 0.04);
+  }
+  :global(.dark) .danger-panel { background: rgba(220, 38, 38, 0.08); }
+
+  .reset-confirm {
+    display: flex;
+    flex-direction: column;
+  }
 </style>

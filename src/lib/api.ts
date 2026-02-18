@@ -203,6 +203,11 @@ export async function getLowStockAlerts() {
   return call<any[]>('get_low_stock_alerts');
 }
 
+// Admin / Dev tools
+export async function resetDatabase(confirmation: string) {
+  return call<string>('reset_database', { confirmation });
+}
+
 // Backup
 export async function createBackup(destination?: string) {
   return call<string>('create_backup', { destination: destination ?? null });

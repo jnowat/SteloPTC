@@ -9,3 +9,4 @@ pub mod audit;
 pub mod export;
 pub mod inventory;
 pub mod backup;
+pub mod admin;

@@ -88,6 +88,8 @@ pub fn run() {
             // Backup
             commands::backup::create_backup,
             commands::backup::list_backups,
+            // Admin / Dev tools
+            commands::admin::reset_database,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

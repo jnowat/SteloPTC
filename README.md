@@ -11,16 +11,17 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens -- from in
 - **Specimen Tracking**: Unique accession numbers (YYYY-MM-DD-SPECIESCODE-SEQ), provenance, lineage trees, health/disease status (0–4 color-coded slider), quarantine flags, and IP protection markers. Stages include explant, callus, shoot, shoot meristem, root, root meristem, embryogenic, plantlet, and more.
 - **Structured Location Entry**: Specimen location is entered via Room / Rack / Shelf / Tray dropdowns with auto-populated last-used values for fast data entry.
 - **Subculture History**: Full passage logging with media linkage, vessel tracking, environmental conditions, transfer records, and per-passage observations.
-- **Media Logs**: Separate media batch database supporting MS and related formulations. Tracks basal salts, hormones (auxins/cytokinins), pH, sterilization, volumes, and QC notes. Stock reagent traceability (lot numbers, amounts) recorded per batch.
-- **Inventory Integration**: Media batch creation form shows a "+ Add Reagent" section linking directly to inventory items with lot numbers for full ingredient traceability.
+- **Media Logs**: Separate media batch database supporting MS and related formulations. Tracks basal salts (with auto-calculated g/L concentration from weight and volume), hormones (auxins/cytokinins), pH, sterilization, vessel count, and QC notes. Admin/supervisor edit support. Stock reagent traceability (lot numbers, amounts) recorded per batch.
+- **Inventory Integration**: Media batch creation form shows a "+ Add Reagent" section linking directly to inventory items with lot numbers for full ingredient traceability. Supports both weighed-out and pre-made (commercial) basal salt solutions.
 - **Compliance**: Built-in flagging rules (e.g., citrus HLB testing, expired permits, quarantine status). Tracks permits, disease tests, chain of custody, and agency-specific records for USDA APHIS, TX Ag, and FL FDACS.
 - **Reminders**: User-configurable rules and calendar-based reminders with urgency levels, snooze/escalation, and recurring schedules.
 - **User Roles**: Admin, Supervisor, Tech, Guest -- with granular permissions and full audit logging of all changes.
 - **Inventory Management**: Full supply tracking with categories, stock levels, reorder alerts, and stock adjustments with audit trail. Unit field supports g, mg, mL, L, and other common units.
 - **Database Backup**: On-demand database backup from the dashboard with WAL checkpointing for data integrity.
 - **Export**: CSV and JSON export for analysis in R, Python, or SPSS.
-- **Dark Mode**: System-aware with manual toggle.
+- **Dark Mode**: System-aware with manual toggle. Inter font for clean mixed-case rendering.
 - **Keyboard Shortcuts**: Ctrl+1-4 for quick navigation.
+- **Admin Dev Tools**: Admin-only "Reset Database" panel on the dashboard to wipe all operational data (preserves users/species) during development and setup. Requires typing `RESET DATABASE` to confirm.
 
 ### Species Supported
 
