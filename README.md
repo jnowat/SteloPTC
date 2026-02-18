@@ -203,17 +203,26 @@ Additional compliance rules can be added by extending `src-tauri/src/commands/co
 
 ## Roadmap
 
+- [x] Inventory management with reorder alerts
+- [x] Database backup (on-demand from dashboard)
+- [x] Vertical passage timeline — scrollable history with collapsible detail cards, newest-first, replacing the old flat table
+- [x] Split culture recording — one passage creates N linked child specimens with `parent_specimen_id` for full lineage tracking
+- [x] Lineage banner — parent/child chips on each specimen for one-click navigation across splits
 - [ ] PostgreSQL support for multi-user LAN deployment
-- [ ] QR code generation and webcam scanning
-- [ ] Photo attachments with direct camera capture
-- [ ] Visual Gantt timeline for subculture history
-- [ ] Interactive lab map with floor plan overlay
+- [ ] QR / barcode generation and webcam scanning for specimen containers
+- [ ] Print label workflow — generate QR labels formatted for lab label printers
+- [ ] Photo attachments with direct camera capture and per-passage image logging
+- [ ] Contamination tracking — per-vessel flags, contamination notes, and lab-wide contamination rate statistics
+- [ ] Subculture scheduling — due-date forecasting based on species interval with overdue alerts
+- [ ] Interactive lab map with floor plan overlay and specimen location heat-map
 - [ ] Excel multi-sheet import/export
 - [ ] PDF report generation (export certificates, inspection logs)
+- [ ] Batch operations — bulk passage, bulk location transfer, bulk status update across selected specimens
+- [ ] Species-level analytics — growth curves, passage success rates, media comparison charts
+- [ ] Environmental monitoring integration — link temp/humidity sensor readings to passage records
+- [ ] Email / push notifications for reminders and overdue subcultures
 - [ ] Local AI analysis (NLP note summaries, image contamination detection)
-- [x] Inventory management with reorder alerts
 - [ ] Offline mode with LAN sync
-- [x] Database backup (on-demand from dashboard)
 
 ## License
 
