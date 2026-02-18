@@ -126,6 +126,8 @@
 </div>
 
 <style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
   :global(*) {
     margin: 0;
     padding: 0;
@@ -133,7 +135,7 @@
   }
 
   :global(body) {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
     font-size: 14px;
     line-height: 1.5;
     overflow: hidden;
@@ -276,8 +278,6 @@
     font-weight: 600;
     color: #6b7280;
     margin-bottom: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
   }
   :global(.dark label) { color: #94a3b8; }
 

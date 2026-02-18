@@ -123,7 +123,18 @@
             </div>
             <div class="info-item">
               <span class="info-label">Health</span>
-              <span class="info-value">{specimen.health_status || '—'}</span>
+              <span class="info-value">
+                {#if specimen.health_status !== null && specimen.health_status !== '' && !isNaN(Number(specimen.health_status))}
+                  {@const hv = Math.max(0, Math.min(4, Number(specimen.health_status)))}
+                  {@const hlabels = ['Dead','Poor','Fair','Good','Healthy']}
+                  {@const hcolors = ['#dc2626','#d97706','#ca8a04','#65a30d','#16a34a']}
+                  <span class="health-badge" style="background:{hcolors[hv]}20;color:{hcolors[hv]};border:1px solid {hcolors[hv]}60;">
+                    {hv} – {hlabels[hv]}
+                  </span>
+                {:else}
+                  {specimen.health_status || '—'}
+                {/if}
+              </span>
             </div>
             <div class="info-item">
               <span class="info-label">Passages</span>
@@ -214,18 +225,18 @@
                     <input type="text" bind:value={subcultureForm.location_to} placeholder="New location" />
                   </div>
                 </div>
-                <div class="form-row-3">
-                  <div class="form-group">
+                <div class="env-row">
+                  <div class="form-group env-field">
                     <label>Temperature (°C)</label>
-                    <input type="number" step="0.1" bind:value={subcultureForm.temperature_c} />
+                    <input type="number" step="0.1" bind:value={subcultureForm.temperature_c} placeholder="25" />
                   </div>
-                  <div class="form-group">
+                  <div class="form-group env-field">
                     <label>pH</label>
-                    <input type="number" step="0.01" bind:value={subcultureForm.ph} />
+                    <input type="number" step="0.01" bind:value={subcultureForm.ph} placeholder="5.7" />
                   </div>
-                  <div class="form-group">
-                    <label>Light Cycle</label>
-                    <input type="text" bind:value={subcultureForm.light_cycle} placeholder="e.g., 16/8" />
+                  <div class="form-group env-field-wide">
+                    <label>Light Cycle (hrs on/hrs off)</label>
+                    <input type="text" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
                   </div>
                 </div>
                 <div class="form-group">
@@ -331,8 +342,12 @@
   .detail-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
   .info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
   .info-item { display: flex; flex-direction: column; }
-  .info-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; }
+  .info-label { font-size: 11px; font-weight: 700; color: #6b7280; }
   .info-value { font-size: 14px; margin-top: 2px; }
+  .health-badge { display: inline-block; padding: 2px 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+  .env-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 0; }
+  .env-field { flex: 0 0 120px; }
+  .env-field-wide { flex: 0 0 180px; }
 
   .tabs {
     display: flex;

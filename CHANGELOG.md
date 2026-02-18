@@ -5,6 +5,27 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.7] - 2026-02-18
+
+### Added
+
+- **Inter font**: Switched global application font to Inter (Google Fonts), providing clean mixed-case rendering throughout all UI panels.
+- **Media Logs — Edit button**: Admins and supervisors can now edit existing media batches (name, expiration date, volume remaining, storage conditions, QC notes, review flag, notes) without deleting and recreating.
+- **Media Logs — Basal Salts auto-calculator**: When creating a media batch, enter the weight of basal salts powder (g) and total water volume (mL); the Basal Salts Concentration (g/L) field auto-populates. A "Pre-made solution" toggle shows a direct concentration field for commercial liquid formulations.
+- **Media Logs — Vessels/Jars Prepared**: New numeric field tracks how many jars/vessels were prepared per batch; displayed as a column in the media batch table.
+- **Admin dev-tools — Reset Database**: Admin-only panel on the dashboard under "Dev Tools" allows a full wipe of all operational data (specimens, media, subcultures, inventory, compliance records, audit log) while preserving user accounts and species definitions. Requires typing `RESET DATABASE` to confirm. Intended for use during development/setup.
+- **Health status badge**: In Specimen Detail, numeric health values (0–4) now render as colored badges (red → green) instead of raw numbers.
+
+### Fixed
+
+- **Label case / text justification**: Removed `text-transform: uppercase` from global label CSS. Labels now display in proper mixed case, fixing the visual misalignment caused by CAPS-only labels next to regular-case content.
+- **Light Cycle label**: Subculture form now shows "Light Cycle (hrs on/hrs off)" with placeholder "16/8" for clarity.
+- **Subculture environmental fields**: Temperature, pH, and Light Cycle inputs are now compact flex items (fixed widths) instead of occupying a full three-column grid row.
+
+### Changed
+
+- Version bumped to 0.1.7 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.6] - 2026-02-17
 
 ### Added
