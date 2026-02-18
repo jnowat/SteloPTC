@@ -5,6 +5,32 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.9] - 2026-02-18
+
+### Added
+
+- **Apical Meristem stage**: New stage option "Apical Meristem" added to the specimen stage selector, distinct from "Shoot Meristem".
+- **Unknown / Awaiting health grade (-1)**: Both the New Specimen form and the passage recording form now have an "Unknown / Awaiting Assessment" checkbox above the health slider. When checked, health is stored as `-1` and displayed in purple throughout the app. Intended for newly initiated AMTC cultures or small passages where health cannot yet be assessed.
+- **Employee ID on specimens, subcultures, and media batches**: A new "Employee ID / Badge #" text field appears on the New Specimen form, the Record Passage form, and the Media Batch form for technician traceability.
+- **Developer Mode toggle**: A new red "Dev Tools — Developer Mode" admin-only panel on the Dashboard enables/disables dev mode globally. State is persisted in `localStorage` across sessions. When active, passage cards in Specimen Detail show a red "Edit" button for inline passage editing.
+- **Inline passage editing (dev mode)**: When dev mode is on, any expanded passage card shows an inline edit form (date, media batch, vessel type, health status, performer, observations, notes) with a Save/Cancel action. Requires admin role to activate dev mode.
+- **Multi-expand passage timeline**: Passage cards in Specimen Detail can now be independently expanded — multiple cards can be open simultaneously. Previously only one card could be open at a time.
+- **Health status in passage form**: The Record Passage form now includes the same 0–4 color-coded health slider with "Unknown / Awaiting" toggle as the New Specimen form.
+- **Inventory physical state (solid / liquid)**: Inventory items now have a Physical State field. Liquids require a concentration and unit (nM, µM, mM, M, ng/mL, µg/mL, mg/mL, mg/L, g/L, %). State and concentration are shown in the inventory table.
+- **Prepared Stock Solutions**: New section in Inventory Manager to track stock solutions made from solid reagents. Each solution records source item, concentration, volume prepared/remaining, prep date, and preparer (employee ID). Volume remaining can be updated inline; solutions can be deleted.
+- **Solid reagent auto-calculation in Media Batch**: When adding a solid reagent to a media batch, entering the physical amount used (g or mg) auto-calculates the final concentration in the media (mg/L) based on the batch volume. The calculated value is shown in a "Final Conc." read-only field.
+- **Stock depletion on media creation**: When a media batch is saved, the `amount_used` for each reagent is automatically deducted from the corresponding inventory item's `current_stock`. A warning is shown in the UI if the amount used exceeds current stock before saving.
+- **Temporal date validation**: The passage form warns (in red) if the selected media batch's preparation date is after the passage date, which would be temporally impossible.
+- **DB migration (v2)**: Added migration_002_v019 that extends the schema: specimens table is recreated to allow `shoot_meristem`, `apical_meristem`, `root_meristem` stages in the CHECK constraint and adds `employee_id` to specimens; adds `physical_state`, `concentration`, `concentration_unit` to inventory_items; adds `employee_id` to media_batches; adds `employee_id` and `health_status` to subcultures; adds `amount_used` and `amount_unit` to media_hormones; creates `prepared_solutions` table.
+
+### Fixed
+
+- **Location label capitalization**: Room, Rack, Shelf, and Tray sub-labels in the structured location field were being displayed in full uppercase due to an inherited `text-transform: uppercase` CSS rule. The `.loc-label` style is now `text-transform: none`.
+
+### Changed
+
+- Version bumped to 0.1.9 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.8] - 2026-02-18
 
 ### Added

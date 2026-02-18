@@ -29,6 +29,7 @@ pub struct MediaBatch {
     pub needs_review: bool,
     pub notes: Option<String>,
     pub hormones: Vec<MediaHormone>,
+    pub employee_id: Option<String>,
     pub created_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,
@@ -43,6 +44,9 @@ pub struct MediaHormone {
     pub supplier: Option<String>,
     pub lot_number: Option<String>,
     pub reagent_batch_id: Option<String>,
+    /// Physical amount removed from inventory stock
+    pub amount_used: Option<f64>,
+    pub amount_unit: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -68,6 +72,7 @@ pub struct CreateMediaBatchRequest {
     pub conductivity: Option<f64>,
     pub is_custom: Option<bool>,
     pub notes: Option<String>,
+    pub employee_id: Option<String>,
     pub hormones: Option<Vec<CreateMediaHormoneRequest>>,
 }
 
@@ -79,6 +84,8 @@ pub struct CreateMediaHormoneRequest {
     pub supplier: Option<String>,
     pub lot_number: Option<String>,
     pub reagent_batch_id: Option<String>,
+    pub amount_used: Option<f64>,
+    pub amount_unit: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

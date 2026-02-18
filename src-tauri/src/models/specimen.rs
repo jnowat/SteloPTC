@@ -31,6 +31,7 @@ pub struct Specimen {
     pub parent_specimen_id: Option<String>,
     pub qr_code_data: Option<String>,
     pub notes: Option<String>,
+    pub employee_id: Option<String>,
     pub is_archived: bool,
     pub archived_at: Option<String>,
     pub created_by: Option<String>,
@@ -61,6 +62,7 @@ pub struct CreateSpecimenRequest {
     pub environmental_notes: Option<String>,
     pub parent_specimen_id: Option<String>,
     pub notes: Option<String>,
+    pub employee_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

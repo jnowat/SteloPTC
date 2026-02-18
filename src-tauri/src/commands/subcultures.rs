@@ -53,6 +53,8 @@ pub fn list_subcultures(
             observations: row.get("observations")?,
             performed_by: row.get("performed_by")?,
             performer_name: row.get("performer_name")?,
+            employee_id: row.get("employee_id")?,
+            health_status: row.get("health_status")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
         })
@@ -91,8 +93,8 @@ pub fn create_subculture(
          vessel_type, vessel_size, vessel_material, vessel_lid_type,
          location_from, location_to, temp_before, temp_after,
          humidity_before, humidity_after, light_before, light_after,
-         exposure_duration_hours, notes, observations, performed_by)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+         exposure_duration_hours, notes, observations, performed_by, employee_id, health_status)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28)",
         params![
             id, request.specimen_id, passage_number, request.date, request.media_batch_id,
             request.ph, request.temperature_c, request.light_cycle, request.light_intensity_lux,
@@ -101,7 +103,7 @@ pub fn create_subculture(
             request.location_to, request.temp_before, request.temp_after,
             request.humidity_before, request.humidity_after, request.light_before,
             request.light_after, request.exposure_duration_hours, request.notes,
-            request.observations, user.id,
+            request.observations, user.id, request.employee_id, request.health_status,
         ],
     ).map_err(|e| format!("Failed to create subculture: {}", e))?;
 
@@ -161,6 +163,8 @@ pub fn create_subculture(
                 observations: row.get("observations")?,
                 performed_by: row.get("performed_by")?,
                 performer_name: row.get("performer_name")?,
+                employee_id: row.get("employee_id")?,
+                health_status: row.get("health_status")?,
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
             })

@@ -208,6 +208,23 @@ export async function resetDatabase(confirmation: string) {
   return call<string>('reset_database', { confirmation });
 }
 
+// Prepared Solutions
+export async function listPreparedSolutions() {
+  return call<any[]>('list_prepared_solutions');
+}
+
+export async function createPreparedSolution(request: any) {
+  return call<any>('create_prepared_solution', { request });
+}
+
+export async function updatePreparedSolution(request: any) {
+  return call<void>('update_prepared_solution', { request });
+}
+
+export async function deletePreparedSolution(id: string) {
+  return call<void>('delete_prepared_solution', { id });
+}
+
 // Backup
 export async function createBackup(destination?: string) {
   return call<string>('create_backup', { destination: destination ?? null });

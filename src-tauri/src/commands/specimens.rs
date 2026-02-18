@@ -66,6 +66,7 @@ pub fn list_specimens(
             parent_specimen_id: row.get("parent_specimen_id")?,
             qr_code_data: row.get("qr_code_data")?,
             notes: row.get("notes")?,
+            employee_id: row.get("employee_id")?,
             is_archived: row.get::<_, i32>("is_archived")? != 0,
             archived_at: row.get("archived_at")?,
             created_by: row.get("created_by")?,
@@ -170,8 +171,8 @@ pub fn create_specimen(
          provenance, source_plant, initiation_date, location, location_details,
          propagation_method, acclimatization_status, health_status, disease_status,
          quarantine_flag, permit_number, permit_expiry, ip_flag, ip_notes,
-         environmental_notes, parent_specimen_id, qr_code_data, notes, created_by)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25)",
+         environmental_notes, parent_specimen_id, qr_code_data, notes, employee_id, created_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
         params![
             id, accession, request.species_id, request.project_id, request.stage, request.custom_stage,
             request.provenance, request.source_plant, request.initiation_date, request.location,
@@ -179,7 +180,7 @@ pub fn create_specimen(
             request.health_status, request.disease_status, request.quarantine_flag.unwrap_or(false) as i32,
             request.permit_number, request.permit_expiry, request.ip_flag.unwrap_or(false) as i32,
             request.ip_notes, request.environmental_notes, request.parent_specimen_id, qr_data,
-            request.notes, user.id,
+            request.notes, request.employee_id, user.id,
         ],
     ).map_err(|e| format!("Failed to create specimen: {}", e))?;
 
@@ -402,6 +403,7 @@ pub fn search_specimens(
             parent_specimen_id: row.get("parent_specimen_id")?,
             qr_code_data: row.get("qr_code_data")?,
             notes: row.get("notes")?,
+            employee_id: row.get("employee_id")?,
             is_archived: row.get::<_, i32>("is_archived")? != 0,
             archived_at: row.get("archived_at")?,
             created_by: row.get("created_by")?,
