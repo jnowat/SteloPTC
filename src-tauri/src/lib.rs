@@ -95,6 +95,12 @@ pub fn run() {
             commands::backup::list_backups,
             // Admin / Dev tools
             commands::admin::reset_database,
+            // Error Logs
+            commands::error_logs::log_error,
+            commands::error_logs::list_error_logs,
+            commands::error_logs::get_unread_error_count,
+            commands::error_logs::mark_errors_read,
+            commands::error_logs::clear_error_logs,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

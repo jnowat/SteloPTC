@@ -5,6 +5,28 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.10] - 2026-02-18
+
+### Fixed
+
+- **Specimen stage CHECK constraint (critical)**: Resolved a SQLite `CHECK constraint failed` error that prevented creating specimens with stages introduced in v0.1.6–v0.1.9 (Shoot Meristem, Root Meristem, Apical Meristem). The root cause was that `migration_002_v019` could silently fail on some installations — notably when `PRAGMA foreign_keys = OFF` was issued outside the subsequent `execute_batch` transaction, leaving the v1 `specimens` table intact with its restricted stage list. A new `migration_003_v0110` inspects the live `sqlite_master` schema at startup; if `shoot_meristem` is absent from the CHECK constraint, the table is safely rebuilt with the full expanded stage list before data is migrated. Existing rows with unrecognised stage values are remapped to `custom` automatically.
+
+### Added
+
+- **Error Log system (full-stack)**: A production-grade, persistent error tracking system is now built into SteloPTC, replacing the previous single-line red toast with no context.
+  - **`error_logs` table (migration_003)**: New SQLite table stores every captured error with: `id`, `timestamp`, `title`, `message`, `module` (e.g. `specimens.create`), `severity` (`info`/`warning`/`error`/`critical`), `user_id`, `username`, `form_payload` (JSON), `stack_trace`, and `is_read` flag. Four indexes (timestamp, severity, module, is_read) keep queries fast at scale.
+  - **Five new Tauri commands**: `log_error`, `list_error_logs`, `get_unread_error_count`, `mark_errors_read`, `clear_error_logs`. All are token-validated; `clear_error_logs` requires supervisor/admin role.
+  - **Error Log page** (`ErrorLog.svelte`): Reachable from the sidebar (all roles). Features a dark glassmorphic card layout with fade-in animation. Table columns: timestamp, severity badge (colour-coded critical/error/warning/info), title, module, username. Clicking a row expands it with an animated slide-down revealing the full error message, a syntax-highlighted JSON form-payload card, and stack trace when available. Each expanded row has a **Copy to Clipboard** button (copies structured plain-text report) and a **Report on GitHub** button (opens a pre-filled GitHub issue with title, module, message, and payload in fenced code blocks). Header actions: **Mark all read** (clears badge count immediately) and **Clear all** (supervisor/admin only). Filter bar: severity dropdown, module text search, unread-only toggle. Pagination at 25 entries per page.
+  - **Sidebar unread badge**: The "Error Log" nav item displays a pulsing red pill badge with the live unread count (capped at 99+), animated with a spring pop on appearance. The badge resets to zero immediately when the Error Log page is opened.
+  - **Clickable error toasts**: Error and warning notification toasts now show a "View in Error Log →" sub-label and navigate directly to the Error Log page on click.
+  - **Automatic form-payload capture on specimen creation failure**: `SpecimenForm` now calls `addErrorWithContext` on create failure, recording the complete submitted form state (species, stage, initiation date, propagation method, location, health status, provenance, source plant, employee ID, notes) as a pretty-printed JSON payload in the error log entry — making constraint failures and validation errors instantly reproducible without re-entry.
+  - **Global error logger hook**: `setErrorLogger` in `app.ts` lets `App.svelte` wire a fire-and-forget `logError` + `getUnreadErrorCount` refresh into `addNotification`. All existing components automatically gain error persistence with zero code changes.
+  - **Keyboard shortcut**: Ctrl+5 navigates directly to the Error Log page.
+
+### Changed
+
+- Version bumped to 0.1.10 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.9] - 2026-02-18
 
 ### Added

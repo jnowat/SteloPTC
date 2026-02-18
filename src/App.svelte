@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { isLoggedIn, token, currentUser, clearAuth, initializing } from './lib/stores/auth';
-  import { currentView, darkMode, navigateTo } from './lib/stores/app';
-  import { getCurrentUser, logout as apiLogout } from './lib/api';
+  import { currentView, darkMode, navigateTo, setErrorLogger, unreadErrorCount } from './lib/stores/app';
+  import { getCurrentUser, logout as apiLogout, logError, getUnreadErrorCount } from './lib/api';
   import Login from './lib/components/Login.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
   import Dashboard from './lib/components/Dashboard.svelte';
@@ -16,9 +16,32 @@
   import UserManager from './lib/components/UserManager.svelte';
   import AuditLog from './lib/components/AuditLog.svelte';
   import InventoryManager from './lib/components/InventoryManager.svelte';
+  import ErrorLog from './lib/components/ErrorLog.svelte';
   import Notifications from './lib/components/Notifications.svelte';
 
   let startupError = '';
+
+  // Wire up the fire-and-forget error logger so addNotification can persist errors.
+  // This is set once after the app mounts so we have access to the api module.
+  setErrorLogger((title, message, module, form_payload) => {
+    logError({ title, message, module, severity: 'error', form_payload }).then(() => {
+      // Refresh unread count
+      return getUnreadErrorCount();
+    }).then((count) => {
+      unreadErrorCount.set(count);
+    }).catch(() => {
+      // Silently ignore — never recurse into error logger
+    });
+  });
+
+  async function refreshUnreadCount() {
+    try {
+      const count = await getUnreadErrorCount();
+      unreadErrorCount.set(count);
+    } catch {
+      // Not logged in yet, ignore
+    }
+  }
 
   onMount(() => {
     try {
@@ -27,6 +50,7 @@
         getCurrentUser().then((user) => {
           currentUser.set(user);
           initializing.set(false);
+          refreshUnreadCount();
         }).catch((err) => {
           console.warn('Session restore failed:', err);
           clearAuth();
@@ -48,6 +72,7 @@
       // ignore
     }
     clearAuth();
+    unreadErrorCount.set(0);
     navigateTo('dashboard');
   }
 
@@ -63,6 +88,7 @@
         case '2': e.preventDefault(); navigateTo('specimens'); break;
         case '3': e.preventDefault(); navigateTo('media'); break;
         case '4': e.preventDefault(); navigateTo('reminders'); break;
+        case '5': e.preventDefault(); navigateTo('error-log'); break;
       }
     }
   }
@@ -117,6 +143,8 @@
           <InventoryManager />
         {:else if $currentView === 'audit'}
           <AuditLog />
+        {:else if $currentView === 'error-log'}
+          <ErrorLog />
         {:else}
           <Dashboard />
         {/if}

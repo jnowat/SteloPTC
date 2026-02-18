@@ -7,6 +7,7 @@ pub mod compliance;
 pub mod species;
 pub mod audit;
 pub mod inventory;
+pub mod error_log;
 
 // Re-export common types
 pub use specimen::*;
@@ -18,3 +19,4 @@ pub use compliance::*;
 pub use species::*;
 pub use audit::*;
 pub use inventory::*;
+pub use error_log::*;
