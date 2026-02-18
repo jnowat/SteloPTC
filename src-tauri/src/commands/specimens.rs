@@ -132,6 +132,7 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 parent_specimen_id: row.get("parent_specimen_id")?,
                 qr_code_data: row.get("qr_code_data")?,
                 notes: row.get("notes")?,
+                employee_id: row.get("employee_id")?,
                 is_archived: row.get::<_, i32>("is_archived")? != 0,
                 archived_at: row.get("archived_at")?,
                 created_by: row.get("created_by")?,
