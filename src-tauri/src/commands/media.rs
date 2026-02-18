@@ -115,6 +115,7 @@ pub fn get_media_batch(state: State<AppState>, token: String, id: String) -> Res
                 needs_review: row.get::<_, i32>("needs_review")? != 0,
                 notes: row.get("notes")?,
                 hormones: Vec::new(),
+                employee_id: row.get("employee_id")?,
                 created_by: row.get("created_by")?,
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
