@@ -23,6 +23,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?;
     }
 
+    if current < 3 {
+        migration_003_v0110(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])?;
+    }
+
     Ok(())
 }
 
@@ -459,6 +464,130 @@ fn migration_002_v019(conn: &Connection) -> DbResult<()> {
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+    ")?;
+
+    Ok(())
+}
+
+fn migration_003_v0110(conn: &Connection) -> DbResult<()> {
+    // Step 1: Check if the specimens table has the expanded stage constraint.
+    // Some users may have migration_002 fail silently (e.g., PRAGMA FK interaction),
+    // leaving the old v1 CHECK constraint that rejects 'shoot_meristem' etc.
+    let schema_sql: String = conn.query_row(
+        "SELECT COALESCE(sql, '') FROM sqlite_master WHERE type='table' AND name='specimens'",
+        [],
+        |row| row.get(0),
+    ).unwrap_or_default();
+
+    if !schema_sql.contains("shoot_meristem") {
+        // The specimens table still has the old constraint — rebuild it.
+        conn.execute("PRAGMA foreign_keys = OFF", [])?;
+        conn.execute_batch("
+            CREATE TABLE IF NOT EXISTS specimens_v3 (
+                id TEXT PRIMARY KEY,
+                accession_number TEXT NOT NULL UNIQUE,
+                species_id TEXT NOT NULL REFERENCES species(id),
+                project_id TEXT REFERENCES projects(id),
+                stage TEXT NOT NULL DEFAULT 'explant' CHECK(stage IN (
+                    'explant','callus','suspension','protoplast',
+                    'shoot','shoot_meristem','apical_meristem',
+                    'root','root_meristem',
+                    'embryogenic','plantlet','acclimatized','stock','archived','custom'
+                )),
+                custom_stage TEXT,
+                provenance TEXT,
+                source_plant TEXT,
+                initiation_date TEXT NOT NULL,
+                location TEXT,
+                location_details TEXT,
+                propagation_method TEXT CHECK(propagation_method IN (
+                    'microprop','somatic_embryogenesis','organogenesis',
+                    'meristem_culture','anther_culture','protoplast_fusion','other'
+                )),
+                acclimatization_status TEXT CHECK(acclimatization_status IN (
+                    'not_applicable','in_vitro','hardening','greenhouse','field','completed'
+                )),
+                health_status TEXT DEFAULT 'healthy',
+                disease_status TEXT,
+                quarantine_flag INTEGER NOT NULL DEFAULT 0,
+                quarantine_release_date TEXT,
+                permit_number TEXT,
+                permit_expiry TEXT,
+                ip_flag INTEGER NOT NULL DEFAULT 0,
+                ip_notes TEXT,
+                environmental_notes TEXT,
+                subculture_count INTEGER NOT NULL DEFAULT 0,
+                parent_specimen_id TEXT REFERENCES specimens_v3(id),
+                qr_code_data TEXT,
+                notes TEXT,
+                is_archived INTEGER NOT NULL DEFAULT 0,
+                archived_at TEXT,
+                employee_id TEXT,
+                created_by TEXT REFERENCES users(id),
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            INSERT INTO specimens_v3 (
+                id, accession_number, species_id, project_id, stage, custom_stage,
+                provenance, source_plant, initiation_date, location, location_details,
+                propagation_method, acclimatization_status, health_status, disease_status,
+                quarantine_flag, quarantine_release_date, permit_number, permit_expiry,
+                ip_flag, ip_notes, environmental_notes, subculture_count, parent_specimen_id,
+                qr_code_data, notes, is_archived, archived_at, employee_id, created_by,
+                created_at, updated_at
+            )
+            SELECT
+                id, accession_number, species_id, project_id,
+                CASE WHEN stage NOT IN (
+                    'explant','callus','suspension','protoplast',
+                    'shoot','shoot_meristem','apical_meristem',
+                    'root','root_meristem',
+                    'embryogenic','plantlet','acclimatized','stock','archived','custom'
+                ) THEN 'custom' ELSE stage END,
+                custom_stage, provenance, source_plant, initiation_date, location,
+                location_details, propagation_method, acclimatization_status, health_status,
+                disease_status, quarantine_flag, quarantine_release_date, permit_number,
+                permit_expiry, ip_flag, ip_notes, environmental_notes, subculture_count,
+                parent_specimen_id, qr_code_data, notes, is_archived, archived_at,
+                CASE WHEN typeof(employee_id) = 'text' THEN employee_id ELSE NULL END,
+                created_by, created_at, updated_at
+            FROM specimens;
+
+            DROP TABLE specimens;
+            ALTER TABLE specimens_v3 RENAME TO specimens;
+
+            CREATE INDEX IF NOT EXISTS idx_specimens_accession ON specimens(accession_number);
+            CREATE INDEX IF NOT EXISTS idx_specimens_species ON specimens(species_id);
+            CREATE INDEX IF NOT EXISTS idx_specimens_project ON specimens(project_id);
+            CREATE INDEX IF NOT EXISTS idx_specimens_stage ON specimens(stage);
+            CREATE INDEX IF NOT EXISTS idx_specimens_quarantine ON specimens(quarantine_flag);
+            CREATE INDEX IF NOT EXISTS idx_specimens_archived ON specimens(is_archived);
+        ")?;
+        conn.execute("PRAGMA foreign_keys = ON", [])?;
+    }
+
+    // Step 2: Create the error_logs table (always safe with IF NOT EXISTS).
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS error_logs (
+            id TEXT PRIMARY KEY,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            module TEXT,
+            severity TEXT NOT NULL DEFAULT 'error' CHECK(severity IN ('info','warning','error','critical')),
+            user_id TEXT REFERENCES users(id),
+            username TEXT,
+            form_payload TEXT,
+            stack_trace TEXT,
+            is_read INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_error_logs_timestamp ON error_logs(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_error_logs_severity ON error_logs(severity);
+        CREATE INDEX IF NOT EXISTS idx_error_logs_module ON error_logs(module);
+        CREATE INDEX IF NOT EXISTS idx_error_logs_is_read ON error_logs(is_read);
     ")?;
 
     Ok(())

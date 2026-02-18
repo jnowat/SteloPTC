@@ -233,3 +233,37 @@ export async function createBackup(destination?: string) {
 export async function listBackups() {
   return call<any[]>('list_backups');
 }
+
+// Error Logs
+export async function logError(request: {
+  title: string;
+  message: string;
+  module?: string;
+  severity?: string;
+  form_payload?: string;
+  stack_trace?: string;
+}) {
+  return call<any>('log_error', { request });
+}
+
+export async function listErrorLogs(search: {
+  severity?: string;
+  module?: string;
+  unread_only?: boolean;
+  page?: number;
+  per_page?: number;
+} = {}) {
+  return call<any>('list_error_logs', { search });
+}
+
+export async function getUnreadErrorCount() {
+  return call<number>('get_unread_error_count');
+}
+
+export async function markErrorsRead() {
+  return call<void>('mark_errors_read');
+}
+
+export async function clearErrorLogs() {
+  return call<void>('clear_error_logs');
+}

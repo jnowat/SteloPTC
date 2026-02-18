@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { createSpecimen, listSpecies, listMedia } from '../api';
-  import { addNotification } from '../stores/app';
+  import { addNotification, addErrorWithContext } from '../stores/app';
 
   let { onclose, onsave }: { onclose: () => void; onsave: () => void } = $props();
 
@@ -127,7 +127,23 @@
       addNotification('Specimen created', 'success');
       onsave();
     } catch (err: any) {
-      addNotification(err.message, 'error');
+      addErrorWithContext(
+        'Failed to Create Specimen',
+        err.message,
+        'specimens.create',
+        {
+          species_id: form.species_id,
+          stage: form.stage,
+          initiation_date: form.initiation_date,
+          propagation_method: form.propagation_method,
+          health_status: effectiveHealth(),
+          location: composeLocation(),
+          provenance: form.provenance,
+          source_plant: form.source_plant,
+          employee_id: form.employee_id,
+          notes: form.notes,
+        }
+      );
     } finally {
       loading = false;
     }

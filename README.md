@@ -19,8 +19,9 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens -- from in
 - **Inventory Management**: Full supply tracking with categories, stock levels, reorder alerts, and stock adjustments with audit trail. Unit field supports g, mg, mL, L, and other common units.
 - **Database Backup**: On-demand database backup from the dashboard with WAL checkpointing for data integrity.
 - **Export**: CSV and JSON export for analysis in R, Python, or SPSS.
+- **Error Log**: Persistent, searchable error log (sidebar nav, all roles). Captures every application error with timestamp, severity (info/warning/error/critical), module, username, full message, form payload JSON, and stack trace. Expandable rows include Copy to Clipboard and Report on GitHub buttons. Sidebar badge shows live unread count. Error toasts are clickable and navigate directly to the log. All form submissions auto-capture the submitted payload on failure for instant reproducibility.
 - **Dark Mode**: System-aware with manual toggle. Inter font for clean mixed-case rendering.
-- **Keyboard Shortcuts**: Ctrl+1-4 for quick navigation.
+- **Keyboard Shortcuts**: Ctrl+1–5 for quick navigation (1 Dashboard, 2 Specimens, 3 Media, 4 Reminders, 5 Error Log).
 - **Admin Dev Tools**: Admin-only "Reset Database" panel on the dashboard to wipe all operational data (preserves users/species) during development and setup. Requires typing `RESET DATABASE` to confirm.
 
 ### Species Supported

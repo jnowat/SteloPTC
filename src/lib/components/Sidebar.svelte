@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentView, navigateTo, type View } from '../stores/app';
+  import { currentView, navigateTo, unreadErrorCount, type View } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
   let { onlogout, ontoggleDark, isDark }: { onlogout: () => void; ontoggleDark: () => void; isDark: boolean } = $props();
@@ -21,6 +21,7 @@
     { id: 'inventory', label: 'Inventory', icon: '&#128230;' },
     { id: 'users', label: 'Users', icon: '&#128101;', roles: ['admin'] },
     { id: 'audit', label: 'Audit Log', icon: '&#128220;', roles: ['admin', 'supervisor'] },
+    { id: 'error-log', label: 'Error Log', icon: '&#9888;' },
   ];
 
   function canSee(item: NavItem): boolean {
@@ -33,7 +34,7 @@
 <aside class="sidebar">
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.9</span>
+    <span class="version">v0.1.10</span>
   </div>
 
   <nav class="nav">
@@ -46,6 +47,9 @@
         >
           <span class="nav-icon">{@html item.icon}</span>
           <span class="nav-label">{item.label}</span>
+          {#if item.id === 'error-log' && $unreadErrorCount > 0}
+            <span class="error-badge">{$unreadErrorCount > 99 ? '99+' : $unreadErrorCount}</span>
+          {/if}
         </button>
       {/if}
     {/each}
@@ -112,6 +116,7 @@
     border-radius: 6px;
     transition: all 0.15s;
     text-align: left;
+    position: relative;
   }
   .nav-item:hover {
     background: #334155;
@@ -122,6 +127,29 @@
     color: white;
   }
   .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-label { flex: 1; }
+
+  .error-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #dc2626;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1;
+    animation: badgePop 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  @keyframes badgePop {
+    from { transform: scale(0); opacity: 0; }
+    to   { transform: scale(1); opacity: 1; }
+  }
+
   .sidebar-footer {
     padding: 16px;
     border-top: 1px solid #334155;
