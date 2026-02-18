@@ -12,6 +12,12 @@ export default defineConfig(async () => ({
         // bundle where mount() / onMount() are unavailable.
         generate: "client",
       },
+      // Suppress Svelte's built-in a11y lint warnings.  This is a
+      // closed-network desktop app; the a11y rules add noise without value.
+      onwarn: (warning, defaultHandler) => {
+        if (warning.code.startsWith("a11y")) return;
+        defaultHandler(warning);
+      },
     }),
   ],
 
