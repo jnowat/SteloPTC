@@ -5,6 +5,19 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.8] - 2026-02-18
+
+### Added
+
+- **Passage Timeline**: Subculture history is now displayed as a beautiful vertical timeline (newest passage first) replacing the plain table. Each passage card shows passage number, date, media batch, vessel type, and destination location at a glance, and can be clicked to expand full details (temperature, pH, light cycle, from/to location, observations, notes, performer).
+- **Split Culture**: When recording a passage, a "Split culture into multiple containers" toggle now appears at the bottom of the form. Enabling it reveals a count field — submitting creates that many new child specimen records, each linked to the current specimen via `parent_specimen_id`, at the transfer-to location, with an auto-generated note (e.g., "Split from ACC-001 on 2026-02-18. Container 3 of 20."). A live preview graphic shows the parent → child layout before submitting.
+- **Lineage Banner**: Specimen Detail now shows a lineage banner when a specimen has a parent (split source) or children (split products). Clicking any parent/child chip navigates directly to that specimen's detail page.
+- **Location Dropdowns in Passage Form**: Transfer-To Location in the Record Passage form now uses the same Room/Rack/Shelf/Tray dropdown system as the specimen creation form, with last-used values remembered via `localStorage`.
+
+### Changed
+
+- Version bumped to 0.1.8 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.7] - 2026-02-18
 
 ### Added
