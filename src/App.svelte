@@ -246,6 +246,14 @@
     padding: 24px;
   }
 
+  /* ── Mobile responsive ──────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .main-content {
+      padding: 24px 16px 16px;
+      padding-top: 60px; /* space for hamburger button */
+    }
+  }
+
   :global(.btn) {
     display: inline-flex;
     align-items: center;
@@ -313,6 +321,13 @@
   :global(.form-row) { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   :global(.form-row-3) { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 
+  @media (max-width: 768px) {
+    :global(.form-row),
+    :global(.form-row-3) {
+      grid-template-columns: 1fr;
+    }
+  }
+
   :global(table) {
     width: 100%;
     border-collapse: collapse;
@@ -336,6 +351,22 @@
   :global(.dark th) { color: #94a3b8; border-bottom-color: #334155; }
   :global(.dark td) { border-bottom-color: #1e293b; }
   :global(.dark tr:hover td) { background: #1e293b; }
+
+  /* Horizontal-scroll tables on mobile */
+  @media (max-width: 768px) {
+    :global(.card) { overflow-x: auto; }
+    :global(table) { min-width: 560px; }
+    :global(input),
+    :global(select),
+    :global(textarea) {
+      padding: 10px 12px;
+      font-size: 14px;
+    }
+    :global(.btn) {
+      padding: 10px 16px;
+      font-size: 14px;
+    }
+  }
 
   :global(.badge) {
     display: inline-block;

@@ -4,6 +4,8 @@
 
   let { onlogout, ontoggleDark, isDark }: { onlogout: () => void; ontoggleDark: () => void; isDark: boolean } = $props();
 
+  let mobileOpen = $state(false);
+
   interface NavItem {
     id: View;
     label: string;
@@ -29,12 +31,37 @@
     const role = $currentUser?.role || 'guest';
     return item.roles.includes(role);
   }
+
+  function handleNavTap(id: View) {
+    navigateTo(id);
+    mobileOpen = false;
+  }
 </script>
 
-<aside class="sidebar">
+<!-- Mobile hamburger button -->
+<button
+  class="hamburger"
+  aria-label="Open navigation menu"
+  onclick={() => (mobileOpen = true)}
+>
+  <span></span>
+  <span></span>
+  <span></span>
+</button>
+
+<!-- Mobile overlay -->
+{#if mobileOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="mobile-overlay" onclick={() => (mobileOpen = false)}></div>
+{/if}
+
+<aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.10</span>
+    <span class="version">v0.1.11</span>
+    <!-- Mobile close button inside drawer -->
+    <button class="drawer-close" aria-label="Close menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
 
   <nav class="nav">
@@ -43,7 +70,7 @@
         <button
           class="nav-item"
           class:active={$currentView === item.id}
-          onclick={() => navigateTo(item.id)}
+          onclick={() => handleNavTap(item.id)}
         >
           <span class="nav-icon">{@html item.icon}</span>
           <span class="nav-label">{item.label}</span>
@@ -72,6 +99,42 @@
 </aside>
 
 <style>
+  /* ── Hamburger (hidden on desktop) ─────────────────────────── */
+  .hamburger {
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    gap: 5px;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1100;
+    width: 40px;
+    height: 40px;
+    padding: 8px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .hamburger span {
+    display: block;
+    width: 100%;
+    height: 2px;
+    background: #94a3b8;
+    border-radius: 2px;
+  }
+
+  /* ── Mobile overlay ─────────────────────────────────────────── */
+  .mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    background: rgba(0, 0, 0, 0.55);
+  }
+
+  /* ── Sidebar ────────────────────────────────────────────────── */
   .sidebar {
     width: 220px;
     height: 100vh;
@@ -85,6 +148,10 @@
   .sidebar-header {
     padding: 20px;
     border-bottom: 1px solid #334155;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
   }
   .sidebar-header h2 {
     color: #f1f5f9;
@@ -95,6 +162,17 @@
   .version {
     font-size: 11px;
     color: #64748b;
+  }
+  .drawer-close {
+    display: none;
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: #64748b;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 4px;
+    line-height: 1;
   }
   .nav {
     flex: 1;
@@ -174,4 +252,43 @@
     font-size: 14px;
   }
   .icon-btn:hover { background: #334155; color: #e2e8f0; }
+
+  /* ── Mobile breakpoint ──────────────────────────────────────── */
+  @media (max-width: 768px) {
+    .hamburger {
+      display: flex;
+    }
+
+    .mobile-overlay {
+      display: block;
+    }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      z-index: 1100;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+    }
+    .sidebar.mobile-open {
+      transform: translateX(0);
+    }
+
+    .drawer-close {
+      display: block;
+    }
+
+    /* Larger touch targets on mobile */
+    .nav-item {
+      padding: 12px 14px;
+      font-size: 14px;
+    }
+    .icon-btn {
+      width: 40px;
+      height: 40px;
+    }
+  }
 </style>

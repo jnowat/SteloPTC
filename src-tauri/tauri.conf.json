@@ -1,12 +1,12 @@
 {
   "productName": "SteloPTC",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "identifier": "com.stelolab.ptc",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist",
-    "devUrl": null
+    "devUrl": "http://localhost:1420"
   },
   "app": {
     "windows": [
@@ -16,8 +16,8 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false,
-        "minWidth": 900,
-        "minHeight": 600
+        "minWidth": 320,
+        "minHeight": 480
       }
     ],
     "security": {
@@ -38,6 +38,9 @@
       "wix": {
         "language": "en-US"
       }
+    },
+    "android": {
+      "minSdkVersion": 24
     }
   },
   "plugins": {}
