@@ -60,6 +60,12 @@ Pre-configured for asparagus, nandina, and citrus varieties. Any species can be 
 - Xcode Command Line Tools
 - CLang
 
+**Android** (v0.1.11+):
+- JDK 17
+- Android SDK (API 34) + NDK r27
+- Rust Android targets (installed automatically by `setup-android.sh`)
+- `ANDROID_HOME`, `ANDROID_NDK_HOME` environment variables
+
 ## Getting Started
 
 ### 1. Clone and Install
@@ -89,6 +95,47 @@ cargo tauri build --bundles msi
 **Linux**: Produces `.deb` and `.AppImage` in `src-tauri/target/release/bundle/`.
 
 > **CI Note**: The GitHub Actions workflow builds MSI only (skips NSIS) to avoid transient 502 errors from GitHub-hosted NSIS tool downloads. Both the standalone `.exe` and `.msi` installer are uploaded as build artifacts.
+
+### 4. Build for Android
+
+Use the automated setup script to install all prerequisites and initialise the Android project:
+
+```bash
+# Install prerequisites + init Android project
+bash scripts/setup-android.sh
+
+# Install prerequisites and build a debug APK in one step
+bash scripts/setup-android.sh --build
+
+# Install prerequisites and build a release APK
+bash scripts/setup-android.sh --release
+```
+
+The script checks/installs:
+- Rust Android targets (`aarch64-linux-android`, `armv7-linux-androideabi`, `i686-linux-android`, `x86_64-linux-android`)
+- JDK 17 (via `apt`/`dnf`/`pacman`/`brew`)
+- Android SDK command-line tools, `build-tools;34.0.0`, `platforms;android-34`
+- Android NDK r27 (`27.2.12479018`)
+- Tauri CLI v2
+
+After setup, you can also build manually:
+
+```bash
+# Debug APK
+cargo tauri android build
+
+# Release APK (requires signing config)
+cargo tauri android build --release
+```
+
+The APK is output to `src-tauri/gen/android/app/build/outputs/apk/universal/`.
+
+**Android requirements:**
+- Minimum SDK: API 24 (Android 7.0 Nougat)
+- Target SDK: API 34 (Android 14)
+- NDK: r27
+
+> **Note**: `cargo tauri android init` must be run once before building. The setup script handles this automatically.
 
 ### Default Login
 
@@ -204,6 +251,7 @@ Additional compliance rules can be added by extending `src-tauri/src/commands/co
 
 ## Roadmap
 
+- [x] Android mobile support (v0.1.11) — slide-out navigation, responsive layout, touch targets, APK build pipeline
 - [x] Inventory management with reorder alerts
 - [x] Database backup (on-demand from dashboard)
 - [x] Vertical passage timeline — scrollable history with collapsible detail cards, newest-first, replacing the old flat table

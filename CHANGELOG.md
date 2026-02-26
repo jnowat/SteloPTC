@@ -5,6 +5,23 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.11] - 2026-02-23
+
+### Added
+
+- **Android mobile support**: SteloPTC now targets Android (minSdkVersion 24 / Android 7.0+) via Tauri 2's mobile backend.
+  - **Hamburger menu + slide-out drawer** (`Sidebar.svelte`): On screens narrower than 768 px the fixed sidebar is hidden behind a slide-in drawer triggered by a fixed-position hamburger button. Tapping any nav item auto-closes the drawer. A semi-transparent overlay behind the open drawer captures outside taps.
+  - **Responsive layout** (`App.svelte`): `@media (max-width: 768px)` block collapses `.form-row` and `.form-row-3` grids to a single column, wraps tables in horizontally-scrollable containers, bumps touch targets to 10 px padding / 14 px font size, and adds 60 px top padding to `main-content` so content clears the hamburger button.
+  - **Viewport meta** (`index.html`): Updated to `maximum-scale=1.0, user-scalable=no, viewport-fit=cover` to prevent unwanted zoom and honour safe-area insets (notch / home-indicator) on Android.
+  - **`theme-color` meta** (`index.html`): Set to `#0f172a` so the Android status bar matches the app's dark slate background.
+  - **Mobile capabilities** (`src-tauri/capabilities/mobile.json`): New capabilities file scoped to `["android", "iOS"]` — identical permissions to `default.json` but omitting `allow-toggle-maximize`, `allow-minimize`, and `allow-set-fullscreen` which do not exist on mobile.
+  - **`tauri.conf.json` mobile settings**: `devUrl` set to `http://localhost:1420`, `minWidth`/`minHeight` reduced to 320×480 (phone minimum), and `bundle.android.minSdkVersion: 24` added.
+  - **`scripts/setup-android.sh`**: Automated shell script that checks and installs all Android build prerequisites — Rust Android targets (aarch64, armv7, i686, x86_64), JDK 17, Android SDK command-line tools, `build-tools;34.0.0`, `platforms;android-34`, NDK r27 (27.2.12479018), Tauri CLI — then runs `cargo tauri android init`. Pass `--build` for a debug APK or `--release` for a signed release APK.
+
+### Changed
+
+- Version bumped to 0.1.11 across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [0.1.10] - 2026-02-18
 
 ### Fixed
