@@ -41,3 +41,7 @@ backups/
 
 # Logs
 *.log
+
+# Android — build outputs are excluded by src-tauri/gen/android/.gitignore;
+# force-track that inner .gitignore file so it always stays committed
+!src-tauri/gen/android/.gitignore

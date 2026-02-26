@@ -96,46 +96,50 @@ cargo tauri build --bundles msi
 
 > **CI Note**: The GitHub Actions workflow builds MSI only (skips NSIS) to avoid transient 502 errors from GitHub-hosted NSIS tool downloads. Both the standalone `.exe` and `.msi` installer are uploaded as build artifacts.
 
-### 4. Build for Android
+### 4. Build for Android (APK)
 
-Use the automated setup script to install all prerequisites and initialise the Android project:
+1. Run once: `./scripts/setup-android.sh`
+2. Initialize Android target: `cargo tauri android init`
+3. Build debug APK: `npm run android:build-debug`
+4. Build release APK: `npm run android:build`
 
-```bash
-# Install prerequisites + init Android project
-bash scripts/setup-android.sh
+First build downloads Gradle + SDK (~5-10 min). Output APK is in `src-tauri/gen/android/app/build/outputs/apk/release/`.
 
-# Install prerequisites and build a debug APK in one step
-bash scripts/setup-android.sh --build
-
-# Install prerequisites and build a release APK
-bash scripts/setup-android.sh --release
-```
-
-The script checks/installs:
+The `setup-android.sh` script checks/installs:
 - Rust Android targets (`aarch64-linux-android`, `armv7-linux-androideabi`, `i686-linux-android`, `x86_64-linux-android`)
 - JDK 17 (via `apt`/`dnf`/`pacman`/`brew`)
 - Android SDK command-line tools, `build-tools;34.0.0`, `platforms;android-34`
-- Android NDK r27 (`27.2.12479018`)
+- Android NDK r27 (27.2.12479018)
 - Tauri CLI v2
 
-After setup, you can also build manually:
+You can also run build commands directly after setup:
 
 ```bash
-# Debug APK
-cargo tauri android build
+# Live-reload development on a connected Android device/emulator
+npm run android:dev
 
-# Release APK (requires signing config)
-cargo tauri android build --release
+# Debug APK (unsigned, sideloadable)
+npm run android:build-debug
+
+# Release APK (requires signing config via env vars — see app/build.gradle.kts)
+npm run android:build
 ```
 
-The APK is output to `src-tauri/gen/android/app/build/outputs/apk/universal/`.
+**Environment variables for release signing:**
+
+| Variable | Description |
+|---|---|
+| `ANDROID_KEY_STORE_PATH` | Path to your `.jks` keystore file |
+| `ANDROID_KEY_STORE_PASSWORD` | Keystore password |
+| `ANDROID_KEY_ALIAS` | Key alias inside the keystore |
+| `ANDROID_KEY_PASSWORD` | Key password |
 
 **Android requirements:**
 - Minimum SDK: API 24 (Android 7.0 Nougat)
-- Target SDK: API 34 (Android 14)
-- NDK: r27
+- Target SDK: API 35 (Android 15)
+- NDK: r27 (27.2.12479018)
 
-> **Note**: `cargo tauri android init` must be run once before building. The setup script handles this automatically.
+> **Note**: The `src-tauri/gen/android/` project files are already committed to this repo. Running `cargo tauri android init` will regenerate them — use it only if you change the app identifier or Tauri version.
 
 ### Default Login
 

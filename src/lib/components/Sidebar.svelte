@@ -59,7 +59,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.11</span>
+    <span class="version">v0.1.12</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -106,12 +106,14 @@
     justify-content: center;
     gap: 5px;
     position: fixed;
-    top: 12px;
-    left: 12px;
+    /* Shift down by the status-bar / notch safe area so it's never hidden */
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    left: calc(12px + env(safe-area-inset-left, 0px));
     z-index: 1100;
-    width: 40px;
-    height: 40px;
-    padding: 8px;
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 10px;
     background: #1e293b;
     border: 1px solid #334155;
     border-radius: 8px;
@@ -138,6 +140,7 @@
   .sidebar {
     width: 220px;
     height: 100vh;
+    height: 100dvh; /* dynamic viewport height for mobile */
     display: flex;
     flex-direction: column;
     background: #1e293b;
@@ -230,6 +233,8 @@
 
   .sidebar-footer {
     padding: 16px;
+    /* Reserve home-indicator height at the bottom */
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid #334155;
     display: flex;
     justify-content: space-between;
@@ -252,6 +257,13 @@
     font-size: 14px;
   }
   .icon-btn:hover { background: #334155; color: #e2e8f0; }
+
+  /* ── Sidebar header safe-area top padding on mobile ───────────── */
+  @media (max-width: 768px) {
+    .sidebar-header {
+      padding-top: calc(20px + env(safe-area-inset-top, 0px));
+    }
+  }
 
   /* ── Mobile breakpoint ──────────────────────────────────────── */
   @media (max-width: 768px) {
@@ -281,14 +293,23 @@
       display: block;
     }
 
-    /* Larger touch targets on mobile */
+    /* Larger touch targets on mobile (44 px = Apple HIG minimum) */
     .nav-item {
       padding: 12px 14px;
       font-size: 14px;
+      min-height: 48px;
     }
     .icon-btn {
-      width: 40px;
-      height: 40px;
+      width: 48px;
+      height: 48px;
+      min-height: 48px;
+    }
+    .drawer-close {
+      min-height: 44px;
+      min-width: 44px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
   }
 </style>

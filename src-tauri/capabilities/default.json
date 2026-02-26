@@ -1,7 +1,7 @@
 {
-  "identifier": "default",
-  "description": "Default capabilities for the main window",
-  "windows": ["main"],
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "com.steloptc.app",
+  "platforms": ["android", "ios", "macOS", "windows", "linux"],
   "permissions": [
     "core:default",
     "core:window:default",

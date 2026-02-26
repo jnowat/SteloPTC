@@ -167,10 +167,15 @@
     font-size: 14px;
     line-height: 1.5;
     overflow: hidden;
+    /* Respect device safe-area insets (notch / home-indicator / rounded corners) */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
   }
 
   .app {
-    height: 100vh;
+    /* dvh = dynamic viewport height — accounts for mobile browser chrome */
+    height: 100dvh;
+    height: 100vh; /* fallback for older browsers */
     width: 100vw;
     background: #f8fafc;
     color: #1e293b;
@@ -249,8 +254,11 @@
   /* ── Mobile responsive ──────────────────────────────────────── */
   @media (max-width: 768px) {
     .main-content {
-      padding: 24px 16px 16px;
-      padding-top: 60px; /* space for hamburger button */
+      /* top: hamburger height + status bar safe area; sides/bottom: safe-area insets */
+      padding-top: calc(60px + env(safe-area-inset-top, 0px));
+      padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+      padding-left: calc(16px + env(safe-area-inset-left, 0px));
+      padding-right: calc(16px + env(safe-area-inset-right, 0px));
     }
   }
 
@@ -356,15 +364,21 @@
   @media (max-width: 768px) {
     :global(.card) { overflow-x: auto; }
     :global(table) { min-width: 560px; }
+    /* Larger touch targets for fingers: WCAG 2.5.8 recommends 24×24px, Apple HIG 44px */
     :global(input),
     :global(select),
     :global(textarea) {
       padding: 10px 12px;
       font-size: 14px;
+      min-height: 48px;
     }
     :global(.btn) {
       padding: 10px 16px;
       font-size: 14px;
+      min-height: 48px;
+    }
+    :global(button) {
+      min-height: 48px;
     }
   }
 
