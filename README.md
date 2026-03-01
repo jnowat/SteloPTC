@@ -141,6 +141,25 @@ npm run android:build
 
 > **Note**: The `src-tauri/gen/android/` project files are already committed to this repo. Running `cargo tauri android init` will regenerate them — use it only if you change the app identifier or Tauri version.
 
+### Customizing Android Config
+
+Tauri's `bundle.android` in `tauri.conf.json` only accepts three properties: `autoIncrementVersionCode`, `minSdkVersion`, and `versionCode`. Properties like `targetSdkVersion` and `ndkVersion` are **not** valid there and will cause a build error.
+
+To change `targetSdk` or the NDK version, edit `src-tauri/gen/android/app/build.gradle.kts` directly:
+
+```kotlin
+android {
+    compileSdk = 35          // ← change here
+    ndkVersion = "27.2.12479018"  // ← change here (full version string)
+    defaultConfig {
+        targetSdk = 35       // ← change here
+        minSdk = 24
+        versionCode = 12
+        versionName = "0.1.12"
+    }
+}
+```
+
 ### Default Login
 
 | Username | Password | Role  |

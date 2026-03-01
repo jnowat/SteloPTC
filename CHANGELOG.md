@@ -5,22 +5,27 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.12] - 2026-02-26
+## [0.1.12] - 2026-03-01
 
 ### Added
 
 - **Full Android APK support**: Complete Android project (`src-tauri/gen/android/`) committed to the repository — no manual `cargo tauri android init` required.
   - `AndroidManifest.xml`: `INTERNET`, `READ/WRITE_EXTERNAL_STORAGE` permissions; `TauriActivity` as the launcher; `adjustResize` soft input mode; `windowLayoutInDisplayCutoutMode=shortEdges` for notch-aware display.
   - `app/build.gradle.kts`: compileSdk 35, minSdk 24, targetSdk 35, versionCode 12, Kotlin 2.0.21, Java 17 source compat, release-signing config via environment variables, ProGuard with `proguard-rules.pro`.
-  - `settings.gradle.kts` / `tauri.settings.gradle`: Gradle 8.9 wrapper, NDK version read from `tauri.conf.json`, Tauri Gradle plugin registration.
+  - `settings.gradle.kts` / `tauri.settings.gradle`: Gradle 8.9 wrapper, Tauri Gradle plugin registration.
   - `MainActivity.kt`: extends `app.tauri.TauriActivity()`.
   - `themes.xml`: `Theme.SteloPTC` (no action bar, status bar / nav bar tinted `#0f172a` to match the app shell).
 - **Responsive mobile UI polish**:
   - `Sidebar.svelte`: hamburger button position now honours `safe-area-inset-top` / `safe-area-inset-left`; footer respects `safe-area-inset-bottom`; all tap targets enforced at `min-height: 48px`; sidebar uses `100dvh` for correct mobile height.
   - `App.svelte`: `body` padding tied to `safe-area-inset-left/right`; `.main-content` on mobile uses `calc(…px + env(safe-area-inset-…))` for full notch / home-indicator clearance; `.app` uses `100dvh`; `min-height: 48px` applied to all interactive elements at `<768px`.
 - **npm Android scripts**: `android:dev`, `android:build`, `android:build-debug` added to `package.json`.
-- **tauri.conf.json**: identifier changed to `com.steloptc.app`, `withGlobalTauri: true` enabled, complete `bundle.android` block (`minSdkVersion: 24`, `targetSdkVersion: 35`, `versionCode: 12`, `ndkVersion: r27`).
-- **capabilities/default.json**: `platforms` array added (`["android","ios","macOS","windows","linux"]`), identifier updated to `com.steloptc.app`, all existing `dialog`/`fs`/`shell` permissions preserved; `mobile.json` deleted (capabilities merged into `default.json`).
+- **tauri.conf.json**: identifier changed to `com.steloptc.app`, `withGlobalTauri: true` enabled, `bundle.android` block with `autoIncrementVersionCode: false`, `minSdkVersion: 24`, `versionCode: 12`.
+- **capabilities/default.json**: `platforms` array (`["android", "iOS", "macOS", "windows", "linux"]`), `windows: ["main"]`, identifier `com.steloptc.app`; all `dialog`/`fs`/`shell` permissions preserved; `mobile.json` deleted (capabilities merged into `default.json`).
+
+### Fixed
+
+- **tauri.conf.json `bundle.android`**: Removed `targetSdkVersion` and `ndkVersion` which are not valid Tauri v2 schema properties and caused `cargo tauri build` to error. These settings belong in `src-tauri/gen/android/app/build.gradle.kts`.
+- **capabilities/default.json platform target**: Corrected `"ios"` → `"iOS"` (case-sensitive Tauri v2 enum); the incorrect casing caused a `tauri_build` compile-time schema validation error on all platforms.
 
 ### Changed
 
