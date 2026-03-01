@@ -43,7 +43,7 @@
     "android": {
       "autoIncrementVersionCode": false,
       "minSdkVersion": 24,
-      "versionCode": 12
+      "versionCode": 13
     }
   },
   "plugins": {}
