@@ -1,6 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "com.steloptc.app",
+  "windows": ["main"],
   "platforms": ["android", "ios", "macOS", "windows", "linux"],
   "permissions": [
     "core:default",

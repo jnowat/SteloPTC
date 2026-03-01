@@ -1,3 +1,5 @@
 package com.steloptc.app
 
-class MainActivity : app.tauri.TauriActivity()
+import app.tauri.TauriActivity
+
+class MainActivity : TauriActivity()

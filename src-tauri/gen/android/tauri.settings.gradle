@@ -3,12 +3,14 @@
 
 import groovy.json.JsonSlurper
 
-// ── Locate project root ──────────────────────────────────────────────────────
-def projectRoot = rootProject.projectDir.parentFile   // .../src-tauri/gen/android -> src-tauri/gen -> src-tauri
-def tauriRoot   = projectRoot.parentFile.parentFile   // -> repo root
+// ── Locate src-tauri/ directory ───────────────────────────────────────────────
+// rootProject.projectDir = src-tauri/gen/android/
+// .parentFile            = src-tauri/gen/
+// .parentFile            = src-tauri/              ← Cargo.toml lives here
+def srcTauriDir = rootProject.projectDir.parentFile.parentFile
 
 // ── Read tauri.conf.json ─────────────────────────────────────────────────────
-def tauriConfFile = new File(tauriRoot, "src-tauri/tauri.conf.json")
+def tauriConfFile = new File(srcTauriDir, "tauri.conf.json")
 def tauriConf     = new JsonSlurper().parseText(tauriConfFile.text)
 
 // ── NDK version ──────────────────────────────────────────────────────────────

@@ -7,7 +7,9 @@
         <item name="android:navigationBarColor">#0f172a</item>
         <item name="android:windowBackground">#0f172a</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <!-- Allow the WebView to draw under system bars (viewport-fit=cover) -->
-        <item name="android:windowLayoutInDisplayCutoutMode" tools:ignore="NewApi">shortEdges</item>
+        <!-- Allow the WebView to draw under system bars (viewport-fit=cover).
+             shortEdges is API 28+; unknown style attributes are silently ignored
+             on older API levels, so no runtime crash on API 24-27. -->
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>
