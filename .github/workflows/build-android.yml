@@ -1,0 +1,135 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [claude/add-android-support-ZmO82]
+  pull_request:
+    branches: [master]
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
+  # NDK full version string; must match ndk;X.Y.Z in the sdkmanager install step below.
+  NDK_VERSION: 27.2.12479018
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Source ────────────────────────────────────────────────────────────
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Java 17 (required by AGP 8.5) ────────────────────────────────────
+      - name: Set up Java 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'      # caches ~/.gradle between runs
+
+      # ── Android SDK + NDK ─────────────────────────────────────────────────
+      # ubuntu-latest ships with Android SDK at $ANDROID_HOME.
+      # We just need to install the NDK and the target platform/build-tools.
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Install Android SDK components and NDK r27
+        run: |
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+            "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;${{ env.NDK_VERSION }}"
+          # Export NDK path for cargo-ndk and the Tauri Gradle plugin
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_HOME/ndk/${{ env.NDK_VERSION }}"         >> $GITHUB_ENV
+
+      # ── Rust + Android cross-compilation targets ──────────────────────────
+      - name: Install Rust stable with Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            aarch64-linux-android,armv7-linux-androideabi,
+            i686-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      # ── Node.js + npm ────────────────────────────────────────────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci --legacy-peer-deps
+
+      # ── Tauri CLI + cargo-ndk ─────────────────────────────────────────────
+      # cargo-ndk is called by the Tauri Gradle plugin (app.tauri:gradle-plugin)
+      # to compile Rust for each Android ABI.
+      - name: Install Tauri CLI and cargo-ndk
+        run: cargo install tauri-cli cargo-ndk --locked
+
+      # ── Debug APK (every push / PR) ───────────────────────────────────────
+      - name: Build debug APK
+        run: cargo tauri android build
+
+      - name: Collect debug APK
+        run: |
+          mkdir -p artifacts
+          cp src-tauri/gen/android/app/build/outputs/apk/debug/app-debug.apk \
+             artifacts/SteloPTC-Android-Debug.apk
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteloPTC-Android-Debug
+          path: artifacts/SteloPTC-Android-Debug.apk
+          retention-days: 30
+
+      # ── Release APK (only on GitHub Release events) ───────────────────────
+      # Set signing secrets in Settings → Secrets and variables → Actions:
+      #   ANDROID_KEY_STORE_PATH    – path to .jks keystore file
+      #   ANDROID_KEY_STORE_PASSWORD – keystore password
+      #   ANDROID_KEY_ALIAS         – key alias inside keystore
+      #   ANDROID_KEY_PASSWORD      – key password
+      #
+      # If the secrets are absent, build.gradle.kts falls back to debug signing
+      # automatically (the APK will still install but shows "debug" in ADB).
+      - name: Build release APK
+        if: github.event_name == 'release'
+        run: cargo tauri android build --release
+        env:
+          ANDROID_KEY_STORE_PATH: ${{ secrets.ANDROID_KEY_STORE_PATH }}
+          ANDROID_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Collect release APK
+        if: github.event_name == 'release'
+        run: |
+          cp src-tauri/gen/android/app/build/outputs/apk/release/app-release.apk \
+             artifacts/SteloPTC-Android-Release.apk
+
+      - name: Upload release APK artifact
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteloPTC-Android-Release
+          path: artifacts/SteloPTC-Android-Release.apk
+          retention-days: 90
+
+      - name: Attach release APK to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/SteloPTC-Android-Release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
