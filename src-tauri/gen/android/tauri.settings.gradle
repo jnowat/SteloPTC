@@ -27,19 +27,5 @@ ext {
 }
 
 // ── Rust / NDK build plugin ───────────────────────────────────────────────────
-// The `rust` plugin is provided by the tauri-cli Gradle plugin distribution.
-// It invokes `cargo ndk` to compile Rust to each target ABI and copies the
-// resulting .so files into src/main/jniLibs/ before the Android build runs.
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-        maven { url = uri("https://jitpack.io") }
-    }
-    dependencies {
-        classpath("com.android.tools.build:gradle:8.5.2")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.21")
-        // Tauri Rust plugin for Android NDK builds
-        classpath("app.tauri:gradle-plugin:2.0.0")
-    }
-}
+// The `rust` plugin is defined locally in buildSrc/ as a Gradle composite
+// build. See buildSrc/src/main/kotlin/RustPlugin.kt and BuildTask.kt.
