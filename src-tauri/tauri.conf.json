@@ -41,10 +41,9 @@
       }
     },
     "android": {
+      "autoIncrementVersionCode": false,
       "minSdkVersion": 24,
-      "targetSdkVersion": 35,
-      "versionCode": 12,
-      "ndkVersion": "r27"
+      "versionCode": 12
     }
   },
   "plugins": {}
