@@ -2,6 +2,19 @@
 
 A desktop application for tracking plant tissue culture specimens, designed for commercial and research laboratories. Built with Rust, Tauri, and Svelte for native performance and a modern UI.
 
+## Downloads
+
+> Builds are produced automatically by GitHub Actions on every push and GitHub Release — no local toolchain required to get a binary.
+
+| Platform | Artifact | Notes |
+|---|---|---|
+| **Windows** | [Latest Release →](../../releases/latest) | `.msi` installer + standalone `.exe` |
+| **Android** | [Latest Actions run →](../../actions/workflows/build-android.yml) | Grab the `SteloPTC-Android-Debug` artifact |
+
+**On every GitHub Release** both the Windows MSI and the Android APK are attached directly to the release assets. Android release APKs are signed with the repository keystore secrets (or fall back to debug signing if secrets are not configured — the APK still installs fine via ADB).
+
+> **Sideloading the APK**: Enable *Install unknown apps* for your file manager or ADB on your Android device, then open the downloaded `.apk` file. Minimum Android version: 7.0 (API 24).
+
 ## Overview
 
 SteloPTC manages the full lifecycle of plant tissue culture specimens -- from initiation through subculture, acclimatization, and compliance reporting. It supports multi-user access with role-based permissions, regulatory compliance tracking (USDA APHIS, TX Ag, FL FDACS), and data export for statistical analysis.

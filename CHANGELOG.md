@@ -5,6 +5,23 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.13] - 2026-03-01
+
+### Added
+
+- **Automatic Android APK builds via GitHub Actions** (`.github/workflows/build-android.yml`):
+  - Triggers on push to the feature branch, on PRs to master, and on GitHub Release events.
+  - Runs on `ubuntu-latest`; sets up Java 17 (Temurin), Android SDK (API 35), NDK r27 (27.2.12479018), Rust stable with all four Android targets (`aarch64`, `armv7`, `i686`, `x86_64`), and Node.js 20.
+  - Builds a **debug APK** on every push/PR and uploads it as the `SteloPTC-Android-Debug` workflow artifact (retained 30 days).
+  - Builds a **release APK** on GitHub Release events, uploads it as `SteloPTC-Android-Release` (retained 90 days), and attaches it directly to the GitHub Release assets via `softprops/action-gh-release`.
+  - Release APK uses keystore signing via repository secrets (`ANDROID_KEY_STORE_PATH`, `ANDROID_KEY_STORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`); falls back to debug signing automatically when secrets are absent.
+  - Full Rust + Gradle caching (`swatinem/rust-cache`, `actions/setup-java` Gradle cache, `actions/setup-node` npm cache) for fast subsequent runs.
+- **README Downloads section**: Clear table linking to the latest Windows installer and latest Android APK workflow run, with sideloading instructions.
+
+### Changed
+
+- Version bumped to 0.1.13 across `package.json`, `Cargo.toml`, `tauri.conf.json`, `app/build.gradle.kts` (versionCode 13), and sidebar display.
+
 ## [0.1.12] - 2026-03-01
 
 ### Added

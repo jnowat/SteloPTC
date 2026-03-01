@@ -59,7 +59,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.12</span>
+    <span class="version">v0.1.13</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
