@@ -15,8 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Builds a **debug APK** on every push/PR and uploads it as the `SteloPTC-Android-Debug` workflow artifact (retained 30 days).
   - Builds a **release APK** on GitHub Release events, uploads it as `SteloPTC-Android-Release` (retained 90 days), and attaches it directly to the GitHub Release assets via `softprops/action-gh-release`.
   - Release APK uses keystore signing via repository secrets (`ANDROID_KEY_STORE_PATH`, `ANDROID_KEY_STORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`); falls back to debug signing automatically when secrets are absent.
-  - Full Rust + Gradle caching (`swatinem/rust-cache`, `actions/setup-java` Gradle cache, `actions/setup-node` npm cache) for fast subsequent runs.
+  - Full Rust + Gradle caching (`swatinem/rust-cache`, `gradle/actions/setup-gradle`, `actions/setup-node` npm cache) for fast subsequent runs.
 - **README Downloads section**: Clear table linking to the latest Windows installer and latest Android APK workflow run, with sideloading instructions.
+
+### Fixed
+
+- **`gradle-wrapper.jar` committed to repo**: The Gradle wrapper bootstrap JAR (`src-tauri/gen/android/gradle/wrapper/gradle-wrapper.jar`) was missing from the repository — `./gradlew` could not start without it. Generated with Gradle 8.9 and committed; all CI runs now start correctly.
+- **`build.gradle.kts` explicit `ndkVersion`**: Added `ndkVersion = "27.2.12479018"` to the `android {}` block so AGP uses the correct NDK regardless of which version is the default on the runner.
+- **`tauri.conf.json` `versionCode`**: Corrected `bundle.android.versionCode` from `12` to `13` to match `build.gradle.kts`.
 
 ### Changed
 
