@@ -1,14 +1,15 @@
 {
   "productName": "SteloPTC",
-  "version": "0.1.11",
-  "identifier": "com.stelolab.ptc",
+  "version": "0.1.12",
+  "identifier": "com.steloptc.app",
   "build": {
+    "devUrl": "http://localhost:1420",
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../dist",
-    "devUrl": "http://localhost:1420"
+    "frontendDist": "../dist"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "SteloPTC - Plant Tissue Culture Tracker",
@@ -40,7 +41,10 @@
       }
     },
     "android": {
-      "minSdkVersion": 24
+      "minSdkVersion": 24,
+      "targetSdkVersion": 35,
+      "versionCode": 12,
+      "ndkVersion": "r27"
     }
   },
   "plugins": {}
