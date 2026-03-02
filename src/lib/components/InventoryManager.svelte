@@ -259,7 +259,7 @@
   <div class="page-header">
     <h1>Inventory</h1>
     {#if $currentUser?.role !== 'guest'}
-      <button class="btn btn-primary" onclick={() => { if (showForm) { showForm = false; resetForm(); } else { resetForm(); showForm = true; } }}>
+      <button class="btn btn-primary" title={showForm ? 'Cancel and close the new item form without saving' : 'Open the form to add a new inventory item'} onclick={() => { if (showForm) { showForm = false; resetForm(); } else { resetForm(); showForm = true; } }}>
         {showForm ? 'Cancel' : '+ New Item'}
       </button>
     {/if}
@@ -271,33 +271,33 @@
         <h3 style="margin-bottom:16px;">{editingId ? 'Edit Item' : 'New Inventory Item'}</h3>
         <div class="form-row-3">
           <div class="form-group">
-            <label>Name *</label>
-            <input type="text" bind:value={form.name} placeholder="e.g., Agar Powder" required />
+            <label title="The name of this inventory item (e.g., Agar Powder, MS Salts)">Name *</label>
+            <input type="text" title="Enter the full name of the inventory item" bind:value={form.name} placeholder="e.g., Agar Powder" required />
           </div>
           <div class="form-group">
-            <label>Category *</label>
-            <select bind:value={form.category} required>
+            <label title="The category this item belongs to — affects how it is grouped and reported">Category *</label>
+            <select title="Select the category: media ingredient, vessel, hormone, chemical, consumable, equipment, or other" bind:value={form.category} required>
               {#each categories as cat}
                 <option value={cat.value}>{cat.label}</option>
               {/each}
             </select>
           </div>
           <div class="form-group">
-            <label>Physical State</label>
+            <label title="Whether this item is a solid (weighed by mass) or liquid (measured by volume)">Physical State</label>
             <div style="display:flex; gap:16px; align-items:center; margin-top:4px;">
-              <label style="display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; cursor:pointer; font-weight:normal;">
-                <input type="radio" bind:group={form.physical_state} value="solid" style="width:auto;" /> Solid
+              <label title="Select Solid if this item is a powder or other solid measured by mass (g, mg)" style="display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; cursor:pointer; font-weight:normal;">
+                <input type="radio" title="This item is a solid (powder, crystals, etc.) measured by mass" bind:group={form.physical_state} value="solid" style="width:auto;" /> Solid
               </label>
-              <label style="display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; cursor:pointer; font-weight:normal;">
-                <input type="radio" bind:group={form.physical_state} value="liquid" style="width:auto;" /> Liquid / Solution
+              <label title="Select Liquid if this item is a solution measured by volume (mL, µL)" style="display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; cursor:pointer; font-weight:normal;">
+                <input type="radio" title="This item is a liquid or solution measured by volume" bind:group={form.physical_state} value="liquid" style="width:auto;" /> Liquid / Solution
               </label>
             </div>
           </div>
         </div>
         <div class="form-row-3">
           <div class="form-group">
-            <label>Unit *</label>
-            <input type="text" list="unit-options" bind:value={form.unit} placeholder="g, mg, mL..." required />
+            <label title="The unit used to measure stock quantity (e.g., g, mL, units)">Unit *</label>
+            <input type="text" title="Type or select the unit of measurement — used for all stock quantities and alerts" list="unit-options" bind:value={form.unit} placeholder="g, mg, mL..." required />
             <datalist id="unit-options">
               <option value="g">g (grams)</option>
               <option value="mg">mg (milligrams)</option>
@@ -310,23 +310,23 @@
             </datalist>
           </div>
           <div class="form-group">
-            <label>Current Stock</label>
-            <input type="number" step="0.01" bind:value={form.current_stock} />
+            <label title="The current amount in stock in the selected unit">Current Stock</label>
+            <input type="number" title="Enter the current quantity on hand — used to track low-stock alerts" step="0.01" bind:value={form.current_stock} />
           </div>
           <div class="form-group">
-            <label>Minimum Stock</label>
-            <input type="number" step="0.01" bind:value={form.minimum_stock} />
+            <label title="The minimum stock level below which a low-stock alert is triggered">Minimum Stock</label>
+            <input type="number" title="When current stock falls to or below this amount, a low-stock alert is raised" step="0.01" bind:value={form.minimum_stock} />
           </div>
         </div>
         {#if form.physical_state === 'liquid'}
         <div class="form-row">
           <div class="form-group" style="flex:2;">
-            <label>Stock Concentration</label>
-            <input type="number" step="any" bind:value={form.concentration} placeholder="e.g., 10" />
+            <label title="The concentration of this stock solution (numeric value only — select unit separately)">Stock Concentration</label>
+            <input type="number" title="Enter the numeric concentration value of this stock solution (e.g., 10 for 10 mM BAP)" step="any" bind:value={form.concentration} placeholder="e.g., 10" />
           </div>
           <div class="form-group" style="flex:1;">
-            <label>Unit</label>
-            <select bind:value={form.concentration_unit}>
+            <label title="The unit of concentration for this liquid item (e.g., mM, mg/L)">Unit</label>
+            <select title="Select the concentration unit for this liquid item" bind:value={form.concentration_unit}>
               <option value="nM">nM</option>
               <option value="µM">µM</option>
               <option value="mM">mM</option>
@@ -343,59 +343,59 @@
         {/if}
         <div class="form-row-3">
           <div class="form-group">
-            <label>Reorder Point</label>
-            <input type="number" step="0.01" bind:value={form.reorder_point} placeholder="Optional" />
+            <label title="An optional higher threshold at which you'd want to reorder — shown in low-stock reports">Reorder Point</label>
+            <input type="number" title="When stock reaches this level, it appears in reorder alerts (must be above minimum stock)" step="0.01" bind:value={form.reorder_point} placeholder="Optional" />
           </div>
           <div class="form-group">
-            <label>Supplier</label>
-            <input type="text" bind:value={form.supplier} placeholder="e.g., Sigma-Aldrich" />
+            <label title="The name of the supplier or manufacturer for this item">Supplier</label>
+            <input type="text" title="Enter the supplier or manufacturer (e.g., Sigma-Aldrich, PhytoTech)" bind:value={form.supplier} placeholder="e.g., Sigma-Aldrich" />
           </div>
           <div class="form-group">
-            <label>Catalog Number</label>
-            <input type="text" bind:value={form.catalog_number} />
-          </div>
-        </div>
-        <div class="form-row-3">
-          <div class="form-group">
-            <label>Lot Number</label>
-            <input type="text" bind:value={form.lot_number} />
-          </div>
-          <div class="form-group">
-            <label>Storage Location</label>
-            <input type="text" bind:value={form.storage_location} placeholder="e.g., Shelf B-3" />
-          </div>
-          <div class="form-group">
-            <label>Expiration Date</label>
-            <input type="date" bind:value={form.expiration_date} />
+            <label title="The supplier's catalog or product number for this item">Catalog Number</label>
+            <input type="text" title="Enter the supplier catalog number for quick reordering" bind:value={form.catalog_number} />
           </div>
         </div>
         <div class="form-row-3">
           <div class="form-group">
-            <label>Cost per Unit ($)</label>
-            <input type="number" step="0.01" bind:value={form.cost_per_unit} />
+            <label title="The lot or batch number from the supplier — used for quality traceability">Lot Number</label>
+            <input type="text" title="Enter the lot or batch number from the supplier for traceability" bind:value={form.lot_number} />
+          </div>
+          <div class="form-group">
+            <label title="The physical location where this item is stored in the lab">Storage Location</label>
+            <input type="text" title="Enter the storage location (e.g., Shelf B-3, Fridge 2, -20°C Freezer)" bind:value={form.storage_location} placeholder="e.g., Shelf B-3" />
+          </div>
+          <div class="form-group">
+            <label title="The date after which this item should no longer be used">Expiration Date</label>
+            <input type="date" title="Select the expiration date — expired items will be highlighted in the inventory table" bind:value={form.expiration_date} />
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <label title="The cost per unit in USD — used for budget tracking and reports">Cost per Unit ($)</label>
+            <input type="number" title="Enter the cost per unit in USD for budget and usage reports" step="0.01" bind:value={form.cost_per_unit} />
           </div>
         </div>
         <div class="form-group">
-          <label>Notes</label>
-          <textarea bind:value={form.notes} rows="2"></textarea>
+          <label title="Any additional notes about this inventory item (storage requirements, hazards, preparation tips)">Notes</label>
+          <textarea title="Enter any additional notes: special storage requirements, hazards, handling instructions, etc." bind:value={form.notes} rows="2"></textarea>
         </div>
         <div style="text-align:right;">
-          <button type="submit" class="btn btn-primary">{editingId ? 'Update Item' : 'Create Item'}</button>
+          <button type="submit" title={editingId ? 'Save changes to this inventory item' : 'Create a new inventory item with the details entered above'} class="btn btn-primary">{editingId ? 'Update Item' : 'Create Item'}</button>
         </div>
       </form>
     </div>
   {/if}
 
   <div class="filters card" style="margin-bottom:16px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-    <input type="text" bind:value={searchQuery} placeholder="Search items..." style="max-width:220px;" />
-    <select bind:value={filterCategory} style="max-width:180px;">
+    <input type="text" title="Search inventory items by name, supplier, or catalog number" bind:value={searchQuery} placeholder="Search items..." style="max-width:220px;" />
+    <select title="Filter inventory items by category" bind:value={filterCategory} style="max-width:180px;">
       <option value="">All Categories</option>
       {#each categories as cat}
         <option value={cat.value}>{cat.label}</option>
       {/each}
     </select>
-    <label style="display:inline-flex; align-items:center; gap:6px; font-size:13px; text-transform:none; letter-spacing:0; cursor:pointer;">
-      <input type="checkbox" bind:checked={filterLowStock} style="width:auto;" />
+    <label title="Show only items that are currently below their minimum or reorder stock threshold" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; text-transform:none; letter-spacing:0; cursor:pointer;">
+      <input type="checkbox" title="Toggle to show only low-stock items" bind:checked={filterLowStock} style="width:auto;" />
       Low stock only
     </label>
     <span style="font-size:12px; color:#6b7280;">
@@ -412,17 +412,17 @@
         <h3 style="margin-bottom:12px;">Adjust Stock</h3>
         <div class="form-row">
           <div class="form-group">
-            <label>Amount (+/-)</label>
-            <input type="number" step="0.01" bind:value={adjustForm.amount} placeholder="e.g., -5 or 100" required />
+            <label title="The amount to add or subtract from current stock — use negative values to deduct (e.g., -5 to use 5 units)">Amount (+/-)</label>
+            <input type="number" title="Enter a positive number to add stock, or a negative number to deduct (e.g., -5 to record usage of 5 units)" step="0.01" bind:value={adjustForm.amount} placeholder="e.g., -5 or 100" required />
           </div>
           <div class="form-group">
-            <label>Reason</label>
-            <input type="text" bind:value={adjustForm.reason} placeholder="e.g., Used for media prep" />
+            <label title="A brief explanation of why the stock level is being adjusted">Reason</label>
+            <input type="text" title="Enter the reason for the adjustment (e.g., Used for media prep, Received new shipment, Waste/spillage)" bind:value={adjustForm.reason} placeholder="e.g., Used for media prep" />
           </div>
         </div>
         <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button type="button" class="btn" onclick={() => { showAdjust = null; }}>Cancel</button>
-          <button type="submit" class="btn btn-primary">Apply Adjustment</button>
+          <button type="button" title="Cancel the stock adjustment and close this form" class="btn" onclick={() => { showAdjust = null; }}>Cancel</button>
+          <button type="submit" title="Apply the stock adjustment and update the current stock level" class="btn btn-primary">Apply Adjustment</button>
         </div>
       </form>
     </div>
@@ -437,16 +437,16 @@
       <table>
         <thead>
           <tr>
-            <th>Name</th>
-            <th>Category</th>
-            <th>State</th>
-            <th>Stock</th>
-            <th>Min</th>
-            <th>Supplier</th>
-            <th>Location</th>
-            <th>Expires</th>
-            <th>Status</th>
-            <th></th>
+            <th title="Item name and supplier catalog number">Name</th>
+            <th title="Category grouping: media ingredient, vessel, hormone, chemical, consumable, equipment, or other">Category</th>
+            <th title="Physical state: solid (mass-based) or liquid (volume-based), with concentration for liquids">State</th>
+            <th title="Current stock quantity in the item's unit — highlighted yellow when below minimum or reorder point">Stock</th>
+            <th title="Minimum stock threshold below which a low-stock alert is raised">Min</th>
+            <th title="Supplier or manufacturer of this item">Supplier</th>
+            <th title="Physical storage location in the lab (e.g., shelf, fridge, freezer)">Location</th>
+            <th title="Expiration date — items past this date are highlighted in red">Expires</th>
+            <th title="Current status: OK (sufficient stock), Low Stock (below threshold), or Expired">Status</th>
+            <th title="Actions: adjust stock level, edit item details, or delete the item"></th>
           </tr>
         </thead>
         <tbody>
@@ -484,21 +484,21 @@
               </td>
               <td>
                 {#if isExpired(item.expiration_date)}
-                  <span class="badge badge-red">Expired</span>
+                  <span class="badge badge-red" title="This item has passed its expiration date and should not be used">Expired</span>
                 {:else if isLowStock(item)}
-                  <span class="badge badge-yellow">Low Stock</span>
+                  <span class="badge badge-yellow" title="Current stock is at or below the minimum or reorder threshold — consider restocking">Low Stock</span>
                 {:else}
-                  <span class="badge badge-green">OK</span>
+                  <span class="badge badge-green" title="Stock level is sufficient and the item has not expired">OK</span>
                 {/if}
               </td>
               <td>
                 <div style="display:flex; gap:4px;">
                   {#if $currentUser?.role !== 'guest'}
-                    <button class="btn btn-sm" onclick={() => { showAdjust = item.id; adjustForm = { amount: '', reason: '' }; }}>+/-</button>
-                    <button class="btn btn-sm" onclick={() => startEdit(item)}>Edit</button>
+                    <button class="btn btn-sm" title="Adjust the stock level for {item.name} — enter a positive or negative amount" onclick={() => { showAdjust = item.id; adjustForm = { amount: '', reason: '' }; }}>+/-</button>
+                    <button class="btn btn-sm" title="Edit the details for {item.name}" onclick={() => startEdit(item)}>Edit</button>
                   {/if}
                   {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-                    <button class="btn btn-sm btn-danger" onclick={() => handleDelete(item.id)}>Del</button>
+                    <button class="btn btn-sm btn-danger" title="Permanently delete {item.name} from inventory — this cannot be undone" onclick={() => handleDelete(item.id)}>Del</button>
                   {/if}
                 </div>
               </td>
@@ -514,7 +514,7 @@
     <div class="page-header" style="margin-bottom:16px;">
       <h2 style="margin:0;">Prepared Stock Solutions</h2>
       {#if $currentUser?.role !== 'guest'}
-        <button class="btn btn-primary" onclick={() => { if (showSolutionForm) { showSolutionForm = false; resetSolutionForm(); } else { resetSolutionForm(); showSolutionForm = true; } }}>
+        <button class="btn btn-primary" title={showSolutionForm ? 'Cancel and close the new solution form without saving' : 'Open the form to record a new prepared stock solution'} onclick={() => { if (showSolutionForm) { showSolutionForm = false; resetSolutionForm(); } else { resetSolutionForm(); showSolutionForm = true; } }}>
           {showSolutionForm ? 'Cancel' : '+ New Solution'}
         </button>
       {/if}
@@ -526,12 +526,12 @@
           <h3 style="margin-bottom:16px;">New Prepared Solution</h3>
           <div class="form-row-3">
             <div class="form-group">
-              <label>Solution Name *</label>
-              <input type="text" bind:value={solutionForm.name} placeholder="e.g., 10 mM BAP stock" required />
+              <label title="The name or description of this prepared solution (e.g., 10 mM BAP stock, 1 mg/mL IBA in DMSO)">Solution Name *</label>
+              <input type="text" title="Enter a descriptive name for this prepared solution" bind:value={solutionForm.name} placeholder="e.g., 10 mM BAP stock" required />
             </div>
             <div class="form-group">
-              <label>Source Inventory Item</label>
-              <select bind:value={solutionForm.source_item_id}>
+              <label title="The inventory item used as the starting material for this solution — links this record to raw stock">Source Inventory Item</label>
+              <select title="Select the inventory item this solution was prepared from — the source amount will be deducted from that item's stock" bind:value={solutionForm.source_item_id}>
                 <option value="">— None —</option>
                 {#each items as item}
                   <option value={item.id}>{item.name}</option>
@@ -539,18 +539,18 @@
               </select>
             </div>
             <div class="form-group">
-              <label>Source Amount Used</label>
-              <input type="number" step="any" bind:value={solutionForm.source_amount_used} placeholder="Amount deducted from stock" />
+              <label title="The amount of the source inventory item consumed to prepare this solution (deducted from stock)">Source Amount Used</label>
+              <input type="number" title="Enter the amount of source material used — this will be subtracted from the selected inventory item's stock" step="any" bind:value={solutionForm.source_amount_used} placeholder="Amount deducted from stock" />
             </div>
           </div>
           <div class="form-row">
             <div class="form-group" style="flex:2;">
-              <label>Concentration</label>
-              <input type="number" step="any" bind:value={solutionForm.concentration} placeholder="e.g., 10" />
+              <label title="The concentration of this prepared stock solution (numeric value only — select unit separately)">Concentration</label>
+              <input type="number" title="Enter the numeric concentration of the prepared solution (e.g., 10 for 10 mM)" step="any" bind:value={solutionForm.concentration} placeholder="e.g., 10" />
             </div>
             <div class="form-group" style="flex:1;">
-              <label>Unit</label>
-              <select bind:value={solutionForm.concentration_unit}>
+              <label title="The unit for the solution concentration (e.g., mM, µM, mg/mL)">Unit</label>
+              <select title="Select the concentration unit for this prepared solution" bind:value={solutionForm.concentration_unit}>
                 <option value="nM">nM</option>
                 <option value="µM">µM</option>
                 <option value="mM">mM</option>
@@ -564,44 +564,44 @@
               </select>
             </div>
             <div class="form-group" style="flex:2;">
-              <label>Solvent</label>
-              <input type="text" bind:value={solutionForm.solvent} placeholder="e.g., DMSO, dH2O" />
+              <label title="The solvent used to dissolve or dilute the source material (e.g., DMSO, distilled water, ethanol)">Solvent</label>
+              <input type="text" title="Enter the solvent used to prepare this solution (e.g., DMSO, dH2O, 70% ethanol)" bind:value={solutionForm.solvent} placeholder="e.g., DMSO, dH2O" />
             </div>
             <div class="form-group" style="flex:1;">
-              <label>Volume (mL)</label>
-              <input type="number" step="any" bind:value={solutionForm.volume_ml} placeholder="e.g., 10" />
+              <label title="The total volume of solution prepared in milliliters">Volume (mL)</label>
+              <input type="number" title="Enter the total volume of prepared solution in mL — remaining volume can be updated later" step="any" bind:value={solutionForm.volume_ml} placeholder="e.g., 10" />
             </div>
           </div>
           <div class="form-row-3">
             <div class="form-group">
-              <label>Prepared By</label>
-              <input type="text" bind:value={solutionForm.prepared_by} placeholder="Name or initials" />
+              <label title="The person who prepared this solution — for traceability and QC purposes">Prepared By</label>
+              <input type="text" title="Enter the name or initials of the person who prepared this solution" bind:value={solutionForm.prepared_by} placeholder="Name or initials" />
             </div>
             <div class="form-group">
-              <label>Preparation Date</label>
-              <input type="date" bind:value={solutionForm.preparation_date} />
+              <label title="The date this solution was prepared">Preparation Date</label>
+              <input type="date" title="Select the date this solution was prepared" bind:value={solutionForm.preparation_date} />
             </div>
             <div class="form-group">
-              <label>Expiration Date</label>
-              <input type="date" bind:value={solutionForm.expiration_date} />
+              <label title="The date after which this prepared solution should be discarded">Expiration Date</label>
+              <input type="date" title="Select the expiration date — solutions past this date will be flagged in the table" bind:value={solutionForm.expiration_date} />
             </div>
           </div>
           <div class="form-row-3">
             <div class="form-group">
-              <label>Lot Number</label>
-              <input type="text" bind:value={solutionForm.lot_number} />
+              <label title="The lot number of the source material used to prepare this solution">Lot Number</label>
+              <input type="text" title="Enter the lot number from the source reagent for traceability" bind:value={solutionForm.lot_number} />
             </div>
             <div class="form-group">
-              <label>Storage Conditions</label>
-              <input type="text" bind:value={solutionForm.storage_conditions} placeholder="e.g., -20°C, dark" />
+              <label title="The required storage conditions to maintain solution stability">Storage Conditions</label>
+              <input type="text" title="Enter storage requirements (e.g., -20°C in dark, 4°C, aliquot and freeze)" bind:value={solutionForm.storage_conditions} placeholder="e.g., -20°C, dark" />
             </div>
           </div>
           <div class="form-group">
-            <label>Notes</label>
-            <textarea bind:value={solutionForm.notes} rows="2"></textarea>
+            <label title="Any additional notes about this prepared solution (hazards, protocol reference, pH adjustments, etc.)">Notes</label>
+            <textarea title="Enter any additional notes: hazards, preparation protocol details, pH adjustments, known issues, etc." bind:value={solutionForm.notes} rows="2"></textarea>
           </div>
           <div style="text-align:right;">
-            <button type="submit" class="btn btn-primary">Create Solution</button>
+            <button type="submit" title="Save this prepared solution record to the database" class="btn btn-primary">Create Solution</button>
           </div>
         </form>
       </div>
@@ -614,14 +614,14 @@
         <table>
           <thead>
             <tr>
-              <th>Name</th>
-              <th>Source Item</th>
-              <th>Concentration</th>
-              <th>Volume Remaining</th>
-              <th>Prepared By</th>
-              <th>Date</th>
-              <th>Expires</th>
-              <th>Actions</th>
+              <th title="The name and lot number of the prepared solution, with storage conditions below">Name</th>
+              <th title="The raw inventory item this solution was prepared from">Source Item</th>
+              <th title="The concentration of this stock solution (value and unit)">Concentration</th>
+              <th title="The current remaining volume in mL — update this field as the solution is consumed">Volume Remaining</th>
+              <th title="The person who prepared this solution">Prepared By</th>
+              <th title="The date this solution was prepared">Date</th>
+              <th title="The expiration date of this solution — expired solutions are highlighted in red">Expires</th>
+              <th title="Actions: delete this prepared solution record">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -655,6 +655,7 @@
                     <input
                       type="number"
                       step="any"
+                      title="Enter the current remaining volume of {sol.name} in mL"
                       style="width:72px; padding:2px 6px; font-size:13px;"
                       value={solutionVolumeInputs[sol.id] ?? (sol.volume_remaining_ml != null ? String(sol.volume_remaining_ml) : (sol.volume_ml != null ? String(sol.volume_ml) : ''))}
                       oninput={(e) => { solutionVolumeInputs[sol.id] = (e.target as HTMLInputElement).value; }}
@@ -662,7 +663,7 @@
                     />
                     <span style="font-size:12px; color:#6b7280;">mL</span>
                     {#if $currentUser?.role !== 'guest'}
-                      <button class="btn btn-sm" onclick={() => handleSolutionUpdate(sol, solutionVolumeInputs[sol.id] ?? '')}>Update</button>
+                      <button class="btn btn-sm" title="Save the updated remaining volume for {sol.name}" onclick={() => handleSolutionUpdate(sol, solutionVolumeInputs[sol.id] ?? '')}>Update</button>
                     {/if}
                   </div>
                 </td>
@@ -677,7 +678,7 @@
                 </td>
                 <td>
                   {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-                    <button class="btn btn-sm btn-danger" onclick={() => handleSolutionDelete(sol.id)}>Del</button>
+                    <button class="btn btn-sm btn-danger" title="Permanently delete the {sol.name} solution record — this cannot be undone" onclick={() => handleSolutionDelete(sol.id)}>Del</button>
                   {/if}
                 </td>
               </tr>
