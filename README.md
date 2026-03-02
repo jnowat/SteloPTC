@@ -35,6 +35,40 @@ The debug APK is built on **every push** and available as a workflow artifact fo
 
 > **Sideloading the APK**: Enable *Install unknown apps* for your file manager or ADB on your Android device, then open the downloaded `.apk` file. Minimum Android version: 7.0 (API 24).
 
+### Android UI (v0.1.14)
+
+The Android experience is fully mobile-first:
+
+- **Hamburger + drawer**: shown on all screens < 1024 dp wide (covers large phones like Pixel 9 Pro and 10-inch tablets in portrait).
+- **48 px touch targets**: all buttons, inputs, and nav items meet WCAG 2.5.5 and Apple HIG guidelines.
+- **Safe-area insets**: top (status bar / notch), bottom (home indicator), and sides are all respected via `env(safe-area-inset-*)`.
+- **QR scanning**: the **Scan QR** button activates the rear camera for instant QR decoding and specimen lookup.
+
+## QR Codes (v0.1.14)
+
+SteloPTC v0.1.14 ships a complete QR code workflow:
+
+| Action | Where | How |
+|---|---|---|
+| **Generate QR** | Specimen List row · Specimen Detail header | Click the `⬡ QR` button to open a modal with the QR image |
+| **Print Label** | Inside QR modal | Opens a browser print dialog with a formatted 3.5-inch label |
+| **Download PNG** | Inside QR modal | Saves `QR-{accession}.png` locally |
+| **Scan QR** | Specimens list header · Specimen Detail header | Opens the device camera to decode any SteloPTC QR and navigate to the specimen |
+
+**QR payload format** (JSON, Error Correction M):
+```json
+{
+  "app": "SteloPTC",
+  "accession": "2026-02-15-CIT-SIN-001",
+  "species": "CIT-SIN",
+  "stage": "shoot",
+  "location": "Room 2 / Rack B / Shelf 3 / Tray A",
+  "id": "uuid-of-specimen"
+}
+```
+
+**Scan events** are stored in the `qr_scans` SQLite table with the raw data, accession number, scanned-by user, and timestamp.
+
 ## Overview
 
 SteloPTC manages the full lifecycle of plant tissue culture specimens -- from initiation through subculture, acclimatization, and compliance reporting. It supports multi-user access with role-based permissions, regulatory compliance tracking (USDA APHIS, TX Ag, FL FDACS), and data export for statistical analysis.
@@ -53,6 +87,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens -- from in
 - **Database Backup**: On-demand database backup from the dashboard with WAL checkpointing for data integrity.
 - **Export**: CSV and JSON export for analysis in R, Python, or SPSS.
 - **Error Log**: Persistent, searchable error log (sidebar nav, all roles). Captures every application error with timestamp, severity (info/warning/error/critical), module, username, full message, form payload JSON, and stack trace. Expandable rows include Copy to Clipboard and Report on GitHub buttons. Sidebar badge shows live unread count. Error toasts are clickable and navigate directly to the log. All form submissions auto-capture the submitted payload on failure for instant reproducibility.
+- **QR Code Generation & Scanning** (v0.1.14+): Every specimen has a **Generate QR** button producing a 256×256 QR code encoding accession number, species, stage, and location as a signed JSON payload. **Print Label** opens a print-ready 3.5-inch label. **Scan QR** (available globally on Specimens list and per-specimen on the Detail page) activates the device camera — rear camera on Android phones, webcam on desktop — to decode any SteloPTC QR and navigate directly to the matching specimen. All scan events are logged in SQLite.
 - **Dark Mode**: System-aware with manual toggle. Inter font for clean mixed-case rendering.
 - **Keyboard Shortcuts**: Ctrl+1–5 for quick navigation (1 Dashboard, 2 Specimens, 3 Media, 4 Reminders, 5 Error Log).
 - **Admin Dev Tools**: Admin-only "Reset Database" panel on the dashboard to wipe all operational data (preserves users/species) during development and setup. Requires typing `RESET DATABASE` to confirm.
@@ -313,9 +348,11 @@ Additional compliance rules can be added by extending `src-tauri/src/commands/co
 - [x] Vertical passage timeline — scrollable history with collapsible detail cards, newest-first, replacing the old flat table
 - [x] Split culture recording — one passage creates N linked child specimens with `parent_specimen_id` for full lineage tracking
 - [x] Lineage banner — parent/child chips on each specimen for one-click navigation across splits
+- [x] QR code generation per specimen (v0.1.14) — 256×256 QR encodes accession, species, stage, location as JSON; modal with Print Label (3.5-inch formatted) and Download PNG
+- [x] QR code scanning via camera (v0.1.14) — uses device camera (rear on Android, webcam on desktop) to decode and navigate directly to the scanned specimen; scan events logged in SQLite
+- [x] Print label workflow (v0.1.14) — formatted 3.5-inch labels with QR code and specimen info via browser print API
+- [x] Android mobile UI polish (v0.1.14) — hamburger/drawer on all screens < 1024 px, 48 px touch targets, safe-area insets, full-screen QR scanner
 - [ ] PostgreSQL support for multi-user LAN deployment
-- [ ] QR / barcode generation and webcam scanning for specimen containers
-- [ ] Print label workflow — generate QR labels formatted for lab label printers
 - [ ] Photo attachments with direct camera capture and per-passage image logging
 - [ ] Contamination tracking — per-vessel flags, contamination notes, and lab-wide contamination rate statistics
 - [ ] Subculture scheduling — due-date forecasting based on species interval with overdue alerts

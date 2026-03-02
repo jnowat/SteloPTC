@@ -11,3 +11,4 @@ pub mod inventory;
 pub mod backup;
 pub mod admin;
 pub mod error_logs;
+pub mod qr_scans;

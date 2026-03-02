@@ -2,8 +2,12 @@
   import { untrack } from 'svelte';
   import { getSpecimen, listSubcultures, createSubculture, updateSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens } from '../api';
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
+  import QrModal from './QrModal.svelte';
+  import QrScanner from './QrScanner.svelte';
 
   let specimen = $state<any>(null);
+  let showQrModal = $state(false);
+  let showQrScanner = $state(false);
   let subcultures = $state<any[]>([]);
   let mediaBatches = $state<any[]>([]);
   let complianceRecords = $state<any[]>([]);
@@ -281,6 +285,16 @@
         {/if}
       {/if}
     </div>
+    {#if specimen}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-qr-detail" onclick={() => (showQrScanner = true)}>
+          &#128247; Scan QR
+        </button>
+        <button class="btn btn-qr-detail btn-qr-generate" onclick={() => (showQrModal = true)}>
+          &#9641; Generate QR
+        </button>
+      </div>
+    {/if}
   </div>
 
   {#if loading}
@@ -795,8 +809,40 @@
   {/if}
 </div>
 
+<!-- QR Code Modal -->
+{#if showQrModal && specimen}
+  <QrModal specimen={specimen} onclose={() => (showQrModal = false)} />
+{/if}
+
+<!-- QR Scanner Modal -->
+{#if showQrScanner}
+  <QrScanner onclose={() => (showQrScanner = false)} />
+{/if}
+
 <style>
   .specimen-detail { max-width: 900px; }
+
+  /* QR buttons in header */
+  .btn-qr-detail {
+    background: #f0fdf4;
+    color: #15803d;
+    border-color: #86efac;
+    font-size: 13px;
+    min-height: 36px;
+  }
+  .btn-qr-detail:hover { background: #dcfce7; }
+  :global(.dark) .btn-qr-detail { background: rgba(34,197,94,0.1); color: #4ade80; border-color: #166534; }
+  .btn-qr-generate {
+    background: #eff6ff;
+    color: #1d4ed8;
+    border-color: #93c5fd;
+  }
+  .btn-qr-generate:hover { background: #dbeafe; }
+  :global(.dark) .btn-qr-generate { background: rgba(37,99,235,0.1); color: #60a5fa; border-color: #1e40af; }
+
+  @media (max-width: 768px) {
+    .btn-qr-detail { min-height: 44px; font-size: 14px; }
+  }
 
   /* ── Info Card ── */
   .info-card { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: none; }

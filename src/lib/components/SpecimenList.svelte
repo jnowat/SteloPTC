@@ -5,6 +5,8 @@
   import { selectedSpecimenId } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import SpecimenForm from './SpecimenForm.svelte';
+  import QrModal from './QrModal.svelte';
+  import QrScanner from './QrScanner.svelte';
 
   let specimens = $state<any[]>([]);
   let species = $state<any[]>([]);
@@ -17,6 +19,8 @@
   let filterSpecies = $state('');
   let filterStage = $state('');
   let showForm = $state(false);
+  let qrSpecimen = $state<any>(null);
+  let showScanner = $state(false);
 
   const stages = ['explant', 'callus', 'suspension', 'protoplast', 'shoot', 'root', 'embryogenic', 'plantlet', 'acclimatized', 'stock'];
 
@@ -102,16 +106,24 @@
     page = 1;
     load();
   }
+
+  function openQr(e: MouseEvent, s: any) {
+    e.stopPropagation();
+    qrSpecimen = s;
+  }
 </script>
 
 <div>
   <div class="page-header">
     <h1>Specimens ({total})</h1>
-    <div style="display:flex;gap:8px;">
+    <div class="header-actions">
+      <button class="btn btn-scan" onclick={() => (showScanner = true)} title="Scan a QR code">
+        &#128247; Scan QR
+      </button>
       <button class="btn btn-sm" onclick={() => handleExport('csv')}>Export CSV</button>
       <button class="btn btn-sm" onclick={() => handleExport('json')}>Export JSON</button>
       {#if $currentUser?.role !== 'guest'}
-        <button class="btn btn-primary" onclick={() => showForm = true}>+ New Specimen</button>
+        <button class="btn btn-primary" onclick={() => (showForm = true)}>+ New Specimen</button>
       {/if}
     </div>
   </div>
@@ -143,7 +155,7 @@
 
   {#if showForm}
     <div class="card" style="margin-bottom:16px;">
-      <SpecimenForm onclose={() => showForm = false} onsave={handleFormDone} />
+      <SpecimenForm onclose={() => (showForm = false)} onsave={handleFormDone} />
     </div>
   {/if}
 
@@ -155,7 +167,7 @@
       <p style="margin-top:8px;font-size:12px;">Create your first specimen or adjust your filters.</p>
     </div>
   {:else}
-    <div class="card" style="overflow-x:auto;">
+    <div class="card table-card">
       <table>
         <thead>
           <tr>
@@ -167,7 +179,7 @@
             <th>Health</th>
             <th>Status</th>
             <th>Initiated</th>
-            <th></th>
+            <th class="action-col"></th>
           </tr>
         </thead>
         <tbody>
@@ -187,10 +199,15 @@
                 {/if}
               </td>
               <td>{s.initiation_date}</td>
-              <td>
-                {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-                  <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }}>Archive</button>
-                {/if}
+              <td class="action-col">
+                <div class="row-actions">
+                  <button class="btn btn-sm btn-qr" onclick={(e) => openQr(e, s)} title="Generate QR code">
+                    &#9641; QR
+                  </button>
+                  {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
+                    <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }}>Archive</button>
+                  {/if}
+                </div>
               </td>
             </tr>
           {/each}
@@ -208,10 +225,59 @@
   {/if}
 </div>
 
+<!-- QR Code Modal -->
+{#if qrSpecimen}
+  <QrModal specimen={qrSpecimen} onclose={() => (qrSpecimen = null)} />
+{/if}
+
+<!-- QR Scanner Modal -->
+{#if showScanner}
+  <QrScanner onclose={() => (showScanner = false)} />
+{/if}
+
 <style>
   .clickable { cursor: pointer; }
   .clickable:hover td { background: #eff6ff !important; }
   :global(.dark) .clickable:hover td { background: #1e3a5f !important; }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .btn-scan {
+    background: #0f172a;
+    color: #94a3b8;
+    border-color: #334155;
+    font-size: 13px;
+    gap: 6px;
+  }
+  .btn-scan:hover { background: #1e293b; color: #e2e8f0; }
+  :global(.dark) .btn-scan { background: #334155; color: #e2e8f0; border-color: #475569; }
+
+  .btn-qr {
+    background: #f0fdf4;
+    color: #15803d;
+    border-color: #86efac;
+    font-size: 11px;
+    padding: 4px 8px;
+    min-height: 32px;
+  }
+  .btn-qr:hover { background: #dcfce7; }
+  :global(.dark) .btn-qr { background: rgba(34,197,94,0.1); color: #4ade80; border-color: #166534; }
+
+  .table-card { overflow-x: auto; }
+
+  .row-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .action-col { white-space: nowrap; }
+
   .pagination {
     display: flex;
     align-items: center;
@@ -219,5 +285,20 @@
     gap: 16px;
     margin-top: 16px;
     font-size: 13px;
+  }
+
+  /* ── Mobile ── */
+  @media (max-width: 768px) {
+    .header-actions {
+      gap: 6px;
+    }
+    .btn-scan {
+      min-height: 44px;
+      font-size: 14px;
+    }
+    .btn-qr {
+      min-height: 40px;
+      font-size: 12px;
+    }
   }
 </style>

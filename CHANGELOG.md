@@ -5,6 +5,36 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-03-02
+
+### Added
+
+- **QR Code generation** (`QrModal.svelte`): Every specimen now has a **Generate QR** button — click it to instantly produce a 256×256 QR code that encodes the accession number, species code, stage, and location as a JSON payload. The modal shows the QR image alongside specimen metadata and offers two actions:
+  - **Print Label** — opens a browser print dialog with a formatted 3.5-inch label (SteloPTC brand, accession number, QR image, species and stage text) optimised for lab label printers. Uses a new print window with `@media print` stylesheet.
+  - **Download PNG** — saves the QR image as `QR-{accession}.png` via a blob download.
+- **QR Code scanning** (`QrScanner.svelte`): A **Scan QR** button appears globally on the Specimens list header and inside each Specimen Detail page. The scanner uses `html5-qrcode` (v2.3) to access the device camera:
+  - **Desktop / laptop**: uses the webcam.
+  - **Android**: uses the phone camera (rear/environment camera preferred automatically).
+  - Multi-camera support: a dropdown appears when multiple cameras are detected.
+  - Animated scan-line overlay indicates active scanning.
+  - On successful decode, the accession number is extracted from the QR JSON payload and the app searches for the matching specimen automatically — tapping **Open Specimen** navigates directly to its detail page.
+  - All scan events are persisted to SQLite (see below).
+- **QR Scan log** (`qr_scans` table, `commands/qr_scans.rs`): Every QR scan is recorded in a new `qr_scans` SQLite table (`id`, `raw_data`, `accession_number`, `scanned_by`, `scanned_at`). Two new Tauri commands: `store_qr_scan` and `list_qr_scans`. Migration 004 creates the table with indexes on accession number and timestamp.
+- **Camera permission** (`AndroidManifest.xml`): Added `android.permission.CAMERA` permission and `android.hardware.camera` feature declaration (both `required="false"` so the APK installs on devices without a camera).
+- **npm packages**: `qrcode` (^1.5.4) for QR image generation; `html5-qrcode` (^2.3.8) for camera-based scanning; `@types/qrcode` for TypeScript types.
+
+### Changed
+
+- **Mobile breakpoint expanded 768px → 1024px**: The hamburger-menu / slide-out drawer is now shown on all screens narrower than 1024 px — correctly covering large Android phones (Pixel 9 Pro: 412 dp wide) and 10-inch tablets in portrait mode. Previously the sidebar was always-visible on tablets, wasting space.
+- **Sidebar drawer width**: capped at `min(280px, 85vw)` so it never covers the full screen and the overlay is always visible as a close affordance.
+- **Hamburger button** size increased to 48×48 px (up from 44×44 px), border-radius 10 px, drop shadow, and hover state for better discoverability.
+- **Sidebar version**: bumped to `v0.1.14`.
+- **Touch targets** on tablet breakpoint: `input`, `select`, `textarea` — min-height 48 px, padding 10×14 px, font-size 15 px. `.btn` — min-height 48 px, padding 10×18 px. Nav items — min-height 52 px with 14×16 px padding, font-size 15 px.
+- **Table cells** on mobile: `th` 12 px padding, `td` 13×14 px padding — more legible on small screens.
+- **`.page-header`** stacks vertically on screens ≤ 640 px so title and action buttons never overlap.
+- **Main content padding**: 64 px top on tablet (≤ 1024 px), 60 px top on phone (≤ 640 px) — correct clearance for the hamburger button with safe-area insets.
+- Version bumped to **0.1.14** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 14), `app/build.gradle.kts` (versionCode 14), and sidebar display.
+
 ## [0.1.13] - 2026-03-01
 
 ### Added
