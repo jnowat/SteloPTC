@@ -86,6 +86,19 @@ jobs:
           rm -rf src-tauri/gen/android
           cargo tauri android init --ci
 
+      # cargo tauri android init regenerates AndroidManifest.xml from the
+      # Tauri template, discarding any committed customizations.  Re-inject
+      # the CAMERA permission needed for QR scanning via getUserMedia.
+      - name: Patch AndroidManifest.xml — add CAMERA permission
+        run: |
+          MANIFEST=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          if ! grep -q "android.permission.CAMERA" "$MANIFEST"; then
+            sed -i 's|<uses-permission android:name="android.permission.INTERNET" />|<uses-permission android:name="android.permission.INTERNET" />\n    <uses-permission android:name="android.permission.CAMERA" />|' "$MANIFEST"
+            echo "Injected CAMERA permission into AndroidManifest.xml"
+          else
+            echo "CAMERA permission already present"
+          fi
+
       - name: Make gradlew executable
         run: chmod +x src-tauri/gen/android/gradlew
 

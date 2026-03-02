@@ -5,6 +5,9 @@
     <!-- Network access for Tauri's WebView and local dev server -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Camera access for QR code scanning via WebView getUserMedia -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <!-- Required for file access via tauri-plugin-fs -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />

@@ -43,8 +43,7 @@
     "android": {
       "autoIncrementVersionCode": false,
       "minSdkVersion": 24,
-      "versionCode": 14,
-      "permissions": ["android.permission.CAMERA"]
+      "versionCode": 14
     }
   },
   "plugins": {}
