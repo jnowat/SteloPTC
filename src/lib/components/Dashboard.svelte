@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, resetDatabase } from '../api';
+  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, resetDatabase, getContaminationStats, getSubcultureSchedule } from '../api';
   import { navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
@@ -8,7 +8,12 @@
   let reminders = $state<any[]>([]);
   let flags = $state<any[]>([]);
   let lowStock = $state<any[]>([]);
+  let contaminationStats = $state<any>(null);
+  let schedule = $state<any[]>([]);
   let loading = $state(true);
+
+  let overdueItems = $derived(schedule.filter((e: any) => e.is_overdue));
+  let dueSoonItems = $derived(schedule.filter((e: any) => !e.is_overdue && e.days_until_due !== null && e.days_until_due <= 7));
   let backingUp = $state(false);
   let showResetPanel = $state(false);
   let resetPhrase = $state('');
@@ -21,16 +26,20 @@
   async function loadDashboard() {
     loading = true;
     try {
-      const [s, r, f, ls] = await Promise.all([
+      const [s, r, f, ls, cs, sch] = await Promise.all([
         getSpecimenStats(),
         getActiveReminders(),
         getComplianceFlags(),
         getLowStockAlerts(),
+        getContaminationStats(),
+        getSubcultureSchedule(),
       ]);
       stats = s;
       reminders = r;
       flags = f;
       lowStock = ls;
+      contaminationStats = cs;
+      schedule = sch;
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -125,6 +134,20 @@
         <div class="stat-value">{lowStock.length}</div>
         <div class="stat-label">Low Stock Items</div>
       </div>
+      {#if contaminationStats}
+        <div class="stat-card" class:alert={contaminationStats.contaminated_specimens > 0}>
+          <div class="stat-value">{contaminationStats.contaminated_specimens}</div>
+          <div class="stat-label">Contaminated Vessels</div>
+        </div>
+        <div class="stat-card" class:alert={contaminationStats.contamination_rate_pct > 10}>
+          <div class="stat-value">{contaminationStats.contamination_rate_pct.toFixed(1)}%</div>
+          <div class="stat-label">Contamination Rate</div>
+        </div>
+      {/if}
+      <div class="stat-card" class:alert={overdueItems.length > 0}>
+        <div class="stat-value">{overdueItems.length}</div>
+        <div class="stat-label">Overdue Subcultures</div>
+      </div>
     </div>
 
     <div class="dashboard-panels">
@@ -217,6 +240,106 @@
           </div>
         {/if}
       </div>
+
+      <!-- Subculture Schedule panel -->
+      <div class="panel">
+        <h3>Subculture Schedule</h3>
+        {#if schedule.length === 0}
+          <p class="empty-state">No specimens with scheduling data</p>
+        {:else}
+          {#if overdueItems.length > 0}
+            <div class="schedule-section-label overdue-label">Overdue ({overdueItems.length})</div>
+            <div class="schedule-list">
+              {#each overdueItems.slice(0, 5) as entry}
+                <div class="schedule-item overdue-item">
+                  <div class="schedule-item-left">
+                    <span class="schedule-accession">{entry.accession_number}</span>
+                    <span class="schedule-species">{entry.species_code}</span>
+                  </div>
+                  <div class="schedule-item-right">
+                    <span class="badge badge-red">{Math.abs(entry.days_until_due)}d overdue</span>
+                    {#if entry.next_due_date}
+                      <span class="schedule-date">Due {entry.next_due_date}</span>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if dueSoonItems.length > 0}
+            <div class="schedule-section-label" style="margin-top:{overdueItems.length > 0 ? 12 : 0}px;">Due within 7 days ({dueSoonItems.length})</div>
+            <div class="schedule-list">
+              {#each dueSoonItems.slice(0, 5) as entry}
+                <div class="schedule-item">
+                  <div class="schedule-item-left">
+                    <span class="schedule-accession">{entry.accession_number}</span>
+                    <span class="schedule-species">{entry.species_code}</span>
+                  </div>
+                  <div class="schedule-item-right">
+                    <span class="badge badge-yellow">{entry.days_until_due}d left</span>
+                    {#if entry.next_due_date}
+                      <span class="schedule-date">Due {entry.next_due_date}</span>
+                    {/if}
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if overdueItems.length === 0 && dueSoonItems.length === 0}
+            <p class="empty-state">All subcultures on schedule</p>
+          {/if}
+          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('specimens')}>
+            View specimens
+          </button>
+        {/if}
+      </div>
+
+      <!-- Contamination Stats panel -->
+      {#if contaminationStats}
+        <div class="panel">
+          <h3>Contamination Overview</h3>
+          <div class="contam-rate-row">
+            <div class="contam-rate-value" class:contam-high={contaminationStats.contamination_rate_pct > 10}>
+              {contaminationStats.contamination_rate_pct.toFixed(1)}%
+            </div>
+            <div class="contam-rate-meta">
+              <span>{contaminationStats.contaminated_specimens} / {contaminationStats.total_specimens} specimens affected</span>
+              <span>{contaminationStats.contaminated_vessels} total contaminated vessel events</span>
+            </div>
+          </div>
+          {#if contaminationStats.by_vessel_type.length > 0}
+            <div class="contam-breakdown-label">By vessel type</div>
+            <div class="chart-bars">
+              {#each contaminationStats.by_vessel_type as vt}
+                <div class="bar-row">
+                  <span class="bar-label" title={vt.vessel_type}>{vt.vessel_type}</span>
+                  <div class="bar-track">
+                    <div
+                      class="bar-fill contam-fill"
+                      style="width: {Math.max(4, (vt.count / Math.max(...contaminationStats.by_vessel_type.map((x: any) => x.count))) * 100)}%"
+                    ></div>
+                  </div>
+                  <span class="bar-value">{vt.count}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          {#if contaminationStats.recent_events.length > 0}
+            <div class="contam-breakdown-label" style="margin-top:12px;">Recent events</div>
+            <div class="flag-list">
+              {#each contaminationStats.recent_events.slice(0, 5) as ev}
+                <div class="flag-item">
+                  <span class="badge badge-red">P{ev.passage_number}</span>
+                  <div>
+                    <div class="flag-accession">{ev.accession_number} <span style="font-weight:400;color:#6b7280;">({ev.species_code})</span></div>
+                    <div class="flag-message">{ev.date}{ev.vessel_type ? ` · ${ev.vessel_type}` : ''}{ev.contamination_notes ? ` · ${ev.contamination_notes}` : ''}</div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <div class="panel">
         <h3>Inventory Alerts</h3>
@@ -383,4 +506,45 @@
     display: flex;
     flex-direction: column;
   }
+
+  /* ── Subculture Schedule ── */
+  .schedule-list { display: flex; flex-direction: column; gap: 8px; }
+  .schedule-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 10px; border-radius: 6px; background: #f8fafc; gap: 8px;
+  }
+  :global(.dark) .schedule-item { background: #0f172a; }
+  .overdue-item { background: #fff1f2; }
+  :global(.dark) .overdue-item { background: #1c0404; }
+  .schedule-item-left { display: flex; flex-direction: column; gap: 2px; }
+  .schedule-item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .schedule-accession { font-size: 13px; font-weight: 700; font-family: monospace; }
+  .schedule-species { font-size: 11px; color: #6b7280; }
+  .schedule-date { font-size: 11px; color: #6b7280; }
+  .schedule-section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #6b7280; margin-bottom: 6px;
+  }
+  .overdue-label { color: #b91c1c; }
+  :global(.dark) .overdue-label { color: #f87171; }
+
+  /* ── Contamination Overview ── */
+  .contam-rate-row {
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px; border-radius: 8px; background: #fff1f2;
+    margin-bottom: 12px;
+  }
+  :global(.dark) .contam-rate-row { background: #1c0404; }
+  .contam-rate-value {
+    font-size: 36px; font-weight: 800; color: #374151; flex-shrink: 0;
+  }
+  .contam-high { color: #b91c1c; }
+  :global(.dark) .contam-high { color: #f87171; }
+  :global(.dark) .contam-rate-value { color: #f1f5f9; }
+  .contam-rate-meta { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #6b7280; }
+  .contam-breakdown-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #6b7280; margin-bottom: 6px;
+  }
+  .contam-fill { background: #ef4444; }
 </style>

@@ -58,6 +58,8 @@ pub fn run() {
             commands::subcultures::list_subcultures,
             commands::subcultures::create_subculture,
             commands::subcultures::update_subculture,
+            commands::subcultures::get_contamination_stats,
+            commands::subcultures::get_subculture_schedule,
             // Reminders
             commands::reminders::list_reminders,
             commands::reminders::create_reminder,

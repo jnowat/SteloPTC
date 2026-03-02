@@ -33,6 +33,20 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])?;
     }
 
+    if current < 5 {
+        migration_005_contamination_schedule(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (5)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_005_contamination_schedule(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch("
+        ALTER TABLE subcultures ADD COLUMN contamination_flag INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE subcultures ADD COLUMN contamination_notes TEXT;
+        CREATE INDEX IF NOT EXISTS idx_subcultures_contamination ON subcultures(contamination_flag);
+    ")?;
     Ok(())
 }
 

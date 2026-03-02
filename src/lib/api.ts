@@ -113,6 +113,14 @@ export async function updateSubculture(request: any) {
   return call<void>('update_subculture', { request });
 }
 
+export async function getContaminationStats() {
+  return call<any>('get_contamination_stats');
+}
+
+export async function getSubcultureSchedule() {
+  return call<any[]>('get_subculture_schedule');
+}
+
 // Reminders
 export async function listReminders() {
   return call<any[]>('list_reminders');

@@ -52,6 +52,8 @@
     health_status: '',
     health_unknown: false,
     employee_id: '',
+    contamination_flag: false,
+    contamination_notes: '',
   });
 
   // Media date warning: show if selected media batch was prepared after the passage date
@@ -167,6 +169,8 @@
         observations: subcultureForm.observations || undefined,
         health_status: effectivePassageHealth() !== '' ? effectivePassageHealth() : undefined,
         employee_id: subcultureForm.employee_id || undefined,
+        contamination_flag: subcultureForm.contamination_flag || undefined,
+        contamination_notes: subcultureForm.contamination_notes || undefined,
       });
 
       if (isSplitting && splitCount > 1) {
@@ -205,6 +209,7 @@
         media_batch_id: '', vessel_type: '', temperature_c: '',
         ph: '', light_cycle: '', notes: '', observations: '',
         health_status: '', health_unknown: false, employee_id: '',
+        contamination_flag: false, contamination_notes: '',
       };
       loadAll($selectedSpecimenId!);
     } catch (e: any) {
@@ -527,6 +532,24 @@
               <input type="text" bind:value={subcultureForm.employee_id} placeholder="e.g., EMP-042" />
             </div>
 
+            <!-- Contamination -->
+            <div class="contamination-row">
+              <label class="contam-toggle-label">
+                <input type="checkbox" bind:checked={subcultureForm.contamination_flag} style="width:auto;" />
+                <span class="contam-toggle-text">Contamination detected in this vessel</span>
+              </label>
+              {#if subcultureForm.contamination_flag}
+                <div class="form-group" style="margin-top:8px;">
+                  <label>Contamination Notes</label>
+                  <textarea
+                    bind:value={subcultureForm.contamination_notes}
+                    rows="2"
+                    placeholder="Describe type (bacterial, fungal, yeast…), extent, and any action taken…"
+                  ></textarea>
+                </div>
+              {/if}
+            </div>
+
             <!-- Observations + Notes -->
             <div class="form-row">
               <div class="form-group" style="flex:1;">
@@ -603,6 +626,9 @@
                       <span class="tl-passage-num" style="color:{color};">P{sc.passage_number}</span>
                       <div class="tl-card-summary">
                         <span class="tl-date">{sc.date}</span>
+                        {#if sc.contamination_flag}
+                          <span class="tl-pill contam-pill">⚠ Contaminated</span>
+                        {/if}
                         {#if sc.media_batch_name}
                           <span class="tl-pill media-pill">{sc.media_batch_name}</span>
                         {/if}
@@ -734,6 +760,14 @@
                             {/if}
                           {/if}
                         </div>
+                        {#if sc.contamination_flag}
+                          <div class="tl-detail-text contam-detail">
+                            <span class="tl-detail-label">Contamination</span>
+                            <p class="tl-detail-p">
+                              {sc.contamination_notes || 'Contamination flagged — no notes recorded.'}
+                            </p>
+                          </div>
+                        {/if}
                         {#if sc.observations}
                           <div class="tl-detail-text">
                             <span class="tl-detail-label">Observations</span>
@@ -1068,9 +1102,11 @@
   .media-pill { background: #ede9fe; color: #5b21b6; }
   .vessel-pill { background: #e0f2fe; color: #0369a1; }
   .loc-pill { background: #f0fdf4; color: #166534; }
+  .contam-pill { background: #fee2e2; color: #b91c1c; font-weight: 700; }
   :global(.dark) .media-pill { background: #3b0764; color: #c4b5fd; }
   :global(.dark) .vessel-pill { background: #0c4a6e; color: #7dd3fc; }
   :global(.dark) .loc-pill { background: #14532d; color: #86efac; }
+  :global(.dark) .contam-pill { background: #7f1d1d; color: #fca5a5; }
 
   /* Card expanded body */
   .tl-card-body { padding: 0 14px 14px; border-top: 1px solid #f1f5f9; }
@@ -1088,4 +1124,23 @@
   .tl-detail-text { margin-top: 10px; }
   .tl-detail-p { margin: 3px 0 0; font-size: 13px; color: #374151; white-space: pre-wrap; line-height: 1.5; }
   :global(.dark) .tl-detail-p { color: #cbd5e1; }
+  .contam-detail { background: #fff1f2; border-radius: 6px; padding: 8px 10px; margin-top: 10px; }
+  :global(.dark) .contam-detail { background: #450a0a; }
+  .contam-detail .tl-detail-label { color: #b91c1c; }
+  :global(.dark) .contam-detail .tl-detail-label { color: #f87171; }
+  .contam-detail .tl-detail-p { color: #7f1d1d; }
+  :global(.dark) .contam-detail .tl-detail-p { color: #fca5a5; }
+
+  /* Contamination toggle in passage form */
+  .contamination-row {
+    border: 1px dashed #fca5a5; border-radius: 6px;
+    padding: 12px; margin-top: 4px; margin-bottom: 8px;
+    background: #fff1f2;
+  }
+  :global(.dark) .contamination-row { background: #1c0404; border-color: #7f1d1d; }
+  .contamination-row.active { border-color: #ef4444; background: #fee2e2; }
+  :global(.dark) .contamination-row.active { background: #450a0a; }
+  .contam-toggle-label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
+  .contam-toggle-text { color: #b91c1c; }
+  :global(.dark) .contam-toggle-text { color: #f87171; }
 </style>
