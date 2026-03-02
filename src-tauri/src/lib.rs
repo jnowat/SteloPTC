@@ -101,6 +101,9 @@ pub fn run() {
             commands::error_logs::get_unread_error_count,
             commands::error_logs::mark_errors_read,
             commands::error_logs::clear_error_logs,
+            // QR Scans
+            commands::qr_scans::store_qr_scan,
+            commands::qr_scans::list_qr_scans,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

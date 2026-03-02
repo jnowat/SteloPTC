@@ -59,7 +59,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.13</span>
+    <span class="version">v0.1.14</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -107,18 +107,21 @@
     gap: 5px;
     position: fixed;
     /* Shift down by the status-bar / notch safe area so it's never hidden */
-    top: calc(12px + env(safe-area-inset-top, 0px));
-    left: calc(12px + env(safe-area-inset-left, 0px));
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    left: calc(14px + env(safe-area-inset-left, 0px));
     z-index: 1100;
-    width: 44px;
-    height: 44px;
-    min-height: 44px;
-    padding: 10px;
+    width: 48px;
+    height: 48px;
+    min-height: 48px;
+    padding: 12px;
     background: #1e293b;
     border: 1px solid #334155;
-    border-radius: 8px;
+    border-radius: 10px;
     cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    transition: background 0.15s;
   }
+  .hamburger:hover { background: #334155; }
   .hamburger span {
     display: block;
     width: 100%;
@@ -258,15 +261,15 @@
   }
   .icon-btn:hover { background: #334155; color: #e2e8f0; }
 
-  /* ── Sidebar header safe-area top padding on mobile ───────────── */
-  @media (max-width: 768px) {
+  /* ── Sidebar header safe-area top padding on mobile/tablet ───── */
+  @media (max-width: 1024px) {
     .sidebar-header {
       padding-top: calc(20px + env(safe-area-inset-top, 0px));
     }
   }
 
-  /* ── Mobile breakpoint ──────────────────────────────────────── */
-  @media (max-width: 768px) {
+  /* ── Mobile/tablet breakpoint (< 1024px) ───────────────────── */
+  @media (max-width: 1024px) {
     .hamburger {
       display: flex;
     }
@@ -275,41 +278,46 @@
       display: block;
     }
 
+    /* Full-screen slide-out drawer */
     .sidebar {
       position: fixed;
       top: 0;
       left: 0;
-      height: 100vh;
+      width: min(280px, 85vw);
+      height: 100dvh;
       z-index: 1100;
       transform: translateX(-100%);
-      transition: transform 0.25s ease;
-      box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 4px 0 32px rgba(0, 0, 0, 0.5);
     }
     .sidebar.mobile-open {
       transform: translateX(0);
     }
 
     .drawer-close {
-      display: block;
+      display: flex;
     }
 
-    /* Larger touch targets on mobile (44 px = Apple HIG minimum) */
+    /* Larger touch targets on mobile/tablet (48px = WCAG 2.5.5 / Apple HIG) */
     .nav-item {
-      padding: 12px 14px;
-      font-size: 14px;
-      min-height: 48px;
+      padding: 14px 16px;
+      font-size: 15px;
+      min-height: 52px;
+      border-radius: 8px;
     }
+    .nav-icon { font-size: 18px; }
     .icon-btn {
       width: 48px;
       height: 48px;
       min-height: 48px;
+      font-size: 18px;
     }
     .drawer-close {
-      min-height: 44px;
-      min-width: 44px;
-      display: flex;
+      min-height: 48px;
+      min-width: 48px;
       align-items: center;
       justify-content: center;
+      font-size: 20px;
     }
   }
 </style>

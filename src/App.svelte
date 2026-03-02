@@ -252,13 +252,22 @@
   }
 
   /* ── Mobile responsive ──────────────────────────────────────── */
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     .main-content {
       /* top: hamburger height + status bar safe area; sides/bottom: safe-area insets */
+      padding-top: calc(64px + env(safe-area-inset-top, 0px));
+      padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+      padding-left: calc(20px + env(safe-area-inset-left, 0px));
+      padding-right: calc(20px + env(safe-area-inset-right, 0px));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .main-content {
       padding-top: calc(60px + env(safe-area-inset-top, 0px));
       padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-      padding-left: calc(16px + env(safe-area-inset-left, 0px));
-      padding-right: calc(16px + env(safe-area-inset-right, 0px));
+      padding-left: calc(12px + env(safe-area-inset-left, 0px));
+      padding-right: calc(12px + env(safe-area-inset-right, 0px));
     }
   }
 
@@ -329,7 +338,7 @@
   :global(.form-row) { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   :global(.form-row-3) { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     :global(.form-row),
     :global(.form-row-3) {
       grid-template-columns: 1fr;
@@ -360,26 +369,38 @@
   :global(.dark td) { border-bottom-color: #1e293b; }
   :global(.dark tr:hover td) { background: #1e293b; }
 
-  /* Horizontal-scroll tables on mobile */
-  @media (max-width: 768px) {
+  /* Horizontal-scroll tables + 48px touch targets on mobile/tablet */
+  @media (max-width: 1024px) {
     :global(.card) { overflow-x: auto; }
-    :global(table) { min-width: 560px; }
+    :global(table) { min-width: 600px; }
     /* Larger touch targets for fingers: WCAG 2.5.8 recommends 24×24px, Apple HIG 44px */
     :global(input),
     :global(select),
     :global(textarea) {
-      padding: 10px 12px;
-      font-size: 14px;
+      padding: 10px 14px;
+      font-size: 15px;
       min-height: 48px;
     }
     :global(.btn) {
-      padding: 10px 16px;
+      padding: 10px 18px;
       font-size: 14px;
       min-height: 48px;
     }
     :global(button) {
       min-height: 48px;
     }
+    /* More readable table cells on mobile */
+    :global(th) { padding: 12px 14px; font-size: 12px; }
+    :global(td) { padding: 13px 14px; font-size: 14px; }
+  }
+
+  @media (max-width: 640px) {
+    :global(.page-header) {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    :global(.page-header h1) { font-size: 20px; }
   }
 
   :global(.badge) {

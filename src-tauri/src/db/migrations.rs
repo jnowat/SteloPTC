@@ -28,6 +28,26 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])?;
     }
 
+    if current < 4 {
+        migration_004_v0114(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_004_v0114(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS qr_scans (
+            id TEXT PRIMARY KEY,
+            raw_data TEXT NOT NULL,
+            accession_number TEXT,
+            scanned_by TEXT REFERENCES users(id),
+            scanned_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_qr_scans_accession ON qr_scans(accession_number);
+        CREATE INDEX IF NOT EXISTS idx_qr_scans_at ON qr_scans(scanned_at);
+    ")?;
     Ok(())
 }
 
