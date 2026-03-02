@@ -117,13 +117,13 @@
   <div class="page-header">
     <h1>Specimens ({total})</h1>
     <div class="header-actions">
-      <button class="btn btn-scan" onclick={() => (showScanner = true)} title="Scan a QR code">
+      <button class="btn btn-scan" onclick={() => (showScanner = true)} title="Open QR code scanner to find a specimen by scanning its label">
         &#128247; Scan QR
       </button>
-      <button class="btn btn-sm" onclick={() => handleExport('csv')}>Export CSV</button>
-      <button class="btn btn-sm" onclick={() => handleExport('json')}>Export JSON</button>
+      <button class="btn btn-sm" onclick={() => handleExport('csv')} title="Download all specimens as a CSV spreadsheet">Export CSV</button>
+      <button class="btn btn-sm" onclick={() => handleExport('json')} title="Download all specimens as a JSON file">Export JSON</button>
       {#if $currentUser?.role !== 'guest'}
-        <button class="btn btn-primary" onclick={() => (showForm = true)}>+ New Specimen</button>
+        <button class="btn btn-primary" onclick={() => (showForm = true)} title="Open form to register a new specimen">+ New Specimen</button>
       {/if}
     </div>
   </div>
@@ -131,10 +131,10 @@
   <div class="filters card" style="margin-bottom:16px;">
     <div class="form-row-3">
       <div>
-        <input type="text" placeholder="Search accession, notes, location..." bind:value={searchQuery} onkeydown={(e) => e.key === 'Enter' && handleSearch()} />
+        <input type="text" placeholder="Search accession, notes, location..." bind:value={searchQuery} onkeydown={(e) => e.key === 'Enter' && handleSearch()} title="Search by accession number, notes, or storage location — press Enter to apply" />
       </div>
       <div>
-        <select bind:value={filterSpecies} onchange={handleSearch}>
+        <select bind:value={filterSpecies} onchange={handleSearch} title="Filter specimens by species">
           <option value="">All species</option>
           {#each species as sp}
             <option value={sp.id}>{sp.species_code} - {sp.genus} {sp.species_name}</option>
@@ -142,13 +142,13 @@
         </select>
       </div>
       <div style="display:flex;gap:8px;">
-        <select bind:value={filterStage} onchange={handleSearch}>
+        <select bind:value={filterStage} onchange={handleSearch} title="Filter specimens by development stage (e.g., explant, callus, shoot, plantlet)">
           <option value="">All stages</option>
           {#each stages as s}
             <option value={s}>{s}</option>
           {/each}
         </select>
-        <button class="btn btn-sm" onclick={handleSearch}>Search</button>
+        <button class="btn btn-sm" onclick={handleSearch} title="Apply current search query and filters">Search</button>
       </div>
     </div>
   </div>
@@ -171,15 +171,15 @@
       <table>
         <thead>
           <tr>
-            <th>Accession</th>
-            <th>Species</th>
-            <th>Stage</th>
-            <th>Location</th>
-            <th>Passages</th>
-            <th>Health</th>
-            <th>Status</th>
-            <th>Initiated</th>
-            <th class="action-col"></th>
+            <th title="Unique accession number assigned to this specimen">Accession</th>
+            <th title="Scientific species this specimen belongs to">Species</th>
+            <th title="Current development stage of the specimen (e.g., explant, callus, shoot, plantlet)">Stage</th>
+            <th title="Physical storage location within the facility (room, rack, shelf, tray)">Location</th>
+            <th title="Number of subcultures (transfers to fresh media) performed on this specimen">Passages</th>
+            <th title="Current health rating of the specimen (0 = Dead, 4 = Healthy)">Health</th>
+            <th title="Quarantine or active status of the specimen">Status</th>
+            <th title="Date the specimen culture was first initiated">Initiated</th>
+            <th class="action-col" title="Row actions: view QR code, archive specimen"></th>
           </tr>
         </thead>
         <tbody>
@@ -187,25 +187,25 @@
             <tr class="clickable" onclick={() => openDetail(s.id)}>
               <td><strong>{s.accession_number}</strong></td>
               <td>{s.species_code || '—'}</td>
-              <td><span class="badge badge-blue">{s.stage}</span></td>
+              <td><span class="badge badge-blue" title="Development stage: {s.stage}">{s.stage}</span></td>
               <td>{s.location || '—'}</td>
               <td>{s.subculture_count}</td>
               <td>{s.health_status || '—'}</td>
               <td>
                 {#if s.quarantine_flag}
-                  <span class="badge badge-red">Quarantine</span>
+                  <span class="badge badge-red" title="This specimen is under quarantine restrictions — handling or transfer may be limited">Quarantine</span>
                 {:else}
-                  <span class="badge badge-green">Active</span>
+                  <span class="badge badge-green" title="This specimen is active and cleared for normal handling">Active</span>
                 {/if}
               </td>
               <td>{s.initiation_date}</td>
               <td class="action-col">
                 <div class="row-actions">
-                  <button class="btn btn-sm btn-qr" onclick={(e) => openQr(e, s)} title="Generate QR code">
+                  <button class="btn btn-sm btn-qr" onclick={(e) => openQr(e, s)} title="View and print the QR code label for this specimen">
                     &#9641; QR
                   </button>
                   {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-                    <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }}>Archive</button>
+                    <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }} title="Archive this specimen (soft delete — record is preserved and can be recovered)">Archive</button>
                   {/if}
                 </div>
               </td>
@@ -217,9 +217,9 @@
 
     {#if totalPages > 1}
       <div class="pagination">
-        <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }}>Prev</button>
-        <span>Page {page} of {totalPages}</span>
-        <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }}>Next</button>
+        <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }} title="Go to the previous page of specimens">Prev</button>
+        <span title="Current page position in the specimen list">Page {page} of {totalPages}</span>
+        <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }} title="Go to the next page of specimens">Next</button>
       </div>
     {/if}
   {/if}

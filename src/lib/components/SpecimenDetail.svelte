@@ -269,7 +269,7 @@
 <div class="specimen-detail">
   <div class="page-header">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <button class="btn btn-sm" onclick={() => navigateTo('specimens')}>&larr; Back</button>
+      <button class="btn btn-sm" title="Return to specimen list" onclick={() => navigateTo('specimens')}>&larr; Back</button>
       <div>
         <h1 style="margin-bottom:3px;">{specimen?.accession_number || 'Loading...'}</h1>
         {#if specimen}
@@ -280,22 +280,22 @@
         {#if specimen.health_status !== null && specimen.health_status !== '' && !isNaN(Number(specimen.health_status))}
           {@const hb = healthInfo(specimen.health_status)}
           {#if hb}
-            <span class="health-badge" style="background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">{hb.label}</span>
+            <span class="health-badge" title="Current health score for this specimen (0=Dead, 4=Healthy)" style="background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">{hb.label}</span>
           {/if}
         {/if}
         {#if specimen.quarantine_flag}
-          <span class="badge badge-red">Quarantined</span>
+          <span class="badge badge-red" title="This specimen is under quarantine — movement restricted">Quarantined</span>
         {:else}
-          <span class="badge badge-green">Active</span>
+          <span class="badge badge-green" title="This specimen is active and not under quarantine">Active</span>
         {/if}
       {/if}
     </div>
     {#if specimen}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-qr-detail" onclick={() => (showQrScanner = true)}>
+        <button class="btn btn-qr-detail" title="Open camera to scan a QR code" onclick={() => (showQrScanner = true)}>
           &#128247; Scan QR
         </button>
-        <button class="btn btn-qr-detail btn-qr-generate" onclick={() => (showQrModal = true)}>
+        <button class="btn btn-qr-detail btn-qr-generate" title="Generate a printable QR code label for this specimen" onclick={() => (showQrModal = true)}>
           &#9641; Generate QR
         </button>
       </div>
@@ -313,7 +313,7 @@
           <div class="lineage-row">
             <span class="lineage-icon">↑</span>
             <span class="lineage-label">Split from</span>
-            <button class="lineage-chip parent-chip" onclick={() => navigateToSpecimen(parentSpecimen.id)}>
+            <button class="lineage-chip parent-chip" title="Navigate to parent specimen — this specimen was split from {parentSpecimen.accession_number}" onclick={() => navigateToSpecimen(parentSpecimen.id)}>
               {parentSpecimen.accession_number}
               <span class="lineage-chip-sub">{parentSpecimen.species_code}</span>
             </button>
