@@ -5,6 +5,28 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.15] - 2026-03-02
+
+### Added
+
+- **`Tooltip.svelte` — reusable "?" tooltip component**: A new `Tooltip.svelte` component renders a small circular `?` badge inline with any label, button, or heading. Hovering or focusing the badge (with a 250 ms delay) displays a dark-themed popup bubble with an arrow pointing to the trigger. Supports four placement positions (`top`, `bottom`, `left`, `right`). Smooth fade-in animation, dark mode aware, and fully keyboard-accessible (`tabindex="0"`, `role="button"`).
+- **"?" tooltip indicators throughout the UI**: The `Tooltip` component is now used everywhere meaningful:
+  - **New Specimen form**: all field labels (Species, Stage, Initiation Date, Propagation Method, Location, Health Status, Initial Media Batch, Provenance/Origin, Source Plant, Employee ID, Notes) now show a `?` badge with contextual help text.
+  - **Specimen Detail**: Scan QR, Generate QR, and Record Passage action buttons; passage form labels (Date, Media Batch).
+  - **Specimen List header**: Scan QR, Export CSV, Export JSON, and New Specimen buttons.
+  - **QR Code modal header**: `?` badge explains what the QR code encodes and how to scan it.
+- **Improved QR print label (2×3 inch)**: The "Print Label" action now opens a print window sized precisely at `2in × 3in` with a `@page { size: 2in 3in; margin: 0 }` rule for direct label-printer output. The new layout includes:
+  - Header row: **SteloPTC** brand (left) + bold monospace **accession number** (right).
+  - Centred **1.35×1.35 inch QR code** image (pixelated rendering for crisp barcode output).
+  - Bold italic **species name** (species code or *Genus species*) + optional common name below.
+  - Data rows: Stage, Initiation Date (if available), Location (if set).
+  - Footer: "SteloPTC · Tissue Culture Management".
+  - All text is human-readable without a scanner — satisfies the original label requirements.
+
+### Changed
+
+- Version bumped to **0.1.15** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 15), `app/build.gradle.kts` (versionCode 15), and sidebar display.
+
 ## [0.1.14] - 2026-03-02
 
 ### Added

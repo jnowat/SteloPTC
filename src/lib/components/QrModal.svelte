@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import QRCode from 'qrcode';
+  import Tooltip from './Tooltip.svelte';
 
   interface Props {
     specimen: {
@@ -8,9 +9,11 @@
       species_code?: string;
       genus?: string;
       species_name?: string;
+      common_name?: string;
       stage: string;
       location?: string;
       health_status?: number | string;
+      initiation_date?: string;
       id: string;
     };
     onclose: () => void;
@@ -50,8 +53,21 @@
   });
 
   function printLabel() {
-    const win = window.open('', '_blank', 'width=400,height=500');
+    const win = window.open('', '_blank', 'width=360,height=540');
     if (!win) return;
+
+    const speciesDisplay = specimen.species_code
+      ? specimen.species_code
+      : (`${specimen.genus ?? ''} ${specimen.species_name ?? ''}`).trim() || '—';
+    const commonName = specimen.common_name ? `<div class="label-common">${specimen.common_name}</div>` : '';
+    const stageFormatted = specimen.stage.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const initDate = specimen.initiation_date
+      ? `<div class="label-row"><span class="lbl">Initiated</span><span class="val">${specimen.initiation_date}</span></div>`
+      : '';
+    const location = specimen.location
+      ? `<div class="label-row"><span class="lbl">Location</span><span class="val">${specimen.location}</span></div>`
+      : '';
+
     win.document.write(`<!DOCTYPE html>
 <html>
 <head>
@@ -59,30 +75,141 @@
   <title>QR Label – ${specimen.accession_number}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fff; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #fff;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 0;
+    }
     .label {
-      width: 3.5in; padding: 12px 16px;
-      border: 1.5px solid #334155; border-radius: 8px;
-      display: flex; flex-direction: column; align-items: center; gap: 8px;
+      width: 2in;
+      min-height: 3in;
+      padding: 0.12in 0.14in;
+      border: 1.5px solid #1e293b;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
       page-break-inside: avoid;
     }
-    .label-brand { font-size: 9px; font-weight: 700; color: #64748b; letter-spacing: 1px; text-transform: uppercase; }
-    .label-acc { font-size: 14px; font-weight: 800; color: #0f172a; letter-spacing: -0.3px; }
-    .label-qr img { width: 160px; height: 160px; display: block; }
-    .label-info { font-size: 10px; color: #334155; text-align: center; line-height: 1.5; }
-    .label-info strong { color: #0f172a; }
-    @media print { body { margin: 0; } .label { border-color: #000; } }
+    .label-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 4px;
+      margin-bottom: 2px;
+    }
+    .label-brand {
+      font-size: 7.5px;
+      font-weight: 800;
+      color: #475569;
+      letter-spacing: 0.8px;
+      text-transform: uppercase;
+    }
+    .label-acc {
+      font-size: 10px;
+      font-weight: 900;
+      color: #0f172a;
+      letter-spacing: -0.2px;
+      font-family: 'SF Mono', 'Consolas', monospace;
+    }
+    .label-qr {
+      margin: 2px 0;
+    }
+    .label-qr img {
+      width: 1.35in;
+      height: 1.35in;
+      display: block;
+      image-rendering: pixelated;
+    }
+    .label-species {
+      font-size: 9.5px;
+      font-weight: 800;
+      color: #0f172a;
+      text-align: center;
+      font-style: italic;
+    }
+    .label-common {
+      font-size: 8.5px;
+      color: #475569;
+      text-align: center;
+    }
+    .label-rows {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      margin-top: 2px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 4px;
+    }
+    .label-row {
+      display: flex;
+      gap: 4px;
+      font-size: 7.5px;
+      line-height: 1.3;
+    }
+    .lbl {
+      font-weight: 700;
+      color: #64748b;
+      min-width: 0.45in;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      flex-shrink: 0;
+    }
+    .val {
+      color: #1e293b;
+      font-weight: 500;
+      word-break: break-word;
+    }
+    .label-footer {
+      margin-top: auto;
+      padding-top: 4px;
+      font-size: 7px;
+      color: #94a3b8;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      border-top: 1px solid #f1f5f9;
+      width: 100%;
+      text-align: center;
+    }
+    @media print {
+      @page {
+        size: 2in 3in;
+        margin: 0;
+      }
+      body { padding: 0; background: #fff; }
+      .label {
+        width: 2in;
+        min-height: 3in;
+        border-color: #000;
+        border-radius: 0;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="label">
-    <div class="label-brand">SteloPTC</div>
-    <div class="label-acc">${specimen.accession_number}</div>
-    <div class="label-qr"><img src="${qrDataUrl}" alt="QR Code" /></div>
-    <div class="label-info">
-      <strong>${specimen.species_code ? specimen.species_code : (`${specimen.genus ?? ''} ${specimen.species_name ?? ''}`).trim()}</strong><br>
-      Stage: ${specimen.stage}${specimen.location ? `<br>Loc: ${specimen.location}` : ''}
+    <div class="label-header">
+      <span class="label-brand">SteloPTC</span>
+      <span class="label-acc">${specimen.accession_number}</span>
     </div>
+    <div class="label-qr">
+      <img src="${qrDataUrl}" alt="QR Code" />
+    </div>
+    <div class="label-species">${speciesDisplay}</div>
+    ${commonName}
+    <div class="label-rows">
+      <div class="label-row"><span class="lbl">Stage</span><span class="val">${stageFormatted}</span></div>
+      ${initDate}
+      ${location}
+    </div>
+    <div class="label-footer">SteloPTC · Tissue Culture Management</div>
   </div>
   <script>window.onload = function() { window.print(); window.close(); };<\/script>
 </body>
@@ -113,7 +240,7 @@
 <div class="modal-backdrop" onclick={handleBackdropClick}>
   <div class="modal" role="dialog" aria-modal="true" aria-label="QR Code">
     <div class="modal-header">
-      <h2>QR Code</h2>
+      <h2>QR Code <Tooltip text="QR code encodes the accession number, species, stage, and location. Scan with any QR reader or use SteloPTC's built-in scanner." position="bottom" /></h2>
       <button title="Close this QR code modal" class="close-btn" onclick={onclose} aria-label="Close">&#10005;</button>
     </div>
 

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { createSpecimen, listSpecies, listMedia } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
+  import Tooltip from './Tooltip.svelte';
 
   let { onclose, onsave }: { onclose: () => void; onsave: () => void } = $props();
 
@@ -155,7 +156,7 @@
 
   <div class="form-row">
     <div class="form-group">
-      <label for="species" title="The plant species this specimen belongs to (required)">Species *</label>
+      <label for="species">Species * <Tooltip text="The plant species this specimen belongs to (required)" /></label>
       <select id="species" bind:value={form.species_id} required title="Select the species for this specimen — determines the species code and taxonomy">
         <option value="">Select species...</option>
         {#each species as sp}
@@ -164,7 +165,7 @@
       </select>
     </div>
     <div class="form-group">
-      <label for="stage" title="Current development stage of the specimen (required)">Stage *</label>
+      <label for="stage">Stage * <Tooltip text="Current development stage: Explant (initial tissue), Callus, Suspension, Shoot, Plantlet, etc." /></label>
       <select id="stage" bind:value={form.stage} title="Development stage: explant (initial tissue), callus (undifferentiated mass), suspension (liquid culture), shoot (organized shoot growth), plantlet (complete small plant), etc.">
         {#each stages as s}
           <option value={s.value}>{s.label}</option>
@@ -175,11 +176,11 @@
 
   <div class="form-row">
     <div class="form-group">
-      <label for="init_date" title="The date the specimen culture was first established (required)">Initiation Date *</label>
+      <label for="init_date">Initiation Date * <Tooltip text="The date this specimen culture was first established in vitro" /></label>
       <input id="init_date" type="date" bind:value={form.initiation_date} required title="Date this specimen was first placed into culture" />
     </div>
     <div class="form-group">
-      <label for="prop_method" title="Technique used to propagate or multiply this specimen">Propagation Method</label>
+      <label for="prop_method">Propagation Method <Tooltip text="Technique used to multiply this specimen: micropropagation, somatic embryogenesis, organogenesis, meristem culture, etc." /></label>
       <select id="prop_method" bind:value={form.propagation_method} title="Select the propagation technique: micropropagation, somatic embryogenesis, organogenesis, meristem culture, etc.">
         {#each propagationMethods as m}
           <option value={m.value}>{m.label}</option>
@@ -190,7 +191,7 @@
 
   <!-- Location as structured dropdowns -->
   <div class="form-group">
-    <label title="Physical storage location within the facility — select room, rack, shelf, and tray to compose the full address">Location</label>
+    <label>Location <Tooltip text="Physical storage location within the facility. Select Room, Rack, Shelf, and Tray to compose the full address (e.g., Room 2 / Rack B / Shelf 3 / Tray C)" /></label>
     <div class="location-row">
       <div class="loc-group">
         <span class="loc-label" title="Growth room number where the specimen is stored">Room</span>
@@ -236,7 +237,7 @@
 
   <!-- Health Status slider -->
   <div class="form-group">
-    <label title="Current health condition of the specimen on a scale from 0 (Dead) to 4 (Healthy)">Health Status</label>
+    <label>Health Status <Tooltip text="Current health condition: 0 = Dead, 1 = Poor, 2 = Fair, 3 = Good, 4 = Healthy. Check 'Unknown' if not yet assessed." /></label>
     <div class="health-slider-wrap">
       <label class="unknown-toggle" title="Check this if health has not yet been assessed — records health as Unknown (-1)">
         <input type="checkbox" bind:checked={healthUnknown} style="width:auto;" title="Mark health status as unknown or awaiting assessment" />
@@ -271,7 +272,7 @@
 
   <!-- Media Batch -->
   <div class="form-group">
-    <label for="media_batch" title="The nutrient media batch this specimen will initially be cultured on">Initial Media Batch</label>
+    <label for="media_batch">Initial Media Batch <Tooltip text="The nutrient media batch used for this specimen's initial culture. The batch ID will be recorded in the specimen notes for traceability." /></label>
     <select id="media_batch" bind:value={form.media_batch_id} title="Select the media batch used for this specimen's initial culture — batch ID will be recorded in the notes">
       <option value="">None / Select later...</option>
       {#each mediaBatches as mb}
@@ -282,22 +283,22 @@
 
   <div class="form-row">
     <div class="form-group">
-      <label for="provenance" title="Geographic or institutional origin of the specimen material">Provenance / Origin</label>
+      <label for="provenance">Provenance / Origin <Tooltip text="Geographic or institutional origin of the plant material (e.g., USDA germplasm collection, field site, donor institution)" /></label>
       <input id="provenance" type="text" bind:value={form.provenance} placeholder="e.g., USDA germplasm collection" title="Enter the source or origin of the plant material (e.g., germplasm collection, field site, donor institution)" />
     </div>
     <div class="form-group">
-      <label for="source_plant" title="Identifier of the parent or mother plant this explant was taken from">Source Plant</label>
+      <label for="source_plant">Source Plant <Tooltip text="Identifier of the parent or mother plant this explant was taken from (e.g., Mother plant #12)" /></label>
       <input id="source_plant" type="text" bind:value={form.source_plant} placeholder="e.g., Mother plant #12" title="Enter the identifier or label of the parent plant this specimen was derived from" />
     </div>
   </div>
 
   <div class="form-group">
-    <label for="employee_id" title="ID or badge number of the lab technician creating this specimen record">Employee ID / Badge #</label>
+    <label for="employee_id">Employee ID / Badge # <Tooltip text="Your employee ID or badge number for traceability — recorded with the specimen for audit purposes" /></label>
     <input id="employee_id" type="text" bind:value={form.employee_id} placeholder="e.g., EMP-042" title="Enter your employee ID or badge number for traceability and audit purposes" />
   </div>
 
   <div class="form-group">
-    <label for="notes" title="Free-text field for any additional observations, conditions, or remarks about this specimen">Notes</label>
+    <label for="notes">Notes <Tooltip text="Free-text field for initial observations, culture conditions, contamination notes, or any other relevant information" /></label>
     <textarea id="notes" bind:value={form.notes} rows="3" placeholder="Initial observations, conditions, etc." title="Add initial observations, culture conditions, contamination notes, or any other relevant information"></textarea>
   </div>
 

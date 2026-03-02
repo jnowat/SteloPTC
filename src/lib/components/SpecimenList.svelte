@@ -7,6 +7,7 @@
   import SpecimenForm from './SpecimenForm.svelte';
   import QrModal from './QrModal.svelte';
   import QrScanner from './QrScanner.svelte';
+  import Tooltip from './Tooltip.svelte';
 
   let specimens = $state<any[]>([]);
   let species = $state<any[]>([]);
@@ -117,13 +118,13 @@
   <div class="page-header">
     <h1>Specimens ({total})</h1>
     <div class="header-actions">
-      <button class="btn btn-scan" onclick={() => (showScanner = true)} title="Open QR code scanner to find a specimen by scanning its label">
-        &#128247; Scan QR
+      <button class="btn btn-scan" onclick={() => (showScanner = true)}>
+        &#128247; Scan QR <Tooltip text="Open camera to scan a QR code label and jump directly to the matching specimen" position="bottom" />
       </button>
-      <button class="btn btn-sm" onclick={() => handleExport('csv')} title="Download all specimens as a CSV spreadsheet">Export CSV</button>
-      <button class="btn btn-sm" onclick={() => handleExport('json')} title="Download all specimens as a JSON file">Export JSON</button>
+      <button class="btn btn-sm" onclick={() => handleExport('csv')}>Export CSV <Tooltip text="Download all active specimens as a CSV spreadsheet" position="bottom" /></button>
+      <button class="btn btn-sm" onclick={() => handleExport('json')}>Export JSON <Tooltip text="Download all active specimens as a JSON file" position="bottom" /></button>
       {#if $currentUser?.role !== 'guest'}
-        <button class="btn btn-primary" onclick={() => (showForm = true)} title="Open form to register a new specimen">+ New Specimen</button>
+        <button class="btn btn-primary" onclick={() => (showForm = true)}>+ New Specimen <Tooltip text="Register a new tissue culture specimen — auto-generates an accession number on save" position="bottom" /></button>
       {/if}
     </div>
   </div>
