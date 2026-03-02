@@ -79,6 +79,10 @@ export async function getSpecimenStats() {
   return call<any>('get_specimen_stats');
 }
 
+export async function getSpecimenByAccession(accession: string) {
+  return call<any>('get_specimen_by_accession', { accession });
+}
+
 // Media
 export async function listMedia() {
   return call<any[]>('list_media');

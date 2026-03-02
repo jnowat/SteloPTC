@@ -5,6 +5,25 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.14] - 2026-03-02
+
+### Added
+
+- **QR Code generation**: Every specimen now has a "QR Code" button in the detail page header that opens a QR code modal. The QR encodes `STELO:{accession_number}` and renders client-side via the `qrcode` npm package. Includes **Download PNG** and **Print Label** actions — print CSS hides all UI except the label (accession number + species name + QR canvas).
+- **QR Scan**: A global "Scan QR" button on the Specimens list page opens a full-screen camera scanner (`html5-qrcode`, `facingMode: environment`). Successful scans of a `STELO:{accession}` QR code navigate directly to the matching specimen detail page. The Android `CAMERA` permission is declared in `tauri.conf.json` so WebView camera prompts work on device.
+- **Per-row QR button**: Each specimen row in the list table has a quick QR button that opens the generate modal pre-filled with that specimen's accession and species.
+- **`get_specimen_by_accession` Tauri command**: New Rust command in `specimens.rs` that returns `Option<Specimen>` by accession number (non-archived only). Registered in `lib.rs` and exposed via a new `getSpecimenByAccession(accession)` function in `api.ts`.
+
+### Changed
+
+- **Sidebar breakpoint**: Hamburger/drawer now activates at `≤1024px` (was 768px), covering large phones in landscape (Pixel 9 Pro: 915px CSS width) and small tablets.
+- **App layout breakpoints**: All three `@media (max-width: 768px)` blocks in `App.svelte` updated to `1024px` to match — form grids collapse to single-column, tables scroll horizontally, and touch targets enlarge.
+- **Sidebar drawer**: Smooth Material Design easing (`cubic-bezier(0.4, 0, 0.2, 1) 0.28s`) replacing the previous linear ease. Overlay gains `backdrop-filter: blur(2px)` with a fadeIn animation.
+- **Sidebar width**: Desktop sidebar widened from 220px to 240px for better readability.
+- **Dynamic viewport height**: `.layout` now also uses `height: 100dvh` (progressive enhancement over `100vh`) to account for collapsible browser chrome on mobile.
+- **`android:versionCode`**: Updated from 13 to 14 in `tauri.conf.json` and `build.gradle.kts`.
+- Version bumped to 0.1.14 across `package.json`, `Cargo.toml`, `tauri.conf.json`, `app/build.gradle.kts` (versionCode 14), and sidebar display.
+
 ## [0.1.13] - 2026-03-01
 
 ### Added

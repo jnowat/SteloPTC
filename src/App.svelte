@@ -173,9 +173,8 @@
   }
 
   .app {
-    /* dvh = dynamic viewport height — accounts for mobile browser chrome */
-    height: 100dvh;
     height: 100vh; /* fallback for older browsers */
+    height: 100dvh; /* dynamic viewport height — accounts for mobile browser chrome */
     width: 100vw;
     background: #f8fafc;
     color: #1e293b;
@@ -243,6 +242,7 @@
   .layout {
     display: flex;
     height: 100vh;
+    height: 100dvh;
   }
 
   .main-content {
@@ -252,7 +252,7 @@
   }
 
   /* ── Mobile responsive ──────────────────────────────────────── */
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     .main-content {
       /* top: hamburger height + status bar safe area; sides/bottom: safe-area insets */
       padding-top: calc(60px + env(safe-area-inset-top, 0px));
@@ -329,7 +329,7 @@
   :global(.form-row) { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   :global(.form-row-3) { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
 
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     :global(.form-row),
     :global(.form-row-3) {
       grid-template-columns: 1fr;
@@ -361,7 +361,7 @@
   :global(.dark tr:hover td) { background: #1e293b; }
 
   /* Horizontal-scroll tables on mobile */
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     :global(.card) { overflow-x: auto; }
     :global(table) { min-width: 560px; }
     /* Larger touch targets for fingers: WCAG 2.5.8 recommends 24×24px, Apple HIG 44px */

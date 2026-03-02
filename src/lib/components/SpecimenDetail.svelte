@@ -2,6 +2,10 @@
   import { untrack } from 'svelte';
   import { getSpecimen, listSubcultures, createSubculture, updateSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens } from '../api';
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
+  import QRModal from './QRModal.svelte';
+
+  let showQRModal = $state(false);
+  let qrMode = $state<'generate' | 'scan'>('generate');
 
   let specimen = $state<any>(null);
   let subcultures = $state<any[]>([]);
@@ -281,6 +285,11 @@
         {/if}
       {/if}
     </div>
+    {#if specimen}
+      <div style="display:flex;gap:8px;flex-shrink:0;">
+        <button class="btn btn-sm" onclick={() => { qrMode = 'generate'; showQRModal = true; }}>&#128681; QR Code</button>
+      </div>
+    {/if}
   </div>
 
   {#if loading}
@@ -794,6 +803,15 @@
 
   {/if}
 </div>
+
+{#if showQRModal}
+  <QRModal
+    mode={qrMode}
+    accessionNumber={specimen?.accession_number || ''}
+    speciesName={specimen ? `${specimen.species_code} — ${specimen.species_name}` : ''}
+    onclose={() => showQRModal = false}
+  />
+{/if}
 
 <style>
   .specimen-detail { max-width: 900px; }

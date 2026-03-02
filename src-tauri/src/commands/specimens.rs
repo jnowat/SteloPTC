@@ -2,7 +2,7 @@ use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::specimen::*;
 use crate::AppState;
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 use tauri::State;
 
 #[tauri::command]
@@ -424,6 +424,65 @@ pub fn search_specimens(
         per_page: pg.per_page,
         total_pages,
     })
+}
+
+#[tauri::command]
+pub fn get_specimen_by_accession(
+    state: State<AppState>,
+    token: String,
+    accession: String,
+) -> Result<Option<Specimen>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+
+    db.conn.query_row(
+        "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
+                p.name as project_name
+         FROM specimens s
+         LEFT JOIN species sp ON s.species_id = sp.id
+         LEFT JOIN projects p ON s.project_id = p.id
+         WHERE s.accession_number = ?1 AND s.is_archived = 0",
+        params![accession],
+        |row| {
+            Ok(Specimen {
+                id: row.get("id")?,
+                accession_number: row.get("accession_number")?,
+                species_id: row.get("species_id")?,
+                species_code: row.get("species_code")?,
+                species_name: row.get("species_name")?,
+                project_id: row.get("project_id")?,
+                project_name: row.get("project_name")?,
+                stage: row.get("stage")?,
+                custom_stage: row.get("custom_stage")?,
+                provenance: row.get("provenance")?,
+                source_plant: row.get("source_plant")?,
+                initiation_date: row.get("initiation_date")?,
+                location: row.get("location")?,
+                location_details: row.get("location_details")?,
+                propagation_method: row.get("propagation_method")?,
+                acclimatization_status: row.get("acclimatization_status")?,
+                health_status: row.get("health_status")?,
+                disease_status: row.get("disease_status")?,
+                quarantine_flag: row.get::<_, i32>("quarantine_flag")? != 0,
+                quarantine_release_date: row.get("quarantine_release_date")?,
+                permit_number: row.get("permit_number")?,
+                permit_expiry: row.get("permit_expiry")?,
+                ip_flag: row.get::<_, i32>("ip_flag")? != 0,
+                ip_notes: row.get("ip_notes")?,
+                environmental_notes: row.get("environmental_notes")?,
+                subculture_count: row.get("subculture_count")?,
+                parent_specimen_id: row.get("parent_specimen_id")?,
+                qr_code_data: row.get("qr_code_data")?,
+                notes: row.get("notes")?,
+                employee_id: row.get("employee_id")?,
+                is_archived: row.get::<_, i32>("is_archived")? != 0,
+                archived_at: row.get("archived_at")?,
+                created_by: row.get("created_by")?,
+                created_at: row.get("created_at")?,
+                updated_at: row.get("updated_at")?,
+            })
+        },
+    ).optional().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

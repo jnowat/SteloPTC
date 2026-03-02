@@ -59,7 +59,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2>SteloPTC</h2>
-    <span class="version">v0.1.13</span>
+    <span class="version">v0.1.14</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -134,11 +134,17 @@
     inset: 0;
     z-index: 1050;
     background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    animation: fadeIn 0.2s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   /* ── Sidebar ────────────────────────────────────────────────── */
   .sidebar {
-    width: 220px;
+    width: 240px;
     height: 100vh;
     height: 100dvh; /* dynamic viewport height for mobile */
     display: flex;
@@ -259,14 +265,14 @@
   .icon-btn:hover { background: #334155; color: #e2e8f0; }
 
   /* ── Sidebar header safe-area top padding on mobile ───────────── */
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     .sidebar-header {
       padding-top: calc(20px + env(safe-area-inset-top, 0px));
     }
   }
 
   /* ── Mobile breakpoint ──────────────────────────────────────── */
-  @media (max-width: 768px) {
+  @media (max-width: 1024px) {
     .hamburger {
       display: flex;
     }
@@ -282,7 +288,7 @@
       height: 100vh;
       z-index: 1100;
       transform: translateX(-100%);
-      transition: transform 0.25s ease;
+      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
       box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
     }
     .sidebar.mobile-open {

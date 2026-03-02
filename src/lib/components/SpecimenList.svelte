@@ -5,6 +5,12 @@
   import { selectedSpecimenId } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import SpecimenForm from './SpecimenForm.svelte';
+  import QRModal from './QRModal.svelte';
+
+  let showQRModal = $state(false);
+  let qrMode = $state<'generate' | 'scan'>('generate');
+  let qrAccession = $state('');
+  let qrSpeciesName = $state('');
 
   let specimens = $state<any[]>([]);
   let species = $state<any[]>([]);
@@ -107,9 +113,10 @@
 <div>
   <div class="page-header">
     <h1>Specimens ({total})</h1>
-    <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn btn-sm" onclick={() => handleExport('csv')}>Export CSV</button>
       <button class="btn btn-sm" onclick={() => handleExport('json')}>Export JSON</button>
+      <button class="btn btn-sm" onclick={() => { qrMode = 'scan'; showQRModal = true; }}>&#128247; Scan QR</button>
       {#if $currentUser?.role !== 'guest'}
         <button class="btn btn-primary" onclick={() => showForm = true}>+ New Specimen</button>
       {/if}
@@ -188,9 +195,12 @@
               </td>
               <td>{s.initiation_date}</td>
               <td>
-                {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-                  <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }}>Archive</button>
-                {/if}
+                <div style="display:flex;gap:4px;align-items:center;">
+                  <button class="btn btn-sm" title="Generate QR" onclick={(e) => { e.stopPropagation(); qrAccession = s.accession_number; qrSpeciesName = s.species_name || s.species_code || ''; qrMode = 'generate'; showQRModal = true; }}>&#128681;</button>
+                  {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
+                    <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }}>Archive</button>
+                  {/if}
+                </div>
               </td>
             </tr>
           {/each}
@@ -207,6 +217,15 @@
     {/if}
   {/if}
 </div>
+
+{#if showQRModal}
+  <QRModal
+    mode={qrMode}
+    accessionNumber={qrAccession}
+    speciesName={qrSpeciesName}
+    onclose={() => showQRModal = false}
+  />
+{/if}
 
 <style>
   .clickable { cursor: pointer; }

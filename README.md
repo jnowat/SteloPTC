@@ -314,8 +314,9 @@ Additional compliance rules can be added by extending `src-tauri/src/commands/co
 - [x] Split culture recording — one passage creates N linked child specimens with `parent_specimen_id` for full lineage tracking
 - [x] Lineage banner — parent/child chips on each specimen for one-click navigation across splits
 - [ ] PostgreSQL support for multi-user LAN deployment
-- [ ] QR / barcode generation and webcam scanning for specimen containers
-- [ ] Print label workflow — generate QR labels formatted for lab label printers
+- [x] QR code generation per specimen — renders `STELO:{accession}` QR client-side with Download PNG action (v0.1.14)
+- [x] Webcam / camera QR scanning — global Scan QR button on Specimens page with `html5-qrcode`, navigates directly to scanned specimen (v0.1.14)
+- [x] Print label workflow — QR modal includes Print Label action; CSS `@media print` hides all UI except the label (v0.1.14)
 - [ ] Photo attachments with direct camera capture and per-passage image logging
 - [ ] Contamination tracking — per-vessel flags, contamination notes, and lab-wide contamination rate statistics
 - [ ] Subculture scheduling — due-date forecasting based on species interval with overdue alerts

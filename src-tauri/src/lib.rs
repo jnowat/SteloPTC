@@ -48,6 +48,7 @@ pub fn run() {
             commands::specimens::delete_specimen,
             commands::specimens::search_specimens,
             commands::specimens::get_specimen_stats,
+            commands::specimens::get_specimen_by_accession,
             // Media
             commands::media::list_media,
             commands::media::get_media_batch,
