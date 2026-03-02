@@ -401,7 +401,7 @@
     <span style="font-size:12px; color:#6b7280;">
       {filtered.length} item{filtered.length !== 1 ? 's' : ''}
       {#if lowStockCount > 0}
-        &middot; <span class="low-stock-count">{lowStockCount} low stock</span>
+        &middot; <span class="low-stock-count" title="{lowStockCount} item{lowStockCount !== 1 ? 's are' : ' is'} at or below their minimum stock or reorder point — check inventory">{lowStockCount} low stock</span>
       {/if}
     </span>
   </div>
@@ -455,27 +455,36 @@
               <td>
                 <strong>{item.name}</strong>
                 {#if item.catalog_number}
-                  <div style="font-size:11px; color:#6b7280;">{item.catalog_number}</div>
+                  <div style="font-size:11px; color:#6b7280;" title="Supplier catalog number: {item.catalog_number} — use for reordering">{item.catalog_number}</div>
                 {/if}
               </td>
-              <td><span class="badge badge-gray">{getCategoryLabel(item.category)}</span></td>
+              <td><span class="badge badge-gray" title="Category: {getCategoryLabel(item.category)}">{getCategoryLabel(item.category)}</span></td>
               <td>
-                <span class="badge {item.physical_state === 'liquid' ? 'badge-blue' : 'badge-gray'}">
+                <span
+                  class="badge {item.physical_state === 'liquid' ? 'badge-blue' : 'badge-gray'}"
+                  title={item.physical_state === 'liquid' ? 'Liquid — stock tracked by volume (mL, L, µL)' : 'Solid — stock tracked by mass (g, mg, µg)'}
+                >
                   {item.physical_state === 'liquid' ? 'Liquid' : 'Solid'}
                 </span>
                 {#if item.physical_state === 'liquid' && item.concentration}
-                  <div style="font-size:11px; color:#6b7280; margin-top:2px;">{item.concentration} {item.concentration_unit || ''}</div>
+                  <div style="font-size:11px; color:#6b7280; margin-top:2px;" title="Stock solution concentration: {item.concentration} {item.concentration_unit || ''}">{item.concentration} {item.concentration_unit || ''}</div>
                 {/if}
               </td>
-              <td class:low-stock={isLowStock(item)}>
+              <td
+                class:low-stock={isLowStock(item)}
+                title={isLowStock(item) ? `Low stock — current (${item.current_stock} ${item.unit}) is at or below minimum (${item.minimum_stock} ${item.unit})` : `Current stock: ${item.current_stock} ${item.unit}`}
+              >
                 <strong>{item.current_stock}</strong> {item.unit}
               </td>
-              <td>{item.minimum_stock} {item.unit}</td>
-              <td>{item.supplier || '—'}</td>
-              <td>{item.storage_location || '—'}</td>
+              <td title="Minimum stock threshold: {item.minimum_stock} {item.unit} — system warns when stock falls to or below this level">{item.minimum_stock} {item.unit}</td>
+              <td title={item.supplier ? `Supplier: ${item.supplier}` : 'No supplier recorded'}>{item.supplier || '—'}</td>
+              <td title={item.storage_location ? `Storage location: ${item.storage_location}` : 'No storage location recorded'}>{item.storage_location || '—'}</td>
               <td>
                 {#if item.expiration_date}
-                  <span class:expired={isExpired(item.expiration_date)}>
+                  <span
+                    class:expired={isExpired(item.expiration_date)}
+                    title={isExpired(item.expiration_date) ? `Expired on ${item.expiration_date} — do not use` : `Expires on ${item.expiration_date}`}
+                  >
                     {item.expiration_date}
                   </span>
                 {:else}
@@ -630,10 +639,10 @@
                 <td>
                   <strong>{sol.name}</strong>
                   {#if sol.lot_number}
-                    <div style="font-size:11px; color:#6b7280;">Lot: {sol.lot_number}</div>
+                    <div style="font-size:11px; color:#6b7280;" title="Lot number of the source reagent used to prepare this solution: {sol.lot_number}">Lot: {sol.lot_number}</div>
                   {/if}
                   {#if sol.storage_conditions}
-                    <div style="font-size:11px; color:#6b7280;">{sol.storage_conditions}</div>
+                    <div style="font-size:11px; color:#6b7280;" title="Storage conditions: {sol.storage_conditions}">{sol.storage_conditions}</div>
                   {/if}
                 </td>
                 <td>
