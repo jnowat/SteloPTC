@@ -596,7 +596,9 @@
 
                 <!-- Right: card -->
                 <div class="tl-card" class:expanded={isExpanded}>
-                  <button class="tl-card-header" onclick={() => togglePassage(sc.id)}>
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
+                  <!-- svelte-ignore a11y_no_static_element_interactions -->
+                  <div class="tl-card-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
                     <div class="tl-card-left">
                       <span class="tl-passage-num" style="color:{color};">P{sc.passage_number}</span>
                       <div class="tl-card-summary">
@@ -625,7 +627,7 @@
                       {/if}
                       <span class="tl-chevron">{isExpanded ? '▴' : '▾'}</span>
                     </div>
-                  </button>
+                  </div>
 
                   {#if isExpanded}
                     <div class="tl-card-body">
@@ -1046,8 +1048,8 @@
 
   .tl-card-header {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 14px; width: 100%; background: none; border: none;
-    cursor: pointer; text-align: left; gap: 10px;
+    padding: 12px 14px; width: 100%;
+    cursor: pointer; gap: 10px; user-select: none;
   }
   .tl-card-header:hover { background: #f8fafc; }
   :global(.dark) .tl-card-header:hover { background: #0f172a; }

@@ -26,7 +26,9 @@
   const qrPayload = $derived(JSON.stringify({
     app: 'SteloPTC',
     accession: specimen.accession_number,
-    species: specimen.species_code ?? `${specimen.genus ?? ''} ${specimen.species_name ?? ''}`.trim(),
+    species: specimen.species_code
+      ? specimen.species_code
+      : `${specimen.genus ?? ''} ${specimen.species_name ?? ''}`.trim(),
     stage: specimen.stage,
     location: specimen.location ?? '',
     id: specimen.id,
@@ -78,7 +80,7 @@
     <div class="label-acc">${specimen.accession_number}</div>
     <div class="label-qr"><img src="${qrDataUrl}" alt="QR Code" /></div>
     <div class="label-info">
-      <strong>${specimen.species_code ?? `${specimen.genus ?? ''} ${specimen.species_name ?? ''}`.trim()}</strong><br>
+      <strong>${specimen.species_code ? specimen.species_code : (`${specimen.genus ?? ''} ${specimen.species_name ?? ''}`).trim()}</strong><br>
       Stage: ${specimen.stage}${specimen.location ? `<br>Loc: ${specimen.location}` : ''}
     </div>
   </div>
@@ -134,7 +136,9 @@
         <div class="info-row">
           <span class="info-label">Species</span>
           <span class="info-value">
-            {specimen.species_code ?? `${specimen.genus ?? ''} ${specimen.species_name ?? ''}`.trim() || '—'}
+            {specimen.species_code
+              ? specimen.species_code
+              : (`${specimen.genus ?? ''} ${specimen.species_name ?? ''}`).trim() || '—'}
           </span>
         </div>
         <div class="info-row">

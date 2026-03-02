@@ -37,8 +37,9 @@
     employee_id: '',
   });
 
-  // Keep old `form` alias for template compatibility (batchForm is canonical)
-  let form = batchForm;
+  // Keep old `form` alias for template compatibility (batchForm is canonical).
+  // Use $derived so Svelte 5 tracks it reactively instead of a one-time assignment.
+  let form = $derived(batchForm);
 
   // Basal salts auto-calc fields
   let basalWeightG = $state('');      // grams of powder weighed out
