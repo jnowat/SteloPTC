@@ -695,7 +695,7 @@
                             {inv.physical_state || '—'}
                           </span>
                         {:else}
-                          <span class="badge-empty">—</span>
+                          <span class="badge-empty" title="Select a reagent to see its physical state (Solid or Liquid)">—</span>
                         {/if}
                       </div>
 

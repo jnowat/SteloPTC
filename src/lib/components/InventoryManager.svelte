@@ -645,14 +645,14 @@
                     <div style="font-size:11px; color:#6b7280;" title="Storage conditions: {sol.storage_conditions}">{sol.storage_conditions}</div>
                   {/if}
                 </td>
-                <td>
+                <td title={sol.source_item_id ? 'Raw inventory item used as the starting material for this solution' : 'No source inventory item linked to this solution'}>
                   {#if sol.source_item_id}
                     {items.find(i => i.id === sol.source_item_id)?.name || sol.source_item_id}
                   {:else}
                     —
                   {/if}
                 </td>
-                <td>
+                <td title={sol.concentration != null ? `Stock solution concentration: ${sol.concentration} ${sol.concentration_unit || ''} — use this to calculate dilutions for media preparation` : 'No concentration recorded for this solution'}>
                   {#if sol.concentration != null}
                     {sol.concentration} {sol.concentration_unit || ''}
                   {:else}
@@ -676,11 +676,14 @@
                     {/if}
                   </div>
                 </td>
-                <td>{sol.prepared_by || '—'}</td>
-                <td>{sol.preparation_date || '—'}</td>
+                <td title={sol.prepared_by ? `Prepared by: ${sol.prepared_by}` : 'Preparer not recorded'}>{sol.prepared_by || '—'}</td>
+                <td title={sol.preparation_date ? `Preparation date: ${sol.preparation_date}` : 'Preparation date not recorded'}>{sol.preparation_date || '—'}</td>
                 <td>
                   {#if sol.expiration_date}
-                    <span class:expired={isExpired(sol.expiration_date)}>{sol.expiration_date}</span>
+                    <span
+                      class:expired={isExpired(sol.expiration_date)}
+                      title={isExpired(sol.expiration_date) ? `Expired on ${sol.expiration_date} — this solution should not be used` : `Expires on ${sol.expiration_date}`}
+                    >{sol.expiration_date}</span>
                   {:else}
                     —
                   {/if}
