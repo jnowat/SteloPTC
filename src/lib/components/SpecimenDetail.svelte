@@ -4,6 +4,7 @@
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
   import QrModal from './QrModal.svelte';
   import QrScanner from './QrScanner.svelte';
+  import Tooltip from './Tooltip.svelte';
 
   let specimen = $state<any>(null);
   let showQrModal = $state(false);
@@ -292,11 +293,11 @@
     </div>
     {#if specimen}
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-qr-detail" title="Open camera to scan a QR code" onclick={() => (showQrScanner = true)}>
-          &#128247; Scan QR
+        <button class="btn btn-qr-detail" onclick={() => (showQrScanner = true)}>
+          &#128247; Scan QR <Tooltip text="Open camera to scan a QR code and navigate to the matching specimen" position="bottom" />
         </button>
-        <button class="btn btn-qr-detail btn-qr-generate" title="Generate a printable QR code label for this specimen" onclick={() => (showQrModal = true)}>
-          &#9641; Generate QR
+        <button class="btn btn-qr-detail btn-qr-generate" onclick={() => (showQrModal = true)}>
+          &#9641; Generate QR <Tooltip text="Generate a printable QR code label for this specimen — includes accession number, species, stage, and location" position="bottom" />
         </button>
       </div>
     {/if}
@@ -403,8 +404,9 @@
         <!-- Record Passage header -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:{showPassageForm ? 16 : 0}px;">
           <h3 style="font-size:15px;">Passage History</h3>
-          <button class="btn btn-primary btn-sm" title={showPassageForm ? 'Dismiss the passage entry form without saving' : 'Log a new subculture/transfer event for this specimen'} onclick={() => showPassageForm = !showPassageForm}>
+          <button class="btn btn-primary btn-sm" onclick={() => showPassageForm = !showPassageForm}>
             {showPassageForm ? '✕ Cancel' : '+ Record Passage'}
+            {#if !showPassageForm}<Tooltip text="Log a new subculture or transfer event for this specimen — records date, media batch, vessel, health, location, and observations" position="bottom" />{/if}
           </button>
         </div>
 
@@ -415,11 +417,11 @@
             <!-- Date + Media -->
             <div class="form-row">
               <div class="form-group">
-                <label title="Date on which this passage/subculture was performed">Date</label>
+                <label>Date <Tooltip text="Date on which this passage/subculture was performed" /></label>
                 <input type="date" title="Date on which this passage/subculture was performed" bind:value={subcultureForm.date} required />
               </div>
               <div class="form-group" style="flex:2;">
-                <label title="Select the media batch used for this transfer — must match the batch prepared for this passage">Media Batch</label>
+                <label>Media Batch <Tooltip text="Select the nutrient media batch used for this transfer — must be a batch prepared on or before the passage date" /></label>
                 <select title="Select the media batch used for this transfer" bind:value={subcultureForm.media_batch_id}>
                   <option value="">No media / not recorded</option>
                   {#each mediaBatches.slice(0, 20) as mb}
