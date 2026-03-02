@@ -155,8 +155,8 @@
 
   <div class="form-row">
     <div class="form-group">
-      <label for="species">Species *</label>
-      <select id="species" bind:value={form.species_id} required>
+      <label for="species" title="The plant species this specimen belongs to (required)">Species *</label>
+      <select id="species" bind:value={form.species_id} required title="Select the species for this specimen — determines the species code and taxonomy">
         <option value="">Select species...</option>
         {#each species as sp}
           <option value={sp.id}>{sp.species_code} - {sp.genus} {sp.species_name}</option>
@@ -164,8 +164,8 @@
       </select>
     </div>
     <div class="form-group">
-      <label for="stage">Stage *</label>
-      <select id="stage" bind:value={form.stage}>
+      <label for="stage" title="Current development stage of the specimen (required)">Stage *</label>
+      <select id="stage" bind:value={form.stage} title="Development stage: explant (initial tissue), callus (undifferentiated mass), suspension (liquid culture), shoot (organized shoot growth), plantlet (complete small plant), etc.">
         {#each stages as s}
           <option value={s.value}>{s.label}</option>
         {/each}
@@ -175,12 +175,12 @@
 
   <div class="form-row">
     <div class="form-group">
-      <label for="init_date">Initiation Date *</label>
-      <input id="init_date" type="date" bind:value={form.initiation_date} required />
+      <label for="init_date" title="The date the specimen culture was first established (required)">Initiation Date *</label>
+      <input id="init_date" type="date" bind:value={form.initiation_date} required title="Date this specimen was first placed into culture" />
     </div>
     <div class="form-group">
-      <label for="prop_method">Propagation Method</label>
-      <select id="prop_method" bind:value={form.propagation_method}>
+      <label for="prop_method" title="Technique used to propagate or multiply this specimen">Propagation Method</label>
+      <select id="prop_method" bind:value={form.propagation_method} title="Select the propagation technique: micropropagation, somatic embryogenesis, organogenesis, meristem culture, etc.">
         {#each propagationMethods as m}
           <option value={m.value}>{m.label}</option>
         {/each}
@@ -190,11 +190,11 @@
 
   <!-- Location as structured dropdowns -->
   <div class="form-group">
-    <label>Location</label>
+    <label title="Physical storage location within the facility — select room, rack, shelf, and tray to compose the full address">Location</label>
     <div class="location-row">
       <div class="loc-group">
-        <span class="loc-label">Room</span>
-        <select bind:value={locRoom}>
+        <span class="loc-label" title="Growth room number where the specimen is stored">Room</span>
+        <select bind:value={locRoom} title="Select the growth room number where this specimen is stored">
           <option value="">—</option>
           {#each rooms as r}
             <option value={r}>{r}</option>
@@ -202,8 +202,8 @@
         </select>
       </div>
       <div class="loc-group">
-        <span class="loc-label">Rack</span>
-        <select bind:value={locRack}>
+        <span class="loc-label" title="Rack letter within the room where the specimen is stored">Rack</span>
+        <select bind:value={locRack} title="Select the rack (A–D) within the room where this specimen is stored">
           <option value="">—</option>
           {#each racks as r}
             <option value={r}>{r}</option>
@@ -211,8 +211,8 @@
         </select>
       </div>
       <div class="loc-group">
-        <span class="loc-label">Shelf</span>
-        <select bind:value={locShelf}>
+        <span class="loc-label" title="Shelf number on the rack where the specimen is stored">Shelf</span>
+        <select bind:value={locShelf} title="Select the shelf number (1–5) on the rack where this specimen is stored">
           <option value="">—</option>
           {#each shelves as s}
             <option value={s}>{s}</option>
@@ -220,8 +220,8 @@
         </select>
       </div>
       <div class="loc-group">
-        <span class="loc-label">Tray</span>
-        <select bind:value={locTray}>
+        <span class="loc-label" title="Tray position on the shelf where the specimen is stored">Tray</span>
+        <select bind:value={locTray} title="Select the tray position (A–F) on the shelf where this specimen is stored">
           <option value="">—</option>
           {#each trays as t}
             <option value={t}>{t}</option>
@@ -236,10 +236,10 @@
 
   <!-- Health Status slider -->
   <div class="form-group">
-    <label>Health Status</label>
+    <label title="Current health condition of the specimen on a scale from 0 (Dead) to 4 (Healthy)">Health Status</label>
     <div class="health-slider-wrap">
-      <label class="unknown-toggle">
-        <input type="checkbox" bind:checked={healthUnknown} style="width:auto;" />
+      <label class="unknown-toggle" title="Check this if health has not yet been assessed — records health as Unknown (-1)">
+        <input type="checkbox" bind:checked={healthUnknown} style="width:auto;" title="Mark health status as unknown or awaiting assessment" />
         Unknown / Awaiting Assessment
       </label>
       {#if healthUnknown}
@@ -253,6 +253,7 @@
           bind:value={healthValue}
           class="health-slider"
           style="--track-color: {healthColors[healthValue]};"
+          title="Rate specimen health from 0 (Dead) to 4 (Healthy) — current: {healthValue} ({healthLabels[healthValue]})"
         />
         <div class="health-ticks">
           {#each healthLabels as lbl, i}
@@ -270,8 +271,8 @@
 
   <!-- Media Batch -->
   <div class="form-group">
-    <label for="media_batch">Initial Media Batch</label>
-    <select id="media_batch" bind:value={form.media_batch_id}>
+    <label for="media_batch" title="The nutrient media batch this specimen will initially be cultured on">Initial Media Batch</label>
+    <select id="media_batch" bind:value={form.media_batch_id} title="Select the media batch used for this specimen's initial culture — batch ID will be recorded in the notes">
       <option value="">None / Select later...</option>
       {#each mediaBatches as mb}
         <option value={mb.id}>{mb.batch_id} – {mb.name}</option>
@@ -281,28 +282,28 @@
 
   <div class="form-row">
     <div class="form-group">
-      <label for="provenance">Provenance / Origin</label>
-      <input id="provenance" type="text" bind:value={form.provenance} placeholder="e.g., USDA germplasm collection" />
+      <label for="provenance" title="Geographic or institutional origin of the specimen material">Provenance / Origin</label>
+      <input id="provenance" type="text" bind:value={form.provenance} placeholder="e.g., USDA germplasm collection" title="Enter the source or origin of the plant material (e.g., germplasm collection, field site, donor institution)" />
     </div>
     <div class="form-group">
-      <label for="source_plant">Source Plant</label>
-      <input id="source_plant" type="text" bind:value={form.source_plant} placeholder="e.g., Mother plant #12" />
+      <label for="source_plant" title="Identifier of the parent or mother plant this explant was taken from">Source Plant</label>
+      <input id="source_plant" type="text" bind:value={form.source_plant} placeholder="e.g., Mother plant #12" title="Enter the identifier or label of the parent plant this specimen was derived from" />
     </div>
   </div>
 
   <div class="form-group">
-    <label for="employee_id">Employee ID / Badge #</label>
-    <input id="employee_id" type="text" bind:value={form.employee_id} placeholder="e.g., EMP-042" />
+    <label for="employee_id" title="ID or badge number of the lab technician creating this specimen record">Employee ID / Badge #</label>
+    <input id="employee_id" type="text" bind:value={form.employee_id} placeholder="e.g., EMP-042" title="Enter your employee ID or badge number for traceability and audit purposes" />
   </div>
 
   <div class="form-group">
-    <label for="notes">Notes</label>
-    <textarea id="notes" bind:value={form.notes} rows="3" placeholder="Initial observations, conditions, etc."></textarea>
+    <label for="notes" title="Free-text field for any additional observations, conditions, or remarks about this specimen">Notes</label>
+    <textarea id="notes" bind:value={form.notes} rows="3" placeholder="Initial observations, conditions, etc." title="Add initial observations, culture conditions, contamination notes, or any other relevant information"></textarea>
   </div>
 
   <div style="display:flex;gap:8px;justify-content:flex-end;">
-    <button type="button" class="btn" onclick={onclose}>Cancel</button>
-    <button type="submit" class="btn btn-primary" disabled={loading}>
+    <button type="button" class="btn" onclick={onclose} title="Discard this form and return to the specimen list">Cancel</button>
+    <button type="submit" class="btn btn-primary" disabled={loading} title="Save this new specimen record to the database">
       {loading ? 'Creating...' : 'Create Specimen'}
     </button>
   </div>

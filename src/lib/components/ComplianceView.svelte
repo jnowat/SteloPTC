@@ -61,7 +61,7 @@
   <div class="page-header">
     <h1>Compliance</h1>
     {#if $currentUser?.role !== 'guest'}
-      <button class="btn btn-primary" onclick={() => showForm = !showForm}>
+      <button class="btn btn-primary" title={showForm ? 'Cancel and close the form' : 'Open form to add a new compliance record'} onclick={() => showForm = !showForm}>
         {showForm ? 'Cancel' : '+ New Record'}
       </button>
     {/if}
@@ -73,12 +73,12 @@
         <h3 style="margin-bottom:16px;">New Compliance Record</h3>
         <div class="form-row">
           <div class="form-group">
-            <label>Specimen ID *</label>
-            <input type="text" bind:value={form.specimen_id} required placeholder="Specimen UUID" />
+            <label title="The unique identifier of the specimen this record applies to">Specimen ID *</label>
+            <input type="text" title="Enter the UUID of the specimen" bind:value={form.specimen_id} required placeholder="Specimen UUID" />
           </div>
           <div class="form-group">
-            <label>Record Type</label>
-            <select bind:value={form.record_type}>
+            <label title="Category of compliance record being created">Record Type</label>
+            <select title="Select the type of compliance record" bind:value={form.record_type}>
               {#each recordTypes as t}
                 <option value={t}>{t.replace(/_/g, ' ')}</option>
               {/each}
@@ -87,8 +87,8 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Agency</label>
-            <select bind:value={form.agency}>
+            <label title="Regulatory agency responsible for this compliance record">Agency</label>
+            <select title="Select the governing regulatory agency" bind:value={form.agency}>
               <option value="">Select...</option>
               {#each agencies as a}
                 <option value={a}>{a.replace(/_/g, ' ')}</option>
@@ -96,28 +96,28 @@
             </select>
           </div>
           <div class="form-group">
-            <label>Test Type</label>
-            <input type="text" bind:value={form.test_type} placeholder="e.g., HLB, ELISA, PCR" />
+            <label title="Name of the disease or diagnostic test performed">Test Type</label>
+            <input type="text" title="Enter the test or disease type, e.g. HLB or ELISA" bind:value={form.test_type} placeholder="e.g., HLB, ELISA, PCR" />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Test Method</label>
-            <input type="text" bind:value={form.test_method} placeholder="e.g., PCR, ELISA" />
+            <label title="Laboratory method used to conduct the test">Test Method</label>
+            <input type="text" title="Enter the testing method, e.g. PCR or ELISA" bind:value={form.test_method} placeholder="e.g., PCR, ELISA" />
           </div>
           <div class="form-group">
-            <label>Test Date</label>
-            <input type="date" bind:value={form.test_date} />
+            <label title="Date the test or inspection was conducted">Test Date</label>
+            <input type="date" title="Select the date the test was conducted" bind:value={form.test_date} />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Lab</label>
-            <input type="text" bind:value={form.test_lab} />
+            <label title="Name of the laboratory that performed the test">Lab</label>
+            <input type="text" title="Enter the name of the testing laboratory" bind:value={form.test_lab} />
           </div>
           <div class="form-group">
-            <label>Result</label>
-            <select bind:value={form.test_result}>
+            <label title="Outcome of the test or inspection">Result</label>
+            <select title="Select the test result" bind:value={form.test_result}>
               <option value="">Pending</option>
               <option value="negative">Negative</option>
               <option value="positive">Positive</option>
@@ -126,21 +126,21 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Notes</label>
-          <textarea bind:value={form.notes} rows="2"></textarea>
+          <label title="Additional notes or observations about this compliance record">Notes</label>
+          <textarea title="Enter any additional notes about this record" bind:value={form.notes} rows="2"></textarea>
         </div>
         <div style="text-align:right;">
-          <button type="submit" class="btn btn-primary">Create Record</button>
+          <button type="submit" class="btn btn-primary" title="Save this new compliance record">Create Record</button>
         </div>
       </form>
     </div>
   {/if}
 
   <div class="tabs" style="margin-bottom:16px;">
-    <button class="tab" class:active={activeTab === 'flags'} onclick={() => activeTab = 'flags'}>
+    <button class="tab" title="View active compliance flags requiring attention" class:active={activeTab === 'flags'} onclick={() => activeTab = 'flags'}>
       Compliance Flags ({flags.length})
     </button>
-    <button class="tab" class:active={activeTab === 'records'} onclick={() => activeTab = 'records'}>
+    <button class="tab" title="View all compliance records in the system" class:active={activeTab === 'records'} onclick={() => activeTab = 'records'}>
       All Records ({records.length})
     </button>
   </div>
@@ -155,17 +155,17 @@
         <table>
           <thead>
             <tr>
-              <th>Severity</th>
-              <th>Accession</th>
-              <th>Species</th>
-              <th>Flag</th>
-              <th>Message</th>
+              <th title="Risk level of the compliance flag">Severity</th>
+              <th title="Specimen accession number with the flag">Accession</th>
+              <th title="Species code of the flagged specimen">Species</th>
+              <th title="Type of compliance issue detected">Flag</th>
+              <th title="Details about the compliance issue">Message</th>
             </tr>
           </thead>
           <tbody>
             {#each flags as f}
               <tr>
-                <td><span class="badge {getSeverityClass(f.severity)}">{f.severity}</span></td>
+                <td><span class="badge {getSeverityClass(f.severity)}" title="Severity level: {f.severity}">{f.severity}</span></td>
                 <td><strong>{f.accession_number}</strong></td>
                 <td>{f.species_code}</td>
                 <td>{f.flag_type.replace(/_/g, ' ')}</td>
@@ -184,13 +184,13 @@
         <table>
           <thead>
             <tr>
-              <th>Specimen</th>
-              <th>Type</th>
-              <th>Agency</th>
-              <th>Test/Permit</th>
-              <th>Result</th>
-              <th>Status</th>
-              <th>Date</th>
+              <th title="Specimen accession number or ID">Specimen</th>
+              <th title="Category of compliance record">Type</th>
+              <th title="Regulatory agency associated with this record">Agency</th>
+              <th title="Test type or permit number">Test/Permit</th>
+              <th title="Outcome of the test">Result</th>
+              <th title="Current validity status of the record">Status</th>
+              <th title="Date the test or permit was issued">Date</th>
             </tr>
           </thead>
           <tbody>
@@ -202,16 +202,16 @@
                 <td>{cr.test_type || cr.permit_number || '—'}</td>
                 <td>
                   {#if cr.test_result === 'positive'}
-                    <span class="badge badge-red">Positive</span>
+                    <span class="badge badge-red" title="Test returned a positive result">Positive</span>
                   {:else if cr.test_result === 'negative'}
-                    <span class="badge badge-green">Negative</span>
+                    <span class="badge badge-green" title="Test returned a negative result">Negative</span>
                   {:else if cr.test_result === 'pending'}
-                    <span class="badge badge-yellow">Pending</span>
+                    <span class="badge badge-yellow" title="Test result is still pending">Pending</span>
                   {:else}
                     {cr.test_result || '—'}
                   {/if}
                 </td>
-                <td><span class="badge" class:badge-green={cr.status === 'valid'} class:badge-red={cr.status === 'flagged'}>{cr.status}</span></td>
+                <td><span class="badge" title="Record status: {cr.status}" class:badge-green={cr.status === 'valid'} class:badge-red={cr.status === 'flagged'}>{cr.status}</span></td>
                 <td>{cr.test_date || '—'}</td>
               </tr>
             {/each}

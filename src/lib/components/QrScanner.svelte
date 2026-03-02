@@ -158,7 +158,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label="QR Scanner">
     <div class="modal-header">
       <h2>&#128247; Scan QR Code</h2>
-      <button class="close-btn" onclick={onclose} aria-label="Close">&#10005;</button>
+      <button title="Close the QR scanner and return to the previous view" class="close-btn" onclick={onclose} aria-label="Close">&#10005;</button>
     </div>
 
     <div class="modal-body">
@@ -166,15 +166,15 @@
         <div class="scan-error">
           <span>&#9888;</span>
           <p>{error}</p>
-          <button class="btn btn-sm btn-primary" onclick={startScanner}>Retry</button>
+          <button title="Retry starting the camera — make sure camera permission has been granted" class="btn btn-sm btn-primary" onclick={startScanner}>Retry</button>
         </div>
       {/if}
 
       <!-- Camera selector -->
       {#if cameras.length > 1}
         <div class="camera-select">
-          <label for="cam-select">Camera</label>
-          <select id="cam-select" value={selectedCamera} onchange={(e) => switchCamera((e.target as HTMLSelectElement).value)}>
+          <label title="Choose which camera to use for scanning QR codes" for="cam-select">Camera</label>
+          <select title="Choose which camera device to use for scanning — prefer rear/back camera for best results" id="cam-select" value={selectedCamera} onchange={(e) => switchCamera((e.target as HTMLSelectElement).value)}>
             {#each cameras as cam}
               <option value={cam.id}>{cam.label}</option>
             {/each}
@@ -198,26 +198,26 @@
           <div class="result-header">
             <span class="result-icon">&#10003;</span>
             <strong>QR Code Detected</strong>
-            <button class="btn btn-sm" onclick={clearResult}>Clear</button>
+            <button title="Clear the current scan result and scan another QR code" class="btn btn-sm" onclick={clearResult}>Clear</button>
           </div>
           {#if parsedAccession}
             <div class="result-row">
-              <span class="result-label">Accession</span>
-              <span class="result-value mono">{parsedAccession}</span>
+              <span title="Accession number parsed from the scanned QR code" class="result-label">Accession</span>
+              <span title="The specimen accession number extracted from the QR code payload" class="result-value mono">{parsedAccession}</span>
             </div>
           {/if}
           {#if parsedSpecies}
             <div class="result-row">
-              <span class="result-label">Species</span>
-              <span class="result-value">{parsedSpecies}</span>
+              <span title="Species identifier parsed from the scanned QR code" class="result-label">Species</span>
+              <span title="The species code or genus/species name extracted from the QR code payload" class="result-value">{parsedSpecies}</span>
             </div>
           {/if}
           <div class="result-row">
-            <span class="result-label">Raw data</span>
-            <span class="result-value raw">{result.length > 80 ? result.slice(0, 80) + '…' : result}</span>
+            <span title="The full raw text data decoded from the QR code" class="result-label">Raw data</span>
+            <span title="Complete raw content of the scanned QR code — may be JSON or a plain accession number" class="result-value raw">{result.length > 80 ? result.slice(0, 80) + '…' : result}</span>
           </div>
           {#if parsedAccession}
-            <button class="btn btn-primary" onclick={navigateToSpecimen} disabled={navigating}>
+            <button title="Search for the specimen with this accession number and open its detail page" class="btn btn-primary" onclick={navigateToSpecimen} disabled={navigating}>
               {navigating ? 'Searching…' : '&#8594; Open Specimen'}
             </button>
           {/if}

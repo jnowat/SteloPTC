@@ -95,9 +95,9 @@
     </div>
     {#if totalPages > 1}
       <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px;font-size:13px;">
-        <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }}>Prev</button>
-        <span>Page {page} of {totalPages}</span>
-        <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }}>Next</button>
+        <button title="Go to the previous page of audit entries" class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }}>Prev</button>
+        <span title="Current page number out of total pages">Page {page} of {totalPages}</span>
+        <button title="Go to the next page of audit entries" class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }}>Next</button>
       </div>
     {/if}
   {/if}

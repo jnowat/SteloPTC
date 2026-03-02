@@ -158,14 +158,14 @@
         </div>
       </div>
       <div class="el-actions">
-        <button class="el-btn el-btn-ghost" onclick={handleMarkAllRead}>
+        <button title="Mark all error log entries as read and clear the unread badge counter" class="el-btn el-btn-ghost" onclick={handleMarkAllRead}>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
             <polyline points="20 6 9 17 4 12"/>
           </svg>
           Mark all read
         </button>
         {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-          <button class="el-btn el-btn-danger" onclick={handleClearAll}>
+          <button title="Permanently delete all error log entries — this action cannot be undone" class="el-btn el-btn-danger" onclick={handleClearAll}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>
             </svg>
@@ -178,8 +178,8 @@
     <!-- Filter bar -->
     <div class="el-filters">
       <div class="el-filter-group">
-        <label class="el-filter-label">Severity</label>
-        <select class="el-select" bind:value={filterSeverity}>
+        <label title="Filter error log entries by severity level" class="el-filter-label">Severity</label>
+        <select title="Filter by severity: critical = app-breaking; error = serious failure; warning = potential issue; info = informational" class="el-select" bind:value={filterSeverity}>
           <option value="">All severities</option>
           <option value="critical">Critical</option>
           <option value="error">Error</option>
@@ -188,11 +188,11 @@
         </select>
       </div>
       <div class="el-filter-group">
-        <label class="el-filter-label">Module</label>
-        <input class="el-input" type="text" bind:value={filterModule} placeholder="e.g. specimens.create" />
+        <label title="Filter error log entries by the application module that generated the error" class="el-filter-label">Module</label>
+        <input title="Type a module name to filter entries (e.g. specimens.create, media_batch.update)" class="el-input" type="text" bind:value={filterModule} placeholder="e.g. specimens.create" />
       </div>
-      <label class="el-filter-check">
-        <input type="checkbox" bind:checked={filterUnreadOnly} />
+      <label title="Show only entries that have not been read yet" class="el-filter-check">
+        <input title="Toggle to show only unread error log entries" type="checkbox" bind:checked={filterUnreadOnly} />
         <span>Unread only</span>
       </label>
     </div>
@@ -218,17 +218,18 @@
         <table class="el-table">
           <thead>
             <tr>
-              <th style="width:160px;">Timestamp</th>
-              <th style="width:90px;">Severity</th>
-              <th>Title</th>
-              <th style="width:160px;">Module</th>
-              <th style="width:110px;">User</th>
-              <th style="width:32px;"></th>
+              <th title="Date and time when the error was captured" style="width:160px;">Timestamp</th>
+              <th title="Severity level: critical = app-breaking; error = serious failure; warning = potential issue; info = informational" style="width:90px;">Severity</th>
+              <th title="Short description of the error event">Title</th>
+              <th title="The application module or code path that generated the error" style="width:160px;">Module</th>
+              <th title="The user account that was logged in when the error occurred" style="width:110px;">User</th>
+              <th title="Expand or collapse the full error details" style="width:32px;"></th>
             </tr>
           </thead>
           <tbody>
             {#each logs as log (log.id)}
               <tr
+                title="Click to expand or collapse the full error details for this entry"
                 class="el-row"
                 class:el-row-unread={!log.is_read}
                 class:el-row-expanded={expandedId === log.id}
@@ -236,13 +237,13 @@
               >
                 <td class="el-td-time">{formatTime(log.timestamp)}</td>
                 <td>
-                  <span class="el-sev-badge {severityClass(log.severity)}">
+                  <span title="Severity: critical = app-breaking; error = serious failure; warning = potential issue; info = informational" class="el-sev-badge {severityClass(log.severity)}">
                     {log.severity}
                   </span>
                 </td>
                 <td class="el-td-title">
                   {#if !log.is_read}
-                    <span class="el-unread-dot"></span>
+                    <span title="This entry has not been read yet" class="el-unread-dot"></span>
                   {/if}
                   {log.title}
                 </td>
@@ -295,6 +296,7 @@
                       <!-- Action buttons -->
                       <div class="el-detail-actions">
                         <button
+                          title="Copy full error details to clipboard (ID, timestamp, severity, message, stack trace)"
                           class="el-btn el-btn-ghost"
                           onclick={(e) => { e.stopPropagation(); copyToClipboard(buildCopyText(log), log.id); }}
                         >
@@ -305,6 +307,7 @@
                           {copyFeedback[log.id] || 'Copy to clipboard'}
                         </button>
                         <button
+                          title="Open a pre-filled GitHub issue with this error's details to report a bug"
                           class="el-btn el-btn-github"
                           onclick={(e) => { e.stopPropagation(); reportOnGitHub(log); }}
                         >
@@ -327,14 +330,16 @@
       {#if totalLogs > PER_PAGE}
         <div class="el-pagination">
           <button
+            title="Go to the previous page of error log entries"
             class="el-btn el-btn-ghost el-btn-sm"
             disabled={currentPage === 1}
             onclick={() => { currentPage--; load(); }}
           >← Prev</button>
-          <span class="el-page-info">
+          <span title="Current page number out of total pages" class="el-page-info">
             Page {currentPage} of {Math.ceil(totalLogs / PER_PAGE)}
           </span>
           <button
+            title="Go to the next page of error log entries"
             class="el-btn el-btn-ghost el-btn-sm"
             disabled={currentPage >= Math.ceil(totalLogs / PER_PAGE)}
             onclick={() => { currentPage++; load(); }}

@@ -41,7 +41,7 @@
   <div class="page-header">
     <h1>Species Registry</h1>
     {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-      <button class="btn btn-primary" onclick={() => showForm = !showForm}>
+      <button class="btn btn-primary" title={showForm ? 'Cancel and close the form' : 'Open form to register a new species'} onclick={() => showForm = !showForm}>
         {showForm ? 'Cancel' : '+ Add Species'}
       </button>
     {/if}
@@ -53,36 +53,36 @@
         <h3 style="margin-bottom:16px;">Add Species</h3>
         <div class="form-row">
           <div class="form-group">
-            <label>Genus *</label>
-            <input type="text" bind:value={form.genus} required placeholder="e.g., Citrus" />
+            <label title="Taxonomic genus of the plant species">Genus *</label>
+            <input type="text" title="Enter the genus name, e.g. Citrus" bind:value={form.genus} required placeholder="e.g., Citrus" />
           </div>
           <div class="form-group">
-            <label>Species Name *</label>
-            <input type="text" bind:value={form.species_name} required placeholder="e.g., sinensis" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Common Name</label>
-            <input type="text" bind:value={form.common_name} placeholder="e.g., Sweet Orange" />
-          </div>
-          <div class="form-group">
-            <label>Species Code *</label>
-            <input type="text" bind:value={form.species_code} required placeholder="e.g., CIT-SIN" />
+            <label title="Specific epithet (species part of the binomial name)">Species Name *</label>
+            <input type="text" title="Enter the species epithet, e.g. sinensis" bind:value={form.species_name} required placeholder="e.g., sinensis" />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Default Subculture Interval (days)</label>
-            <input type="number" bind:value={form.default_subculture_interval_days} />
+            <label title="Vernacular or common name for this species">Common Name</label>
+            <input type="text" title="Enter the common name, e.g. Sweet Orange" bind:value={form.common_name} placeholder="e.g., Sweet Orange" />
           </div>
           <div class="form-group">
-            <label>Notes</label>
-            <input type="text" bind:value={form.notes} />
+            <label title="Short unique code used to identify this species in the system">Species Code *</label>
+            <input type="text" title="Enter a short unique code for this species, e.g. CIT-SIN" bind:value={form.species_code} required placeholder="e.g., CIT-SIN" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label title="Default number of days between subculture transfers for this species">Default Subculture Interval (days)</label>
+            <input type="number" title="Enter how many days between subculture transfers" bind:value={form.default_subculture_interval_days} />
+          </div>
+          <div class="form-group">
+            <label title="Optional notes about this species">Notes</label>
+            <input type="text" title="Enter any additional notes about this species" bind:value={form.notes} />
           </div>
         </div>
         <div style="text-align:right;">
-          <button type="submit" class="btn btn-primary">Add Species</button>
+          <button type="submit" class="btn btn-primary" title="Save this new species to the registry">Add Species</button>
         </div>
       </form>
     </div>
@@ -95,12 +95,12 @@
       <table>
         <thead>
           <tr>
-            <th>Code</th>
-            <th>Genus</th>
-            <th>Species</th>
-            <th>Common Name</th>
-            <th>Subculture Interval</th>
-            <th>Notes</th>
+            <th title="Short unique identifier for this species">Code</th>
+            <th title="Taxonomic genus of the species">Genus</th>
+            <th title="Specific epithet of the species">Species</th>
+            <th title="Common or vernacular name of the species">Common Name</th>
+            <th title="Default number of days between subculture transfers">Subculture Interval</th>
+            <th title="Additional notes about the species">Notes</th>
           </tr>
         </thead>
         <tbody>

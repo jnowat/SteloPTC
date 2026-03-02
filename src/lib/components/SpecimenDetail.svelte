@@ -325,7 +325,7 @@
             <span class="lineage-label">Split into {childSpecimens.length} container{childSpecimens.length > 1 ? 's' : ''}</span>
             <div class="lineage-children">
               {#each childSpecimens as child}
-                <button class="lineage-chip child-chip" onclick={() => navigateToSpecimen(child.id)}>
+                <button class="lineage-chip child-chip" title="Navigate to child specimen {child.accession_number} — created by splitting this specimen" onclick={() => navigateToSpecimen(child.id)}>
                   {child.accession_number}
                 </button>
               {/each}
@@ -340,47 +340,47 @@
       <h3 style="margin-bottom:14px;font-size:15px;">Specimen Information</h3>
       <div class="info-grid">
         <div class="info-item">
-          <span class="info-label">Accession</span>
+          <span class="info-label" title="Unique accession identifier for this specimen">Accession</span>
           <span class="info-value mono">{specimen.accession_number}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Stage</span>
+          <span class="info-label" title="Current growth stage of this specimen (e.g. initiation, multiplication, rooting)">Stage</span>
           <span class="info-value"><span class="badge badge-blue">{stageLabel(specimen.stage)}</span></span>
         </div>
         <div class="info-item">
-          <span class="info-label">Initiation Date</span>
+          <span class="info-label" title="Date this specimen was first brought into tissue culture">Initiation Date</span>
           <span class="info-value">{specimen.initiation_date}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Location</span>
+          <span class="info-label" title="Current physical storage location of this specimen">Location</span>
           <span class="info-value">{specimen.location || '—'}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Propagation</span>
+          <span class="info-label" title="Propagation technique used for this specimen (e.g. shoot tip, callus, embryogenesis)">Propagation</span>
           <span class="info-value">{specimen.propagation_method || '—'}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Passages</span>
+          <span class="info-label" title="Total number of subculture/transfer events recorded for this specimen">Passages</span>
           <span class="info-value">{specimen.subculture_count}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Provenance</span>
+          <span class="info-label" title="Origin or history of this specimen (wild-collected, ex-situ, cultivar, etc.)">Provenance</span>
           <span class="info-value">{specimen.provenance || '—'}</span>
         </div>
         <div class="info-item">
-          <span class="info-label">Source Plant</span>
+          <span class="info-label" title="The donor or mother plant from which this specimen was derived">Source Plant</span>
           <span class="info-value">{specimen.source_plant || '—'}</span>
         </div>
         {#if specimen.permit_number}
           <div class="info-item">
-            <span class="info-label">Permit</span>
+            <span class="info-label" title="Regulatory permit number associated with this specimen (CITES, import/export, etc.)">Permit</span>
             <span class="info-value">{specimen.permit_number}{specimen.permit_expiry ? ` (exp: ${specimen.permit_expiry})` : ''}</span>
           </div>
         {/if}
       </div>
       {#if specimen.notes}
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;">
-          <span class="info-label">Notes</span>
+          <span class="info-label" title="General notes recorded for this specimen">Notes</span>
           <p style="margin-top:4px;font-size:13px;white-space:pre-wrap;color:#374151;">{specimen.notes}</p>
         </div>
       {/if}
@@ -388,10 +388,10 @@
 
     <!-- ── Tabs ── -->
     <div class="tabs">
-      <button class="tab" class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>
+      <button class="tab" title="View the chronological subculture/transfer history for this specimen" class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>
         Passage Timeline {#if subcultures.length > 0}<span class="tab-count">{subcultures.length}</span>{/if}
       </button>
-      <button class="tab" class:active={activeTab === 'compliance'} onclick={() => activeTab = 'compliance'}>
+      <button class="tab" title="View regulatory compliance and phytosanitary test records for this specimen" class:active={activeTab === 'compliance'} onclick={() => activeTab = 'compliance'}>
         Compliance {#if complianceRecords.length > 0}<span class="tab-count">{complianceRecords.length}</span>{/if}
       </button>
     </div>
@@ -403,7 +403,7 @@
         <!-- Record Passage header -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:{showPassageForm ? 16 : 0}px;">
           <h3 style="font-size:15px;">Passage History</h3>
-          <button class="btn btn-primary btn-sm" onclick={() => showPassageForm = !showPassageForm}>
+          <button class="btn btn-primary btn-sm" title={showPassageForm ? 'Dismiss the passage entry form without saving' : 'Log a new subculture/transfer event for this specimen'} onclick={() => showPassageForm = !showPassageForm}>
             {showPassageForm ? '✕ Cancel' : '+ Record Passage'}
           </button>
         </div>
@@ -415,12 +415,12 @@
             <!-- Date + Media -->
             <div class="form-row">
               <div class="form-group">
-                <label>Date</label>
-                <input type="date" bind:value={subcultureForm.date} required />
+                <label title="Date on which this passage/subculture was performed">Date</label>
+                <input type="date" title="Date on which this passage/subculture was performed" bind:value={subcultureForm.date} required />
               </div>
               <div class="form-group" style="flex:2;">
-                <label>Media Batch</label>
-                <select bind:value={subcultureForm.media_batch_id}>
+                <label title="Select the media batch used for this transfer — must match the batch prepared for this passage">Media Batch</label>
+                <select title="Select the media batch used for this transfer" bind:value={subcultureForm.media_batch_id}>
                   <option value="">No media / not recorded</option>
                   {#each mediaBatches.slice(0, 20) as mb}
                     <option value={mb.id}>{mb.batch_id} — {mb.name}</option>
@@ -437,8 +437,8 @@
             <!-- Vessel + Env -->
             <div class="form-row">
               <div class="form-group" style="flex:2;">
-                <label>Vessel Type</label>
-                <select bind:value={subcultureForm.vessel_type}>
+                <label title="Type of container used for this passage (jar, flask, Petri dish, etc.)">Vessel Type</label>
+                <select title="Type of container used for this passage (jar, flask, Petri dish, etc.)" bind:value={subcultureForm.vessel_type}>
                   <option value="">Select vessel…</option>
                   {#each vesselTypes as v}
                     <option value={v}>{v}</option>
@@ -446,16 +446,16 @@
                 </select>
               </div>
               <div class="form-group env-field">
-                <label>Temp (°C)</label>
-                <input type="number" step="0.1" bind:value={subcultureForm.temperature_c} placeholder="25" />
+                <label title="Incubation/growth room temperature in degrees Celsius">Temp (°C)</label>
+                <input type="number" step="0.1" title="Incubation/growth room temperature in degrees Celsius" bind:value={subcultureForm.temperature_c} placeholder="25" />
               </div>
               <div class="form-group env-field">
-                <label>pH</label>
-                <input type="number" step="0.01" bind:value={subcultureForm.ph} placeholder="5.7" />
+                <label title="pH of the culture media used for this passage">pH</label>
+                <input type="number" step="0.01" title="pH of the culture media used for this passage" bind:value={subcultureForm.ph} placeholder="5.7" />
               </div>
               <div class="form-group env-field-wide">
-                <label>Light Cycle (hrs on/hrs off)</label>
-                <input type="text" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
+                <label title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)">Light Cycle (hrs on/hrs off)</label>
+                <input type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
               </div>
             </div>
 
@@ -463,29 +463,29 @@
             <div class="section-header">Transfer To Location</div>
             <div class="form-row">
               <div class="form-group">
-                <label>Room</label>
-                <select bind:value={locToRoom}>
+                <label title="Growth room where this specimen will be placed after transfer">Room</label>
+                <select title="Growth room where this specimen will be placed after transfer" bind:value={locToRoom}>
                   <option value="">—</option>
                   {#each rooms as r}<option value={r}>{r}</option>{/each}
                 </select>
               </div>
               <div class="form-group">
-                <label>Rack</label>
-                <select bind:value={locToRack}>
+                <label title="Storage rack within the room where this specimen will be placed">Rack</label>
+                <select title="Storage rack within the room where this specimen will be placed" bind:value={locToRack}>
                   <option value="">—</option>
                   {#each racks as r}<option value={r}>{r}</option>{/each}
                 </select>
               </div>
               <div class="form-group">
-                <label>Shelf</label>
-                <select bind:value={locToShelf}>
+                <label title="Shelf level on the rack where this specimen will be placed">Shelf</label>
+                <select title="Shelf level on the rack where this specimen will be placed" bind:value={locToShelf}>
                   <option value="">—</option>
                   {#each shelves as s}<option value={s}>{s}</option>{/each}
                 </select>
               </div>
               <div class="form-group">
-                <label>Tray</label>
-                <select bind:value={locToTray}>
+                <label title="Tray position on the shelf where this specimen will be placed">Tray</label>
+                <select title="Tray position on the shelf where this specimen will be placed" bind:value={locToTray}>
                   <option value="">—</option>
                   {#each trays as t}<option value={t}>{t}</option>{/each}
                 </select>
@@ -494,10 +494,10 @@
 
             <!-- Health Status -->
             <div class="form-group">
-              <label>Health Status</label>
+              <label title="Observed health condition of this specimen at the time of this passage">Health Status</label>
               <div class="health-slider-wrap">
-                <label class="unknown-toggle">
-                  <input type="checkbox" bind:checked={subcultureForm.health_unknown} style="width:auto;" />
+                <label class="unknown-toggle" title="Check this if health cannot be assessed yet — records health as unknown/awaiting">
+                  <input type="checkbox" title="Mark health as unknown or awaiting assessment" bind:checked={subcultureForm.health_unknown} style="width:auto;" />
                   Unknown / Awaiting Assessment
                 </label>
                 {#if subcultureForm.health_unknown}
@@ -510,11 +510,12 @@
                     step="1"
                     bind:value={passageHealthValue}
                     class="health-slider"
+                    title="Drag to set health score: 0=Dead, 1=Poor, 2=Fair, 3=Good, 4=Healthy"
                     style="--track-color: {healthColors[passageHealthValue]};"
                   />
                   <div class="health-ticks">
                     {#each healthLabels as lbl, i}
-                      <span class="health-tick" class:active={passageHealthValue === i} style={passageHealthValue === i ? `color:${healthColors[i]};` : ''}>
+                      <span class="health-tick" title="Health score {i} — {lbl}" class:active={passageHealthValue === i} style={passageHealthValue === i ? `color:${healthColors[i]};` : ''}>
                         {i} {lbl}
                       </span>
                     {/each}
@@ -528,20 +529,21 @@
 
             <!-- Employee ID -->
             <div class="form-group">
-              <label>Employee ID / Badge #</label>
-              <input type="text" bind:value={subcultureForm.employee_id} placeholder="e.g., EMP-042" />
+              <label title="ID or badge number of the technician who performed this passage (for traceability)">Employee ID / Badge #</label>
+              <input type="text" title="ID or badge number of the technician who performed this passage (for traceability)" bind:value={subcultureForm.employee_id} placeholder="e.g., EMP-042" />
             </div>
 
             <!-- Contamination -->
             <div class="contamination-row">
-              <label class="contam-toggle-label">
-                <input type="checkbox" bind:checked={subcultureForm.contamination_flag} style="width:auto;" />
+              <label class="contam-toggle-label" title="Flag this vessel as contaminated (bacterial, fungal, yeast, or other)">
+                <input type="checkbox" title="Flag this vessel as contaminated (bacterial, fungal, yeast, or other)" bind:checked={subcultureForm.contamination_flag} style="width:auto;" />
                 <span class="contam-toggle-text">Contamination detected in this vessel</span>
               </label>
               {#if subcultureForm.contamination_flag}
                 <div class="form-group" style="margin-top:8px;">
-                  <label>Contamination Notes</label>
+                  <label title="Describe the contamination observed — type (bacterial, fungal, yeast), extent, and corrective action taken">Contamination Notes</label>
                   <textarea
+                    title="Describe the contamination observed — type (bacterial, fungal, yeast), extent, and corrective action taken"
                     bind:value={subcultureForm.contamination_notes}
                     rows="2"
                     placeholder="Describe type (bacterial, fungal, yeast…), extent, and any action taken…"
@@ -553,25 +555,25 @@
             <!-- Observations + Notes -->
             <div class="form-row">
               <div class="form-group" style="flex:1;">
-                <label>Observations</label>
-                <textarea bind:value={subcultureForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
+                <label title="Visual or qualitative observations made at time of passage (growth, morphology, colour, etc.)">Observations</label>
+                <textarea title="Visual or qualitative observations made at time of passage (growth, morphology, colour, etc.)" bind:value={subcultureForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
               </div>
               <div class="form-group" style="flex:1;">
-                <label>Notes</label>
-                <textarea bind:value={subcultureForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
+                <label title="Procedural notes for this passage — protocol deviations, reagent lot numbers, special conditions, etc.">Notes</label>
+                <textarea title="Procedural notes for this passage — protocol deviations, reagent lot numbers, special conditions, etc." bind:value={subcultureForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
               </div>
             </div>
 
             <!-- Split Culture Toggle -->
             <div class="split-toggle-row">
-              <label class="split-toggle-label">
-                <input type="checkbox" bind:checked={isSplitting} style="margin-right:6px;" />
+              <label class="split-toggle-label" title="Create multiple child specimens from this passage (split culture) — each will be linked to this specimen as parent">
+                <input type="checkbox" title="Create multiple child specimens from this passage (split culture)" bind:checked={isSplitting} style="margin-right:6px;" />
                 Split culture into multiple containers
               </label>
               {#if isSplitting}
                 <div class="split-count-row">
                   <span class="split-desc">Number of new specimens to create:</span>
-                  <input type="number" min="2" max="100" bind:value={splitCount} class="split-count-input" />
+                  <input type="number" min="2" max="100" title="Number of new child specimens to create from this split — each will be linked to this specimen as its parent" bind:value={splitCount} class="split-count-input" />
                   <span class="split-hint">Each will be linked to this specimen as parent.</span>
                 </div>
                 <div class="split-preview">
@@ -590,7 +592,7 @@
             </div>
 
             <div style="text-align:right;margin-top:12px;">
-              <button type="submit" class="btn btn-primary" disabled={submitting}>
+              <button type="submit" class="btn btn-primary" title={isSplitting ? `Save this passage and create ${splitCount} new child specimens linked to this one` : 'Save this passage event to the specimen record'} disabled={submitting}>
                 {submitting ? 'Recording…' : isSplitting ? `Record + Create ${splitCount} Splits` : 'Record Passage'}
               </button>
             </div>
@@ -623,20 +625,20 @@
                   <!-- svelte-ignore a11y_no_static_element_interactions -->
                   <div class="tl-card-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
                     <div class="tl-card-left">
-                      <span class="tl-passage-num" style="color:{color};">P{sc.passage_number}</span>
+                      <span class="tl-passage-num" title="Passage number — number of times this specimen has been subcultured (P{sc.passage_number})" style="color:{color};">P{sc.passage_number}</span>
                       <div class="tl-card-summary">
                         <span class="tl-date">{sc.date}</span>
                         {#if sc.contamination_flag}
-                          <span class="tl-pill contam-pill">⚠ Contaminated</span>
+                          <span class="tl-pill contam-pill" title="Contamination was detected during this passage">⚠ Contaminated</span>
                         {/if}
                         {#if sc.media_batch_name}
-                          <span class="tl-pill media-pill">{sc.media_batch_name}</span>
+                          <span class="tl-pill media-pill" title="Media batch used for this passage: {sc.media_batch_name}">{sc.media_batch_name}</span>
                         {/if}
                         {#if sc.vessel_type}
-                          <span class="tl-pill vessel-pill">{sc.vessel_type}</span>
+                          <span class="tl-pill vessel-pill" title="Vessel type used for this passage: {sc.vessel_type}">{sc.vessel_type}</span>
                         {/if}
                         {#if sc.location_to}
-                          <span class="tl-pill loc-pill">→ {sc.location_to}</span>
+                          <span class="tl-pill loc-pill" title="Destination location for this passage: {sc.location_to}">→ {sc.location_to}</span>
                         {/if}
                       </div>
                     </div>
@@ -645,6 +647,7 @@
                         <button
                           type="button"
                           class="btn btn-sm"
+                          title={editingPassageId === sc.id ? 'Discard changes and exit inline edit mode for this passage' : 'Edit the notes, vessel, location, and observations for this passage record (dev mode)'}
                           style="background:#dc2626; color:white;"
                           onclick={(e) => { e.stopPropagation(); if (editingPassageId === sc.id) { cancelEditPassage(); } else { startEditPassage(sc); } }}
                         >
@@ -662,8 +665,8 @@
                         <form onsubmit={(e) => handleEditPassage(e, sc.id)} style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
                           <div class="form-row">
                             <div class="form-group" style="flex:2;">
-                              <label>Vessel Type</label>
-                              <select bind:value={passageEditForm.vessel_type}>
+                              <label title="Edit the vessel type used for this passage">Vessel Type</label>
+                              <select title="Edit the vessel type used for this passage" bind:value={passageEditForm.vessel_type}>
                                 <option value="">Select vessel…</option>
                                 {#each vesselTypes as v}
                                   <option value={v}>{v}</option>
@@ -671,23 +674,23 @@
                               </select>
                             </div>
                             <div class="form-group" style="flex:2;">
-                              <label>Location To</label>
-                              <input type="text" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
+                              <label title="Edit the destination location recorded for this passage">Location To</label>
+                              <input type="text" title="Edit the destination location recorded for this passage" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
                             </div>
                           </div>
                           <div class="form-row">
                             <div class="form-group" style="flex:1;">
-                              <label>Observations</label>
-                              <textarea bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
+                              <label title="Edit the visual or qualitative observations recorded for this passage">Observations</label>
+                              <textarea title="Edit the visual or qualitative observations recorded for this passage" bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
                             </div>
                             <div class="form-group" style="flex:1;">
-                              <label>Notes</label>
-                              <textarea bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
+                              <label title="Edit the procedural notes recorded for this passage">Notes</label>
+                              <textarea title="Edit the procedural notes recorded for this passage" bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
                             </div>
                           </div>
                           <div style="text-align:right;">
-                            <button type="button" class="btn btn-sm" onclick={cancelEditPassage} style="margin-right:6px;">Cancel</button>
-                            <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+                            <button type="button" class="btn btn-sm" title="Discard changes and exit inline edit mode" onclick={cancelEditPassage} style="margin-right:6px;">Cancel</button>
+                            <button type="submit" class="btn btn-primary btn-sm" title="Save the edited fields for this passage record">Save Changes</button>
                           </div>
                         </form>
                       {:else}
@@ -752,7 +755,7 @@
                               <div class="tl-detail-item">
                                 <span class="tl-detail-label">Health</span>
                                 <span class="tl-detail-value">
-                                  <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">
+                                  <span title="Health score at time of this passage (0=Dead, 1=Poor, 2=Fair, 3=Good, 4=Healthy)" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">
                                     {hb.label}
                                   </span>
                                 </span>
@@ -800,12 +803,12 @@
           <table>
             <thead>
               <tr>
-                <th>Type</th>
-                <th>Agency</th>
-                <th>Test / Permit</th>
-                <th>Result</th>
-                <th>Status</th>
-                <th>Date</th>
+                <th title="Category of compliance record (e.g. phytosanitary test, import permit, CITES certificate)">Type</th>
+                <th title="Regulatory agency or authority that issued or required this record">Agency</th>
+                <th title="Specific test type performed or permit number associated with this record">Test / Permit</th>
+                <th title="Outcome of the test (Positive = pathogen detected, Negative = clean, Pending = awaiting result)">Result</th>
+                <th title="Current validity status of this compliance record (valid, pending, flagged, or expired)">Status</th>
+                <th title="Date the test was performed or the compliance record was created">Date</th>
               </tr>
             </thead>
             <tbody>

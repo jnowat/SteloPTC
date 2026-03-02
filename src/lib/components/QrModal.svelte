@@ -114,7 +114,7 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label="QR Code">
     <div class="modal-header">
       <h2>QR Code</h2>
-      <button class="close-btn" onclick={onclose} aria-label="Close">&#10005;</button>
+      <button title="Close this QR code modal" class="close-btn" onclick={onclose} aria-label="Close">&#10005;</button>
     </div>
 
     <div class="modal-body">
@@ -124,44 +124,44 @@
         <div class="qr-error">{error}</div>
       {:else}
         <div class="qr-wrapper">
-          <img class="qr-image" src={qrDataUrl} alt="QR code for {specimen.accession_number}" />
+          <img title="QR code encoding accession number, species, stage, location, and specimen ID for {specimen.accession_number}" class="qr-image" src={qrDataUrl} alt="QR code for {specimen.accession_number}" />
         </div>
       {/if}
 
       <div class="specimen-info">
         <div class="info-row">
-          <span class="info-label">Accession</span>
-          <span class="info-value mono">{specimen.accession_number}</span>
+          <span title="Unique accession number identifying this specimen" class="info-label">Accession</span>
+          <span title="The specimen's unique accession number — also encoded in the QR code" class="info-value mono">{specimen.accession_number}</span>
         </div>
         <div class="info-row">
-          <span class="info-label">Species</span>
-          <span class="info-value">
+          <span title="Species identifier: either the species code or the full genus and species name" class="info-label">Species</span>
+          <span title="Species code or genus/species name encoded in this QR label" class="info-value">
             {specimen.species_code
               ? specimen.species_code
               : (`${specimen.genus ?? ''} ${specimen.species_name ?? ''}`).trim() || '—'}
           </span>
         </div>
         <div class="info-row">
-          <span class="info-label">Stage</span>
-          <span class="info-value">{specimen.stage}</span>
+          <span title="Current growth or lifecycle stage of the specimen" class="info-label">Stage</span>
+          <span title="Specimen lifecycle stage encoded in this QR label" class="info-value">{specimen.stage}</span>
         </div>
         {#if specimen.location}
           <div class="info-row">
-            <span class="info-label">Location</span>
-            <span class="info-value">{specimen.location}</span>
+            <span title="Physical storage location of this specimen" class="info-label">Location</span>
+            <span title="Storage location encoded in this QR label" class="info-value">{specimen.location}</span>
           </div>
         {/if}
       </div>
     </div>
 
     <div class="modal-footer">
-      <button class="btn btn-primary" onclick={printLabel} disabled={!qrDataUrl}>
+      <button title="Print a 3.5-inch adhesive label with the QR code and specimen details" class="btn btn-primary" onclick={printLabel} disabled={!qrDataUrl}>
         &#128424; Print Label
       </button>
-      <button class="btn" onclick={downloadQr} disabled={!qrDataUrl}>
+      <button title="Save the QR code as a PNG image file to your device" class="btn" onclick={downloadQr} disabled={!qrDataUrl}>
         &#8659; Download PNG
       </button>
-      <button class="btn" onclick={onclose}>Close</button>
+      <button title="Close this QR code modal without taking any action" class="btn" onclick={onclose}>Close</button>
     </div>
   </div>
 </div>
