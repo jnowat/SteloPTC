@@ -18,11 +18,11 @@
         role={notif.type === 'error' || notif.type === 'warning' ? 'button' : undefined}
         tabindex={notif.type === 'error' || notif.type === 'warning' ? 0 : undefined}
         onkeydown={(e) => e.key === 'Enter' && handleErrorClick(notif)}
-        title={notif.type === 'error' || notif.type === 'warning' ? 'Click to open Error Log' : undefined}
+        title={notif.type === 'error' ? 'Error notification — click to open the Error Log for full details' : notif.type === 'warning' ? 'Warning notification — click to open the Error Log for full details' : notif.type === 'success' ? 'Success notification — operation completed successfully' : 'Informational notification'}
       >
-        <span class="notif-msg">{notif.message}</span>
+        <span title={notif.message} class="notif-msg">{notif.message}</span>
         {#if notif.type === 'error' || notif.type === 'warning'}
-          <span class="notif-hint">View in Error Log →</span>
+          <span title="Click this notification to navigate to the Error Log and view the full error record" class="notif-hint">View in Error Log →</span>
         {/if}
       </div>
     {/each}

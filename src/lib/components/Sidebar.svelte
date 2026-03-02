@@ -42,6 +42,7 @@
 <button
   class="hamburger"
   aria-label="Open navigation menu"
+  title="Open navigation menu"
   onclick={() => (mobileOpen = true)}
 >
   <span></span>
@@ -58,10 +59,10 @@
 
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
-    <h2>SteloPTC</h2>
-    <span class="version">v0.1.14</span>
+    <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
+    <span class="version" title="Application version">v0.1.14</span>
     <!-- Mobile close button inside drawer -->
-    <button class="drawer-close" aria-label="Close menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
+    <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
 
   <nav class="nav">
@@ -71,11 +72,24 @@
           class="nav-item"
           class:active={$currentView === item.id}
           onclick={() => handleNavTap(item.id)}
+          title={
+            item.id === 'dashboard' ? 'Go to Dashboard — overview of all key metrics' :
+            item.id === 'specimens' ? 'Go to Specimens — manage and view all tissue culture specimens' :
+            item.id === 'media' ? 'Go to Media Logs — track media preparation and usage records' :
+            item.id === 'reminders' ? 'Go to Reminders — view and manage scheduled tasks and alerts' :
+            item.id === 'compliance' ? 'Go to Compliance — review compliance flags and regulatory records' :
+            item.id === 'species' ? 'Go to Species — manage species definitions and subculture intervals' :
+            item.id === 'inventory' ? 'Go to Inventory — track stock levels and supply usage' :
+            item.id === 'users' ? 'Go to Users — manage user accounts and roles (admin only)' :
+            item.id === 'audit' ? 'Go to Audit Log — view system-wide change history (admin/supervisor)' :
+            item.id === 'error-log' ? 'Go to Error Log — review application errors and warnings' :
+            `Navigate to ${item.label}`
+          }
         >
           <span class="nav-icon">{@html item.icon}</span>
           <span class="nav-label">{item.label}</span>
           {#if item.id === 'error-log' && $unreadErrorCount > 0}
-            <span class="error-badge">{$unreadErrorCount > 99 ? '99+' : $unreadErrorCount}</span>
+            <span class="error-badge" title="{$unreadErrorCount} unread error{$unreadErrorCount === 1 ? '' : 's'}">{$unreadErrorCount > 99 ? '99+' : $unreadErrorCount}</span>
           {/if}
         </button>
       {/if}
@@ -83,15 +97,15 @@
   </nav>
 
   <div class="sidebar-footer">
-    <div class="user-info">
+    <div class="user-info" title="Logged in as {$currentUser?.display_name || 'User'} ({$currentUser?.role || 'unknown role'})">
       <div class="user-name">{$currentUser?.display_name || 'User'}</div>
-      <div class="user-role">{$currentUser?.role || ''}</div>
+      <div class="user-role" title="Your account role determines which features and data you can access">{$currentUser?.role || ''}</div>
     </div>
     <div class="footer-actions">
-      <button class="icon-btn" onclick={ontoggleDark} title="Toggle dark mode">
+      <button class="icon-btn" onclick={ontoggleDark} title="Toggle dark/light theme">
         {@html isDark ? '&#9728;' : '&#127769;'}
       </button>
-      <button class="icon-btn" onclick={onlogout} title="Logout">
+      <button class="icon-btn" onclick={onlogout} title="Log out of the current session">
         {@html '&#10140;'}
       </button>
     </div>

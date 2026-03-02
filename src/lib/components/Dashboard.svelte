@@ -99,52 +99,52 @@
 <div class="dashboard">
   <div class="page-header">
     <h1>Dashboard</h1>
-    <button class="btn" onclick={loadDashboard}>Refresh</button>
+    <button class="btn" onclick={loadDashboard} title="Reload dashboard data">Refresh</button>
   </div>
 
   {#if loading}
     <div class="empty-state">Loading dashboard...</div>
   {:else if stats}
     <div class="stats-grid">
-      <div class="stat-card">
+      <div class="stat-card" title="Number of specimens currently in active culture">
         <div class="stat-value">{stats.active_specimens}</div>
         <div class="stat-label">Active Specimens</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" title="Total number of specimens ever accessioned into the system">
         <div class="stat-value">{stats.total_specimens}</div>
         <div class="stat-label">Total Specimens</div>
       </div>
-      <div class="stat-card warn">
+      <div class="stat-card warn" title="Specimens currently under quarantine restrictions">
         <div class="stat-value">{stats.quarantined}</div>
         <div class="stat-label">Quarantined</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" title="Number of subculture passages performed in the last 7 days">
         <div class="stat-value">{stats.recent_subcultures}</div>
         <div class="stat-label">Subcultures (7d)</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" title="Specimens that have been archived and are no longer in active culture">
         <div class="stat-value">{stats.archived}</div>
         <div class="stat-label">Archived</div>
       </div>
-      <div class="stat-card alert">
+      <div class="stat-card alert" title="Open compliance flags requiring review or corrective action">
         <div class="stat-value">{flags.length}</div>
         <div class="stat-label">Compliance Flags</div>
       </div>
-      <div class="stat-card" class:warn={lowStock.length > 0}>
+      <div class="stat-card" class:warn={lowStock.length > 0} title="Inventory items currently below their minimum stock threshold">
         <div class="stat-value">{lowStock.length}</div>
         <div class="stat-label">Low Stock Items</div>
       </div>
       {#if contaminationStats}
-        <div class="stat-card" class:alert={contaminationStats.contaminated_specimens > 0}>
+        <div class="stat-card" class:alert={contaminationStats.contaminated_specimens > 0} title="Number of active specimens that have at least one contaminated vessel event">
           <div class="stat-value">{contaminationStats.contaminated_specimens}</div>
           <div class="stat-label">Contaminated Vessels</div>
         </div>
-        <div class="stat-card" class:alert={contaminationStats.contamination_rate_pct > 10}>
+        <div class="stat-card" class:alert={contaminationStats.contamination_rate_pct > 10} title="Percentage of active specimens with at least one contaminated vessel">
           <div class="stat-value">{contaminationStats.contamination_rate_pct.toFixed(1)}%</div>
           <div class="stat-label">Contamination Rate</div>
         </div>
       {/if}
-      <div class="stat-card" class:alert={overdueItems.length > 0}>
+      <div class="stat-card" class:alert={overdueItems.length > 0} title="Specimens past their scheduled subculture date based on species interval">
         <div class="stat-value">{overdueItems.length}</div>
         <div class="stat-label">Overdue Subcultures</div>
       </div>
@@ -152,7 +152,7 @@
 
     <div class="dashboard-panels">
       <div class="panel">
-        <h3>Upcoming Reminders</h3>
+        <h3 title="Reminders due soon, sorted by urgency">Upcoming Reminders</h3>
         {#if reminders.length === 0}
           <p class="empty-state">No upcoming reminders</p>
         {:else}
@@ -165,25 +165,25 @@
                     {r.specimen_accession || 'General'} &middot; Due: {r.due_date}
                   </div>
                 </div>
-                <span class="badge {getUrgencyClass(r.urgency)}">{r.urgency}</span>
+                <span class="badge {getUrgencyClass(r.urgency)}" title="Urgency level: {r.urgency}">{r.urgency}</span>
               </div>
             {/each}
           </div>
-          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('reminders')}>
+          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('reminders')} title="Go to the full Reminders list">
             View all reminders
           </button>
         {/if}
       </div>
 
       <div class="panel">
-        <h3>Compliance Alerts</h3>
+        <h3 title="Active compliance flags detected across all specimens">Compliance Alerts</h3>
         {#if flags.length === 0}
           <p class="empty-state">No compliance issues detected</p>
         {:else}
           <div class="flag-list">
             {#each flags.slice(0, 8) as f}
               <div class="flag-item">
-                <span class="badge {getSeverityClass(f.severity)}">{f.severity}</span>
+                <span class="badge {getSeverityClass(f.severity)}" title="Severity: {f.severity}">{f.severity}</span>
                 <div>
                   <div class="flag-accession">{f.accession_number}</div>
                   <div class="flag-message">{f.message}</div>
@@ -191,14 +191,14 @@
               </div>
             {/each}
           </div>
-          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('compliance')}>
+          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('compliance')} title="Go to the full Compliance module">
             View compliance
           </button>
         {/if}
       </div>
 
       <div class="panel">
-        <h3>Specimens by Stage</h3>
+        <h3 title="Distribution of active specimens across culture stages">Specimens by Stage</h3>
         {#if stats.by_stage.length === 0}
           <p class="empty-state">No specimens yet</p>
         {:else}
@@ -220,7 +220,7 @@
       </div>
 
       <div class="panel">
-        <h3>Specimens by Species</h3>
+        <h3 title="Distribution of active specimens grouped by species code">Specimens by Species</h3>
         {#if stats.by_species.length === 0}
           <p class="empty-state">No specimens yet</p>
         {:else}
@@ -243,7 +243,7 @@
 
       <!-- Subculture Schedule panel -->
       <div class="panel">
-        <h3>Subculture Schedule</h3>
+        <h3 title="Upcoming and overdue subculture passages based on each species' recommended interval">Subculture Schedule</h3>
         {#if schedule.length === 0}
           <p class="empty-state">No specimens with scheduling data</p>
         {:else}
@@ -257,7 +257,7 @@
                     <span class="schedule-species">{entry.species_code}</span>
                   </div>
                   <div class="schedule-item-right">
-                    <span class="badge badge-red">{Math.abs(entry.days_until_due)}d overdue</span>
+                    <span class="badge badge-red" title="This specimen is {Math.abs(entry.days_until_due)} day(s) past its scheduled subculture date">{Math.abs(entry.days_until_due)}d overdue</span>
                     {#if entry.next_due_date}
                       <span class="schedule-date">Due {entry.next_due_date}</span>
                     {/if}
@@ -276,7 +276,7 @@
                     <span class="schedule-species">{entry.species_code}</span>
                   </div>
                   <div class="schedule-item-right">
-                    <span class="badge badge-yellow">{entry.days_until_due}d left</span>
+                    <span class="badge badge-yellow" title="This specimen is due for subculture in {entry.days_until_due} day(s)">{entry.days_until_due}d left</span>
                     {#if entry.next_due_date}
                       <span class="schedule-date">Due {entry.next_due_date}</span>
                     {/if}
@@ -288,7 +288,7 @@
           {#if overdueItems.length === 0 && dueSoonItems.length === 0}
             <p class="empty-state">All subcultures on schedule</p>
           {/if}
-          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('specimens')}>
+          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('specimens')} title="Go to the full Specimens list">
             View specimens
           </button>
         {/if}
@@ -297,7 +297,7 @@
       <!-- Contamination Stats panel -->
       {#if contaminationStats}
         <div class="panel">
-          <h3>Contamination Overview</h3>
+          <h3 title="Summary of contamination events across all specimens and vessel types">Contamination Overview</h3>
           <div class="contam-rate-row">
             <div class="contam-rate-value" class:contam-high={contaminationStats.contamination_rate_pct > 10}>
               {contaminationStats.contamination_rate_pct.toFixed(1)}%
@@ -329,7 +329,7 @@
             <div class="flag-list">
               {#each contaminationStats.recent_events.slice(0, 5) as ev}
                 <div class="flag-item">
-                  <span class="badge badge-red">P{ev.passage_number}</span>
+                  <span class="badge badge-red" title="Passage number {ev.passage_number} at which contamination was recorded">P{ev.passage_number}</span>
                   <div>
                     <div class="flag-accession">{ev.accession_number} <span style="font-weight:400;color:#6b7280;">({ev.species_code})</span></div>
                     <div class="flag-message">{ev.date}{ev.vessel_type ? ` · ${ev.vessel_type}` : ''}{ev.contamination_notes ? ` · ${ev.contamination_notes}` : ''}</div>
@@ -342,14 +342,14 @@
       {/if}
 
       <div class="panel">
-        <h3>Inventory Alerts</h3>
+        <h3 title="Inventory items that have fallen below their minimum stock threshold">Inventory Alerts</h3>
         {#if lowStock.length === 0}
           <p class="empty-state">All stock levels OK</p>
         {:else}
           <div class="flag-list">
             {#each lowStock.slice(0, 8) as item}
               <div class="flag-item">
-                <span class="badge badge-yellow">Low</span>
+                <span class="badge badge-yellow" title="Stock level is below the minimum threshold">Low</span>
                 <div>
                   <div class="flag-accession">{item.name}</div>
                   <div class="flag-message">
@@ -359,19 +359,19 @@
               </div>
             {/each}
           </div>
-          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('inventory')}>
+          <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('inventory')} title="Go to the full Inventory module">
             View inventory
           </button>
         {/if}
       </div>
 
       <div class="panel">
-        <h3>Database Backup</h3>
+        <h3 title="Create a snapshot backup of the entire database to the configured backup directory">Database Backup</h3>
         <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
           Create a backup of the database to the default backup directory.
         </p>
         {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-          <button class="btn btn-primary" onclick={handleBackup} disabled={backingUp}>
+          <button class="btn btn-primary" onclick={handleBackup} disabled={backingUp} title="Create a backup of the database to the default backup directory">
             {backingUp ? 'Backing up...' : 'Backup Now'}
           </button>
         {:else}
@@ -381,13 +381,13 @@
 
       {#if $currentUser?.role === 'admin'}
         <div class="panel danger-panel">
-          <h3 style="color:#dc2626;">⚠ Dev Tools — Developer Mode</h3>
+          <h3 style="color:#dc2626;" title="Admin-only developer tools for editing protected records">⚠ Dev Tools — Developer Mode</h3>
           <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
             Enables in-app editing of passages and other protected records.
             Visible only to admins. Toggle persists across sessions.
           </p>
-          <label style="display:inline-flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;">
-            <input type="checkbox" bind:checked={$devMode} style="width:auto; accent-color:#dc2626;" />
+          <label style="display:inline-flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;" title="Toggle developer mode to enable editing of passages and other protected records">
+            <input type="checkbox" bind:checked={$devMode} style="width:auto; accent-color:#dc2626;" title="Enable or disable developer mode" />
             <span style="font-weight:600; color:{$devMode ? '#dc2626' : '#6b7280'};">
               Dev Mode {$devMode ? 'ON' : 'OFF'}
             </span>
@@ -395,14 +395,14 @@
         </div>
 
         <div class="panel danger-panel">
-          <h3 style="color:#dc2626;">⚠ Dev Tools — Reset Database</h3>
+          <h3 style="color:#dc2626;" title="Permanently wipe all specimen data, media, subcultures, compliance records, inventory, and audit logs — this cannot be undone">⚠ Dev Tools — Reset Database</h3>
           <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
             Permanently deletes all specimens, media batches, subcultures, compliance records,
             inventory, and audit logs. Users and species definitions are preserved.
             <strong>This cannot be undone.</strong>
           </p>
           {#if !showResetPanel}
-            <button class="btn btn-danger btn-sm" onclick={() => showResetPanel = true}>
+            <button class="btn btn-danger btn-sm" onclick={() => showResetPanel = true} title="Reveal the database reset confirmation controls">
               Show Reset Controls
             </button>
           {:else}
@@ -415,15 +415,17 @@
                 bind:value={resetPhrase}
                 placeholder="RESET DATABASE"
                 style="margin-bottom:8px; font-family:monospace;"
+                title="Type RESET DATABASE exactly to unlock the reset button"
               />
               <div style="display:flex; gap:8px;">
-                <button class="btn btn-sm" onclick={() => { showResetPanel = false; resetPhrase = ''; }}>
+                <button class="btn btn-sm" onclick={() => { showResetPanel = false; resetPhrase = ''; }} title="Cancel and hide the reset controls">
                   Cancel
                 </button>
                 <button
                   class="btn btn-danger btn-sm"
                   onclick={handleReset}
                   disabled={resetting || resetPhrase !== 'RESET DATABASE'}
+                  title="Permanently delete all specimen data — this cannot be undone"
                 >
                   {resetting ? 'Resetting...' : 'Reset Now'}
                 </button>

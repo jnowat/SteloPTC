@@ -346,7 +346,11 @@
   <div class="page-header">
     <h1>Media Logs</h1>
     {#if $currentUser?.role !== 'guest'}
-      <button class="btn btn-primary" onclick={openCreate}>+ New Media Batch</button>
+      <button
+        class="btn btn-primary"
+        onclick={openCreate}
+        title="Open the form to log a new media preparation batch"
+      >+ New Media Batch</button>
     {/if}
   </div>
 
@@ -357,47 +361,91 @@
         <form onsubmit={handleUpdate}>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <h3>Edit Batch: {editingBatch.batch_id}</h3>
-            <button type="button" class="btn btn-sm" onclick={cancelForm}>Cancel</button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              onclick={cancelForm}
+              title="Discard changes and close the edit form"
+            >Cancel</button>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label>Name</label>
-              <input type="text" bind:value={editForm.name} />
+              <label title="Human-readable name for this media batch (e.g., MS Full + BAP)">Name</label>
+              <input
+                type="text"
+                bind:value={editForm.name}
+                title="Human-readable name for this media batch (e.g., MS Full + BAP)"
+              />
             </div>
             <div class="form-group">
-              <label>Expiration Date</label>
-              <input type="date" bind:value={editForm.expiration_date} />
+              <label title="Date after which this media batch should no longer be used">Expiration Date</label>
+              <input
+                type="date"
+                bind:value={editForm.expiration_date}
+                title="Date after which this media batch should no longer be used"
+              />
             </div>
           </div>
 
           <div class="compact-row">
             <div class="form-group compact-field">
-              <label>Volume Remaining (mL)</label>
-              <input type="number" step="0.1" bind:value={editForm.volume_remaining_ml} />
+              <label title="Current volume of media remaining in stock (mL)">Volume Remaining (mL)</label>
+              <input
+                type="number"
+                step="0.1"
+                bind:value={editForm.volume_remaining_ml}
+                title="Current volume of media remaining in stock (mL)"
+              />
             </div>
             <div class="form-group compact-field-wide">
-              <label>Storage Conditions</label>
-              <input type="text" bind:value={editForm.storage_conditions} placeholder="e.g., 4°C dark" />
+              <label title="How and where this batch is being stored (e.g., 4°C in the dark)">Storage Conditions</label>
+              <input
+                type="text"
+                bind:value={editForm.storage_conditions}
+                placeholder="e.g., 4°C dark"
+                title="How and where this batch is being stored (e.g., 4°C in the dark)"
+              />
             </div>
           </div>
 
           <div class="form-group">
-            <label>QC Notes</label>
-            <input type="text" bind:value={editForm.qc_notes} placeholder="Quality control observations..." />
+            <label title="Quality control observations — contamination checks, colour, clarity, gelation">QC Notes</label>
+            <input
+              type="text"
+              bind:value={editForm.qc_notes}
+              placeholder="Quality control observations..."
+              title="Quality control observations — contamination checks, colour, clarity, gelation"
+            />
           </div>
 
           <div class="form-group">
-            <label>Notes</label>
-            <textarea bind:value={editForm.notes} rows="3"></textarea>
+            <label title="General notes about this batch — amendments, deviations from protocol, etc.">Notes</label>
+            <textarea
+              bind:value={editForm.notes}
+              rows="3"
+              title="General notes about this batch — amendments, deviations from protocol, etc."
+            ></textarea>
           </div>
 
           <div style="display:flex;align-items:center;gap:16px;justify-content:space-between;">
-            <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
-              <input type="checkbox" bind:checked={editForm.needs_review} style="width:auto;" />
+            <label
+              style="display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;"
+              title="Check this box to flag the batch for supervisor review before use"
+            >
+              <input
+                type="checkbox"
+                bind:checked={editForm.needs_review}
+                style="width:auto;"
+                title="Flag this batch so a supervisor is alerted to review it before use"
+              />
               Flag for supervisor review
             </label>
-            <button type="submit" class="btn btn-primary">Save Changes</button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              title="Save all changes made to this media batch record"
+            >Save Changes</button>
           </div>
         </form>
 
@@ -406,33 +454,57 @@
         <form onsubmit={handleCreate}>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <h3>Create New Media Batch</h3>
-            <button type="button" class="btn btn-sm" onclick={cancelForm}>Cancel</button>
+            <button
+              type="button"
+              class="btn btn-sm"
+              onclick={cancelForm}
+              title="Discard this form and return to the media list"
+            >Cancel</button>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label>Name *</label>
-              <input type="text" bind:value={batchForm.name} placeholder="e.g., MS Full Strength + BAP" required />
+              <label title="Descriptive name for this batch — include basal salts type and key supplements">Name *</label>
+              <input
+                type="text"
+                bind:value={batchForm.name}
+                placeholder="e.g., MS Full Strength + BAP"
+                required
+                title="Descriptive name for this batch — include basal salts type and key supplements"
+              />
             </div>
             <div class="form-group">
-              <label>Preparation Date *</label>
-              <input type="date" bind:value={batchForm.preparation_date} required />
+              <label title="Date on which this media batch was prepared and autoclaved">Preparation Date *</label>
+              <input
+                type="date"
+                bind:value={batchForm.preparation_date}
+                required
+                title="Date on which this media batch was prepared and autoclaved"
+              />
             </div>
           </div>
 
           <!-- Employee ID -->
           <div class="form-row">
             <div class="form-group" style="max-width:260px;">
-              <label>Employee ID / Badge #</label>
-              <input type="text" bind:value={batchForm.employee_id} placeholder="e.g., EMP-042" />
+              <label title="ID or badge number of the technician who prepared this batch — used for traceability">Employee ID / Badge #</label>
+              <input
+                type="text"
+                bind:value={batchForm.employee_id}
+                placeholder="e.g., EMP-042"
+                title="ID or badge number of the technician who prepared this batch — used for traceability"
+              />
             </div>
           </div>
 
           <!-- Basal salts -->
           <div class="form-row">
             <div class="form-group">
-              <label>Basal Salts</label>
-              <select bind:value={batchForm.basal_salts}>
+              <label title="Type of basal medium formulation (MS=Murashige &amp; Skoog, WPM=Woody Plant Medium, B5=Gamborg's B5, etc.)">Basal Salts</label>
+              <select
+                bind:value={batchForm.basal_salts}
+                title="Type of basal medium formulation (MS=Murashige &amp; Skoog, WPM=Woody Plant Medium, B5=Gamborg's B5, etc.)"
+              >
                 <option value="MS">Murashige &amp; Skoog (MS)</option>
                 <option value="1/2 MS">Half-strength MS</option>
                 <option value="WPM">Woody Plant Medium</option>
@@ -445,42 +517,72 @@
               </select>
             </div>
             <div class="form-group">
-              <label>Expiration Date</label>
-              <input type="date" bind:value={batchForm.expiration_date} />
+              <label title="Date after which this media batch should no longer be used">Expiration Date</label>
+              <input
+                type="date"
+                bind:value={batchForm.expiration_date}
+                title="Date after which this media batch should no longer be used"
+              />
             </div>
           </div>
 
           <!-- Concentration auto-calc -->
           <div class="conc-section">
             <div class="conc-toggle">
-              <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;">
-                <input type="checkbox" bind:checked={premadeSolution} style="width:auto;" />
+              <label
+                style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;"
+                title="Toggle to use a pre-made stock solution instead of weighing out powder directly"
+              >
+                <input
+                  type="checkbox"
+                  bind:checked={premadeSolution}
+                  style="width:auto;"
+                  title="Toggle to use a stock solution instead of weighing powder directly — when checked, enter the known concentration; when unchecked, enter weight and volume to auto-calculate"
+                />
                 Pre-made solution (enter concentration directly)
               </label>
             </div>
 
             {#if premadeSolution}
               <div class="form-group" style="max-width:200px;">
-                <label>Basal Salts Concentration (g/L)</label>
-                <input type="number" step="0.001" bind:value={batchForm.basal_salts_concentration} placeholder="e.g., 4.4" />
+                <label title="Known concentration of the pre-made basal salts stock solution in g/L">Basal Salts Concentration (g/L)</label>
+                <input
+                  type="number"
+                  step="0.001"
+                  bind:value={batchForm.basal_salts_concentration}
+                  placeholder="e.g., 4.4"
+                  title="Known concentration of the pre-made basal salts stock solution in g/L (e.g., 4.4 g/L for full-strength MS)"
+                />
               </div>
             {:else}
               <div class="compact-row">
                 <div class="form-group compact-field">
-                  <label>Basal Salts Added (g)</label>
-                  <input type="number" step="0.001" bind:value={basalWeightG} placeholder="e.g., 4.4" />
+                  <label title="Mass of basal salts powder weighed out for this batch (grams)">Basal Salts Added (g)</label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    bind:value={basalWeightG}
+                    placeholder="e.g., 4.4"
+                    title="Mass of basal salts powder weighed out for this batch (grams) — used to auto-calculate concentration"
+                  />
                 </div>
                 <div class="form-group compact-field">
-                  <label>Water Volume (mL)</label>
-                  <input type="number" step="1" bind:value={basalWaterMl} placeholder="e.g., 1000" />
+                  <label title="Total water volume used to dissolve the basal salts (mL) — used to auto-calculate concentration">Water Volume (mL)</label>
+                  <input
+                    type="number"
+                    step="1"
+                    bind:value={basalWaterMl}
+                    placeholder="e.g., 1000"
+                    title="Total water volume used to dissolve the basal salts (mL) — used to auto-calculate concentration"
+                  />
                 </div>
                 <div class="form-group compact-field">
-                  <label>Concentration (g/L)</label>
+                  <label title="Resulting basal salts concentration in g/L — auto-calculated from weight and volume, or enter manually">Concentration (g/L)</label>
                   <input
                     type="number" step="0.001"
                     bind:value={batchForm.basal_salts_concentration}
                     placeholder={autoConcentration || '—'}
-                    title={autoConcentration ? `Auto-calculated: ${autoConcentration} g/L` : 'Enter weight and volume to auto-calculate'}
+                    title={autoConcentration ? `Auto-calculated: ${autoConcentration} g/L` : 'Enter weight and volume to auto-calculate, or type a value manually'}
                   />
                 </div>
               </div>
@@ -493,28 +595,56 @@
           <!-- Numeric fields row -->
           <div class="compact-row">
             <div class="form-group compact-field">
-              <label>Sucrose (g/L)</label>
-              <input type="number" step="0.1" bind:value={batchForm.sucrose_g_per_l} />
+              <label title="Carbon source concentration in g/L (typical 20–30 g/L for most plant tissue culture media)">Sucrose (g/L)</label>
+              <input
+                type="number"
+                step="0.1"
+                bind:value={batchForm.sucrose_g_per_l}
+                title="Carbon source (sucrose) concentration in g/L — typical range 20–30 g/L; provides energy for non-photosynthetic explants"
+              />
             </div>
             <div class="form-group compact-field">
-              <label>Agar (g/L)</label>
-              <input type="number" step="0.1" bind:value={batchForm.agar_g_per_l} />
+              <label title="Agar concentration in g/L — controls gel firmness (6–8 g/L solid; 0 for liquid/suspension media)">Agar (g/L)</label>
+              <input
+                type="number"
+                step="0.1"
+                bind:value={batchForm.agar_g_per_l}
+                title="Agar concentration in g/L — typical 6–8 g/L for solid media; set to 0 for liquid or suspension cultures"
+              />
             </div>
             <div class="form-group compact-field">
-              <label>pH (pre-autoclave)</label>
-              <input type="number" step="0.01" bind:value={batchForm.ph_before_autoclave} />
+              <label title="pH measured before autoclave sterilization — typically adjusted to 5.5–6.0 for most plant tissue culture media">pH (pre-autoclave)</label>
+              <input
+                type="number"
+                step="0.01"
+                bind:value={batchForm.ph_before_autoclave}
+                title="pH measured before autoclave sterilization — typical range 5.5–6.0; adjust with KOH or HCl before autoclaving"
+              />
             </div>
             <div class="form-group compact-field">
-              <label>Volume Prepared (mL)</label>
-              <input type="number" bind:value={batchForm.volume_prepared_ml} />
+              <label title="Total volume of media prepared in this batch (mL) — used to calculate reagent concentrations">Volume Prepared (mL)</label>
+              <input
+                type="number"
+                bind:value={batchForm.volume_prepared_ml}
+                title="Total volume of media prepared in this batch (mL) — used to auto-calculate reagent final concentrations"
+              />
             </div>
             <div class="form-group compact-field">
-              <label>Vessels/Jars Prepared</label>
-              <input type="number" step="1" bind:value={batchForm.vessels_prepared} placeholder="e.g., 24" />
+              <label title="Number of culture vessels (jars, plates, tubes) filled from this batch">Vessels/Jars Prepared</label>
+              <input
+                type="number"
+                step="1"
+                bind:value={batchForm.vessels_prepared}
+                placeholder="e.g., 24"
+                title="Number of culture vessels (jars, Magenta boxes, Petri dishes, tubes) filled from this batch"
+              />
             </div>
             <div class="form-group compact-sterilization">
-              <label>Sterilization</label>
-              <select bind:value={batchForm.sterilization_method}>
+              <label title="Method used to sterilize this media batch">Sterilization</label>
+              <select
+                bind:value={batchForm.sterilization_method}
+                title="Sterilization method — autoclave (121°C, 15 psi, 20 min) is standard; filter sterilization (0.22 µm) for heat-labile additives"
+              >
                 <option value="autoclave">Autoclave</option>
                 <option value="filter">Filter Sterilization</option>
                 <option value="uv">UV</option>
@@ -525,16 +655,16 @@
 
           <!-- Reagents -->
           <div class="form-group" style="margin-top:8px;">
-            <label>Stock Reagents Used</label>
+            <label title="Hormones, growth regulators, vitamins, or other stock reagents added to this media batch">Stock Reagents Used</label>
             {#if reagentRows.length > 0}
               <div class="reagent-table">
                 <div class="reagent-header">
-                  <span>Reagent</span>
-                  <span>State</span>
-                  <span>Lot #</span>
-                  <span>Amount Used</span>
-                  <span>Final Conc.</span>
-                  <span>Unit</span>
+                  <span title="Inventory item used as a reagent in this media batch">Reagent</span>
+                  <span title="Physical state of the reagent — SOLID (powder) or LIQUID (solution)">State</span>
+                  <span title="Lot number of the reagent used — for traceability and QC">Lot #</span>
+                  <span title="Physical amount of reagent taken from stock (in the item's native unit, e.g., g or mL)">Amount Used</span>
+                  <span title="Final concentration of this reagent in the prepared media — auto-calculated for solids, manual for liquids">Final Conc.</span>
+                  <span title="Unit for the final concentration of this reagent in the media (e.g., mg/L, µM)">Unit</span>
                   <span></span>
                 </div>
                 {#each reagentRows as row, i}
@@ -547,6 +677,7 @@
                       <select
                         bind:value={row.item_id}
                         onchange={() => onReagentItemChange(i, row.item_id)}
+                        title="Select the inventory reagent added to this media batch — stock will be deducted automatically on save"
                       >
                         <option value="">Select reagent...</option>
                         {#each inventoryItems as inv}
@@ -557,11 +688,14 @@
                       <!-- Physical state badge -->
                       <div class="state-cell">
                         {#if row.item_id && inv}
-                          <span class="badge {solid ? 'badge-blue' : 'badge-teal'}">
+                          <span
+                            class="badge {solid ? 'badge-blue' : 'badge-teal'}"
+                            title={solid ? 'Solid — dry powder; concentration is auto-calculated from mass and volume' : 'Liquid — prepared solution; enter the volume added and concentration manually'}
+                          >
                             {inv.physical_state || '—'}
                           </span>
                         {:else}
-                          <span class="badge-empty">—</span>
+                          <span class="badge-empty" title="Select a reagent to see its physical state (Solid or Liquid)">—</span>
                         {/if}
                       </div>
 
@@ -571,6 +705,7 @@
                         bind:value={row.lot_number}
                         placeholder="Lot #"
                         style="max-width:110px;"
+                        title="Lot number of the reagent container used — auto-filled from inventory record; edit if using a different lot"
                       />
 
                       <!-- Amount used -->
@@ -583,9 +718,10 @@
                             oninput={(e) => onAmountUsedChange(i, (e.target as HTMLInputElement).value)}
                             placeholder="0"
                             style="max-width:90px;"
+                            title="Mass of solid reagent weighed out for this batch — this amount will be deducted from inventory stock on save"
                           />
                           {#if inv?.unit}
-                            <span class="unit-label">{inv.unit}</span>
+                            <span class="unit-label" title="Unit for the amount of this reagent used (as recorded in inventory)">{inv.unit}</span>
                           {/if}
                         {:else if row.item_id}
                           <!-- Liquid: volume added -->
@@ -596,12 +732,13 @@
                             oninput={(e) => onAmountUsedChange(i, (e.target as HTMLInputElement).value)}
                             placeholder="0"
                             style="max-width:90px;"
+                            title="Volume of liquid stock solution added to this media batch — this amount will be deducted from inventory stock on save"
                           />
                           {#if inv?.unit}
-                            <span class="unit-label">{inv.unit}</span>
+                            <span class="unit-label" title="Unit for the volume of liquid reagent used (as recorded in inventory)">{inv.unit}</span>
                           {/if}
                         {:else}
-                          <input type="number" step="any" placeholder="0" style="max-width:90px;" disabled />
+                          <input type="number" step="any" placeholder="0" style="max-width:90px;" disabled title="Select a reagent first to enter the amount used" />
                         {/if}
                       </div>
 
@@ -615,7 +752,7 @@
                             bind:value={row.final_concentration}
                             placeholder="auto"
                             style="max-width:100px;"
-                            title="Auto-calculated from amount used and volume prepared"
+                            title="Auto-calculated from amount used and volume prepared — formula: (mass in mg) / (volume in L) = mg/L; edit to override"
                           />
                         {:else if row.item_id}
                           <!-- Liquid: manual entry -->
@@ -625,9 +762,10 @@
                             bind:value={row.final_concentration}
                             placeholder="0"
                             style="max-width:100px;"
+                            title="Final concentration of this liquid reagent in the prepared media — calculate based on stock concentration and dilution factor"
                           />
                         {:else}
-                          <input type="number" step="any" placeholder="0" style="max-width:100px;" disabled />
+                          <input type="number" step="any" placeholder="0" style="max-width:100px;" disabled title="Select a reagent first to enter the final concentration" />
                         {/if}
                       </div>
 
@@ -635,19 +773,27 @@
                       <div class="unit-cell">
                         {#if solid}
                           <!-- Fixed mg/L for solids by default, still allow override -->
-                          <select bind:value={row.final_conc_unit} style="max-width:90px;">
+                          <select
+                            bind:value={row.final_conc_unit}
+                            style="max-width:90px;"
+                            title="Unit for the final concentration of this solid reagent in the media — defaults to mg/L (auto-calculated); change if needed"
+                          >
                             {#each CONC_UNITS as u}
                               <option value={u}>{u}</option>
                             {/each}
                           </select>
                         {:else if row.item_id}
-                          <select bind:value={row.final_conc_unit} style="max-width:90px;">
+                          <select
+                            bind:value={row.final_conc_unit}
+                            style="max-width:90px;"
+                            title="Unit for the final concentration of this liquid reagent in the media (e.g., µM for hormones, mg/L for vitamins)"
+                          >
                             {#each CONC_UNITS as u}
                               <option value={u}>{u}</option>
                             {/each}
                           </select>
                         {:else}
-                          <select style="max-width:90px;" disabled>
+                          <select style="max-width:90px;" disabled title="Select a reagent first to choose a concentration unit">
                             <option>mg/L</option>
                           </select>
                         {/if}
@@ -658,29 +804,45 @@
                         type="button"
                         class="btn btn-sm btn-danger"
                         onclick={() => removeReagentRow(i)}
+                        title="Remove this reagent from the batch — no stock deduction will be made for this row"
                       >✕</button>
                     </div>
 
                     <!-- Per-row stock warning -->
                     {#if warning}
-                      <div class="stock-warning">⚠ {warning}</div>
+                      <div class="stock-warning" title="Warning: the amount entered exceeds the current inventory stock level for this reagent">⚠ {warning}</div>
                     {/if}
                   </div>
                 {/each}
               </div>
             {/if}
-            <button type="button" class="btn btn-sm" onclick={addReagentRow} style="margin-top:6px;">
+            <button
+              type="button"
+              class="btn btn-sm"
+              onclick={addReagentRow}
+              style="margin-top:6px;"
+              title="Add a new row to record an additional reagent used in this media batch"
+            >
               + Add Reagent
             </button>
           </div>
 
           <div class="form-group">
-            <label>Notes</label>
-            <textarea bind:value={batchForm.notes} rows="2" placeholder="QC notes, observations..."></textarea>
+            <label title="Free-text notes about this batch — QC observations, deviations, contamination risk, etc.">Notes</label>
+            <textarea
+              bind:value={batchForm.notes}
+              rows="2"
+              placeholder="QC notes, observations..."
+              title="Free-text notes about this batch — QC observations, deviations from protocol, contamination risk, etc."
+            ></textarea>
           </div>
 
           <div style="text-align:right;">
-            <button type="submit" class="btn btn-primary">Create Batch</button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              title="Save this media batch record and auto-deduct reagent amounts from inventory stock"
+            >Create Batch</button>
           </div>
         </form>
       {/if}
@@ -696,18 +858,18 @@
       <table>
         <thead>
           <tr>
-            <th>Batch ID</th>
-            <th>Name</th>
-            <th>Base</th>
-            <th>Conc.</th>
-            <th>pH</th>
-            <th>Sucrose</th>
-            <th>Agar</th>
-            <th>Prepared</th>
-            <th>Expires</th>
-            <th>Vol.</th>
-            <th>Jars</th>
-            <th>Status</th>
+            <th title="Unique system-generated identifier for this media batch">Batch ID</th>
+            <th title="Descriptive name of the media formulation (e.g., MS Full + BAP 0.5 mg/L)">Name</th>
+            <th title="Base basal salts formulation used (e.g., MS = Murashige &amp; Skoog, WPM = Woody Plant Medium)">Base</th>
+            <th title="Concentration of basal salts in g/L (e.g., 4.4 g/L for full-strength MS)">Conc.</th>
+            <th title="pH measured before autoclave sterilization — typical range 5.5–6.0">pH</th>
+            <th title="Sucrose concentration in g/L — carbon source for non-photosynthetic explants (typical 20–30 g/L)">Sucrose</th>
+            <th title="Agar concentration in g/L — controls gel firmness (6–8 g/L solid media; 0 for liquid)">Agar</th>
+            <th title="Date this media batch was prepared and autoclaved">Prepared</th>
+            <th title="Date after which this media batch should no longer be used">Expires</th>
+            <th title="Volume of media remaining in this batch (mL)">Vol.</th>
+            <th title="Number of culture vessels (jars, Magenta boxes, Petri dishes) filled from this batch">Jars</th>
+            <th title="Current status of this media batch: OK (usable), Expired (past expiration date), or Review (flagged for supervisor review)">Status</th>
             <th></th>
           </tr>
         </thead>
@@ -724,29 +886,41 @@
               <td>{m.preparation_date}</td>
               <td>
                 {#if m.expiration_date}
-                  <span class:expired={isExpired(m.expiration_date)} class:expiring={isExpiringSoon(m.expiration_date)}>
+                  <span
+                    class:expired={isExpired(m.expiration_date)}
+                    class:expiring={isExpiringSoon(m.expiration_date)}
+                    title={isExpired(m.expiration_date) ? 'This batch has passed its expiration date and should not be used' : isExpiringSoon(m.expiration_date) ? 'This batch expires within 7 days — use soon or discard' : `Expires on ${m.expiration_date}`}
+                  >
                     {m.expiration_date}
                   </span>
                 {:else}—{/if}
               </td>
-              <td>{m.volume_remaining_ml != null ? `${m.volume_remaining_ml} mL` : '—'}</td>
-              <td>{parseVessels(m.notes)}</td>
+              <td title="Volume of media remaining in this batch (mL)">{m.volume_remaining_ml != null ? `${m.volume_remaining_ml} mL` : '—'}</td>
+              <td title="Number of culture vessels filled from this batch (parsed from batch notes)">{parseVessels(m.notes)}</td>
               <td>
                 {#if m.needs_review}
-                  <span class="badge badge-yellow">Review</span>
+                  <span class="badge badge-yellow" title="This batch has been flagged for supervisor review before use">Review</span>
                 {:else if isExpired(m.expiration_date)}
-                  <span class="badge badge-red">Expired</span>
+                  <span class="badge badge-red" title="This media batch has passed its expiration date and should not be used">Expired</span>
                 {:else}
-                  <span class="badge badge-green">OK</span>
+                  <span class="badge badge-green" title="This media batch is within its expiration date and has not been flagged for review">OK</span>
                 {/if}
               </td>
               <td>
                 <div style="display:flex;gap:4px;">
                   {#if canEdit()}
-                    <button class="btn btn-sm" onclick={() => openEdit(m)}>Edit</button>
+                    <button
+                      class="btn btn-sm"
+                      onclick={() => openEdit(m)}
+                      title="Edit this media batch — update volume remaining, storage conditions, QC notes, or flag for review"
+                    >Edit</button>
                   {/if}
                   {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-                    <button class="btn btn-sm btn-danger" onclick={() => handleDelete(m.id)}>Del</button>
+                    <button
+                      class="btn btn-sm btn-danger"
+                      onclick={() => handleDelete(m.id)}
+                      title="Permanently delete this media batch record — this action cannot be undone"
+                    >Del</button>
                   {/if}
                 </div>
               </td>

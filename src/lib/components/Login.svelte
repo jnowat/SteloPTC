@@ -33,14 +33,14 @@
         <div class="error-msg">{error}</div>
       {/if}
       <div class="form-group">
-        <label for="username">Username</label>
-        <input id="username" type="text" bind:value={username} placeholder="Enter username" required />
+        <label title="Enter your system username to log in" for="username">Username</label>
+        <input title="Your system username (default: admin)" id="username" type="text" bind:value={username} placeholder="Enter username" required />
       </div>
       <div class="form-group">
-        <label for="password">Password</label>
-        <input id="password" type="password" bind:value={password} placeholder="Enter password" required />
+        <label title="Enter your account password to log in" for="password">Password</label>
+        <input title="Your account password (default: admin)" id="password" type="password" bind:value={password} placeholder="Enter password" required />
       </div>
-      <button type="submit" class="btn btn-primary login-btn" disabled={loading}>
+      <button title="Submit your credentials to sign in to SteloPTC" type="submit" class="btn btn-primary login-btn" disabled={loading}>
         {loading ? 'Signing in...' : 'Sign In'}
       </button>
       <p class="hint">Default: admin / admin</p>

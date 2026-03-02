@@ -38,7 +38,7 @@
   <div class="card" style="margin-bottom:16px;">
     <div class="form-row-3">
       <div>
-        <select bind:value={filterEntity} onchange={() => { page = 1; load(); }}>
+        <select title="Filter audit entries by entity type (specimen, subculture, media_batch, etc.)" bind:value={filterEntity} onchange={() => { page = 1; load(); }}>
           <option value="">All entities</option>
           <option value="specimen">Specimens</option>
           <option value="media_batch">Media</option>
@@ -49,7 +49,7 @@
         </select>
       </div>
       <div>
-        <select bind:value={filterAction} onchange={() => { page = 1; load(); }}>
+        <select title="Filter by action: create, update, delete, archive, login" bind:value={filterAction} onchange={() => { page = 1; load(); }}>
           <option value="">All actions</option>
           <option value="create">Create</option>
           <option value="update">Update</option>
@@ -59,7 +59,7 @@
         </select>
       </div>
       <div>
-        <button class="btn" onclick={() => { filterEntity = ''; filterAction = ''; page = 1; load(); }}>Reset</button>
+        <button title="Clear all search filters and show all audit entries" class="btn" onclick={() => { filterEntity = ''; filterAction = ''; page = 1; load(); }}>Reset</button>
       </div>
     </div>
   </div>
@@ -73,11 +73,11 @@
       <table>
         <thead>
           <tr>
-            <th>Timestamp</th>
-            <th>User</th>
-            <th>Action</th>
-            <th>Entity</th>
-            <th>Details</th>
+            <th title="Date and time when the audit event was recorded">Timestamp</th>
+            <th title="Username of the account that performed the action">User</th>
+            <th title="The type of action performed: create, update, delete, archive, or login">Action</th>
+            <th title="The type of entity affected and its short ID">Entity</th>
+            <th title="Additional context about the change, or the new value after the action was applied">Details</th>
           </tr>
         </thead>
         <tbody>
@@ -85,7 +85,7 @@
             <tr>
               <td style="white-space:nowrap;">{e.created_at}</td>
               <td>{e.username || '—'}</td>
-              <td><span class="badge badge-blue">{e.action}</span></td>
+              <td><span class="badge badge-blue" title="Action performed: {e.action}">{e.action}</span></td>
               <td>{e.entity_type}{e.entity_id ? ` (${e.entity_id.slice(0, 8)}...)` : ''}</td>
               <td>{e.details || e.new_value || '—'}</td>
             </tr>
@@ -95,9 +95,9 @@
     </div>
     {#if totalPages > 1}
       <div style="display:flex;align-items:center;justify-content:center;gap:16px;margin-top:16px;font-size:13px;">
-        <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }}>Prev</button>
-        <span>Page {page} of {totalPages}</span>
-        <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }}>Next</button>
+        <button title="Go to the previous page of audit entries" class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }}>Prev</button>
+        <span title="Current page number out of total pages">Page {page} of {totalPages}</span>
+        <button title="Go to the next page of audit entries" class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }}>Next</button>
       </div>
     {/if}
   {/if}

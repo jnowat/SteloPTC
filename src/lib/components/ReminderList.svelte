@@ -74,7 +74,7 @@
   <div class="page-header">
     <h1>Reminders</h1>
     {#if $currentUser?.role !== 'guest'}
-      <button class="btn btn-primary" onclick={() => showForm = !showForm}>
+      <button class="btn btn-primary" title={showForm ? 'Cancel and close the form' : 'Open form to create a new reminder'} onclick={() => showForm = !showForm}>
         {showForm ? 'Cancel' : '+ New Reminder'}
       </button>
     {/if}
@@ -86,12 +86,12 @@
         <h3 style="margin-bottom:16px;">New Reminder</h3>
         <div class="form-row">
           <div class="form-group">
-            <label>Title *</label>
-            <input type="text" bind:value={form.title} required placeholder="e.g., Subculture citrus batch" />
+            <label title="Short descriptive name for this reminder">Title *</label>
+            <input type="text" title="Enter a short descriptive title for the reminder" bind:value={form.title} required placeholder="e.g., Subculture citrus batch" />
           </div>
           <div class="form-group">
-            <label>Type</label>
-            <select bind:value={form.reminder_type}>
+            <label title="Category that classifies this reminder">Type</label>
+            <select title="Select the reminder category" bind:value={form.reminder_type}>
               {#each types as t}
                 <option value={t}>{t.replace(/_/g, ' ')}</option>
               {/each}
@@ -100,12 +100,12 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Due Date *</label>
-            <input type="date" bind:value={form.due_date} required />
+            <label title="Date by which this reminder must be acted upon">Due Date *</label>
+            <input type="date" title="Select the due date for this reminder" bind:value={form.due_date} required />
           </div>
           <div class="form-group">
-            <label>Urgency</label>
-            <select bind:value={form.urgency}>
+            <label title="Priority level of this reminder">Urgency</label>
+            <select title="Select how urgent this reminder is" bind:value={form.urgency}>
               <option value="low">Low</option>
               <option value="normal">Normal</option>
               <option value="high">High</option>
@@ -115,21 +115,21 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>
-              <input type="checkbox" bind:checked={form.is_recurring} style="width:auto;margin-right:6px;" />
+            <label title="Enable to repeat this reminder on a regular interval">
+              <input type="checkbox" title="Check to make this reminder repeat automatically" bind:checked={form.is_recurring} style="width:auto;margin-right:6px;" />
               Recurring
             </label>
             {#if form.is_recurring}
-              <input type="number" bind:value={form.recurrence_days} placeholder="Every N days" style="margin-top:6px;" />
+              <input type="number" title="Number of days between each recurrence" bind:value={form.recurrence_days} placeholder="Every N days" style="margin-top:6px;" />
             {/if}
           </div>
           <div class="form-group">
-            <label>Description</label>
-            <textarea bind:value={form.description} rows="2"></textarea>
+            <label title="Optional longer description providing more context for the reminder">Description</label>
+            <textarea title="Enter an optional description with more detail about the reminder" bind:value={form.description} rows="2"></textarea>
           </div>
         </div>
         <div style="text-align:right;">
-          <button type="submit" class="btn btn-primary">Create</button>
+          <button type="submit" class="btn btn-primary" title="Save this new reminder">Create</button>
         </div>
       </form>
     </div>
@@ -144,14 +144,14 @@
       <table>
         <thead>
           <tr>
-            <th>Title</th>
-            <th>Type</th>
-            <th>Specimen</th>
-            <th>Due</th>
-            <th>Urgency</th>
-            <th>Status</th>
-            <th>Snoozed</th>
-            <th>Actions</th>
+            <th title="Name of the reminder">Title</th>
+            <th title="Category of the reminder">Type</th>
+            <th title="Associated specimen accession number">Specimen</th>
+            <th title="Date the reminder is due">Due</th>
+            <th title="Priority level of the reminder">Urgency</th>
+            <th title="Current state of the reminder">Status</th>
+            <th title="Number of times this reminder has been snoozed">Snoozed</th>
+            <th title="Available actions for this reminder">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -161,14 +161,14 @@
               <td>{r.reminder_type.replace(/_/g, ' ')}</td>
               <td>{r.specimen_accession || '—'}</td>
               <td>{r.due_date}</td>
-              <td><span class="badge {getUrgencyClass(r.urgency)}">{r.urgency}</span></td>
-              <td><span class="badge {getStatusClass(r.status)}">{r.status}</span></td>
+              <td><span class="badge {getUrgencyClass(r.urgency)}" title="Urgency level: {r.urgency}">{r.urgency}</span></td>
+              <td><span class="badge {getStatusClass(r.status)}" title="Reminder status: {r.status}">{r.status}</span></td>
               <td>{r.snooze_count}x</td>
               <td>
                 {#if r.status === 'active' || r.status === 'snoozed'}
                   <div style="display:flex;gap:4px;">
-                    <button class="btn btn-sm" onclick={() => handleDismiss(r.id, true)}>Snooze</button>
-                    <button class="btn btn-sm" onclick={() => handleDismiss(r.id, false)}>Dismiss</button>
+                    <button class="btn btn-sm" title="Snooze this reminder for 1 day" onclick={() => handleDismiss(r.id, true)}>Snooze</button>
+                    <button class="btn btn-sm" title="Dismiss this reminder permanently" onclick={() => handleDismiss(r.id, false)}>Dismiss</button>
                   </div>
                 {/if}
               </td>

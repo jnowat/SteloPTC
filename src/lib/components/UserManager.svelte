@@ -48,7 +48,7 @@
 <div>
   <div class="page-header">
     <h1>User Management</h1>
-    <button class="btn btn-primary" onclick={() => showForm = !showForm}>
+    <button class="btn btn-primary" title={showForm ? 'Cancel and close the form' : 'Open form to create a new user'} onclick={() => showForm = !showForm}>
       {showForm ? 'Cancel' : '+ New User'}
     </button>
   </div>
@@ -59,34 +59,34 @@
         <h3 style="margin-bottom:16px;">Create User</h3>
         <div class="form-row">
           <div class="form-group">
-            <label>Username *</label>
-            <input type="text" bind:value={form.username} required />
+            <label title="Unique login name for this user">Username *</label>
+            <input type="text" title="Enter a unique username for login" bind:value={form.username} required />
           </div>
           <div class="form-group">
-            <label>Password *</label>
-            <input type="password" bind:value={form.password} required />
+            <label title="Password for this user account">Password *</label>
+            <input type="password" title="Enter a secure password for this user" bind:value={form.password} required />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label>Display Name *</label>
-            <input type="text" bind:value={form.display_name} required />
+            <label title="Full name shown in the interface for this user">Display Name *</label>
+            <input type="text" title="Enter the user's full display name" bind:value={form.display_name} required />
           </div>
           <div class="form-group">
-            <label>Email</label>
-            <input type="email" bind:value={form.email} />
+            <label title="Optional email address for notifications and contact">Email</label>
+            <input type="email" title="Enter the user's email address (optional)" bind:value={form.email} />
           </div>
         </div>
         <div class="form-group">
-          <label>Role</label>
-          <select bind:value={form.role}>
+          <label title="Permission level assigned to this user">Role</label>
+          <select title="Select the role that determines user permissions" bind:value={form.role}>
             {#each roles as r}
               <option value={r}>{r}</option>
             {/each}
           </select>
         </div>
         <div style="text-align:right;">
-          <button type="submit" class="btn btn-primary">Create User</button>
+          <button type="submit" class="btn btn-primary" title="Save and create this new user account">Create User</button>
         </div>
       </form>
     </div>
@@ -99,11 +99,11 @@
       <table>
         <thead>
           <tr>
-            <th>Username</th>
-            <th>Display Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th>Status</th>
+            <th title="User's unique login name">Username</th>
+            <th title="User's full name shown in the interface">Display Name</th>
+            <th title="User's email address">Email</th>
+            <th title="User's permission level">Role</th>
+            <th title="Whether the user account is currently active">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -113,7 +113,7 @@
               <td>{u.display_name}</td>
               <td>{u.email || '—'}</td>
               <td>
-                <select value={u.role} onchange={(e) => handleRoleChange(u.id, (e.target as HTMLSelectElement).value)} style="width:auto;">
+                <select title="Change this user's role and permissions" value={u.role} onchange={(e) => handleRoleChange(u.id, (e.target as HTMLSelectElement).value)} style="width:auto;">
                   {#each roles as r}
                     <option value={r}>{r}</option>
                   {/each}
@@ -121,9 +121,9 @@
               </td>
               <td>
                 {#if u.is_active}
-                  <span class="badge badge-green">Active</span>
+                  <span class="badge badge-green" title="This user account is active and can log in">Active</span>
                 {:else}
-                  <span class="badge badge-gray">Inactive</span>
+                  <span class="badge badge-gray" title="This user account is inactive and cannot log in">Inactive</span>
                 {/if}
               </td>
             </tr>
