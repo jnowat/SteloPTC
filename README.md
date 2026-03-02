@@ -13,6 +13,26 @@ A desktop application for tracking plant tissue culture specimens, designed for 
 
 **On every GitHub Release** both the Windows MSI and the Android APK are attached directly to the release assets. Android release APKs are signed with the repository keystore secrets (or fall back to debug signing if secrets are not configured — the APK still installs fine via ADB).
 
+### Download Latest Android APK
+
+The debug APK is built on **every push** and available as a workflow artifact for 30 days. Release APKs are attached to [GitHub Releases](../../releases).
+
+**Steps to download the latest debug APK:**
+
+1. Go to [Actions → Build Android APK](../../actions/workflows/build-android.yml)
+2. Click the most recent **green** (passing) run
+3. Scroll to the **Artifacts** section at the bottom of the run page
+4. Click **SteloPTC-Android-Debug** to download the `.apk`
+
+**Install on Android:**
+
+1. Transfer the `.apk` to your Android device (USB, email, cloud storage, etc.)
+2. Open the file — Android will ask to enable *Install unknown apps*
+3. Allow installation from this source and proceed
+4. Launch **SteloPTC** from your app drawer
+
+> **Requirements:** Android 7.0 (API 24) or later. The APK contains native libraries for all supported architectures (arm64-v8a, armeabi-v7a, x86, x86_64) so it works on any modern Android device or emulator.
+
 > **Sideloading the APK**: Enable *Install unknown apps* for your file manager or ADB on your Android device, then open the downloaded `.apk` file. Minimum Android version: 7.0 (API 24).
 
 ## Overview

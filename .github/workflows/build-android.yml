@@ -10,7 +10,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  # Full NDK version string — must match the ndk;X.Y.Z in the sdkmanager step.
   NDK_VERSION: 27.2.12479018
 
 jobs:
@@ -31,33 +30,26 @@ jobs:
           distribution: 'temurin'
 
       # ── Gradle build + dependency cache ──────────────────────────────────
-      # Caches ~/.gradle/caches and ~/.gradle/wrapper so Gradle itself, AGP,
-      # Kotlin plugin, and Maven dependencies are reused across runs.
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          # Write cache only on pushes to the feature branch; PRs read-only.
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
-      # ── Android SDK + NDK ─────────────────────────────────────────────────
-      # ubuntu-latest ships with the Android SDK at $ANDROID_HOME.
-      # We add the NDK and the platform/build-tools we need.
-      - name: Accept Android SDK licenses
-        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      # ── Android SDK (licenses + tooling) ──────────────────────────────────
+      # setup-android@v3 accepts all SDK licenses so sdkmanager calls below
+      # don't need an interactive "yes |" pipe.
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
 
+      # Install the specific platform, build-tools, and NDK version we need.
       - name: Install Android SDK components and NDK r27
         run: |
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
+          sdkmanager \
             "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;$NDK_VERSION"
-          # Export the NDK path for cargo-ndk and the Tauri Gradle plugin.
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> $GITHUB_ENV
           echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION"         >> $GITHUB_ENV
-
-      # Ensure gradlew is executable (git may strip the bit on some checkouts).
-      - name: Make gradlew executable
-        run: chmod +x src-tauri/gen/android/gradlew
 
       # ── Rust + Android cross-compilation targets ──────────────────────────
       - name: Install Rust stable with Android targets
@@ -81,11 +73,21 @@ jobs:
       - name: Install npm dependencies
         run: npm ci --legacy-peer-deps
 
-      # ── Tauri CLI + cargo-ndk ─────────────────────────────────────────────
-      # cargo-ndk is used by the Tauri Gradle plugin (app.tauri:gradle-plugin)
-      # to cross-compile Rust for each Android ABI.
-      - name: Install Tauri CLI and cargo-ndk
-        run: cargo install tauri-cli cargo-ndk --locked
+      # ── Tauri CLI ──────────────────────────────────────────────────────────
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      # ── Generate Android project ───────────────────────────────────────────
+      # Always regenerate gen/android/ from the installed tauri-cli so that
+      # buildSrc/ and all Gradle files have properly-substituted template
+      # values rather than relying on manually-committed files.
+      - name: Initialize Tauri Android project
+        run: |
+          rm -rf src-tauri/gen/android
+          cargo tauri android init --ci
+
+      - name: Make gradlew executable
+        run: chmod +x src-tauri/gen/android/gradlew
 
       # ── Debug APK (every push / PR) ───────────────────────────────────────
       - name: Build debug APK
@@ -94,14 +96,21 @@ jobs:
       - name: Collect debug APK
         run: |
           mkdir -p artifacts
-          APK="src-tauri/gen/android/app/build/outputs/apk/debug/app-debug.apk"
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: debug APK not found. Available APKs:"
-            find src-tauri/gen/android/app/build/outputs -name "*.apk" 2>/dev/null || true
+          # With the RustPlugin flavors the APK lands in universalDebug/;
+          # fall back to any debug APK if the exact path changes.
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk \
+                  -name "*.apk" -path "*universal*debug*" -type f | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find src-tauri/gen/android/app/build/outputs/apk \
+                    -name "*.apk" -path "*debug*" -type f | head -1)
+          fi
+          if [ -z "$APK" ]; then
+            echo "ERROR: No debug APK found. Build output tree:"
+            find src-tauri/gen/android/app/build/outputs -type f 2>/dev/null || true
             exit 1
           fi
           cp "$APK" artifacts/SteloPTC-Android-Debug.apk
-          echo "Packaged: artifacts/SteloPTC-Android-Debug.apk"
+          echo "Packaged: $(basename $APK) → SteloPTC-Android-Debug.apk"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -111,14 +120,14 @@ jobs:
           retention-days: 30
 
       # ── Release APK (only on GitHub Release events) ───────────────────────
-      # Configure signing via repository secrets:
-      #   ANDROID_KEY_STORE_PATH     – absolute path to the .jks keystore file
+      # Signing is configured via repository secrets:
+      #   ANDROID_KEY_STORE_PATH     – absolute path to the .jks keystore
       #   ANDROID_KEY_STORE_PASSWORD – keystore password
-      #   ANDROID_KEY_ALIAS          – key alias inside the keystore
+      #   ANDROID_KEY_ALIAS          – key alias
       #   ANDROID_KEY_PASSWORD       – key password
       #
-      # If the secrets are absent, build.gradle.kts falls back to debug signing
-      # automatically — the APK is still installable via ADB / sideload.
+      # If secrets are absent the app falls back to debug signing
+      # (see app/build.gradle.kts) — still installable via ADB / sideload.
       - name: Build release APK
         if: github.event_name == 'release'
         run: cargo tauri android build --release
@@ -131,13 +140,19 @@ jobs:
       - name: Collect release APK
         if: github.event_name == 'release'
         run: |
-          APK="src-tauri/gen/android/app/build/outputs/apk/release/app-release.apk"
-          if [ ! -f "$APK" ]; then
-            echo "ERROR: release APK not found. Available APKs:"
-            find src-tauri/gen/android/app/build/outputs -name "*.apk" 2>/dev/null || true
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk \
+                  -name "*.apk" -path "*universal*release*" -type f | head -1)
+          if [ -z "$APK" ]; then
+            APK=$(find src-tauri/gen/android/app/build/outputs/apk \
+                    -name "*.apk" -path "*release*" -type f | head -1)
+          fi
+          if [ -z "$APK" ]; then
+            echo "ERROR: No release APK found. Build output tree:"
+            find src-tauri/gen/android/app/build/outputs -type f 2>/dev/null || true
             exit 1
           fi
           cp "$APK" artifacts/SteloPTC-Android-Release.apk
+          echo "Packaged: $(basename $APK) → SteloPTC-Android-Release.apk"
 
       - name: Upload release APK artifact
         if: github.event_name == 'release'
