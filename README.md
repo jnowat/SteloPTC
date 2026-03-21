@@ -389,11 +389,11 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] Contamination tracking per passage, subculture scheduling with overdue alerts, dashboard panels (v0.1.15)
 - [x] Contextual "?" tooltips on all form fields and action buttons (v0.1.15)
 - [x] Batch operations — multi-select checkboxes on Specimens list; bulk Transfer Location, Update Stage, and Archive with per-specimen audit logging (v0.1.16)
+- [x] PDF report generation — Culture Certificate (specimen detail + full passage history + compliance) and Specimens Summary (filtered list view); print-ready via browser print API (v0.1.17)
 
 ### v0.1.x — Upcoming Patches
 
 - [ ] **Photo attachments** — per-passage image capture and gallery (camera on Android, file picker on desktop)
-- [ ] **PDF report generation** — export culture certificates, inspection summaries, and passage history reports
 - [ ] **Excel import/export** — multi-sheet workbooks: specimens, subcultures, media, compliance, inventory
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
 

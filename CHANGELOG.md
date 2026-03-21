@@ -5,6 +5,24 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.17] - 2026-03-21
+
+### Added
+
+- **Culture Certificate report** (`SpecimenDetail`): A **Print Report** button (purple, beside Generate QR) opens a print-ready culture certificate for the current specimen in a new window, which automatically triggers the browser print dialog. The certificate includes:
+  - Header with SteloPTC branding, report type, generation date, and username.
+  - **Specimen Information** section: accession number, species (with code), stage badge, health label, initiation date, current location, propagation method, provenance, source plant, quarantine status (with release date if set), IP protection, total passage count, employee ID, and notes.
+  - **Lineage** section (shown only when applicable): parent specimen (split source) and/or child specimens (split products) as inline chips.
+  - **Passage History** table (oldest to newest): passage number, date, media batch name, vessel type, transfer-to location, health label, contamination flag with notes, and observations/notes.
+  - **Compliance Records** table (shown only when present): record type, test/issue date, agency, result/status, expiry date, notes.
+  - Optimised for US Letter paper with `@page { size: letter; margin: 0.5in }`.
+- **Specimens Summary report** (`SpecimenList`): A **Print Summary** button (purple, beside Export CSV) opens a landscape print-ready summary table of the currently visible specimen page in a new window. Includes active filter and search descriptions, page/total counts, and a table with accession, species, stage, location, passages, health, quarantine status, and initiation date. Formatted for US Letter landscape.
+- Both reports are pure browser-side (no new Tauri commands or npm packages) using the same `window.open` + `document.write` + `window.onload=print` pattern established by the QR label printer.
+
+### Changed
+
+- Version bumped to **0.1.17** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 17), `app/build.gradle.kts` (versionCode 17), and sidebar display.
+
 ## [0.1.16] - 2026-03-21
 
 ### Added

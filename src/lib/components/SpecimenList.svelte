@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import {
     listSpecimens, searchSpecimens, deleteSpecimen, listSpecies,
     exportSpecimensCsv, exportSpecimensJson,
@@ -244,6 +245,88 @@
       batchLoading = false;
     }
   }
+
+  function printSummaryReport() {
+    const user = get(currentUser);
+    const username = (user as any)?.display_name || (user as any)?.username || 'Unknown';
+    const reportDate = new Date().toISOString().split('T')[0];
+
+    const esc = (s: any) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') || '—';
+    const healthLabel = (val: any) => {
+      if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '—';
+      const n = Math.round(Number(val));
+      if (n === -1) return '?';
+      return ['0-Dead','1-Poor','2-Fair','3-Good','4-Healthy'][Math.max(0,Math.min(4,n))];
+    };
+    const stageFmt = (s: string) => s?.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
+
+    // Build filter description
+    const filterParts: string[] = [];
+    if (searchQuery) filterParts.push(`Search: "${searchQuery}"`);
+    if (filterStage) filterParts.push(`Stage: ${stageFmt(filterStage)}`);
+    if (filterSpecies) {
+      const sp = species.find((s: any) => s.id === filterSpecies);
+      if (sp) filterParts.push(`Species: ${sp.species_code}`);
+    }
+    const filterLine = filterParts.length > 0
+      ? `<div class="filter-line">Filters: ${filterParts.join(' · ')}</div>`
+      : '<div class="filter-line">Showing all active specimens</div>';
+
+    const rows = specimens.map((s: any) => `<tr>
+      <td><b>${esc(s.accession_number)}</b></td>
+      <td>${esc(s.species_code)}</td>
+      <td>${stageFmt(s.stage)}</td>
+      <td>${esc(s.location)}</td>
+      <td class="ctr">${esc(s.subculture_count)}</td>
+      <td>${healthLabel(s.health_status)}</td>
+      <td>${s.quarantine_flag ? '<span class="b-red">Quarantine</span>' : '<span class="b-green">Active</span>'}</td>
+      <td>${esc(s.initiation_date)}</td>
+    </tr>`).join('');
+
+    const win = window.open('', '_blank', 'width=1050,height=900');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Specimens Summary – ${reportDate}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:#fff;padding:.45in}
+@page{size:letter landscape;margin:.45in}
+.hdr{border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-end}
+.brand{font-size:20px;font-weight:900;letter-spacing:-.5px}
+.rpt{font-size:12px;color:#475569;margin-top:2px}
+.meta{text-align:right;font-size:10px;color:#64748b;line-height:1.7}
+.filter-line{font-size:10px;color:#475569;margin-bottom:10px;font-style:italic}
+.summary{font-size:11px;font-weight:600;margin-bottom:8px;color:#0f172a}
+table{width:100%;border-collapse:collapse;font-size:10px}
+th{background:#0f172a;color:#e2e8f0;font-weight:700;text-align:left;padding:6px 8px;white-space:nowrap}
+td{padding:4px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+tr:nth-child(even) td{background:#f8fafc}
+.ctr{text-align:center}
+.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
+.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
+.footer{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
+</style></head><body>
+<div class="hdr">
+  <div><div class="brand">SteloPTC</div><div class="rpt">Specimens Summary Report</div></div>
+  <div class="meta"><div>Generated: ${reportDate}</div><div>By: ${esc(username)}</div><div>Page 1 of ${totalPages || 1}</div></div>
+</div>
+${filterLine}
+<div class="summary">Showing ${specimens.length} of ${total} total active specimens (page ${page} of ${totalPages || 1})</div>
+<table>
+  <thead><tr>
+    <th>Accession</th><th>Species</th><th>Stage</th><th>Location</th>
+    <th>Passages</th><th>Health</th><th>Status</th><th>Initiated</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="footer">
+  <span>SteloPTC · Tissue Culture Management System</span>
+  <span>Generated ${reportDate}</span>
+</div>
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`);
+    win.document.close();
+  }
 </script>
 
 <div>
@@ -253,6 +336,7 @@
       <button class="btn btn-scan" onclick={() => (showScanner = true)}>
         &#128247; Scan QR <Tooltip text="Open camera to scan a QR code label and jump directly to the matching specimen" position="bottom" />
       </button>
+      <button class="btn btn-sm btn-print-summary" onclick={printSummaryReport} title="Print a summary report of the currently visible specimens">&#128438; Print Summary <Tooltip text="Print a formatted summary table of the current specimen list view — respects active filters" position="bottom" /></button>
       <button class="btn btn-sm" onclick={() => handleExport('csv')}>Export CSV <Tooltip text="Download all active specimens as a CSV spreadsheet" position="bottom" /></button>
       <button class="btn btn-sm" onclick={() => handleExport('json')}>Export JSON <Tooltip text="Download all active specimens as a JSON file" position="bottom" /></button>
       {#if $currentUser?.role !== 'guest'}
@@ -482,6 +566,14 @@
     flex-wrap: wrap;
     align-items: center;
   }
+
+  .btn-print-summary {
+    background: #f5f3ff;
+    color: #5b21b6;
+    border-color: #c4b5fd;
+  }
+  .btn-print-summary:hover { background: #ede9fe; }
+  :global(.dark) .btn-print-summary { background: rgba(139,92,246,0.12); color: #a78bfa; border-color: #5b21b6; }
 
   .btn-scan {
     background: #0f172a;

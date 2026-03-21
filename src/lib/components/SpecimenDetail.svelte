@@ -1,7 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import { getSpecimen, listSubcultures, createSubculture, updateSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens } from '../api';
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
+  import { currentUser } from '../stores/auth';
   import QrModal from './QrModal.svelte';
   import QrScanner from './QrScanner.svelte';
   import Tooltip from './Tooltip.svelte';
@@ -265,6 +267,122 @@
   function navigateToSpecimen(id: string) {
     selectedSpecimenId.set(id);
   }
+
+  function printCultureReport() {
+    if (!specimen) return;
+    const user = get(currentUser);
+    const username = (user as any)?.display_name || (user as any)?.username || 'Unknown';
+    const reportDate = new Date().toISOString().split('T')[0];
+
+    const esc = (s: any) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') || '—';
+    const healthLabel = (val: any) => {
+      if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '—';
+      const n = Math.round(Number(val));
+      if (n === -1) return '? – Unknown / Awaiting';
+      return ['0 – Dead','1 – Poor','2 – Fair','3 – Good','4 – Healthy'][Math.max(0,Math.min(4,n))];
+    };
+    const stageFmt = (s: string) => s?.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
+
+    // Passages oldest→newest for the report
+    const passageRows = [...subcultures].reverse().map((sc: any) => {
+      const batch = mediaBatches.find((m: any) => m.id === sc.media_batch_id);
+      const batchName = batch ? esc(batch.batch_name || batch.id) : '—';
+      const contam = sc.contamination_flag
+        ? `<span class="b-red">Yes${sc.contamination_notes ? ' – ' + esc(sc.contamination_notes) : ''}</span>`
+        : '<span class="b-green">No</span>';
+      return `<tr>
+        <td class="ctr"><b>${esc(sc.passage_number)}</b></td>
+        <td>${esc(sc.date)}</td><td>${batchName}</td>
+        <td>${esc(sc.vessel_type)}</td>
+        <td>${esc(sc.location_to || sc.location_from)}</td>
+        <td>${healthLabel(sc.health_status)}</td>
+        <td>${contam}</td>
+        <td class="note-cell">${esc(sc.observations || sc.notes)}</td>
+      </tr>`;
+    }).join('');
+
+    const complianceRows = complianceRecords.map((cr: any) => `<tr>
+      <td>${esc(cr.record_type)}</td>
+      <td>${esc(cr.test_date || cr.issue_date)}</td>
+      <td>${esc(cr.agency)}</td>
+      <td>${esc(cr.test_result || cr.status || cr.result)}</td>
+      <td>${esc(cr.permit_expiry || cr.expiry_date)}</td>
+      <td class="note-cell">${esc(cr.notes)}</td>
+    </tr>`).join('');
+
+    const lineage = (parentSpecimen || childSpecimens.length > 0) ? `
+      <h2>Lineage</h2>
+      <div class="ig">
+        ${parentSpecimen ? `<span class="il">Split From</span><span class="iv"><b>${esc(parentSpecimen.accession_number)}</b></span>` : ''}
+        ${childSpecimens.length > 0 ? `<span class="il">Split Into</span><span class="iv">${childSpecimens.map((c: any) => `<span class="chip">${esc(c.accession_number)}</span>`).join(' ')}</span>` : ''}
+      </div>` : '';
+
+    const win = window.open('', '_blank', 'width=900,height=1100');
+    if (!win) return;
+    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Culture Certificate – ${esc(specimen.accession_number)}</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:#fff;padding:.5in}
+@page{size:letter;margin:.5in}
+.hdr{border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end}
+.brand{font-size:22px;font-weight:900;letter-spacing:-.5px}
+.rpt{font-size:13px;color:#475569;margin-top:3px}
+.meta{text-align:right;font-size:10px;color:#64748b;line-height:1.7}
+h2{font-size:10px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 7px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
+.ig{display:grid;grid-template-columns:150px 1fr;gap:3px 10px}
+.il{font-size:10px;color:#64748b;font-weight:600;text-align:right;padding:2px 0}
+.iv{font-size:11px;padding:2px 0}
+table{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px}
+th{background:#f1f5f9;font-weight:700;text-align:left;padding:5px 7px;color:#475569;border:1px solid #e2e8f0;white-space:nowrap}
+td{padding:4px 7px;border:1px solid #e2e8f0;vertical-align:top}
+tr:nth-child(even) td{background:#f8fafc}
+.ctr{text-align:center}
+.note-cell{max-width:160px;word-break:break-word}
+.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
+.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
+.b-blue{background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
+.chip{display:inline-block;background:#e2e8f0;color:#334155;padding:1px 5px;border-radius:3px;font-size:10px;margin:1px}
+.footer{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
+</style></head><body>
+<div class="hdr">
+  <div><div class="brand">SteloPTC</div><div class="rpt">Culture Certificate</div></div>
+  <div class="meta"><div>Generated: ${reportDate}</div><div>By: ${esc(username)}</div><div>Ref: ${esc(specimen.accession_number)}</div></div>
+</div>
+<h2>Specimen Information</h2>
+<div class="ig">
+  <span class="il">Accession</span><span class="iv"><b>${esc(specimen.accession_number)}</b></span>
+  <span class="il">Species</span><span class="iv">${esc(specimen.species_name)} <span style="color:#64748b">(${esc(specimen.species_code)})</span></span>
+  <span class="il">Stage</span><span class="iv"><span class="b-blue">${stageFmt(specimen.stage)}</span></span>
+  <span class="il">Health Status</span><span class="iv">${healthLabel(specimen.health_status)}</span>
+  <span class="il">Initiated</span><span class="iv">${esc(specimen.initiation_date)}</span>
+  <span class="il">Current Location</span><span class="iv">${esc(specimen.location)}</span>
+  <span class="il">Propagation Method</span><span class="iv">${esc(specimen.propagation_method)}</span>
+  <span class="il">Provenance</span><span class="iv">${esc(specimen.provenance)}</span>
+  <span class="il">Source Plant</span><span class="iv">${esc(specimen.source_plant)}</span>
+  <span class="il">Quarantine</span><span class="iv">${specimen.quarantine_flag ? '<span class="b-red">Yes</span>' : '<span class="b-green">No</span>'}${specimen.quarantine_release_date ? ' — Release: '+esc(specimen.quarantine_release_date) : ''}</span>
+  <span class="il">IP Protected</span><span class="iv">${specimen.ip_flag ? '<span class="b-red">Yes</span>' : 'No'}${specimen.ip_notes ? ' — '+esc(specimen.ip_notes) : ''}</span>
+  <span class="il">Total Passages</span><span class="iv">${esc(specimen.subculture_count)}</span>
+  ${specimen.employee_id ? `<span class="il">Employee ID</span><span class="iv">${esc(specimen.employee_id)}</span>` : ''}
+  ${specimen.notes ? `<span class="il">Notes</span><span class="iv">${esc(specimen.notes)}</span>` : ''}
+</div>
+${lineage}
+<h2>Passage History (${subcultures.length} passage${subcultures.length !== 1 ? 's' : ''})</h2>
+${subcultures.length === 0
+  ? '<p style="color:#64748b;font-size:10px;margin-top:4px;">No passages recorded yet.</p>'
+  : `<table><thead><tr><th>#</th><th>Date</th><th>Media Batch</th><th>Vessel</th><th>Transfer To</th><th>Health</th><th>Contamination</th><th>Notes</th></tr></thead><tbody>${passageRows}</tbody></table>`}
+${complianceRecords.length > 0 ? `
+<h2>Compliance Records (${complianceRecords.length})</h2>
+<table><thead><tr><th>Type</th><th>Test/Issue Date</th><th>Agency</th><th>Result/Status</th><th>Expiry</th><th>Notes</th></tr></thead>
+<tbody>${complianceRows}</tbody></table>` : ''}
+<div class="footer">
+  <span>SteloPTC · Tissue Culture Management System</span>
+  <span>Generated ${reportDate}</span>
+</div>
+<script>window.onload=function(){window.print();}<\/script>
+</body></html>`);
+    win.document.close();
+  }
 </script>
 
 <div class="specimen-detail">
@@ -298,6 +416,9 @@
         </button>
         <button class="btn btn-qr-detail btn-qr-generate" onclick={() => (showQrModal = true)}>
           &#9641; Generate QR <Tooltip text="Generate a printable QR code label for this specimen — includes accession number, species, stage, and location" position="bottom" />
+        </button>
+        <button class="btn btn-print-report" onclick={printCultureReport} title="Print a full culture certificate for this specimen — includes all passage history and compliance records">
+          &#128438; Print Report <Tooltip text="Open a print-ready culture certificate with specimen details, passage history, and compliance records" position="bottom" />
         </button>
       </div>
     {/if}
@@ -881,8 +1002,25 @@
   .btn-qr-generate:hover { background: #dbeafe; }
   :global(.dark) .btn-qr-generate { background: rgba(37,99,235,0.1); color: #60a5fa; border-color: #1e40af; }
 
+  .btn-print-report {
+    background: #f5f3ff;
+    color: #5b21b6;
+    border: 1px solid #c4b5fd;
+    border-radius: 7px;
+    padding: 7px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: background 0.1s;
+  }
+  .btn-print-report:hover { background: #ede9fe; }
+  :global(.dark) .btn-print-report { background: rgba(139,92,246,0.12); color: #a78bfa; border-color: #5b21b6; }
+
   @media (max-width: 768px) {
     .btn-qr-detail { min-height: 44px; font-size: 14px; }
+    .btn-print-report { min-height: 44px; font-size: 14px; }
   }
 
   /* ── Info Card ── */

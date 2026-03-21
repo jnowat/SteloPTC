@@ -60,7 +60,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v0.1.16</span>
+    <span class="version" title="Application version">v0.1.17</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
