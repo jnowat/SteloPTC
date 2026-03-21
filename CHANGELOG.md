@@ -9,19 +9,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Contamination tracking on passage records**: Every passage (subculture) record now includes a **Contamination** checkbox in the Record Passage form. When flagged, a free-text **Contamination Notes** field appears for describing the type (bacterial, fungal, yeast, etc.) and extent. Contaminated passages are marked with a red "Contaminated" badge in the vertical passage timeline; expanded cards show the full contamination notes.
+- **Subculture scheduling with overdue alerts**: The dashboard now shows a **Subculture Schedule** panel listing specimens that are overdue or due within 7 days, based on each species' configured `default_subculture_interval_days`. Each entry shows the specimen accession, species, days overdue (red badge) or days until due, and links directly to the specimen. Overdue count is displayed as a dashboard stat card with a red alert indicator.
+- **Contamination Overview dashboard panel**: A new **Contamination Overview** widget on the dashboard shows the lab-wide contamination rate (%), the ratio of contaminated to total active specimens, total contaminated vessel events, a breakdown by vessel type (horizontal bar chart), and the 10 most recent contamination events with date, vessel type, and notes.
+- **DB migration 005**: `migration_005_contamination_schedule` adds `contamination_flag INTEGER NOT NULL DEFAULT 0` and `contamination_notes TEXT` columns to the `subcultures` table, with an index on `contamination_flag` for fast stats queries.
+- **Two new Tauri commands**: `get_contamination_stats` (returns lab-wide contamination statistics) and `get_subculture_schedule` (returns per-specimen scheduling data with `days_until_due` and `is_overdue`).
 - **`Tooltip.svelte` — reusable "?" tooltip component**: A new `Tooltip.svelte` component renders a small circular `?` badge inline with any label, button, or heading. Hovering or focusing the badge (with a 250 ms delay) displays a dark-themed popup bubble with an arrow pointing to the trigger. Supports four placement positions (`top`, `bottom`, `left`, `right`). Smooth fade-in animation, dark mode aware, and fully keyboard-accessible (`tabindex="0"`, `role="button"`).
 - **"?" tooltip indicators throughout the UI**: The `Tooltip` component is now used everywhere meaningful:
   - **New Specimen form**: all field labels (Species, Stage, Initiation Date, Propagation Method, Location, Health Status, Initial Media Batch, Provenance/Origin, Source Plant, Employee ID, Notes) now show a `?` badge with contextual help text.
   - **Specimen Detail**: Scan QR, Generate QR, and Record Passage action buttons; passage form labels (Date, Media Batch).
   - **Specimen List header**: Scan QR, Export CSV, Export JSON, and New Specimen buttons.
   - **QR Code modal header**: `?` badge explains what the QR code encodes and how to scan it.
+  - **Inventory Manager and Media List**: contextual help on all key fields.
 - **Improved QR print label (2×3 inch)**: The "Print Label" action now opens a print window sized precisely at `2in × 3in` with a `@page { size: 2in 3in; margin: 0 }` rule for direct label-printer output. The new layout includes:
   - Header row: **SteloPTC** brand (left) + bold monospace **accession number** (right).
   - Centred **1.35×1.35 inch QR code** image (pixelated rendering for crisp barcode output).
   - Bold italic **species name** (species code or *Genus species*) + optional common name below.
   - Data rows: Stage, Initiation Date (if available), Location (if set).
   - Footer: "SteloPTC · Tissue Culture Management".
-  - All text is human-readable without a scanner — satisfies the original label requirements.
+  - All text is human-readable without a scanner.
 
 ### Changed
 

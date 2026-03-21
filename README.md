@@ -1,6 +1,8 @@
-# SteloPTC - Plant Tissue Culture Tracking System
+# SteloPTC — Plant Tissue Culture Tracking System
 
-A desktop application for tracking plant tissue culture specimens, designed for commercial and research laboratories. Built with Rust, Tauri, and Svelte for native performance and a modern UI.
+A desktop and Android application for tracking plant tissue culture specimens in commercial and research laboratories. Built with Rust, Tauri v2, and Svelte 5 for native performance on Windows, Linux, macOS, and Android.
+
+---
 
 ## Downloads
 
@@ -11,47 +13,67 @@ A desktop application for tracking plant tissue culture specimens, designed for 
 | **Windows** | [Latest Release →](../../releases/latest) | `.msi` installer + standalone `.exe` |
 | **Android** | [Latest Actions run →](../../actions/workflows/build-android.yml) | Grab the `SteloPTC-Android-Debug` artifact |
 
-**On every GitHub Release** both the Windows MSI and the Android APK are attached directly to the release assets. Android release APKs are signed with the repository keystore secrets (or fall back to debug signing if secrets are not configured — the APK still installs fine via ADB).
+On every **GitHub Release**, both the Windows MSI and the Android APK are attached directly to the release assets. Android release APKs are signed with the repository keystore secrets (or fall back to debug signing if secrets are not configured — the APK still installs fine via ADB).
 
-### Download Latest Android APK
+### Android APK
 
 The debug APK is built on **every push** and available as a workflow artifact for 30 days. Release APKs are attached to [GitHub Releases](../../releases).
 
 **Steps to download the latest debug APK:**
 
 1. Go to [Actions → Build Android APK](../../actions/workflows/build-android.yml)
-2. Click the most recent **green** (passing) run
-3. Scroll to the **Artifacts** section at the bottom of the run page
+2. Click the most recent passing (green) run
+3. Scroll to the **Artifacts** section
 4. Click **SteloPTC-Android-Debug** to download the `.apk`
 
 **Install on Android:**
 
-1. Transfer the `.apk` to your Android device (USB, email, cloud storage, etc.)
-2. Open the file — Android will ask to enable *Install unknown apps*
+1. Transfer the `.apk` to your device (USB, email, cloud storage, etc.)
+2. Open the file — Android will prompt to enable *Install unknown apps*
 3. Allow installation from this source and proceed
 4. Launch **SteloPTC** from your app drawer
 
-> **Requirements:** Android 7.0 (API 24) or later. The APK contains native libraries for all supported architectures (arm64-v8a, armeabi-v7a, x86, x86_64) so it works on any modern Android device or emulator.
+> **Requirements:** Android 7.0 (API 24) or later. The APK contains native libraries for all supported architectures (arm64-v8a, armeabi-v7a, x86, x86_64).
 
-> **Sideloading the APK**: Enable *Install unknown apps* for your file manager or ADB on your Android device, then open the downloaded `.apk` file. Minimum Android version: 7.0 (API 24).
+---
 
-### Android UI (v0.1.14)
+## Overview
 
-The Android experience is fully mobile-first:
+SteloPTC manages the full lifecycle of plant tissue culture specimens — from initiation through subculture, acclimatization, and compliance reporting. It supports multi-user access with role-based permissions, regulatory compliance tracking (USDA APHIS, TX Ag, FL FDACS), and data export for statistical analysis.
 
-- **Hamburger + drawer**: shown on all screens < 1024 dp wide (covers large phones like Pixel 9 Pro and 10-inch tablets in portrait).
-- **48 px touch targets**: all buttons, inputs, and nav items meet WCAG 2.5.5 and Apple HIG guidelines.
-- **Safe-area insets**: top (status bar / notch), bottom (home indicator), and sides are all respected via `env(safe-area-inset-*)`.
-- **QR scanning**: the **Scan QR** button activates the rear camera for instant QR decoding and specimen lookup.
+### Feature Summary
 
-## QR Codes (v0.1.14)
+- **Specimen Tracking** — Unique accession numbers (YYYY-MM-DD-SPECIESCODE-SEQ), provenance, lineage trees (split culture parent/child), health/disease status (0–4 color-coded slider with "Unknown/Awaiting" option), quarantine flags, and IP protection markers. Stages: explant, callus, shoot, shoot meristem, apical meristem, root, root meristem, embryogenic, plantlet.
+- **Structured Location Entry** — Room / Rack / Shelf / Tray dropdowns auto-populated with last-used values for fast data entry.
+- **Subculture History & Timeline** — Full passage log displayed as a vertical timeline (newest first). Each card shows media batch, vessel, location, and environment; click to expand. Supports **split culture** — one passage creates N linked child specimens with full lineage tracking. A lineage banner shows parent/child chips as clickable navigation links.
+- **Contamination Tracking** — Per-passage contamination flag and notes. Dashboard **Contamination Overview** panel shows lab-wide rate (%), affected specimens, vessel-type breakdown, and the 10 most recent events (v0.1.15).
+- **Subculture Scheduling** — Dashboard **Subculture Schedule** widget lists overdue and due-within-7-days specimens by species interval with day counts and direct links (v0.1.15).
+- **Media Logs** — Batch database supporting MS and related formulations (MS, 1/2 MS, WPM, B5, N6, LS, White's, DKW). Tracks basal salts (auto-calculated g/L from weight + volume), hormones (auxins/cytokinins/gibberellins) with concentrations, pH, sterilization, vessel count, QC notes, and expiration. Stock reagent traceability with lot numbers and auto-depletion from inventory on batch creation.
+- **Inventory Management** — Full supply tracking with category organization (media ingredients, vessels, hormones, chemicals, consumables, equipment). Stock levels, reorder thresholds, physical state (solid/liquid with concentration units), stock adjustments with audit trail, low-stock dashboard alerts, and expiration tracking.
+- **Prepared Stock Solutions** — Track stock solutions made from solid reagents: source item, concentration, volume prepared/remaining, prep date, preparer, and inline volume updates.
+- **QR Codes** — Per-specimen QR code generation (256×256, Error Correction M), 2×3-inch print labels for lab label printers, camera-based scanning (rear camera on Android, webcam on desktop), and scan event logging in SQLite (v0.1.14+).
+- **Compliance** — Auto-flagging rules for expired permits, citrus HLB testing, quarantine without release date, and positive tests without quarantine. Agency tracking: USDA APHIS, TX Ag, FL FDACS.
+- **Reminders** — User-configurable rules and calendar reminders with urgency levels (low/normal/high/critical), snooze with auto-escalation after 2 snoozes, recurring support, and a 7-day upcoming dashboard widget.
+- **Error Log** — Persistent, searchable error tracking (all roles). Every error captured with severity badge, module, username, form payload JSON, and stack trace. Sidebar badge shows live unread count; toasts are clickable and navigate directly to the log (v0.1.10+).
+- **User Management & Audit** — Roles: Admin, Supervisor, Tech, Guest. bcrypt password hashing. Immutable audit trail for all create/update/delete/archive/login actions, filterable by entity, action, user, and date range.
+- **Export & Backup** — CSV and JSON specimen export. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing.
+- **Mobile-First UI** — Hamburger + slide-out drawer on all screens < 1024 px, 48 px touch targets (WCAG 2.5.5), safe-area insets for notches and home indicators (v0.1.11+).
+- **Keyboard Shortcuts** — Ctrl+1–5: Dashboard, Specimens, Media, Reminders, Error Log.
+- **Contextual Tooltips** — "?" badge on every form field and action button with help text (v0.1.15).
+- **Dark Mode** — System-aware with manual toggle. Inter font throughout.
 
-SteloPTC v0.1.14 ships a complete QR code workflow:
+### Species Registry
+
+Pre-configured for asparagus, nandina, and citrus varieties. Any species can be added through the admin species manager.
+
+---
+
+## QR Codes (v0.1.14+)
 
 | Action | Where | How |
 |---|---|---|
-| **Generate QR** | Specimen List row · Specimen Detail header | Click the `⬡ QR` button to open a modal with the QR image |
-| **Print Label** | Inside QR modal | Opens a browser print dialog with a formatted 3.5-inch label |
+| **Generate QR** | Specimen List row · Specimen Detail header | Click `⬡ QR` to open a modal with the QR image |
+| **Print Label** | Inside QR modal | Opens a 2×3 inch print window optimised for label printers |
 | **Download PNG** | Inside QR modal | Saves `QR-{accession}.png` locally |
 | **Scan QR** | Specimens list header · Specimen Detail header | Opens the device camera to decode any SteloPTC QR and navigate to the specimen |
 
@@ -67,44 +89,23 @@ SteloPTC v0.1.14 ships a complete QR code workflow:
 }
 ```
 
-**Scan events** are stored in the `qr_scans` SQLite table with the raw data, accession number, scanned-by user, and timestamp.
+All scan events are stored in the `qr_scans` SQLite table with raw data, accession number, scanned-by user, and timestamp.
 
-## Overview
-
-SteloPTC manages the full lifecycle of plant tissue culture specimens -- from initiation through subculture, acclimatization, and compliance reporting. It supports multi-user access with role-based permissions, regulatory compliance tracking (USDA APHIS, TX Ag, FL FDACS), and data export for statistical analysis.
-
-### Key Features
-
-- **Specimen Tracking**: Unique accession numbers (YYYY-MM-DD-SPECIESCODE-SEQ), provenance, lineage trees, health/disease status (0–4 color-coded slider), quarantine flags, and IP protection markers. Stages include explant, callus, shoot, shoot meristem, root, root meristem, embryogenic, plantlet, and more.
-- **Structured Location Entry**: Specimen location is entered via Room / Rack / Shelf / Tray dropdowns with auto-populated last-used values for fast data entry.
-- **Subculture History & Timeline**: Full passage logging displayed as a beautiful vertical timeline (newest first). Each card shows media batch, vessel, location, and environment at a glance; click to expand all fields. Supports **split culture** recording — one passage can create N new linked child specimens, each with a parent reference for full lineage tracking. A lineage banner on each specimen shows parent/child links as clickable chips for fast navigation between split cultures.
-- **Media Logs**: Separate media batch database supporting MS and related formulations. Tracks basal salts (with auto-calculated g/L concentration from weight and volume), hormones (auxins/cytokinins), pH, sterilization, vessel count, and QC notes. Admin/supervisor edit support. Stock reagent traceability (lot numbers, amounts) recorded per batch.
-- **Inventory Integration**: Media batch creation form shows a "+ Add Reagent" section linking directly to inventory items with lot numbers for full ingredient traceability. Supports both weighed-out and pre-made (commercial) basal salt solutions.
-- **Compliance**: Built-in flagging rules (e.g., citrus HLB testing, expired permits, quarantine status). Tracks permits, disease tests, chain of custody, and agency-specific records for USDA APHIS, TX Ag, and FL FDACS.
-- **Reminders**: User-configurable rules and calendar-based reminders with urgency levels, snooze/escalation, and recurring schedules.
-- **User Roles**: Admin, Supervisor, Tech, Guest -- with granular permissions and full audit logging of all changes.
-- **Inventory Management**: Full supply tracking with categories, stock levels, reorder alerts, and stock adjustments with audit trail. Unit field supports g, mg, mL, L, and other common units.
-- **Database Backup**: On-demand database backup from the dashboard with WAL checkpointing for data integrity.
-- **Export**: CSV and JSON export for analysis in R, Python, or SPSS.
-- **Error Log**: Persistent, searchable error log (sidebar nav, all roles). Captures every application error with timestamp, severity (info/warning/error/critical), module, username, full message, form payload JSON, and stack trace. Expandable rows include Copy to Clipboard and Report on GitHub buttons. Sidebar badge shows live unread count. Error toasts are clickable and navigate directly to the log. All form submissions auto-capture the submitted payload on failure for instant reproducibility.
-- **QR Code Generation & Scanning** (v0.1.14+): Every specimen has a **Generate QR** button producing a 256×256 QR code encoding accession number, species, stage, and location as a signed JSON payload. **Print Label** opens a print-ready 3.5-inch label. **Scan QR** (available globally on Specimens list and per-specimen on the Detail page) activates the device camera — rear camera on Android phones, webcam on desktop — to decode any SteloPTC QR and navigate directly to the matching specimen. All scan events are logged in SQLite.
-- **Dark Mode**: System-aware with manual toggle. Inter font for clean mixed-case rendering.
-- **Keyboard Shortcuts**: Ctrl+1–5 for quick navigation (1 Dashboard, 2 Specimens, 3 Media, 4 Reminders, 5 Error Log).
-- **Admin Dev Tools**: Admin-only "Reset Database" panel on the dashboard to wipe all operational data (preserves users/species) during development and setup. Requires typing `RESET DATABASE` to confirm.
-
-### Species Supported
-
-Pre-configured for asparagus, nandina, and citrus varieties. Any species can be added through the species registry.
+---
 
 ## Tech Stack
 
-| Layer     | Technology                                     |
+| Layer     | Technology                                      |
 |-----------|-------------------------------------------------|
-| Backend   | Rust                                            |
-| Framework | Tauri v2 (native desktop, cross-platform)       |
-| Frontend  | Svelte 5, TypeScript, Vite                      |
-| Database  | SQLite (bundled, WAL mode) -- PostgreSQL planned |
-| Auth      | bcrypt password hashing, session tokens          |
+| Backend   | Rust 1.75+                                      |
+| Framework | Tauri v2 (native desktop + Android mobile)      |
+| Frontend  | Svelte 5, TypeScript, Vite 6                    |
+| Database  | SQLite (bundled, WAL mode)                      |
+| Auth      | bcrypt password hashing, session tokens         |
+| Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile        |
+| QR Codes  | qrcode 1.5.4 (generation), html5-qrcode 2.3.8 (scanning) |
+
+---
 
 ## Requirements
 
@@ -125,14 +126,15 @@ Pre-configured for asparagus, nandina, and citrus varieties. Any species can be 
 - See [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 **macOS**:
-- Xcode Command Line Tools
-- CLang
+- Xcode Command Line Tools + CLang
 
 **Android** (v0.1.11+):
 - JDK 17
-- Android SDK (API 34) + NDK r27
+- Android SDK (API 35) + NDK r27 (27.2.12479018)
 - Rust Android targets (installed automatically by `setup-android.sh`)
-- `ANDROID_HOME`, `ANDROID_NDK_HOME` environment variables
+- `ANDROID_HOME` and `ANDROID_NDK_HOME` environment variables
+
+---
 
 ## Getting Started
 
@@ -150,7 +152,7 @@ npm install
 cargo tauri dev
 ```
 
-This starts the Vite dev server and launches the Tauri window with hot-reload.
+Starts the Vite dev server and launches the Tauri window with hot-reload.
 
 ### 3. Build for Production
 
@@ -158,42 +160,32 @@ This starts the Vite dev server and launches the Tauri window with hot-reload.
 cargo tauri build --bundles msi
 ```
 
-**Windows**: Produces a standalone `.exe` in `src-tauri/target/release/` and an `.msi` installer in `src-tauri/target/release/bundle/msi/`.
+- **Windows**: `.exe` in `src-tauri/target/release/` and `.msi` in `src-tauri/target/release/bundle/msi/`.
+- **Linux**: `.deb` and `.AppImage` in `src-tauri/target/release/bundle/`.
 
-**Linux**: Produces `.deb` and `.AppImage` in `src-tauri/target/release/bundle/`.
+> **CI Note**: The GitHub Actions workflow builds MSI only (`--bundles msi`) to avoid transient NSIS download failures. Both the standalone `.exe` and `.msi` are uploaded as build artifacts.
 
-> **CI Note**: The GitHub Actions workflow builds MSI only (skips NSIS) to avoid transient 502 errors from GitHub-hosted NSIS tool downloads. Both the standalone `.exe` and `.msi` installer are uploaded as build artifacts.
-
-### 4. Build for Android (APK)
+### 4. Build for Android
 
 1. Run once: `./scripts/setup-android.sh`
-2. Initialize Android target: `cargo tauri android init`
+2. The Android project is already committed — no `cargo tauri android init` needed.
 3. Build debug APK: `npm run android:build-debug`
 4. Build release APK: `npm run android:build`
 
-First build downloads Gradle + SDK (~5-10 min). Output APK is in `src-tauri/gen/android/app/build/outputs/apk/release/`.
-
-The `setup-android.sh` script checks/installs:
-- Rust Android targets (`aarch64-linux-android`, `armv7-linux-androideabi`, `i686-linux-android`, `x86_64-linux-android`)
-- JDK 17 (via `apt`/`dnf`/`pacman`/`brew`)
-- Android SDK command-line tools, `build-tools;34.0.0`, `platforms;android-34`
-- Android NDK r27 (27.2.12479018)
-- Tauri CLI v2
-
-You can also run build commands directly after setup:
+First build downloads Gradle + SDK (~5–10 min). Output APK: `src-tauri/gen/android/app/build/outputs/apk/`.
 
 ```bash
-# Live-reload development on a connected Android device/emulator
+# Live-reload on a connected device/emulator
 npm run android:dev
 
 # Debug APK (unsigned, sideloadable)
 npm run android:build-debug
 
-# Release APK (requires signing config via env vars — see app/build.gradle.kts)
+# Release APK (requires signing env vars)
 npm run android:build
 ```
 
-**Environment variables for release signing:**
+**Release signing environment variables:**
 
 | Variable | Description |
 |---|---|
@@ -203,27 +195,23 @@ npm run android:build
 | `ANDROID_KEY_PASSWORD` | Key password |
 
 **Android requirements:**
-- Minimum SDK: API 24 (Android 7.0 Nougat)
+- Minimum SDK: API 24 (Android 7.0)
 - Target SDK: API 35 (Android 15)
 - NDK: r27 (27.2.12479018)
 
-> **Note**: The `src-tauri/gen/android/` project files are already committed to this repo. Running `cargo tauri android init` will regenerate them — use it only if you change the app identifier or Tauri version.
-
 ### Customizing Android Config
 
-Tauri's `bundle.android` in `tauri.conf.json` only accepts three properties: `autoIncrementVersionCode`, `minSdkVersion`, and `versionCode`. Properties like `targetSdkVersion` and `ndkVersion` are **not** valid there and will cause a build error.
-
-To change `targetSdk` or the NDK version, edit `src-tauri/gen/android/app/build.gradle.kts` directly:
+`targetSdk` and `ndkVersion` are not valid Tauri v2 `tauri.conf.json` properties — set them in `src-tauri/gen/android/app/build.gradle.kts`:
 
 ```kotlin
 android {
-    compileSdk = 35          // ← change here
-    ndkVersion = "27.2.12479018"  // ← change here (full version string)
+    compileSdk = 35
+    ndkVersion = "27.2.12479018"
     defaultConfig {
-        targetSdk = 35       // ← change here
+        targetSdk = 35
         minSdk = 24
-        versionCode = 12
-        versionName = "0.1.12"
+        versionCode = 15
+        versionName = "0.1.15"
     }
 }
 ```
@@ -236,135 +224,197 @@ android {
 
 **Change the default password immediately after first login.**
 
+---
+
 ## Project Structure
 
 ```
 SteloPTC/
-├── src/                          # Svelte frontend
-│   ├── App.svelte                # Main application shell
-│   ├── main.ts                   # Entry point
+├── src/                              # Svelte 5 frontend
+│   ├── App.svelte                    # Main app shell with routing and dark mode
+│   ├── main.ts                       # Entry point — mounts app, restores session
 │   └── lib/
-│       ├── api.ts                # Tauri command bindings
-│       ├── components/           # UI components
+│       ├── api.ts                    # Typed Tauri command bindings
+│       ├── components/
 │       │   ├── Login.svelte
-│       │   ├── Sidebar.svelte
-│       │   ├── Dashboard.svelte
-│       │   ├── SpecimenList.svelte
-│       │   ├── SpecimenDetail.svelte
-│       │   ├── SpecimenForm.svelte
-│       │   ├── MediaList.svelte
-│       │   ├── ReminderList.svelte
-│       │   ├── ComplianceView.svelte
-│       │   ├── SpeciesManager.svelte
-│       │   ├── UserManager.svelte
-│       │   ├── AuditLog.svelte
-│       │   ├── InventoryManager.svelte
-│       │   └── Notifications.svelte
-│       └── stores/               # Svelte stores
-│           ├── auth.ts
-│           └── app.ts
-├── src-tauri/                    # Rust backend
+│       │   ├── Dashboard.svelte      # Stats, schedule, contamination, reminders
+│       │   ├── Sidebar.svelte        # Navigation with hamburger drawer on mobile
+│       │   ├── SpecimenList.svelte   # Search, filter, QR scan entry point
+│       │   ├── SpecimenDetail.svelte # Passage timeline, lineage, QR, record passage
+│       │   ├── SpecimenForm.svelte   # New/edit specimen form
+│       │   ├── MediaList.svelte      # Media batch CRUD
+│       │   ├── ReminderList.svelte   # Reminder management
+│       │   ├── ComplianceView.svelte # Compliance records and auto-flagging
+│       │   ├── SpeciesManager.svelte # Species registry
+│       │   ├── UserManager.svelte    # User accounts and roles
+│       │   ├── AuditLog.svelte       # Immutable audit trail viewer
+│       │   ├── ErrorLog.svelte       # Error tracking with payload capture
+│       │   ├── InventoryManager.svelte # Supply inventory CRUD
+│       │   ├── QrModal.svelte        # QR generation, print label, download
+│       │   ├── QrScanner.svelte      # Camera-based QR scanning
+│       │   ├── Tooltip.svelte        # Reusable "?" contextual help badge
+│       │   └── Notifications.svelte  # Toast notification renderer
+│       └── stores/
+│           ├── auth.ts               # Auth state, session restore
+│           └── app.ts                # Notifications, error logger
+│
+├── src-tauri/                        # Rust backend
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   └── src/
-│       ├── main.rs               # Entry point
-│       ├── lib.rs                # App setup, command registration
-│       ├── auth/                 # Authentication & sessions
-│       ├── db/                   # Database, migrations, queries
-│       ├── models/               # Data structures
-│       └── commands/             # Tauri command handlers
-│           ├── auth.rs
-│           ├── specimens.rs
-│           ├── media.rs
-│           ├── subcultures.rs
-│           ├── reminders.rs
-│           ├── compliance.rs
-│           ├── species.rs
-│           ├── audit.rs
-│           ├── export.rs
-│           ├── inventory.rs
-│           └── backup.rs
-├── LICENSE                       # Commercial license
+│       ├── main.rs
+│       ├── lib.rs                    # App setup, command registration
+│       ├── auth/mod.rs               # bcrypt + session management
+│       ├── db/
+│       │   ├── mod.rs                # Connection pool, init
+│       │   ├── migrations.rs         # 5 schema migrations
+│       │   └── queries.rs            # SQL helpers
+│       ├── models/                   # Rust data structures
+│       │   ├── user.rs, specimen.rs, media.rs
+│       │   ├── subculture.rs, species.rs, reminder.rs
+│       │   ├── compliance.rs, inventory.rs
+│       │   ├── audit.rs, error_log.rs
+│       │   └── mod.rs
+│       └── commands/                 # Tauri command handlers
+│           ├── auth.rs, specimens.rs, media.rs
+│           ├── subcultures.rs        # Passages, contamination stats, schedule
+│           ├── reminders.rs, compliance.rs
+│           ├── species.rs, audit.rs
+│           ├── error_logs.rs, export.rs
+│           ├── inventory.rs, backup.rs
+│           ├── qr_scans.rs, admin.rs
+│           └── mod.rs
+│
+├── .github/workflows/
+│   ├── build-windows.yml             # MSI + exe on push and release
+│   └── build-android.yml             # APK on push and release
+│
+├── scripts/
+│   └── setup-android.sh              # Android build prerequisite installer
+│
 ├── CHANGELOG.md
-└── README.md
+├── README.md
+└── LICENSE
 ```
+
+---
 
 ## Database
 
-The application uses SQLite by default, stored at:
+SQLite, stored at:
 
 - **Windows**: `%APPDATA%\SteloPTC\stelo_ptc.db`
 - **Linux/macOS**: `~/.steloptc/stelo_ptc.db`
+- **Android**: internal app storage (managed by the OS)
 
-### Schema Overview
+### Schema
 
-| Table                | Purpose                                          |
-|----------------------|--------------------------------------------------|
-| `users`              | User accounts and roles                          |
-| `sessions`           | Auth session tokens                              |
-| `species`            | Master species registry with codes and intervals |
-| `projects`           | Project/experiment groupings                     |
-| `specimens`          | Core specimen records with accession numbers     |
-| `tags`               | Hierarchical tag definitions                     |
-| `specimen_tags`      | Tag assignments to specimens                     |
-| `media_batches`      | Media preparation log                            |
-| `media_hormones`     | Hormone details per media batch                  |
-| `subcultures`        | Passage/subculture history                       |
-| `attachments`        | File attachment metadata                         |
-| `reminders`          | Scheduled reminders and rules                    |
-| `compliance_records` | Regulatory test/permit/inspection records        |
-| `inventory_items`    | Supply inventory with reorder alerts             |
-| `audit_log`          | Immutable audit trail                            |
+| Table                | Purpose                                                   |
+|----------------------|-----------------------------------------------------------|
+| `users`              | User accounts and roles                                   |
+| `sessions`           | Auth session tokens                                       |
+| `species`            | Master species registry with codes and subculture intervals |
+| `projects`           | Project/experiment groupings                              |
+| `specimens`          | Core specimen records with accession numbers              |
+| `tags`               | Hierarchical tag definitions                              |
+| `specimen_tags`      | Tag assignments to specimens                              |
+| `media_batches`      | Media preparation log with batch IDs                      |
+| `media_hormones`     | Hormone details per media batch                           |
+| `subcultures`        | Passage history with contamination flags and notes        |
+| `prepared_solutions` | Stock solutions prepared from solid reagents              |
+| `attachments`        | File attachment metadata                                  |
+| `reminders`          | Scheduled reminders and rules                             |
+| `compliance_records` | Regulatory tests, permits, inspections                    |
+| `inventory_items`    | Supply inventory with reorder alerts                      |
+| `audit_log`          | Immutable audit trail                                     |
+| `error_logs`         | Persistent error tracking with form payloads              |
+| `qr_scans`           | QR scan events with timestamp and user                    |
+
+### Migrations
+
+| # | Applied in | Changes |
+|---|---|---|
+| 001 | v0.1.0 | Initial schema — all core tables |
+| 002 | v0.1.9 | Extended stages (meristem), employee IDs, inventory physical state, prepared_solutions |
+| 003 | v0.1.10 | Fixed specimen stage CHECK constraint; added error_logs table |
+| 004 | v0.1.14 | Added qr_scans table |
+| 005 | v0.1.15 | Added contamination_flag and contamination_notes to subcultures |
 
 ### Backup
 
-Database backups can be created from the Dashboard (supervisor/admin only). Backups are stored in a `backups/` subdirectory alongside the database file. The backup process checkpoints the WAL first to ensure a complete, consistent copy. You can also manually copy the database file while the application is closed.
+On-demand backup from the Dashboard (supervisor/admin only). Backups are stored in a `backups/` subdirectory alongside the database file, with timestamped filenames. The process checkpoints the WAL first to ensure a consistent copy.
+
+---
 
 ## User Roles
 
-| Role       | Permissions                                                |
-|------------|-------------------------------------------------------------|
-| Admin      | Full CRUD, user management, role changes, species management, audit access |
-| Supervisor | Oversight, approvals, reports, species management, audit access            |
-| Tech       | Data entry, edit own specimens/subcultures, create media batches           |
-| Guest      | View-only access to specimen summaries                                      |
+| Role       | Permissions                                                                   |
+|------------|-------------------------------------------------------------------------------|
+| Admin      | Full CRUD, user management, role changes, species management, audit access, dev tools |
+| Supervisor | Oversight, approvals, reports, species management, audit access, backup, export |
+| Tech       | Data entry, edit own specimens/subcultures, create media batches, inventory adjustments |
+| Guest      | View-only access to specimen summaries                                         |
+
+---
 
 ## Compliance
 
-SteloPTC includes auto-flagging rules for regulatory compliance:
+Built-in auto-flagging rules:
 
-- **Expired permits**: Flags specimens with past-due permit expiry dates.
-- **Citrus HLB testing**: Flags citrus specimens (CIT-* species codes) missing HLB test results within the last 12 months.
-- **Quarantine without release**: Flags quarantined specimens with no scheduled release date.
-- **Positive tests without quarantine**: Flags specimens with positive disease test results that are not quarantined.
+- **Expired permits** — flags specimens with past-due permit expiry dates.
+- **Citrus HLB testing** — flags CIT-* specimens missing an HLB test within the last 12 months.
+- **Quarantine without release** — flags quarantined specimens with no scheduled release date.
+- **Positive tests without quarantine** — flags specimens with positive disease results not under quarantine.
 
-Additional compliance rules can be added by extending `src-tauri/src/commands/compliance.rs`.
+Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
+
+---
 
 ## Roadmap
 
-- [x] Android mobile support (v0.1.11) — slide-out navigation, responsive layout, touch targets, APK build pipeline
-- [x] Inventory management with reorder alerts
-- [x] Database backup (on-demand from dashboard)
-- [x] Vertical passage timeline — scrollable history with collapsible detail cards, newest-first, replacing the old flat table
-- [x] Split culture recording — one passage creates N linked child specimens with `parent_specimen_id` for full lineage tracking
-- [x] Lineage banner — parent/child chips on each specimen for one-click navigation across splits
-- [x] QR code generation per specimen (v0.1.14) — 256×256 QR encodes accession, species, stage, location as JSON; modal with Print Label (3.5-inch formatted) and Download PNG
-- [x] QR code scanning via camera (v0.1.14) — uses device camera (rear on Android, webcam on desktop) to decode and navigate directly to the scanned specimen; scan events logged in SQLite
-- [x] Print label workflow (v0.1.14) — formatted 3.5-inch labels with QR code and specimen info via browser print API
-- [x] Android mobile UI polish (v0.1.14) — hamburger/drawer on all screens < 1024 px, 48 px touch targets, safe-area insets, full-screen QR scanner
-- [ ] PostgreSQL support for multi-user LAN deployment
-- [ ] Photo attachments with direct camera capture and per-passage image logging
-- [ ] Contamination tracking — per-vessel flags, contamination notes, and lab-wide contamination rate statistics
-- [ ] Subculture scheduling — due-date forecasting based on species interval with overdue alerts
-- [ ] Interactive lab map with floor plan overlay and specimen location heat-map
-- [ ] Excel multi-sheet import/export
-- [ ] PDF report generation (export certificates, inspection logs)
-- [ ] Batch operations — bulk passage, bulk location transfer, bulk status update across selected specimens
-- [ ] Species-level analytics — growth curves, passage success rates, media comparison charts
-- [ ] Environmental monitoring integration — link temp/humidity sensor readings to passage records
-- [ ] Email / push notifications for reminders and overdue subcultures
-- [ ] Local AI analysis (NLP note summaries, image contamination detection)
-- [ ] Offline mode with LAN sync
+### v0.1.x — Completed
+
+- [x] Core specimen tracking, subculture history, media logs, compliance, reminders (v0.1.0)
+- [x] Inventory management with reorder alerts (v0.1.2)
+- [x] On-demand database backup from dashboard (v0.1.2)
+- [x] Stable release builds on Windows (MSI/exe via GitHub Actions) (v0.1.3–v0.1.5)
+- [x] Health status 0–4 slider, structured location entry (Room/Rack/Shelf/Tray) (v0.1.6)
+- [x] Inter font, media batch edit, basal salts auto-calculator, database reset (v0.1.7)
+- [x] Vertical passage timeline, split culture, lineage banner (v0.1.8)
+- [x] Apical meristem stage, employee IDs, developer mode, prepared stock solutions, stock depletion on media creation (v0.1.9)
+- [x] Specimen stage CHECK constraint fix, persistent error log system with form payload capture (v0.1.10)
+- [x] Android mobile support — hamburger/drawer nav, touch targets, safe-area insets (v0.1.11)
+- [x] Full Android APK build (committed project, CI/CD pipeline) (v0.1.12–v0.1.13)
+- [x] QR code generation, 2×3-inch print labels, camera scanning, scan logging (v0.1.14)
+- [x] Contamination tracking per passage, subculture scheduling with overdue alerts, dashboard panels (v0.1.15)
+- [x] Contextual "?" tooltips on all form fields and action buttons (v0.1.15)
+
+### v0.1.x — Upcoming Patches
+
+- [ ] **Photo attachments** — per-passage image capture and gallery (camera on Android, file picker on desktop)
+- [ ] **PDF report generation** — export culture certificates, inspection summaries, and passage history reports
+- [ ] **Batch operations** — bulk passage recording, bulk location transfer, bulk status update across selected specimens
+- [ ] **Excel import/export** — multi-sheet workbooks: specimens, subcultures, media, compliance, inventory
+- [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
+
+### v0.2.x — Multi-User & Network
+
+- [ ] **PostgreSQL backend** — drop-in replacement for the SQLite connection for LAN/server deployments with concurrent multi-user writes
+- [ ] **Network sync** — real-time specimen and inventory updates across multiple desktop and Android clients on the same LAN
+- [ ] **Email / push notifications** — reminder delivery and overdue subculture alerts via SMTP or push service
+- [ ] **Environmental monitoring integration** — link temperature/humidity sensor readings directly to passage records
+- [ ] **iOS support** — Tauri 2 iOS target with the same responsive UI as Android
+- [ ] **Role-based field-level permissions** — hide or lock sensitive fields (IP flags, provenance) by role
+
+### v0.3.x and Beyond
+
+- [ ] **Species-level analytics** — growth curves, passage success rates, and media comparison charts across experiments
+- [ ] **Local AI analysis** — NLP summaries of observation notes; image-based contamination detection from passage photos
+- [ ] **Offline-first with sync** — full local operation with background sync when a server is available
+- [ ] **Web deployment** — optional web frontend for read-only dashboards and report sharing
+- [ ] **Protocol templates and SOPs** — attach standard operating procedure documents to species and media recipes
+
+---
 
 ## License
 
