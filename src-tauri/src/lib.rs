@@ -59,6 +59,7 @@ pub fn run() {
             commands::media::delete_media_batch,
             // Subcultures
             commands::subcultures::list_subcultures,
+            commands::subcultures::list_all_subcultures,
             commands::subcultures::create_subculture,
             commands::subcultures::update_subculture,
             commands::subcultures::get_contamination_stats,

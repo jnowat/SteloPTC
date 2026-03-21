@@ -56,7 +56,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Reminders** — User-configurable rules and calendar reminders with urgency levels (low/normal/high/critical), snooze with auto-escalation after 2 snoozes, recurring support, and a 7-day upcoming dashboard widget.
 - **Error Log** — Persistent, searchable error tracking (all roles). Every error captured with severity badge, module, username, form payload JSON, and stack trace. Sidebar badge shows live unread count; toasts are clickable and navigate directly to the log (v0.1.10+).
 - **User Management & Audit** — Roles: Admin, Supervisor, Tech, Guest. bcrypt password hashing. Immutable audit trail for all create/update/delete/archive/login actions, filterable by entity, action, user, and date range.
-- **Export & Backup** — CSV and JSON specimen export. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing.
+- **Export & Backup** — Dedicated Export Data page with Excel (`.xlsx`) multi-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance), plus CSV and JSON. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing.
 - **Mobile-First UI** — Hamburger + slide-out drawer on all screens < 1024 px, 48 px touch targets (WCAG 2.5.5), safe-area insets for notches and home indicators (v0.1.11+).
 - **Keyboard Shortcuts** — Ctrl+1–5: Dashboard, Specimens, Media, Reminders, Error Log.
 - **Contextual Tooltips** — "?" badge on every form field and action button with help text (v0.1.15).
@@ -104,6 +104,7 @@ All scan events are stored in the `qr_scans` SQLite table with raw data, accessi
 | Auth      | bcrypt password hashing, session tokens         |
 | Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile        |
 | QR Codes  | qrcode 1.5.4 (generation), html5-qrcode 2.3.8 (scanning) |
+| Excel     | xlsx 0.18.5 (SheetJS — multi-sheet workbook export)      |
 
 ---
 
@@ -252,6 +253,7 @@ SteloPTC/
 │       │   ├── InventoryManager.svelte # Supply inventory CRUD
 │       │   ├── QrModal.svelte        # QR generation, print label, download
 │       │   ├── QrScanner.svelte      # Camera-based QR scanning
+│       │   ├── ExportManager.svelte  # Excel/CSV/JSON export hub
 │       │   ├── Tooltip.svelte        # Reusable "?" contextual help badge
 │       │   └── Notifications.svelte  # Toast notification renderer
 │       └── stores/
@@ -390,11 +392,12 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] Contextual "?" tooltips on all form fields and action buttons (v0.1.15)
 - [x] Batch operations — multi-select checkboxes on Specimens list; bulk Transfer Location, Update Stage, and Archive with per-specimen audit logging (v0.1.16)
 - [x] PDF report generation — Culture Certificate (specimen detail + full passage history + compliance) and Specimens Summary (filtered list view); print-ready via browser print API (v0.1.17)
+- [x] Excel workbook export — six-sheet `.xlsx` file (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance) via SheetJS; dedicated Export Data page in sidebar (v0.1.18)
 
 ### v0.1.x — Upcoming Patches
 
 - [ ] **Photo attachments** — per-passage image capture and gallery (camera on Android, file picker on desktop)
-- [ ] **Excel import/export** — multi-sheet workbooks: specimens, subcultures, media, compliance, inventory
+- [ ] **Excel import** — parse `.xlsx` workbooks to create or update specimens and subculture records
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
 
 ### v0.2.x — Multi-User & Network

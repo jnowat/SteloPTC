@@ -24,6 +24,7 @@
     { id: 'users', label: 'Users', icon: '&#128101;', roles: ['admin'] },
     { id: 'audit', label: 'Audit Log', icon: '&#128220;', roles: ['admin', 'supervisor'] },
     { id: 'error-log', label: 'Error Log', icon: '&#9888;' },
+    { id: 'export', label: 'Export Data', icon: '&#8659;' },
   ];
 
   function canSee(item: NavItem): boolean {
@@ -60,7 +61,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v0.1.17</span>
+    <span class="version" title="Application version">v0.1.18</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -83,6 +84,7 @@
             item.id === 'users' ? 'Go to Users — manage user accounts and roles (admin only)' :
             item.id === 'audit' ? 'Go to Audit Log — view system-wide change history (admin/supervisor)' :
             item.id === 'error-log' ? 'Go to Error Log — review application errors and warnings' :
+            item.id === 'export' ? 'Go to Export — download data as Excel, CSV, or JSON' :
             `Navigate to ${item.label}`
           }
         >

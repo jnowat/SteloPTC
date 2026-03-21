@@ -5,6 +5,21 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.18] - 2026-03-21
+
+### Added
+
+- **Export Data page** — new dedicated **Export Data** view accessible from the sidebar (&#8659; Export Data), replacing the ad-hoc CSV/JSON buttons buried in the Specimens list toolbar.
+  - **Excel workbook export** (`.xlsx`) — a six-sheet workbook built entirely in the browser using [SheetJS (xlsx 0.18)](https://sheetjs.com/). Sheets: **Specimens**, **Subcultures**, **Media Batches**, **Prepared Solutions**, **Inventory**, **Compliance**. Auto-computed column widths. Compatible with Excel, LibreOffice, and Google Sheets.
+  - **CSV export** — all active specimens as a flat comma-separated file (existing functionality, now surfaced in one place).
+  - **JSON export** — specimens as structured JSON (existing functionality, now consolidated).
+- **`list_all_subcultures` Tauri command** (`subcultures.rs`) — returns every subculture row across all specimens (sorted by date desc), used by the Excel export to populate the Subcultures sheet without N+1 queries.
+
+### Changed
+
+- Export buttons removed from the `SpecimenList` toolbar are now available in the dedicated Export Data page; the Print Summary button remains.
+- Version bumped to **0.1.18** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 18), `app/build.gradle.kts` (versionCode 18), and sidebar display.
+
 ## [0.1.17] - 2026-03-21
 
 ### Added

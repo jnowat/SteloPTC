@@ -3,7 +3,6 @@
   import { get } from 'svelte/store';
   import {
     listSpecimens, searchSpecimens, deleteSpecimen, listSpecies,
-    exportSpecimensCsv, exportSpecimensJson,
     bulkArchiveSpecimens, bulkUpdateLocation, bulkUpdateStage,
   } from '../api';
   import { navigateTo, addNotification } from '../stores/app';
@@ -112,27 +111,6 @@
       await deleteSpecimen(id);
       addNotification('Specimen archived', 'success');
       load();
-    } catch (e: any) {
-      addNotification(e.message, 'error');
-    }
-  }
-
-  async function handleExport(format: 'csv' | 'json') {
-    try {
-      let data: string;
-      if (format === 'csv') {
-        data = await exportSpecimensCsv();
-      } else {
-        data = await exportSpecimensJson();
-      }
-      const blob = new Blob([data], { type: format === 'csv' ? 'text/csv' : 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `specimens_export.${format}`;
-      a.click();
-      URL.revokeObjectURL(url);
-      addNotification(`Exported as ${format.toUpperCase()}`, 'success');
     } catch (e: any) {
       addNotification(e.message, 'error');
     }
@@ -337,8 +315,6 @@ ${filterLine}
         &#128247; Scan QR <Tooltip text="Open camera to scan a QR code label and jump directly to the matching specimen" position="bottom" />
       </button>
       <button class="btn btn-sm btn-print-summary" onclick={printSummaryReport} title="Print a summary report of the currently visible specimens">&#128438; Print Summary <Tooltip text="Print a formatted summary table of the current specimen list view — respects active filters" position="bottom" /></button>
-      <button class="btn btn-sm" onclick={() => handleExport('csv')}>Export CSV <Tooltip text="Download all active specimens as a CSV spreadsheet" position="bottom" /></button>
-      <button class="btn btn-sm" onclick={() => handleExport('json')}>Export JSON <Tooltip text="Download all active specimens as a JSON file" position="bottom" /></button>
       {#if $currentUser?.role !== 'guest'}
         <button class="btn btn-primary" onclick={() => (showForm = true)}>+ New Specimen <Tooltip text="Register a new tissue culture specimen — auto-generates an accession number on save" position="bottom" /></button>
       {/if}

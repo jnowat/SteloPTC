@@ -117,6 +117,10 @@ export async function listSubcultures(specimenId: string) {
   return call<any[]>('list_subcultures', { specimenId });
 }
 
+export async function listAllSubcultures() {
+  return call<any[]>('list_all_subcultures');
+}
+
 export async function createSubculture(request: any) {
   return call<any>('create_subculture', { request });
 }
