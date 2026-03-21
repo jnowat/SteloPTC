@@ -79,6 +79,18 @@ export async function getSpecimenStats() {
   return call<any>('get_specimen_stats');
 }
 
+export async function bulkArchiveSpecimens(ids: string[]) {
+  return call<number>('bulk_archive_specimens', { ids });
+}
+
+export async function bulkUpdateLocation(ids: string[], location: string) {
+  return call<number>('bulk_update_location', { ids, location });
+}
+
+export async function bulkUpdateStage(ids: string[], stage: string) {
+  return call<number>('bulk_update_stage', { ids, stage });
+}
+
 // Media
 export async function listMedia() {
   return call<any[]>('list_media');

@@ -5,6 +5,26 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.16] - 2026-03-21
+
+### Added
+
+- **Batch operations on the Specimens list**: Select any number of specimens with per-row checkboxes and act on them all at once. A sticky batch action bar slides up from the bottom of the screen whenever one or more specimens are selected.
+  - **Transfer Location** (Tech and above) — pick Room, Rack, Shelf, and Tray in the batch bar and click **Apply** to move all selected specimens to that location in one operation. Each moved specimen gets an individual audit log entry.
+  - **Update Stage** (Tech and above) — choose a new development stage from a dropdown in the batch bar; all selected specimens are updated atomically with individual audit entries.
+  - **Archive** (Supervisor/Admin) — confirm and soft-delete all selected specimens in a single call; audit entries are written per specimen.
+  - **Select All on page** — header checkbox selects or deselects all visible specimens; indeterminate state shown when some but not all are selected.
+  - Selection persists while navigating pages; the **✕** button clears it. Selection is also cleared automatically after each batch action.
+- **Three new Tauri commands**: `bulk_archive_specimens`, `bulk_update_location`, `bulk_update_stage` — each runs inside a per-ID loop with individual audit log entries, respects `is_archived` guards, and enforces the same role checks as the individual equivalents (`can_manage` for archive, `can_write` for location/stage).
+
+### Fixed
+
+- **Stage filter dropdown missing Shoot Meristem, Apical Meristem, Root Meristem**: The `stages` array in `SpecimenList.svelte` was stale and did not include the three meristem stages added in v0.1.6 and v0.1.9. The filter dropdown now matches the full stage list in `SpecimenForm.svelte` and the database CHECK constraint.
+
+### Changed
+
+- Version bumped to **0.1.16** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 16), `app/build.gradle.kts` (versionCode 16), and sidebar display.
+
 ## [0.1.15] - 2026-03-02
 
 ### Added
