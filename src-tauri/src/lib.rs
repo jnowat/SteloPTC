@@ -110,6 +110,11 @@ pub fn run() {
             // QR Scans
             commands::qr_scans::store_qr_scan,
             commands::qr_scans::list_qr_scans,
+            // Attachments
+            commands::attachments::list_attachments,
+            commands::attachments::upload_attachment,
+            commands::attachments::get_attachment_data,
+            commands::attachments::delete_attachment,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

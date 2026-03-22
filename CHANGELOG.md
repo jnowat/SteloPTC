@@ -5,6 +5,26 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19] - 2026-03-22
+
+### Added
+
+- **Photo attachments on Specimen Detail** — a new **Photos** tab (beside Passage Timeline and Compliance) allows any user with write access to attach images directly to a specimen record.
+  - **Upload** — click **+ Add Photo** to open the OS file picker (desktop) or the rear camera (Android) via `<input type="file" accept="image/*" capture="environment">`. Images are sent to Rust as base64, decoded, and saved under `<appDataDir>/attachments/specimen/<specimen_id>/<uuid>.<ext>` on disk, with a row inserted into the existing `attachments` SQLite table.
+  - **Gallery** — photos are listed as a responsive tile grid. Tiles show a thumbnail once loaded (camera icon placeholder before first view), filename, and upload date.
+  - **Lightbox** — clicking any tile loads the full-resolution image from disk (base64 round-trip) and displays it in a full-screen overlay with a close button. Loaded images are cached in memory for instant re-display.
+  - **Delete** — hover a tile to reveal a red × button; confirm to permanently remove the file and DB record. Requires Tech role or above.
+  - Photo count badge shown on the Photos tab whenever photos exist.
+- **Four new Tauri commands** (`attachments.rs`):
+  - `list_attachments(entity_type, entity_id)` — returns all attachments for a given entity, ordered newest-first.
+  - `upload_attachment(entity_type, entity_id, file_name, mime_type, data_b64, description)` — decodes base64, writes file to disk, inserts DB record, returns `AttachmentMeta`.
+  - `get_attachment_data(id)` — reads file from disk and returns base64 string for display.
+  - `delete_attachment(id)` — deletes DB record then removes file from disk (best-effort). All four commands write to the audit log.
+
+### Changed
+
+- Version bumped to **0.1.19** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 19), `app/build.gradle.kts` (versionCode 19), and sidebar display.
+
 ## [0.1.18] - 2026-03-21
 
 ### Added

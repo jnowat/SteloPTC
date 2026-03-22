@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens, listAttachments, uploadAttachment, deleteAttachment, getAttachmentData } from '../api';
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import QrModal from './QrModal.svelte';
@@ -19,7 +19,13 @@
   let loading = $state(true);
   let showPassageForm = $state(false);
   let expandedPassages = $state(new Set<string>());
-  let activeTab = $state<'history' | 'compliance'>('history');
+  let activeTab = $state<'history' | 'compliance' | 'photos'>('history');
+  let photos = $state<any[]>([]);
+  let photoCache = $state(new Map<string, string>());
+  let uploadingPhoto = $state(false);
+  let lightboxSrc = $state<string | null>(null);
+  let lightboxMime = $state<string>('image/jpeg');
+  let fileInputEl = $state<HTMLInputElement | null>(null);
   let isSplitting = $state(false);
   let splitCount = $state(2);
   let submitting = $state(false);
@@ -119,19 +125,79 @@
     if ($selectedSpecimenId) untrack(() => loadAll($selectedSpecimenId));
   });
 
+  async function loadPhotos(id: string) {
+    try {
+      photos = await listAttachments('specimen', id);
+    } catch {
+      // non-fatal
+    }
+  }
+
+  async function handlePhotoUpload(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || !$selectedSpecimenId) return;
+    uploadingPhoto = true;
+    try {
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      await uploadAttachment('specimen', $selectedSpecimenId, file.name, file.type, b64);
+      addNotification('Photo added', 'success');
+      await loadPhotos($selectedSpecimenId);
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    } finally {
+      uploadingPhoto = false;
+      input.value = '';
+    }
+  }
+
+  async function viewPhoto(id: string, mime: string) {
+    let src = photoCache.get(id);
+    if (!src) {
+      try {
+        const b64 = await getAttachmentData(id);
+        src = `data:${mime || 'image/jpeg'};base64,${b64}`;
+        photoCache.set(id, src);
+      } catch (err: any) {
+        addNotification(err.message, 'error');
+        return;
+      }
+    }
+    lightboxMime = mime || 'image/jpeg';
+    lightboxSrc = src;
+  }
+
+  async function removePhoto(id: string) {
+    if (!confirm('Delete this photo? This cannot be undone.')) return;
+    try {
+      await deleteAttachment(id);
+      photoCache.delete(id);
+      photos = photos.filter((p) => p.id !== id);
+      addNotification('Photo deleted', 'success');
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    }
+  }
+
   async function loadAll(id: string) {
     loading = true;
     try {
-      const [s, sc, cr, mb] = await Promise.all([
+      const [s, sc, cr, mb, ph] = await Promise.all([
         getSpecimen(id),
         listSubcultures(id),
         listComplianceRecords(id),
         listMedia(),
+        listAttachments('specimen', id).catch(() => []),
       ]);
       specimen = s;
       subcultures = [...sc].reverse(); // newest first
       complianceRecords = cr;
       mediaBatches = mb;
+      photos = ph as any[];
 
       // Lineage: fetch parent if present
       if (s.parent_specimen_id) {
@@ -515,6 +581,9 @@ ${complianceRecords.length > 0 ? `
       </button>
       <button class="tab" title="View regulatory compliance and phytosanitary test records for this specimen" class:active={activeTab === 'compliance'} onclick={() => activeTab = 'compliance'}>
         Compliance {#if complianceRecords.length > 0}<span class="tab-count">{complianceRecords.length}</span>{/if}
+      </button>
+      <button class="tab" title="View and manage photo attachments for this specimen" class:active={activeTab === 'photos'} onclick={() => activeTab = 'photos'}>
+        Photos {#if photos.length > 0}<span class="tab-count">{photos.length}</span>{/if}
       </button>
     </div>
 
@@ -917,6 +986,66 @@ ${complianceRecords.length > 0 ? `
       </div>
 
     <!-- ── Compliance Tab ── -->
+    {:else if activeTab === 'photos'}
+      <div class="card" style="margin-top:0;border-top-left-radius:0;border-top-right-radius:0;">
+        <div class="photos-header">
+          <h3 style="font-size:15px;">Photos</h3>
+          {#if $currentUser?.role !== 'guest'}
+            <!-- Hidden file input — triggered by the button below -->
+            <input
+              bind:this={fileInputEl}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              style="display:none"
+              onchange={handlePhotoUpload}
+            />
+            <button
+              class="btn btn-primary btn-sm"
+              onclick={() => fileInputEl?.click()}
+              disabled={uploadingPhoto}
+              title="Upload a photo or capture from camera (Android)"
+            >
+              {#if uploadingPhoto}Uploading…{:else}+ Add Photo{/if}
+            </button>
+          {/if}
+        </div>
+
+        {#if photos.length === 0}
+          <div class="empty-state">
+            No photos yet.{#if $currentUser?.role !== 'guest'} Use <strong>+ Add Photo</strong> to attach an image.{/if}
+          </div>
+        {:else}
+          <div class="photo-grid">
+            {#each photos as photo (photo.id)}
+              {@const cached = photoCache.get(photo.id)}
+              <div class="photo-card" role="button" tabindex="0"
+                onclick={() => viewPhoto(photo.id, photo.mime_type)}
+                onkeydown={(e) => e.key === 'Enter' && viewPhoto(photo.id, photo.mime_type)}
+                title="Click to view full-size — {photo.file_name}"
+              >
+                <div class="photo-thumb">
+                  {#if cached}
+                    <img src={cached} alt={photo.file_name} />
+                  {:else}
+                    <span class="photo-icon">&#128247;</span>
+                  {/if}
+                </div>
+                <div class="photo-meta">
+                  <span class="photo-name" title={photo.file_name}>{photo.file_name}</span>
+                  <span class="photo-date">{photo.created_at?.split(' ')[0] ?? ''}</span>
+                </div>
+                {#if $currentUser?.role !== 'guest'}
+                  <button class="photo-delete" title="Delete this photo"
+                    onclick={(e) => { e.stopPropagation(); removePhoto(photo.id); }}
+                  >&#10005;</button>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
+      </div>
+
     {:else if activeTab === 'compliance'}
       <div class="card" style="margin-top:0;border-top-left-radius:0;border-top-right-radius:0;">
         <h3 style="margin-bottom:12px;font-size:15px;">Compliance Records</h3>
@@ -970,6 +1099,16 @@ ${complianceRecords.length > 0 ? `
 
   {/if}
 </div>
+
+<!-- Photo Lightbox -->
+{#if lightboxSrc}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="lightbox" onclick={() => (lightboxSrc = null)} title="Click to close">
+    <button class="lightbox-close" onclick={() => (lightboxSrc = null)} title="Close">&#10005;</button>
+    <img src={lightboxSrc} alt="Specimen photo" onclick={(e) => e.stopPropagation()} />
+  </div>
+{/if}
 
 <!-- QR Code Modal -->
 {#if showQrModal && specimen}
@@ -1286,4 +1425,82 @@ ${complianceRecords.length > 0 ? `
   .contam-toggle-label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
   .contam-toggle-text { color: #b91c1c; }
   :global(.dark) .contam-toggle-text { color: #f87171; }
+
+  /* ── Photos tab ── */
+  .photos-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
+
+  .photo-card {
+    position: relative;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+    background: #f8fafc;
+  }
+  .photo-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+  :global(.dark) .photo-card { border-color: #334155; background: #0f172a; }
+
+  .photo-thumb {
+    width: 100%; height: 110px;
+    display: flex; align-items: center; justify-content: center;
+    background: #f1f5f9; overflow: hidden;
+  }
+  :global(.dark) .photo-thumb { background: #1e293b; }
+  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-icon { font-size: 40px; opacity: 0.4; }
+
+  .photo-meta {
+    padding: 6px 8px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .photo-name {
+    font-size: 11px; font-weight: 600; color: #374151;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  :global(.dark) .photo-name { color: #e2e8f0; }
+  .photo-date { font-size: 10px; color: #9ca3af; }
+
+  .photo-delete {
+    position: absolute; top: 4px; right: 4px;
+    width: 22px; height: 22px;
+    background: rgba(220,38,38,0.85); color: white;
+    border: none; border-radius: 50%; cursor: pointer;
+    font-size: 10px; font-weight: 700; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity 0.15s;
+  }
+  .photo-card:hover .photo-delete { opacity: 1; }
+
+  /* ── Lightbox ── */
+  .lightbox {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.88);
+    display: flex; align-items: center; justify-content: center;
+    cursor: zoom-out;
+  }
+  .lightbox img {
+    max-width: 90vw; max-height: 90vh;
+    border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    cursor: default;
+  }
+  .lightbox-close {
+    position: absolute; top: 20px; right: 24px;
+    background: rgba(255,255,255,0.12); color: white;
+    border: 1px solid rgba(255,255,255,0.2);
+    width: 40px; height: 40px; border-radius: 50%;
+    font-size: 16px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .lightbox-close:hover { background: rgba(255,255,255,0.2); }
 </style>

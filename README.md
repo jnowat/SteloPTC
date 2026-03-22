@@ -56,6 +56,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Reminders** — User-configurable rules and calendar reminders with urgency levels (low/normal/high/critical), snooze with auto-escalation after 2 snoozes, recurring support, and a 7-day upcoming dashboard widget.
 - **Error Log** — Persistent, searchable error tracking (all roles). Every error captured with severity badge, module, username, form payload JSON, and stack trace. Sidebar badge shows live unread count; toasts are clickable and navigate directly to the log (v0.1.10+).
 - **User Management & Audit** — Roles: Admin, Supervisor, Tech, Guest. bcrypt password hashing. Immutable audit trail for all create/update/delete/archive/login actions, filterable by entity, action, user, and date range.
+- **Photo Attachments** — Attach images directly to specimen records. Upload via OS file picker (desktop) or rear camera (Android). Responsive gallery grid with lightbox viewer and in-memory thumbnail cache. Images stored on disk under `<appDataDir>/attachments/`.
 - **Export & Backup** — Dedicated Export Data page with Excel (`.xlsx`) multi-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance), plus CSV and JSON. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing.
 - **Mobile-First UI** — Hamburger + slide-out drawer on all screens < 1024 px, 48 px touch targets (WCAG 2.5.5), safe-area insets for notches and home indicators (v0.1.11+).
 - **Keyboard Shortcuts** — Ctrl+1–5: Dashboard, Specimens, Media, Reminders, Error Log.
@@ -285,6 +286,7 @@ SteloPTC/
 │           ├── error_logs.rs, export.rs
 │           ├── inventory.rs, backup.rs
 │           ├── qr_scans.rs, admin.rs
+│           ├── attachments.rs            # Photo attach/fetch/delete
 │           └── mod.rs
 │
 ├── .github/workflows/
@@ -393,10 +395,10 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] Batch operations — multi-select checkboxes on Specimens list; bulk Transfer Location, Update Stage, and Archive with per-specimen audit logging (v0.1.16)
 - [x] PDF report generation — Culture Certificate (specimen detail + full passage history + compliance) and Specimens Summary (filtered list view); print-ready via browser print API (v0.1.17)
 - [x] Excel workbook export — six-sheet `.xlsx` file (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance) via SheetJS; dedicated Export Data page in sidebar (v0.1.18)
+- [x] Photo attachments — upload images per specimen via OS file picker or Android rear camera; gallery grid with lightbox viewer, delete, and in-memory cache; stored on disk under appDataDir (v0.1.19)
 
 ### v0.1.x — Upcoming Patches
 
-- [ ] **Photo attachments** — per-passage image capture and gallery (camera on Android, file picker on desktop)
 - [ ] **Excel import** — parse `.xlsx` workbooks to create or update specimens and subculture records
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
 
