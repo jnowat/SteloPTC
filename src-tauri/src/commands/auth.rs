@@ -7,7 +7,10 @@ use tauri::State;
 #[tauri::command]
 pub fn login(state: State<AppState>, username: String, password: String) -> Result<LoginResponse, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let user = auth_service::authenticate(&db, &username, &password)?;
+    let user = auth_service::authenticate(&db, &username, &password).map_err(|e| {
+        queries::log_audit(&db.conn, None, "login_failed", "user", None, None, Some(&username), Some(&e)).ok();
+        e
+    })?;
     let token = auth_service::create_session(&db, &user.id)?;
 
     queries::log_audit(&db.conn, Some(&user.id), "login", "user", Some(&user.id), None, None, None)
@@ -109,6 +112,11 @@ pub fn create_user(state: State<AppState>, token: String, request: CreateUserReq
 
 #[tauri::command]
 pub fn update_user_role(state: State<AppState>, token: String, user_id: String, new_role: String) -> Result<(), String> {
+    const VALID_ROLES: &[&str] = &["admin", "supervisor", "tech", "guest"];
+    if !VALID_ROLES.contains(&new_role.as_str()) {
+        return Err(format!("Invalid role '{}'. Must be one of: admin, supervisor, tech, guest", new_role));
+    }
+
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let caller = auth_service::validate_session(&db, &token)?;
     if !caller.role.is_admin() {

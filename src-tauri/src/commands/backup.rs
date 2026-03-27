@@ -38,7 +38,10 @@ pub fn create_backup(
         }
     } else {
         // Default: backup directory next to the database
-        let backup_dir = db_path.parent().unwrap().join("backups");
+        let backup_dir = db_path
+            .parent()
+            .ok_or_else(|| "Could not determine database parent directory".to_string())?
+            .join("backups");
         std::fs::create_dir_all(&backup_dir)
             .map_err(|e| format!("Failed to create backup directory: {}", e))?;
         backup_dir.join(&backup_name)
@@ -70,7 +73,10 @@ pub fn list_backups(state: State<AppState>, token: String) -> Result<Vec<BackupI
     let _user = auth_service::validate_session(&db, &token)?;
 
     let db_path = crate::db::Database::db_path();
-    let backup_dir = db_path.parent().unwrap().join("backups");
+    let backup_dir = db_path
+        .parent()
+        .ok_or_else(|| "Could not determine database parent directory".to_string())?
+        .join("backups");
 
     if !backup_dir.exists() {
         return Ok(vec![]);

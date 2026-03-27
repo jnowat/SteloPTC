@@ -46,7 +46,7 @@
 
   onMount(() => {
     load();
-    listPreparedSolutions().then(s => solutions = s).catch(() => {});
+    listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
   });
 
   async function load() {
@@ -54,7 +54,7 @@
     try { items = await listInventory(); }
     catch (e: any) { addNotification(e.message, 'error'); }
     finally { loading = false; }
-    listPreparedSolutions().then(s => solutions = s).catch(() => {});
+    listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
   }
 
   function resetForm() {
@@ -228,7 +228,7 @@
       addNotification('Prepared solution created', 'success');
       showSolutionForm = false;
       resetSolutionForm();
-      listPreparedSolutions().then(s => solutions = s).catch(() => {});
+      listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
     } catch (e: any) { addNotification(e.message, 'error'); }
   }
 
@@ -237,7 +237,7 @@
     try {
       await deletePreparedSolution(id);
       addNotification('Prepared solution deleted', 'success');
-      listPreparedSolutions().then(s => solutions = s).catch(() => {});
+      listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
     } catch (e: any) { addNotification(e.message, 'error'); }
   }
 
@@ -248,7 +248,7 @@
         volume_remaining_ml: newVolumeRemaining ? parseFloat(newVolumeRemaining) : undefined,
       });
       addNotification('Volume updated', 'success');
-      listPreparedSolutions().then(s => solutions = s).catch(() => {});
+      listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
     } catch (e: any) { addNotification(e.message, 'error'); }
   }
 

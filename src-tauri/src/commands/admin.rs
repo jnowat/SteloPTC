@@ -32,7 +32,10 @@ pub fn reset_database(
     db.conn.execute("DELETE FROM attachments", []).map_err(|e| e.to_string())?;
     db.conn.execute("DELETE FROM specimens", []).map_err(|e| e.to_string())?;
     db.conn.execute("DELETE FROM media_batches", []).map_err(|e| e.to_string())?;
+    db.conn.execute("DELETE FROM prepared_solutions", []).map_err(|e| e.to_string())?;
     db.conn.execute("DELETE FROM inventory_items", []).map_err(|e| e.to_string())?;
+    db.conn.execute("DELETE FROM qr_scans", []).map_err(|e| e.to_string())?;
+    db.conn.execute("DELETE FROM error_logs", []).map_err(|e| e.to_string())?;
     db.conn.execute("DELETE FROM audit_log", []).map_err(|e| e.to_string())?;
 
     // Log the reset itself (audit entry won't survive if audit_log was cleared,
@@ -48,5 +51,5 @@ pub fn reset_database(
         Some("Full database reset performed by admin"),
     ).ok();
 
-    Ok("Database reset complete. All specimens, media, subcultures, inventory, compliance records, and reminders have been cleared. Users and species definitions were preserved.".to_string())
+    Ok("Database reset complete. All specimens, media, subcultures, inventory, compliance records, reminders, QR scan history, error logs, and prepared solutions have been cleared. Users and species definitions were preserved.".to_string())
 }

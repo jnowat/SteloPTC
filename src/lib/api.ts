@@ -13,7 +13,7 @@ async function call<T>(command: string, args: Record<string, unknown> = {}): Pro
     return await invoke<T>(command, { token: getToken(), ...args });
   } catch (e: unknown) {
     const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : 'Unknown error');
-    if (msg.includes('Session expired') || msg.includes('invalid')) {
+    if (msg.includes('Session expired or invalid') || msg.includes('Session expired')) {
       clearAuth();
     }
     throw new Error(msg);
@@ -154,13 +154,13 @@ export async function updateReminder(request: any) {
   return call<void>('update_reminder', { request });
 }
 
-export async function dismissReminder(id: string, snooze: boolean) {
-  return call<void>('dismiss_reminder', { id, snooze });
+export async function dismissReminder(id: string, snooze: boolean, snoozeDays?: number) {
+  return call<void>('dismiss_reminder', { id, snooze, snoozeDays: snoozeDays ?? null });
 }
 
 // Compliance
-export async function listComplianceRecords(specimenId?: string) {
-  return call<any[]>('list_compliance_records', { specimenId: specimenId ?? null });
+export async function listComplianceRecords(specimenId?: string, page = 1, perPage = 100) {
+  return call<any>('list_compliance_records', { specimenId: specimenId ?? null, page, perPage });
 }
 
 export async function createComplianceRecord(request: any) {
@@ -178,6 +178,10 @@ export async function getComplianceFlags() {
 // Species
 export async function listSpecies() {
   return call<any[]>('list_species');
+}
+
+export async function listProjects() {
+  return call<any[]>('list_projects');
 }
 
 export async function createSpecies(request: any) {

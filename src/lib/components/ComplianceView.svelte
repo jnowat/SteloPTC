@@ -9,6 +9,9 @@
   let loading = $state(true);
   let showForm = $state(false);
   let activeTab = $state<'flags' | 'records'>('flags');
+  let page = $state(1);
+  let totalPages = $state(1);
+  let total = $state(0);
   let form = $state({
     specimen_id: '', record_type: 'disease_test', agency: '',
     test_type: '', test_method: '', test_date: new Date().toISOString().split('T')[0],
@@ -23,8 +26,10 @@
   async function load() {
     loading = true;
     try {
-      const [r, f] = await Promise.all([listComplianceRecords(), getComplianceFlags()]);
-      records = r;
+      const [r, f] = await Promise.all([listComplianceRecords(undefined, page), getComplianceFlags()]);
+      records = r.items;
+      total = r.total;
+      totalPages = r.total_pages;
       flags = f;
     } catch (e: any) { addNotification(e.message, 'error'); }
     finally { loading = false; }
@@ -218,6 +223,13 @@
           </tbody>
         </table>
       </div>
+    {#if totalPages > 1}
+      <div class="pagination">
+        <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }} title="Go to the previous page">Prev</button>
+        <span title="Current page position">Page {page} of {totalPages}</span>
+        <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }} title="Go to the next page">Next</button>
+      </div>
+    {/if}
     {/if}
   {/if}
 </div>
@@ -227,4 +239,5 @@
   :global(.dark) .tabs { border-color: #334155; }
   .tab { padding: 10px 20px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: 13px; font-weight: 600; color: #6b7280; }
   .tab.active { color: #2563eb; border-bottom-color: #2563eb; }
+  .pagination { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; justify-content: center; font-size: 13px; }
 </style>

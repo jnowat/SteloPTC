@@ -26,7 +26,8 @@ pub fn list_specimens(
 
     let mut stmt = db.conn.prepare(
         "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
-                p.name as project_name
+                p.name as project_name,
+                (SELECT COALESCE(MAX(contamination_flag), 0) FROM subcultures WHERE specimen_id = s.id) AS has_contamination
          FROM specimens s
          LEFT JOIN species sp ON s.species_id = sp.id
          LEFT JOIN projects p ON s.project_id = p.id
@@ -72,6 +73,7 @@ pub fn list_specimens(
             created_by: row.get("created_by")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
+            has_contamination: row.get::<_, i32>("has_contamination")? != 0,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -95,7 +97,8 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
 
     db.conn.query_row(
         "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
-                p.name as project_name
+                p.name as project_name,
+                (SELECT COALESCE(MAX(contamination_flag), 0) FROM subcultures WHERE specimen_id = s.id) AS has_contamination
          FROM specimens s
          LEFT JOIN species sp ON s.species_id = sp.id
          LEFT JOIN projects p ON s.project_id = p.id
@@ -138,6 +141,7 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 created_by: row.get("created_by")?,
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
+                has_contamination: row.get::<_, i32>("has_contamination")? != 0,
             })
         },
     ).map_err(|e| format!("Specimen not found: {}", e))
@@ -314,7 +318,9 @@ pub fn search_specimens(
     if let Some(ref q) = params_input.query {
         let param_idx = bind_values.len() + 1;
         conditions.push(format!(
-            "(s.accession_number LIKE ?{p} OR s.notes LIKE ?{p} OR s.location LIKE ?{p} OR s.provenance LIKE ?{p})",
+            "(s.accession_number LIKE ?{p} OR s.notes LIKE ?{p} OR s.location LIKE ?{p} \
+             OR s.provenance LIKE ?{p} OR s.source_plant LIKE ?{p} \
+             OR sp.genus LIKE ?{p} OR sp.species_name LIKE ?{p})",
             p = param_idx
         ));
         bind_values.push(Box::new(format!("%{}%", q)));
@@ -348,14 +354,18 @@ pub fn search_specimens(
         format!("WHERE {}", conditions.join(" AND "))
     };
 
-    let count_sql = format!("SELECT COUNT(*) FROM specimens s {}", where_clause);
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM specimens s LEFT JOIN species sp ON s.species_id = sp.id {}",
+        where_clause
+    );
     let bind_refs: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter().map(|v| v.as_ref()).collect();
     let total: i64 = db.conn.query_row(&count_sql, bind_refs.as_slice(), |r| r.get(0))
         .map_err(|e| e.to_string())?;
 
     let query_sql = format!(
         "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
-                p.name as project_name
+                p.name as project_name,
+                (SELECT COALESCE(MAX(contamination_flag), 0) FROM subcultures WHERE specimen_id = s.id) AS has_contamination
          FROM specimens s
          LEFT JOIN species sp ON s.species_id = sp.id
          LEFT JOIN projects p ON s.project_id = p.id
@@ -410,6 +420,7 @@ pub fn search_specimens(
             created_by: row.get("created_by")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
+            has_contamination: row.get::<_, i32>("has_contamination")? != 0,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())

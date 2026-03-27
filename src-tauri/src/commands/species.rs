@@ -3,7 +3,15 @@ use crate::db::queries;
 use crate::models::species::*;
 use crate::AppState;
 use rusqlite::params;
+use serde::Serialize;
 use tauri::State;
+
+#[derive(Debug, Serialize)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+}
 
 #[tauri::command]
 pub fn list_species(state: State<AppState>, token: String) -> Result<Vec<Species>, String> {
@@ -140,4 +148,26 @@ pub fn update_species(
     ).ok();
 
     Ok(())
+}
+
+#[tauri::command]
+pub fn list_projects(state: State<AppState>, token: String) -> Result<Vec<Project>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+
+    let mut stmt = db.conn.prepare(
+        "SELECT id, name, status FROM projects WHERE status != 'archived' ORDER BY name"
+    ).map_err(|e| e.to_string())?;
+
+    let projects = stmt.query_map([], |row| {
+        Ok(Project {
+            id: row.get("id")?,
+            name: row.get("name")?,
+            status: row.get("status")?,
+        })
+    }).map_err(|e| e.to_string())?
+      .filter_map(|r| r.ok())
+      .collect();
+
+    Ok(projects)
 }
