@@ -48,6 +48,9 @@ pub fn run() {
             commands::specimens::delete_specimen,
             commands::specimens::search_specimens,
             commands::specimens::get_specimen_stats,
+            commands::specimens::bulk_archive_specimens,
+            commands::specimens::bulk_update_location,
+            commands::specimens::bulk_update_stage,
             // Media
             commands::media::list_media,
             commands::media::get_media_batch,
@@ -56,6 +59,7 @@ pub fn run() {
             commands::media::delete_media_batch,
             // Subcultures
             commands::subcultures::list_subcultures,
+            commands::subcultures::list_all_subcultures,
             commands::subcultures::create_subculture,
             commands::subcultures::update_subculture,
             commands::subcultures::get_contamination_stats,
@@ -106,6 +110,11 @@ pub fn run() {
             // QR Scans
             commands::qr_scans::store_qr_scan,
             commands::qr_scans::list_qr_scans,
+            // Attachments
+            commands::attachments::list_attachments,
+            commands::attachments::upload_attachment,
+            commands::attachments::get_attachment_data,
+            commands::attachments::delete_attachment,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

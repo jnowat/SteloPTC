@@ -5,23 +5,102 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.19] - 2026-03-22
+
+### Added
+
+- **Photo attachments on Specimen Detail** — a new **Photos** tab (beside Passage Timeline and Compliance) allows any user with write access to attach images directly to a specimen record.
+  - **Upload** — click **+ Add Photo** to open the OS file picker (desktop) or the rear camera (Android) via `<input type="file" accept="image/*" capture="environment">`. Images are sent to Rust as base64, decoded, and saved under `<appDataDir>/attachments/specimen/<specimen_id>/<uuid>.<ext>` on disk, with a row inserted into the existing `attachments` SQLite table.
+  - **Gallery** — photos are listed as a responsive tile grid. Tiles show a thumbnail once loaded (camera icon placeholder before first view), filename, and upload date.
+  - **Lightbox** — clicking any tile loads the full-resolution image from disk (base64 round-trip) and displays it in a full-screen overlay with a close button. Loaded images are cached in memory for instant re-display.
+  - **Delete** — hover a tile to reveal a red × button; confirm to permanently remove the file and DB record. Requires Tech role or above.
+  - Photo count badge shown on the Photos tab whenever photos exist.
+- **Four new Tauri commands** (`attachments.rs`):
+  - `list_attachments(entity_type, entity_id)` — returns all attachments for a given entity, ordered newest-first.
+  - `upload_attachment(entity_type, entity_id, file_name, mime_type, data_b64, description)` — decodes base64, writes file to disk, inserts DB record, returns `AttachmentMeta`.
+  - `get_attachment_data(id)` — reads file from disk and returns base64 string for display.
+  - `delete_attachment(id)` — deletes DB record then removes file from disk (best-effort). All four commands write to the audit log.
+
+### Changed
+
+- Version bumped to **0.1.19** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 19), `app/build.gradle.kts` (versionCode 19), and sidebar display.
+
+## [0.1.18] - 2026-03-21
+
+### Added
+
+- **Export Data page** — new dedicated **Export Data** view accessible from the sidebar (&#8659; Export Data), replacing the ad-hoc CSV/JSON buttons buried in the Specimens list toolbar.
+  - **Excel workbook export** (`.xlsx`) — a six-sheet workbook built entirely in the browser using [SheetJS (xlsx 0.18)](https://sheetjs.com/). Sheets: **Specimens**, **Subcultures**, **Media Batches**, **Prepared Solutions**, **Inventory**, **Compliance**. Auto-computed column widths. Compatible with Excel, LibreOffice, and Google Sheets.
+  - **CSV export** — all active specimens as a flat comma-separated file (existing functionality, now surfaced in one place).
+  - **JSON export** — specimens as structured JSON (existing functionality, now consolidated).
+- **`list_all_subcultures` Tauri command** (`subcultures.rs`) — returns every subculture row across all specimens (sorted by date desc), used by the Excel export to populate the Subcultures sheet without N+1 queries.
+
+### Changed
+
+- Export buttons removed from the `SpecimenList` toolbar are now available in the dedicated Export Data page; the Print Summary button remains.
+- Version bumped to **0.1.18** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 18), `app/build.gradle.kts` (versionCode 18), and sidebar display.
+
+## [0.1.17] - 2026-03-21
+
+### Added
+
+- **Culture Certificate report** (`SpecimenDetail`): A **Print Report** button (purple, beside Generate QR) opens a print-ready culture certificate for the current specimen in a new window, which automatically triggers the browser print dialog. The certificate includes:
+  - Header with SteloPTC branding, report type, generation date, and username.
+  - **Specimen Information** section: accession number, species (with code), stage badge, health label, initiation date, current location, propagation method, provenance, source plant, quarantine status (with release date if set), IP protection, total passage count, employee ID, and notes.
+  - **Lineage** section (shown only when applicable): parent specimen (split source) and/or child specimens (split products) as inline chips.
+  - **Passage History** table (oldest to newest): passage number, date, media batch name, vessel type, transfer-to location, health label, contamination flag with notes, and observations/notes.
+  - **Compliance Records** table (shown only when present): record type, test/issue date, agency, result/status, expiry date, notes.
+  - Optimised for US Letter paper with `@page { size: letter; margin: 0.5in }`.
+- **Specimens Summary report** (`SpecimenList`): A **Print Summary** button (purple, beside Export CSV) opens a landscape print-ready summary table of the currently visible specimen page in a new window. Includes active filter and search descriptions, page/total counts, and a table with accession, species, stage, location, passages, health, quarantine status, and initiation date. Formatted for US Letter landscape.
+- Both reports are pure browser-side (no new Tauri commands or npm packages) using the same `window.open` + `document.write` + `window.onload=print` pattern established by the QR label printer.
+
+### Changed
+
+- Version bumped to **0.1.17** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 17), `app/build.gradle.kts` (versionCode 17), and sidebar display.
+
+## [0.1.16] - 2026-03-21
+
+### Added
+
+- **Batch operations on the Specimens list**: Select any number of specimens with per-row checkboxes and act on them all at once. A sticky batch action bar slides up from the bottom of the screen whenever one or more specimens are selected.
+  - **Transfer Location** (Tech and above) — pick Room, Rack, Shelf, and Tray in the batch bar and click **Apply** to move all selected specimens to that location in one operation. Each moved specimen gets an individual audit log entry.
+  - **Update Stage** (Tech and above) — choose a new development stage from a dropdown in the batch bar; all selected specimens are updated atomically with individual audit entries.
+  - **Archive** (Supervisor/Admin) — confirm and soft-delete all selected specimens in a single call; audit entries are written per specimen.
+  - **Select All on page** — header checkbox selects or deselects all visible specimens; indeterminate state shown when some but not all are selected.
+  - Selection persists while navigating pages; the **✕** button clears it. Selection is also cleared automatically after each batch action.
+- **Three new Tauri commands**: `bulk_archive_specimens`, `bulk_update_location`, `bulk_update_stage` — each runs inside a per-ID loop with individual audit log entries, respects `is_archived` guards, and enforces the same role checks as the individual equivalents (`can_manage` for archive, `can_write` for location/stage).
+
+### Fixed
+
+- **Stage filter dropdown missing Shoot Meristem, Apical Meristem, Root Meristem**: The `stages` array in `SpecimenList.svelte` was stale and did not include the three meristem stages added in v0.1.6 and v0.1.9. The filter dropdown now matches the full stage list in `SpecimenForm.svelte` and the database CHECK constraint.
+
+### Changed
+
+- Version bumped to **0.1.16** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 16), `app/build.gradle.kts` (versionCode 16), and sidebar display.
+
 ## [0.1.15] - 2026-03-02
 
 ### Added
 
+- **Contamination tracking on passage records**: Every passage (subculture) record now includes a **Contamination** checkbox in the Record Passage form. When flagged, a free-text **Contamination Notes** field appears for describing the type (bacterial, fungal, yeast, etc.) and extent. Contaminated passages are marked with a red "Contaminated" badge in the vertical passage timeline; expanded cards show the full contamination notes.
+- **Subculture scheduling with overdue alerts**: The dashboard now shows a **Subculture Schedule** panel listing specimens that are overdue or due within 7 days, based on each species' configured `default_subculture_interval_days`. Each entry shows the specimen accession, species, days overdue (red badge) or days until due, and links directly to the specimen. Overdue count is displayed as a dashboard stat card with a red alert indicator.
+- **Contamination Overview dashboard panel**: A new **Contamination Overview** widget on the dashboard shows the lab-wide contamination rate (%), the ratio of contaminated to total active specimens, total contaminated vessel events, a breakdown by vessel type (horizontal bar chart), and the 10 most recent contamination events with date, vessel type, and notes.
+- **DB migration 005**: `migration_005_contamination_schedule` adds `contamination_flag INTEGER NOT NULL DEFAULT 0` and `contamination_notes TEXT` columns to the `subcultures` table, with an index on `contamination_flag` for fast stats queries.
+- **Two new Tauri commands**: `get_contamination_stats` (returns lab-wide contamination statistics) and `get_subculture_schedule` (returns per-specimen scheduling data with `days_until_due` and `is_overdue`).
 - **`Tooltip.svelte` — reusable "?" tooltip component**: A new `Tooltip.svelte` component renders a small circular `?` badge inline with any label, button, or heading. Hovering or focusing the badge (with a 250 ms delay) displays a dark-themed popup bubble with an arrow pointing to the trigger. Supports four placement positions (`top`, `bottom`, `left`, `right`). Smooth fade-in animation, dark mode aware, and fully keyboard-accessible (`tabindex="0"`, `role="button"`).
 - **"?" tooltip indicators throughout the UI**: The `Tooltip` component is now used everywhere meaningful:
   - **New Specimen form**: all field labels (Species, Stage, Initiation Date, Propagation Method, Location, Health Status, Initial Media Batch, Provenance/Origin, Source Plant, Employee ID, Notes) now show a `?` badge with contextual help text.
   - **Specimen Detail**: Scan QR, Generate QR, and Record Passage action buttons; passage form labels (Date, Media Batch).
   - **Specimen List header**: Scan QR, Export CSV, Export JSON, and New Specimen buttons.
   - **QR Code modal header**: `?` badge explains what the QR code encodes and how to scan it.
+  - **Inventory Manager and Media List**: contextual help on all key fields.
 - **Improved QR print label (2×3 inch)**: The "Print Label" action now opens a print window sized precisely at `2in × 3in` with a `@page { size: 2in 3in; margin: 0 }` rule for direct label-printer output. The new layout includes:
   - Header row: **SteloPTC** brand (left) + bold monospace **accession number** (right).
   - Centred **1.35×1.35 inch QR code** image (pixelated rendering for crisp barcode output).
   - Bold italic **species name** (species code or *Genus species*) + optional common name below.
   - Data rows: Stage, Initiation Date (if available), Location (if set).
   - Footer: "SteloPTC · Tissue Culture Management".
-  - All text is human-readable without a scanner — satisfies the original label requirements.
+  - All text is human-readable without a scanner.
 
 ### Changed
 
