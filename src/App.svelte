@@ -18,6 +18,7 @@
   import InventoryManager from './lib/components/InventoryManager.svelte';
   import ErrorLog from './lib/components/ErrorLog.svelte';
   import Notifications from './lib/components/Notifications.svelte';
+  import ExportManager from './lib/components/ExportManager.svelte';
 
   let startupError = '';
 
@@ -145,6 +146,8 @@
           <AuditLog />
         {:else if $currentView === 'error-log'}
           <ErrorLog />
+        {:else if $currentView === 'export'}
+          <ExportManager />
         {:else}
           <Dashboard />
         {/if}

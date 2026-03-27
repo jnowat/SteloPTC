@@ -79,6 +79,18 @@ export async function getSpecimenStats() {
   return call<any>('get_specimen_stats');
 }
 
+export async function bulkArchiveSpecimens(ids: string[]) {
+  return call<number>('bulk_archive_specimens', { ids });
+}
+
+export async function bulkUpdateLocation(ids: string[], location: string) {
+  return call<number>('bulk_update_location', { ids, location });
+}
+
+export async function bulkUpdateStage(ids: string[], stage: string) {
+  return call<number>('bulk_update_stage', { ids, stage });
+}
+
 // Media
 export async function listMedia() {
   return call<any[]>('list_media');
@@ -103,6 +115,10 @@ export async function deleteMediaBatch(id: string) {
 // Subcultures
 export async function listSubcultures(specimenId: string) {
   return call<any[]>('list_subcultures', { specimenId });
+}
+
+export async function listAllSubcultures() {
+  return call<any[]>('list_all_subcultures');
 }
 
 export async function createSubculture(request: any) {
@@ -274,4 +290,28 @@ export async function markErrorsRead() {
 
 export async function clearErrorLogs() {
   return call<void>('clear_error_logs');
+}
+
+// Attachments
+export async function listAttachments(entityType: string, entityId: string) {
+  return call<any[]>('list_attachments', { entityType, entityId });
+}
+
+export async function uploadAttachment(
+  entityType: string,
+  entityId: string,
+  fileName: string,
+  mimeType: string,
+  dataB64: string,
+  description?: string,
+) {
+  return call<any>('upload_attachment', { entityType, entityId, fileName, mimeType, dataB64, description: description ?? null });
+}
+
+export async function getAttachmentData(id: string) {
+  return call<string>('get_attachment_data', { id });
+}
+
+export async function deleteAttachment(id: string) {
+  return call<void>('delete_attachment', { id });
 }

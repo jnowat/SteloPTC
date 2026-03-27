@@ -470,3 +470,110 @@ pub fn get_specimen_stats(state: State<AppState>, token: String) -> Result<Speci
         recent_subcultures: recent,
     })
 }
+
+#[tauri::command]
+pub fn bulk_archive_specimens(
+    state: State<AppState>,
+    token: String,
+    ids: Vec<String>,
+) -> Result<usize, String> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Only supervisors and admins can archive specimens".to_string());
+    }
+    let mut count = 0usize;
+    for id in &ids {
+        let n = db.conn.execute(
+            "UPDATE specimens SET is_archived = 1, archived_at = datetime('now'),
+             updated_at = datetime('now') WHERE id = ?1 AND is_archived = 0",
+            params![id],
+        ).map_err(|e| e.to_string())?;
+        count += n;
+        if n > 0 {
+            queries::log_audit(
+                &db.conn, Some(&user.id), "archive", "specimen", Some(id),
+                None, None, Some("Bulk archived"),
+            ).ok();
+        }
+    }
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn bulk_update_location(
+    state: State<AppState>,
+    token: String,
+    ids: Vec<String>,
+    location: String,
+) -> Result<usize, String> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+    let mut count = 0usize;
+    for id in &ids {
+        let n = db.conn.execute(
+            "UPDATE specimens SET location = ?1, updated_at = datetime('now')
+             WHERE id = ?2 AND is_archived = 0",
+            params![location, id],
+        ).map_err(|e| e.to_string())?;
+        count += n;
+        if n > 0 {
+            queries::log_audit(
+                &db.conn, Some(&user.id), "update", "specimen", Some(id),
+                None, None, Some(&format!("Bulk location transfer: {}", location)),
+            ).ok();
+        }
+    }
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn bulk_update_stage(
+    state: State<AppState>,
+    token: String,
+    ids: Vec<String>,
+    stage: String,
+) -> Result<usize, String> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    const VALID_STAGES: &[&str] = &[
+        "explant", "callus", "suspension", "protoplast",
+        "shoot", "shoot_meristem", "apical_meristem",
+        "root", "root_meristem",
+        "embryogenic", "plantlet", "acclimatized", "stock", "custom",
+    ];
+    if !VALID_STAGES.contains(&stage.as_str()) {
+        return Err(format!("Invalid stage: {}", stage));
+    }
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+    let mut count = 0usize;
+    for id in &ids {
+        let n = db.conn.execute(
+            "UPDATE specimens SET stage = ?1, updated_at = datetime('now')
+             WHERE id = ?2 AND is_archived = 0",
+            params![stage, id],
+        ).map_err(|e| e.to_string())?;
+        count += n;
+        if n > 0 {
+            queries::log_audit(
+                &db.conn, Some(&user.id), "update", "specimen", Some(id),
+                None, None, Some(&format!("Bulk stage update: {}", stage)),
+            ).ok();
+        }
+    }
+    Ok(count)
+}

@@ -282,7 +282,7 @@
     </div>
 
     <div class="modal-footer">
-      <button title="Print a 3.5-inch adhesive label with the QR code and specimen details" class="btn btn-primary" onclick={printLabel} disabled={!qrDataUrl}>
+      <button title="Print a 2×3-inch adhesive label with the QR code and specimen details" class="btn btn-primary" onclick={printLabel} disabled={!qrDataUrl}>
         &#128424; Print Label
       </button>
       <button title="Save the QR code as a PNG image file to your device" class="btn" onclick={downloadQr} disabled={!qrDataUrl}>

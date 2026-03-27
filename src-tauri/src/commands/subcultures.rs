@@ -208,6 +208,32 @@ pub fn update_subculture(
     Ok(())
 }
 
+// ── All Subcultures (for export) ─────────────────────────────────────────────
+
+#[tauri::command]
+pub fn list_all_subcultures(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<Subculture>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+
+    let mut stmt = db.conn.prepare(
+        "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
+         FROM subcultures sc
+         LEFT JOIN users u ON sc.performed_by = u.id
+         LEFT JOIN media_batches mb ON sc.media_batch_id = mb.id
+         ORDER BY sc.date DESC, sc.passage_number DESC"
+    ).map_err(|e| e.to_string())?;
+
+    let subcultures = stmt.query_map([], row_to_subculture)
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(subcultures)
+}
+
 // ── Contamination Stats ──────────────────────────────────────────────────────
 
 #[tauri::command]
