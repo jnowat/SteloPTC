@@ -37,6 +37,7 @@ pub struct Specimen {
     pub created_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub has_contamination: bool,
 }
 
 #[derive(Debug, Deserialize)]

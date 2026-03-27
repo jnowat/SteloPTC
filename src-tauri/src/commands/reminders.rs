@@ -217,15 +217,19 @@ pub fn update_reminder(
 }
 
 #[tauri::command]
-pub fn dismiss_reminder(state: State<AppState>, token: String, id: String, snooze: bool) -> Result<(), String> {
+pub fn dismiss_reminder(state: State<AppState>, token: String, id: String, snooze: bool, snooze_days: Option<u32>) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let user = auth_service::validate_session(&db, &token)?;
 
     if snooze {
+        let days = snooze_days.unwrap_or(1).max(1).min(365);
         db.conn.execute(
-            "UPDATE reminders SET status = 'snoozed', snooze_count = snooze_count + 1,
-             due_date = date(due_date, '+1 day'), updated_at = datetime('now')
-             WHERE id = ?1",
+            &format!(
+                "UPDATE reminders SET status = 'snoozed', snooze_count = snooze_count + 1,
+                 due_date = date(due_date, '+{} days'), updated_at = datetime('now')
+                 WHERE id = ?1",
+                days
+            ),
             params![id],
         ).map_err(|e| e.to_string())?;
 

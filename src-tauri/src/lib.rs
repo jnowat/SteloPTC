@@ -79,6 +79,7 @@ pub fn run() {
             commands::species::list_species,
             commands::species::create_species,
             commands::species::update_species,
+            commands::species::list_projects,
             // Audit
             commands::audit::get_audit_log,
             // Export/Import

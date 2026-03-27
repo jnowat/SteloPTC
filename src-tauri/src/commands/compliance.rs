@@ -1,6 +1,7 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::compliance::*;
+use crate::models::specimen::PaginatedResponse;
 use crate::AppState;
 use rusqlite::params;
 use tauri::State;
@@ -10,33 +11,56 @@ pub fn list_compliance_records(
     state: State<AppState>,
     token: String,
     specimen_id: Option<String>,
-) -> Result<Vec<ComplianceRecord>, String> {
+    page: Option<u32>,
+    per_page: Option<u32>,
+) -> Result<PaginatedResponse<ComplianceRecord>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
 
-    let (sql, bind_vals): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(ref sid) = specimen_id {
-        (
-            "SELECT cr.*, s.accession_number as specimen_accession
-             FROM compliance_records cr
-             LEFT JOIN specimens s ON cr.specimen_id = s.id
-             WHERE cr.specimen_id = ?1
-             ORDER BY cr.created_at DESC".to_string(),
-            vec![Box::new(sid.clone()) as Box<dyn rusqlite::types::ToSql>],
-        )
-    } else {
-        (
-            "SELECT cr.*, s.accession_number as specimen_accession
-             FROM compliance_records cr
-             LEFT JOIN specimens s ON cr.specimen_id = s.id
-             ORDER BY cr.created_at DESC LIMIT 200".to_string(),
-            vec![],
-        )
+    let pg = queries::PaginationParams {
+        page: page.unwrap_or(1),
+        per_page: per_page.unwrap_or(100),
     };
 
+    let (where_clause, bind_vals): (String, Vec<Box<dyn rusqlite::types::ToSql>>) =
+        if let Some(ref sid) = specimen_id {
+            (
+                "WHERE cr.specimen_id = ?1".to_string(),
+                vec![Box::new(sid.clone()) as Box<dyn rusqlite::types::ToSql>],
+            )
+        } else {
+            (String::new(), vec![])
+        };
+
+    let count_sql = format!(
+        "SELECT COUNT(*) FROM compliance_records cr {}",
+        where_clause
+    );
     let bind_refs: Vec<&dyn rusqlite::types::ToSql> = bind_vals.iter().map(|v| v.as_ref()).collect();
+    let total: i64 = db.conn
+        .query_row(&count_sql, bind_refs.as_slice(), |r| r.get(0))
+        .map_err(|e| e.to_string())?;
+
+    let limit_idx = bind_vals.len() + 1;
+    let offset_idx = bind_vals.len() + 2;
+    let sql = format!(
+        "SELECT cr.*, s.accession_number as specimen_accession
+         FROM compliance_records cr
+         LEFT JOIN specimens s ON cr.specimen_id = s.id
+         {}
+         ORDER BY cr.created_at DESC
+         LIMIT ?{} OFFSET ?{}",
+        where_clause, limit_idx, offset_idx
+    );
+
+    let mut all_vals: Vec<Box<dyn rusqlite::types::ToSql>> = bind_vals;
+    all_vals.push(Box::new(pg.limit()));
+    all_vals.push(Box::new(pg.offset()));
+    let bind_refs2: Vec<&dyn rusqlite::types::ToSql> = all_vals.iter().map(|v| v.as_ref()).collect();
+
     let mut stmt = db.conn.prepare(&sql).map_err(|e| e.to_string())?;
 
-    let records = stmt.query_map(bind_refs.as_slice(), |row| {
+    let items = stmt.query_map(bind_refs2.as_slice(), |row| {
         Ok(ComplianceRecord {
             id: row.get("id")?,
             specimen_id: row.get("specimen_id")?,
@@ -63,7 +87,14 @@ pub fn list_compliance_records(
       .filter_map(|r| r.ok())
       .collect();
 
-    Ok(records)
+    let total_pages = ((total as f64) / (pg.per_page as f64)).ceil() as u32;
+    Ok(PaginatedResponse {
+        items,
+        total,
+        page: pg.page,
+        per_page: pg.per_page,
+        total_pages,
+    })
 }
 
 #[tauri::command]

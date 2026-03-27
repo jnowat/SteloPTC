@@ -7,6 +7,8 @@
   let reminders = $state<any[]>([]);
   let loading = $state(true);
   let showForm = $state(false);
+  let snoozingId = $state<string | null>(null);
+  let snoozeDays = $state(1);
   let form = $state({
     title: '', description: '', reminder_type: 'custom',
     due_date: new Date().toISOString().split('T')[0],
@@ -42,10 +44,15 @@
     } catch (e: any) { addNotification(e.message, 'error'); }
   }
 
-  async function handleDismiss(id: string, snooze: boolean) {
+  async function handleDismiss(id: string, snooze: boolean, days?: number) {
     try {
-      await dismissReminder(id, snooze);
-      addNotification(snooze ? 'Snoozed for 1 day' : 'Dismissed', 'info');
+      await dismissReminder(id, snooze, days);
+      if (snooze) {
+        addNotification(`Snoozed for ${days ?? 1} day${(days ?? 1) !== 1 ? 's' : ''}`, 'info');
+      } else {
+        addNotification('Dismissed', 'info');
+      }
+      snoozingId = null;
       load();
     } catch (e: any) { addNotification(e.message, 'error'); }
   }
@@ -166,9 +173,20 @@
               <td>{r.snooze_count}x</td>
               <td>
                 {#if r.status === 'active' || r.status === 'snoozed'}
-                  <div style="display:flex;gap:4px;">
-                    <button class="btn btn-sm" title="Snooze this reminder for 1 day" onclick={() => handleDismiss(r.id, true)}>Snooze</button>
-                    <button class="btn btn-sm" title="Dismiss this reminder permanently" onclick={() => handleDismiss(r.id, false)}>Dismiss</button>
+                  <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    {#if snoozingId === r.id}
+                      <select style="width:auto;padding:4px 6px;font-size:12px;" bind:value={snoozeDays} title="How many days to snooze">
+                        <option value={1}>1 day</option>
+                        <option value={3}>3 days</option>
+                        <option value={7}>7 days</option>
+                        <option value={14}>14 days</option>
+                      </select>
+                      <button class="btn btn-sm btn-primary" title="Confirm snooze" onclick={() => handleDismiss(r.id, true, snoozeDays)}>OK</button>
+                      <button class="btn btn-sm" title="Cancel" onclick={() => snoozingId = null}>✕</button>
+                    {:else}
+                      <button class="btn btn-sm" title="Snooze this reminder" onclick={() => { snoozeDays = 1; snoozingId = r.id; }}>Snooze</button>
+                      <button class="btn btn-sm" title="Dismiss this reminder permanently" onclick={() => handleDismiss(r.id, false)}>Dismiss</button>
+                    {/if}
                   </div>
                 {/if}
               </td>

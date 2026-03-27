@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import {
-    listSpecimens, searchSpecimens, deleteSpecimen, listSpecies,
+    listSpecimens, searchSpecimens, deleteSpecimen, listSpecies, listProjects,
     bulkArchiveSpecimens, bulkUpdateLocation, bulkUpdateStage,
   } from '../api';
   import { navigateTo, addNotification, selectedSpecimenId } from '../stores/app';
@@ -14,6 +14,7 @@
 
   let specimens = $state<any[]>([]);
   let species = $state<any[]>([]);
+  let projects = $state<any[]>([]);
   let total = $state(0);
   let page = $state(1);
   let perPage = $state(50);
@@ -22,6 +23,7 @@
   let searchQuery = $state('');
   let filterSpecies = $state('');
   let filterStage = $state('');
+  let filterProject = $state('');
   let showForm = $state(false);
   let qrSpecimen = $state<any>(null);
   let showScanner = $state(false);
@@ -68,21 +70,27 @@
   onMount(() => {
     load();
     loadSpecies();
+    loadProjects();
   });
 
   async function loadSpecies() {
     try { species = await listSpecies(); } catch (_e) {}
   }
 
+  async function loadProjects() {
+    try { projects = await listProjects(); } catch (_e) {}
+  }
+
   async function load() {
     loading = true;
     try {
       let result;
-      if (searchQuery || filterSpecies || filterStage) {
+      if (searchQuery || filterSpecies || filterStage || filterProject) {
         result = await searchSpecimens({
           query: searchQuery || undefined,
           species_id: filterSpecies || undefined,
           stage: filterStage || undefined,
+          project_id: filterProject || undefined,
           page,
           per_page: perPage,
         });
@@ -156,6 +164,17 @@
   function clearSelection() {
     selectedIds = new Set();
     batchAction = null;
+  }
+
+  function healthLabel(val: any): string {
+    if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '—';
+    const n = Math.round(Number(val));
+    if (n === -1) return '? Unknown';
+    return ['0 Dead', '1 Poor', '2 Fair', '3 Good', '4 Healthy'][Math.max(0, Math.min(4, n))];
+  }
+
+  function stageFmt(s: string): string {
+    return s?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
   }
 
   function openBatchAction(action: 'location' | 'stage') {
@@ -340,6 +359,12 @@ ${filterLine}
             <option value={s.value}>{s.label}</option>
           {/each}
         </select>
+        <select bind:value={filterProject} onchange={handleSearch} title="Filter specimens by project">
+          <option value="">All projects</option>
+          {#each projects as proj}
+            <option value={proj.id}>{proj.name}</option>
+          {/each}
+        </select>
         <button class="btn btn-sm" onclick={handleSearch} title="Apply current search query and filters">Search</button>
       </div>
     </div>
@@ -402,15 +427,18 @@ ${filterLine}
               </td>
               <td><strong>{s.accession_number}</strong></td>
               <td>{s.species_code || '—'}</td>
-              <td><span class="badge badge-blue" title="Development stage: {s.stage}">{s.stage}</span></td>
+              <td><span class="badge badge-blue" title="Development stage: {s.stage}">{stageFmt(s.stage)}</span></td>
               <td>{s.location || '—'}</td>
               <td>{s.subculture_count}</td>
-              <td>{s.health_status || '—'}</td>
+              <td>{healthLabel(s.health_status)}</td>
               <td>
                 {#if s.quarantine_flag}
                   <span class="badge badge-red" title="This specimen is under quarantine restrictions">Quarantine</span>
                 {:else}
                   <span class="badge badge-green" title="This specimen is active and cleared for normal handling">Active</span>
+                {/if}
+                {#if s.has_contamination}
+                  <span class="badge badge-red" title="One or more subcultures for this specimen have been flagged as contaminated">Contaminated</span>
                 {/if}
               </td>
               <td>{s.initiation_date}</td>
