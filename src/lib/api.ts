@@ -13,7 +13,7 @@ async function call<T>(command: string, args: Record<string, unknown> = {}): Pro
     return await invoke<T>(command, { token: getToken(), ...args });
   } catch (e: unknown) {
     const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : 'Unknown error');
-    if (msg.includes('Session expired') || msg.includes('invalid')) {
+    if (msg.includes('Session expired or invalid') || msg.includes('Session expired')) {
       clearAuth();
     }
     throw new Error(msg);

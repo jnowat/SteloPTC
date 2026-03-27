@@ -119,13 +119,13 @@ pub fn create_subculture(
     db.conn.execute(
         "UPDATE specimens SET subculture_count = ?1, updated_at = datetime('now') WHERE id = ?2",
         params![passage_number, request.specimen_id],
-    ).ok();
+    ).map_err(|e| format!("Failed to update subculture count: {}", e))?;
 
     if let Some(ref loc) = request.location_to {
         db.conn.execute(
-            "UPDATE specimens SET location = ?1 WHERE id = ?2",
+            "UPDATE specimens SET location = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![loc, request.specimen_id],
-        ).ok();
+        ).map_err(|e| format!("Failed to update specimen location: {}", e))?;
     }
 
     queries::log_audit(

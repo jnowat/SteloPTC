@@ -5,8 +5,7 @@
     listSpecimens, searchSpecimens, deleteSpecimen, listSpecies,
     bulkArchiveSpecimens, bulkUpdateLocation, bulkUpdateStage,
   } from '../api';
-  import { navigateTo, addNotification } from '../stores/app';
-  import { selectedSpecimenId } from '../stores/app';
+  import { navigateTo, addNotification, selectedSpecimenId } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import SpecimenForm from './SpecimenForm.svelte';
   import QrModal from './QrModal.svelte';
