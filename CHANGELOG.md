@@ -5,6 +5,22 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-rc.1] - 2026-06-11
+
+### Added
+
+- **First signed GitHub Release** — both the Windows MSI and the Android APK are now attached directly to GitHub Release assets on every `release` event.
+  - Windows workflow (`build-windows.yml`) now fires on `release: types: [published]` and uploads the `.msi` via `softprops/action-gh-release@v2`.
+  - Android workflow (`build-android.yml`) decodes a base64-encoded release keystore from the `ANDROID_KEYSTORE_BASE64` secret, writes it to a temp path, and passes the path to Gradle as `ANDROID_KEY_STORE_PATH`.
+- **Hard-fail Android release signing** — the release APK build no longer falls back to debug signing if keystore secrets are absent; it fails immediately with a descriptive error. All four secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_STORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`) are validated before the build starts.
+- **Release keystore** (`steloptc`, RSA 4096, valid ~27 years) generated and documented in `.github/SIGNING.md`. The same key must be used for all future releases to allow in-place APK upgrades on Android.
+- **`build.gradle.kts` signing patch step** — after `cargo tauri android init` regenerates `gen/android/`, CI injects the signing config so the committed file and the CI-generated file stay in sync.
+
+### Changed
+
+- Version bumped to **1.0.0-rc.1** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 22), and `app/build.gradle.kts` (versionCode 22).
+- README Downloads table updated: both Windows and Android rows now point to GitHub Releases for release binaries.
+
 ## [0.1.21] - 2026-06-11
 
 ### Changed
