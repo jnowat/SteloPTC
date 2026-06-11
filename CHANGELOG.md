@@ -5,6 +5,30 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-11
+
+### Added
+
+- **WP-05 — Onboarding empty state + seed-data toggle**
+  - **`FirstRun.svelte`** — new component shown whenever the lab has zero specimens. Displays a two-step guide ("Configure your species registry" → "Accession your first specimen"), with direct navigation buttons for each step. Supervisors and admins also see a **Load Sample Data** button (green, clearly labelled).
+  - **`Dashboard.svelte`** — shows `FirstRun` instead of the normal stats grid when `total_specimens === 0`. Returns to the full dashboard automatically once specimens exist (or after demo data is loaded).
+  - **`SpecimenList.svelte`** — shows `FirstRun` (with an inline "Add First Specimen" shortcut that scrolls to and opens the specimen form) when the list is genuinely empty (no search/filter active and `total === 0`). Filtered-but-empty searches still show the concise "No specimens found" message.
+  - **`load_demo_data` Tauri command** (`admin.rs`) — creates 1 demo MS media batch, 3 demo specimens (Asparagus, Nandina, Citrus) using the seeded species registry, each with 3 passages of subculture history, all in a single atomic transaction. Guard: returns an error if any specimens already exist so it can't clobber an active lab. Supervisors and admins only.
+  - **`loadDemoData` API function** (`api.ts`) wraps the new command.
+  - Removing demo data: use existing **Admin → Dev Tools → Reset Database** (preserves species/users).
+- Version bumped to **1.1.0** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 24), `app/build.gradle.kts` (versionCode 24), and sidebar display.
+
+## [1.0.0-2] - 2026-06-11
+
+### Changed
+
+- **WP-04 — Crash-proofing & data-integrity pass**
+  - Replaced `.unwrap()` on `path.parent()` in `attachments_dir` with a proper `Result` return; callers propagate the error through the existing error-log + toast system instead of panicking.
+  - Wrapped `create_subculture` in a SQLite transaction: the subculture INSERT, specimen `subculture_count` UPDATE, and optional location UPDATE are now atomic — a failure on any step rolls back all changes.
+  - Wrapped `create_media_batch` in a SQLite transaction: the media batch INSERT, all hormone/reagent INSERTs, and all inventory stock deduction UPDATEs are now atomic — no partial batch is committed if a hormone or stock update fails.
+  - `create_backup` now verifies the WAL checkpoint result; if active readers prevented a full checkpoint (`busy_frames > 0`), the backup is aborted with a descriptive error rather than silently copying an incomplete snapshot.
+- Version bumped to **1.0.0-2** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 23), and `app/build.gradle.kts` (versionCode 23).
+
 ## [1.0.0-1] - 2026-06-11
 
 ### Added

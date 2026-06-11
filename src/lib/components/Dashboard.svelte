@@ -3,6 +3,7 @@
   import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, resetDatabase, getContaminationStats, getSubcultureSchedule } from '../api';
   import { navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import FirstRun from './FirstRun.svelte';
 
   let stats = $state<any>(null);
   let reminders = $state<any[]>([]);
@@ -14,6 +15,7 @@
 
   let overdueItems = $derived(schedule.filter((e: any) => e.is_overdue));
   let dueSoonItems = $derived(schedule.filter((e: any) => !e.is_overdue && e.days_until_due !== null && e.days_until_due <= 7));
+  let firstRun = $derived(!loading && stats !== null && stats.total_specimens === 0);
   let backingUp = $state(false);
   let showResetPanel = $state(false);
   let resetPhrase = $state('');
@@ -104,6 +106,8 @@
 
   {#if loading}
     <div class="empty-state">Loading dashboard...</div>
+  {:else if firstRun}
+    <FirstRun onDemoLoaded={loadDashboard} />
   {:else if stats}
     <div class="stats-grid">
       <div class="stat-card" title="Number of specimens currently in active culture">

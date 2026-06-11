@@ -240,6 +240,10 @@ export async function resetDatabase(confirmation: string) {
   return call<string>('reset_database', { confirmation });
 }
 
+export async function loadDemoData() {
+  return call<string>('load_demo_data');
+}
+
 // Prepared Solutions
 export async function listPreparedSolutions() {
   return call<any[]>('list_prepared_solutions');

@@ -94,7 +94,10 @@ pub fn create_subculture(
     let id = uuid::Uuid::new_v4().to_string();
     let contamination_flag = request.contamination_flag.unwrap_or(false) as i32;
 
-    db.conn.execute(
+    let tx = db.conn.unchecked_transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+
+    tx.execute(
         "INSERT INTO subcultures (id, specimen_id, passage_number, date, media_batch_id,
          ph, temperature_c, light_cycle, light_intensity_lux, experimental_treatment,
          vessel_type, vessel_size, vessel_material, vessel_lid_type,
@@ -116,17 +119,19 @@ pub fn create_subculture(
         ],
     ).map_err(|e| format!("Failed to create subculture: {}", e))?;
 
-    db.conn.execute(
+    tx.execute(
         "UPDATE specimens SET subculture_count = ?1, updated_at = datetime('now') WHERE id = ?2",
         params![passage_number, request.specimen_id],
     ).map_err(|e| format!("Failed to update subculture count: {}", e))?;
 
     if let Some(ref loc) = request.location_to {
-        db.conn.execute(
+        tx.execute(
             "UPDATE specimens SET location = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![loc, request.specimen_id],
         ).map_err(|e| format!("Failed to update specimen location: {}", e))?;
     }
+
+    tx.commit().map_err(|e| format!("Failed to commit subculture transaction: {}", e))?;
 
     queries::log_audit(
         &db.conn, Some(&user.id), "create", "subculture", Some(&id),
