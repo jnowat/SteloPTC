@@ -13,7 +13,7 @@
     loading = true;
     try {
       const result = await login(username, password);
-      setAuth(result.token, result.user);
+      setAuth(result.token, result.user, result.must_change_password);
     } catch (err: any) {
       error = err.message || 'Login failed';
     } finally {
@@ -43,7 +43,7 @@
       <button title="Submit your credentials to sign in to SteloPTC" type="submit" class="btn btn-primary login-btn" disabled={loading}>
         {loading ? 'Signing in...' : 'Sign In'}
       </button>
-      <p class="hint">Default: admin / admin</p>
+      <p class="hint">First login: admin / admin (you will be prompted to set a new password)</p>
     </form>
   </div>
 </div>

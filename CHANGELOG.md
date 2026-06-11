@@ -5,6 +5,37 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21] - 2026-06-11
+
+### Changed
+
+- **Content-Security-Policy hardened** — replaced `"csp": null` (no policy) with a locked-down policy in `tauri.conf.json`:
+  - `default-src 'self' ipc: http://ipc.localhost` — baseline; covers Tauri IPC for all unspecified directive fallbacks.
+  - `script-src 'self'` — no remote or inline scripts; all JS is Vite-bundled.
+  - `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com` — Svelte injects inline styles; Inter font CSS loaded from Google Fonts.
+  - `font-src 'self' https://fonts.gstatic.com` — Google Fonts glyph files.
+  - `img-src 'self' data: blob:` — `data:` for base64 photo lightbox round-trip and QR canvas output; `blob:` for canvas-generated blobs.
+  - `connect-src 'self' ipc: http://ipc.localhost` — explicit Tauri IPC allowance (required for `invoke()` calls).
+  - `worker-src blob:` — html5-qrcode/ZXing creates its decoder web worker from a `blob:` URI; without this the camera scanner fails.
+  - No remote script origins; no `'unsafe-eval'`.
+- Version bumped to **0.1.21**.
+
+## [0.1.20] - 2026-06-11
+
+### Added
+
+- **Forced password change on first login** — fresh installations (or any account with `must_change_password = 1`) are blocked from accessing the application until a new password is set.
+  - New DB migration (006): adds `must_change_password BOOLEAN NOT NULL DEFAULT 0` to the `users` table; the seeded `admin` row is set to `1` so the default `admin/admin` credential can never grant unguarded access.
+  - Login response now carries a `must_change_password` flag; if `true`, the front end routes to a full-screen **Set a New Password** overlay before the app shell renders. All other navigation is blocked until the change is complete.
+  - New `ForceChangePassword.svelte` component: validates minimum 8-character length and confirmation match, calls the new `change_password` Tauri command, then clears the gate.
+  - New `change_password` Tauri command: validates the new password (≥ 8 chars), bcrypt-hashes it, clears `must_change_password`, and writes an audit entry.
+  - `mustChangePassword` Svelte store added to `auth.ts`; `setAuth` now accepts an optional third argument to set it; `clearAuth` resets it.
+
+### Changed
+
+- Login hint updated: "First login: admin / admin (you will be prompted to set a new password)".
+- Version bumped to **0.1.20** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 20), `app/build.gradle.kts` (versionCode 20), and sidebar display.
+
 ## [0.1.19] - 2026-03-22
 
 ### Added

@@ -38,6 +38,19 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (5)", [])?;
     }
 
+    if current < 6 {
+        migration_006_force_password_change(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (6)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_006_force_password_change(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch("
+        ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0;
+        UPDATE users SET must_change_password = 1 WHERE username = 'admin';
+    ")?;
     Ok(())
 }
 
@@ -641,8 +654,8 @@ pub fn seed_defaults(conn: &Connection) -> DbResult<()> {
     let password_hash = bcrypt::hash("admin", bcrypt::DEFAULT_COST).unwrap();
 
     conn.execute(
-        "INSERT INTO users (id, username, password_hash, display_name, email, role)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO users (id, username, password_hash, display_name, email, role, must_change_password)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 1)",
         rusqlite::params![admin_id, "admin", password_hash, "Administrator", "admin@stelolab.local", "admin"],
     )?;
 

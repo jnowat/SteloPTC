@@ -22,6 +22,8 @@ export const currentUser = writable<User | null>(null);
 export const isLoggedIn = derived(token, ($token) => $token !== null);
 // Tracks whether we are restoring a saved session on startup
 export const initializing = writable<boolean>(getStoredToken() !== null);
+// Set to true after login when the backend signals must_change_password
+export const mustChangePassword = writable<boolean>(false);
 
 token.subscribe((value) => {
   try {
@@ -35,14 +37,16 @@ token.subscribe((value) => {
   }
 });
 
-export function setAuth(newToken: string, user: User) {
+export function setAuth(newToken: string, user: User, forceChange = false) {
   token.set(newToken);
   currentUser.set(user);
+  mustChangePassword.set(forceChange);
   initializing.set(false);
 }
 
 export function clearAuth() {
   token.set(null);
   currentUser.set(null);
+  mustChangePassword.set(false);
   initializing.set(false);
 }

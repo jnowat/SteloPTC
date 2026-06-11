@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
-  import { isLoggedIn, token, currentUser, clearAuth, initializing } from './lib/stores/auth';
+  import { isLoggedIn, token, currentUser, clearAuth, initializing, mustChangePassword } from './lib/stores/auth';
   import { currentView, darkMode, navigateTo, setErrorLogger, unreadErrorCount } from './lib/stores/app';
   import { getCurrentUser, logout as apiLogout, logError, getUnreadErrorCount } from './lib/api';
   import Login from './lib/components/Login.svelte';
+  import ForceChangePassword from './lib/components/ForceChangePassword.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
   import Dashboard from './lib/components/Dashboard.svelte';
   import SpecimenList from './lib/components/SpecimenList.svelte';
@@ -119,6 +120,8 @@
     </div>
   {:else if !$isLoggedIn}
     <Login />
+  {:else if $mustChangePassword}
+    <ForceChangePassword />
   {:else}
     <div class="layout">
       <Sidebar onlogout={handleLogout} ontoggleDark={toggleDark} isDark={$darkMode} />
