@@ -5,7 +5,7 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0-rc.1] - 2026-06-11
+## [1.0.0-1] - 2026-06-11
 
 ### Added
 
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Version bumped to **1.0.0-rc.1** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 22), and `app/build.gradle.kts` (versionCode 22).
+- Version bumped to **1.0.0-1** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 22), and `app/build.gradle.kts` (versionCode 22). The version uses a numeric pre-release suffix (`-1`) rather than `rc.1` because the WiX MSI bundler requires pre-release identifiers to be numeric-only (≤ 65535); `rc` is non-numeric and rejected at bundle time.
 - README Downloads table updated: both Windows and Android rows now point to GitHub Releases for release binaries.
 
 ## [0.1.21] - 2026-06-11
