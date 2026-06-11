@@ -17,6 +17,7 @@ pub fn login(state: State<AppState>, username: String, password: String) -> Resu
         .ok();
 
     Ok(LoginResponse {
+        must_change_password: user.must_change_password,
         token,
         user: UserPublic {
             id: user.id,
@@ -108,6 +109,31 @@ pub fn create_user(state: State<AppState>, token: String, request: CreateUserReq
         role: request.role,
         is_active: true,
     })
+}
+
+#[tauri::command]
+pub fn change_password(state: State<AppState>, token: String, new_password: String) -> Result<(), String> {
+    if new_password.len() < 8 {
+        return Err("Password must be at least 8 characters".to_string());
+    }
+
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+
+    let hash = bcrypt::hash(&new_password, bcrypt::DEFAULT_COST)
+        .map_err(|e| format!("Password hashing failed: {}", e))?;
+
+    db.conn.execute(
+        "UPDATE users SET password_hash = ?1, must_change_password = 0, updated_at = datetime('now') WHERE id = ?2",
+        rusqlite::params![hash, user.id],
+    ).map_err(|e| format!("Failed to update password: {}", e))?;
+
+    queries::log_audit(
+        &db.conn, Some(&user.id), "change_password", "user", Some(&user.id),
+        None, None, Some("Password changed via forced change flow"),
+    ).ok();
+
+    Ok(())
 }
 
 #[tauri::command]

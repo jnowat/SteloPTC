@@ -23,11 +23,15 @@ async function call<T>(command: string, args: Record<string, unknown> = {}): Pro
 // Auth (login doesn't need token)
 export async function login(username: string, password: string) {
   try {
-    return await invoke<{ token: string; user: any }>('login', { username, password });
+    return await invoke<{ token: string; user: any; must_change_password: boolean }>('login', { username, password });
   } catch (e: unknown) {
     const msg = typeof e === 'string' ? e : (e instanceof Error ? e.message : 'Login failed');
     throw new Error(msg);
   }
+}
+
+export async function changePassword(newPassword: string) {
+  return call<void>('change_password', { newPassword });
 }
 
 export async function getCurrentUser() {

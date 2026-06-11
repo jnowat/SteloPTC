@@ -10,6 +10,7 @@ pub struct User {
     pub email: Option<String>,
     pub role: UserRole,
     pub is_active: bool,
+    pub must_change_password: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -85,4 +86,5 @@ pub struct LoginRequest {
 pub struct LoginResponse {
     pub token: String,
     pub user: UserPublic,
+    pub must_change_password: bool,
 }

@@ -224,7 +224,7 @@ android {
 |----------|----------|-------|
 | `admin`  | `admin`  | Admin |
 
-**Change the default password immediately after first login.**
+**On a fresh installation, logging in as `admin` immediately redirects to a mandatory password-change screen. The application cannot be used until a new password is set.** This prevents deployments from running with the default credential.
 
 ---
 

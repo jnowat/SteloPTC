@@ -39,6 +39,7 @@ pub fn run() {
             commands::auth::list_users,
             commands::auth::create_user,
             commands::auth::update_user_role,
+            commands::auth::change_password,
             commands::auth::logout,
             // Specimens
             commands::specimens::list_specimens,

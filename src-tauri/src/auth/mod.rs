@@ -8,7 +8,7 @@ use rusqlite::params;
 
 pub fn authenticate(db: &Database, username: &str, password: &str) -> Result<User, String> {
     let user = db.conn.query_row(
-        "SELECT id, username, password_hash, display_name, email, role, is_active, created_at, updated_at
+        "SELECT id, username, password_hash, display_name, email, role, is_active, must_change_password, created_at, updated_at
          FROM users WHERE username = ?1 AND is_active = 1",
         params![username],
         |row| {
@@ -20,8 +20,9 @@ pub fn authenticate(db: &Database, username: &str, password: &str) -> Result<Use
                 email: row.get(4)?,
                 role: UserRole::from_str(&row.get::<_, String>(5)?),
                 is_active: row.get::<_, i32>(6)? != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                must_change_password: row.get::<_, i32>(7)? != 0,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
             })
         },
     ).map_err(|_| "Invalid username or password".to_string())?;
@@ -52,7 +53,7 @@ pub fn create_session(db: &Database, user_id: &str) -> Result<String, String> {
 
 pub fn validate_session(db: &Database, token: &str) -> Result<User, String> {
     let user = db.conn.query_row(
-        "SELECT u.id, u.username, u.password_hash, u.display_name, u.email, u.role, u.is_active, u.created_at, u.updated_at
+        "SELECT u.id, u.username, u.password_hash, u.display_name, u.email, u.role, u.is_active, u.must_change_password, u.created_at, u.updated_at
          FROM sessions s JOIN users u ON s.user_id = u.id
          WHERE s.token = ?1 AND s.expires_at > datetime('now') AND u.is_active = 1",
         params![token],
@@ -65,8 +66,9 @@ pub fn validate_session(db: &Database, token: &str) -> Result<User, String> {
                 email: row.get(4)?,
                 role: UserRole::from_str(&row.get::<_, String>(5)?),
                 is_active: row.get::<_, i32>(6)? != 0,
-                created_at: row.get(7)?,
-                updated_at: row.get(8)?,
+                must_change_password: row.get::<_, i32>(7)? != 0,
+                created_at: row.get(8)?,
+                updated_at: row.get(9)?,
             })
         },
     ).map_err(|_| "Session expired or invalid".to_string())?;
