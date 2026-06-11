@@ -102,7 +102,8 @@ All scan events are stored in the `qr_scans` SQLite table with raw data, accessi
 | Framework | Tauri v2 (native desktop + Android mobile)      |
 | Frontend  | Svelte 5, TypeScript, Vite 6                    |
 | Database  | SQLite (bundled, WAL mode)                      |
-| Auth      | bcrypt password hashing, session tokens         |
+| Auth      | bcrypt password hashing, session tokens, forced first-login password change |
+| Security  | Tauri CSP: `script-src 'self'`; no remote scripts; `data:`/`blob:` image/worker sources scoped explicitly |
 | Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile        |
 | QR Codes  | qrcode 1.5.4 (generation), html5-qrcode 2.3.8 (scanning) |
 | Excel     | xlsx 0.18.5 (SheetJS — multi-sheet workbook export)      |

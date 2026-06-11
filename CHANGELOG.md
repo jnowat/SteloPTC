@@ -5,6 +5,21 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.21] - 2026-06-11
+
+### Changed
+
+- **Content-Security-Policy hardened** — replaced `"csp": null` (no policy) with a locked-down policy in `tauri.conf.json`:
+  - `default-src 'self' ipc: http://ipc.localhost` — baseline; covers Tauri IPC for all unspecified directive fallbacks.
+  - `script-src 'self'` — no remote or inline scripts; all JS is Vite-bundled.
+  - `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com` — Svelte injects inline styles; Inter font CSS loaded from Google Fonts.
+  - `font-src 'self' https://fonts.gstatic.com` — Google Fonts glyph files.
+  - `img-src 'self' data: blob:` — `data:` for base64 photo lightbox round-trip and QR canvas output; `blob:` for canvas-generated blobs.
+  - `connect-src 'self' ipc: http://ipc.localhost` — explicit Tauri IPC allowance (required for `invoke()` calls).
+  - `worker-src blob:` — html5-qrcode/ZXing creates its decoder web worker from a `blob:` URI; without this the camera scanner fails.
+  - No remote script origins; no `'unsafe-eval'`.
+- Version bumped to **0.1.21**.
+
 ## [0.1.20] - 2026-06-11
 
 ### Added

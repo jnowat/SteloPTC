@@ -1,6 +1,6 @@
 {
   "productName": "SteloPTC",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "identifier": "com.steloptc.app",
   "build": {
     "devUrl": "http://localhost:1420",
@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' ipc: http://ipc.localhost; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost; worker-src blob:"
     }
   },
   "bundle": {
