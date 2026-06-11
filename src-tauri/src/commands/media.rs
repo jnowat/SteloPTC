@@ -161,7 +161,13 @@ pub fn create_media_batch(
     let batch_id = generate_batch_id(&db.conn);
     let volume_remaining = request.volume_prepared_ml;
 
-    db.conn.execute(
+    // Collect inventory audit data before the transaction so we can log after commit
+    let mut inv_audit: Vec<(String, f64, f64, String)> = Vec::new();
+
+    let tx = db.conn.unchecked_transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+
+    tx.execute(
         "INSERT INTO media_batches (id, batch_id, name, preparation_date, expiration_date,
          basal_salts, basal_salts_concentration, vitamins, sucrose_g_per_l, agar_g_per_l,
          gelling_agent, ph_before_autoclave, ph_after_autoclave, sterilization_method,
@@ -180,11 +186,11 @@ pub fn create_media_batch(
         ],
     ).map_err(|e| format!("Failed to create media batch: {}", e))?;
 
-    // Insert hormones/reagents and auto-deduct stock
+    // Insert hormones/reagents and auto-deduct stock — all inside the same transaction
     if let Some(hormones) = &request.hormones {
         for h in hormones {
             let h_id = uuid::Uuid::new_v4().to_string();
-            db.conn.execute(
+            tx.execute(
                 "INSERT INTO media_hormones
                  (id, media_batch_id, hormone_name, hormone_type, concentration_mg_per_l,
                   supplier, lot_number, reagent_batch_id, amount_used, amount_unit)
@@ -199,25 +205,32 @@ pub fn create_media_batch(
             // Deduct from inventory if a physical amount was recorded
             if let (Some(ref inv_id), Some(used)) = (&h.reagent_batch_id, h.amount_used) {
                 if used > 0.0 {
-                    let cur: Option<f64> = db.conn.query_row(
+                    let cur: Option<f64> = tx.query_row(
                         "SELECT current_stock FROM inventory_items WHERE id = ?1",
                         params![inv_id], |row| row.get(0),
                     ).ok();
                     if let Some(c) = cur {
                         let new_stock = (c - used).max(0.0);
-                        db.conn.execute(
+                        tx.execute(
                             "UPDATE inventory_items SET current_stock = ?1, updated_at = datetime('now') WHERE id = ?2",
                             params![new_stock, inv_id],
-                        ).ok();
-                        crate::db::queries::log_audit(
-                            &db.conn, Some(&user.id), "update", "inventory_item", Some(inv_id),
-                            Some(&c.to_string()), Some(&new_stock.to_string()),
-                            Some(&format!("Used in media batch {} ({})", batch_id, h.hormone_name)),
-                        ).ok();
+                        ).map_err(|e| format!("Failed to deduct inventory stock: {}", e))?;
+                        inv_audit.push((inv_id.clone(), c, new_stock, h.hormone_name.clone()));
                     }
                 }
             }
         }
+    }
+
+    tx.commit().map_err(|e| format!("Failed to commit media batch transaction: {}", e))?;
+
+    // Audit entries written after commit (non-critical, best-effort)
+    for (inv_id, old_stock, new_stock, hormone_name) in &inv_audit {
+        crate::db::queries::log_audit(
+            &db.conn, Some(&user.id), "update", "inventory_item", Some(inv_id),
+            Some(&old_stock.to_string()), Some(&new_stock.to_string()),
+            Some(&format!("Used in media batch {} ({})", batch_id, hormone_name)),
+        ).ok();
     }
 
     queries::log_audit(

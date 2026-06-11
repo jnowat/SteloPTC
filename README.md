@@ -399,6 +399,11 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] Excel workbook export — six-sheet `.xlsx` file (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance) via SheetJS; dedicated Export Data page in sidebar (v0.1.18)
 - [x] Photo attachments — upload images per specimen via OS file picker or Android rear camera; gallery grid with lightbox viewer, delete, and in-memory cache; stored on disk under appDataDir (v0.1.19)
 
+### v1.0.0-x — Completed
+
+- [x] First signed GitHub Release; Windows MSI and Android APK attached to release assets (v1.0.0-1)
+- [x] **Crash-proofing & data-integrity pass** — all `.unwrap()` calls in command handlers converted to returned errors; `create_subculture` and `create_media_batch` (including inventory stock depletion) wrapped in SQLite transactions; WAL checkpoint verified before backup copy (v1.0.0-2)
+
 ### v0.1.x — Upcoming Patches
 
 - [ ] **Excel import** — parse `.xlsx` workbooks to create or update specimens and subculture records

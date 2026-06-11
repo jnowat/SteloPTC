@@ -21,10 +21,24 @@ pub fn create_backup(
         return Err("Database file not found (using in-memory database)".to_string());
     }
 
-    // Checkpoint WAL to ensure all data is in the main DB file
-    db.conn
-        .execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+    // Checkpoint WAL before copying so the .db file is a self-contained snapshot.
+    // TRUNCATE waits for all readers, fully checkpoints, then empties the WAL.
+    // We verify the result: if busy_frames > 0 an active reader prevented a full
+    // checkpoint; the copy is still consistent (WAL is append-only) but the DB
+    // file alone may be missing recent frames, so we abort and ask the caller to retry.
+    let (busy_frames, _log_frames, _ckpt_frames): (i64, i64, i64) = db.conn
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |r| {
+            Ok((r.get(0)?, r.get(1)?, r.get(2)?))
+        })
         .map_err(|e| format!("Failed to checkpoint WAL: {}", e))?;
+
+    if busy_frames > 0 {
+        return Err(format!(
+            "WAL checkpoint incomplete: {} frame(s) held by active readers. \
+             Close all other connections and retry the backup.",
+            busy_frames
+        ));
+    }
 
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let backup_name = format!("stelo_ptc_backup_{}.db", timestamp);

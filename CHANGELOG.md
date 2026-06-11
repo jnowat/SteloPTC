@@ -5,6 +5,17 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-2] - 2026-06-11
+
+### Changed
+
+- **WP-04 — Crash-proofing & data-integrity pass**
+  - Replaced `.unwrap()` on `path.parent()` in `attachments_dir` with a proper `Result` return; callers propagate the error through the existing error-log + toast system instead of panicking.
+  - Wrapped `create_subculture` in a SQLite transaction: the subculture INSERT, specimen `subculture_count` UPDATE, and optional location UPDATE are now atomic — a failure on any step rolls back all changes.
+  - Wrapped `create_media_batch` in a SQLite transaction: the media batch INSERT, all hormone/reagent INSERTs, and all inventory stock deduction UPDATEs are now atomic — no partial batch is committed if a hormone or stock update fails.
+  - `create_backup` now verifies the WAL checkpoint result; if active readers prevented a full checkpoint (`busy_frames > 0`), the backup is aborted with a descriptive error rather than silently copying an incomplete snapshot.
+- Version bumped to **1.0.0-2** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 23), and `app/build.gradle.kts` (versionCode 23).
+
 ## [1.0.0-1] - 2026-06-11
 
 ### Added

@@ -22,13 +22,12 @@ pub struct AttachmentMeta {
     pub created_at: String,
 }
 
-fn attachments_dir(entity_type: &str, entity_id: &str) -> std::path::PathBuf {
+fn attachments_dir(entity_type: &str, entity_id: &str) -> Result<std::path::PathBuf, String> {
     let base = crate::db::Database::db_path();
-    base.parent()
-        .unwrap()
-        .join("attachments")
-        .join(entity_type)
-        .join(entity_id)
+    let parent = base
+        .parent()
+        .ok_or_else(|| "Could not determine attachments directory: database path has no parent".to_string())?;
+    Ok(parent.join("attachments").join(entity_type).join(entity_id))
 }
 
 fn row_to_meta(row: &rusqlite::Row) -> rusqlite::Result<AttachmentMeta> {
@@ -98,7 +97,7 @@ pub fn upload_attachment(
     let bytes = B64.decode(&data_b64).map_err(|e| format!("Base64 decode error: {}", e))?;
 
     // Build storage path
-    let dir = attachments_dir(&entity_type, &entity_id);
+    let dir = attachments_dir(&entity_type, &entity_id)?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create directory: {}", e))?;
 
     let ext = std::path::Path::new(&file_name)
