@@ -79,6 +79,37 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked
 
+      # ── Decode release keystore (release events only) ─────────────────────
+      # Signing secrets required for release APKs:
+      #   ANDROID_KEYSTORE_BASE64    – base64-encoded steloptc-release.jks
+      #   ANDROID_KEY_STORE_PASSWORD – keystore password
+      #   ANDROID_KEY_ALIAS          – key alias (steloptc)
+      #   ANDROID_KEY_PASSWORD       – key password
+      #
+      # See .github/SIGNING.md for setup instructions.
+      - name: Verify signing secrets present
+        if: github.event_name == 'release'
+        run: |
+          missing=()
+          [ -z "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]    && missing+=("ANDROID_KEYSTORE_BASE64")
+          [ -z "${{ secrets.ANDROID_KEY_STORE_PASSWORD }}" ] && missing+=("ANDROID_KEY_STORE_PASSWORD")
+          [ -z "${{ secrets.ANDROID_KEY_ALIAS }}" ]          && missing+=("ANDROID_KEY_ALIAS")
+          [ -z "${{ secrets.ANDROID_KEY_PASSWORD }}" ]       && missing+=("ANDROID_KEY_PASSWORD")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Release build requires signing secrets that are not set: ${missing[*]}"
+            echo "See .github/SIGNING.md for setup instructions."
+            exit 1
+          fi
+          echo "All signing secrets are present."
+
+      - name: Decode release keystore
+        if: github.event_name == 'release'
+        run: |
+          mkdir -p "$RUNNER_TEMP/keystore"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode \
+            > "$RUNNER_TEMP/keystore/steloptc-release.jks"
+          echo "ANDROID_KEY_STORE_PATH=$RUNNER_TEMP/keystore/steloptc-release.jks" >> $GITHUB_ENV
+
       # ── Generate Android project ───────────────────────────────────────────
       # Always regenerate gen/android/ from the installed tauri-cli so that
       # buildSrc/ and all Gradle files have properly-substituted template
@@ -90,6 +121,76 @@ jobs:
 
       - name: Make gradlew executable
         run: chmod +x src-tauri/gen/android/gradlew
+
+      # ── Patch release signing in generated build.gradle.kts ───────────────
+      # cargo tauri android init regenerates gen/android/ on every run.
+      # This step rewrites the release buildType to:
+      #   - Use the decoded keystore when all signing env vars are set.
+      #   - FAIL the build (not fall back to debug) when they are absent.
+      - name: Patch release signing config
+        if: github.event_name == 'release'
+        run: |
+          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+
+          # Ensure signingConfigs block exists; insert after android { if absent.
+          if ! grep -q 'signingConfigs' "$GRADLE"; then
+            python3 - "$GRADLE" <<'PYEOF'
+          import re, sys
+          path = sys.argv[1]
+          text = open(path).read()
+          signing_block = '''
+              signingConfigs {
+                  create("release") {
+                      storeFile = System.getenv("ANDROID_KEY_STORE_PATH")?.let { file(it) }
+                          ?: error("ANDROID_KEY_STORE_PATH is not set — cannot sign release APK")
+                      storePassword = System.getenv("ANDROID_KEY_STORE_PASSWORD")
+                          ?: error("ANDROID_KEY_STORE_PASSWORD is not set — cannot sign release APK")
+                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                          ?: error("ANDROID_KEY_ALIAS is not set — cannot sign release APK")
+                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                          ?: error("ANDROID_KEY_PASSWORD is not set — cannot sign release APK")
+                  }
+              }
+          '''
+          # Insert after the opening `android {` line
+          text = re.sub(r'(android\s*\{)', r'\1' + signing_block, text, count=1)
+          open(path, 'w').write(text)
+          print("Inserted signingConfigs block.")
+          PYEOF
+          fi
+
+          # Replace any existing release signingConfig assignment with the
+          # hard-fail version (no debug fallback).
+          python3 - "$GRADLE" <<'PYEOF'
+          import re, sys
+          path = sys.argv[1]
+          text = open(path).read()
+
+          # Remove any legacy fallback pattern (signingConfig = if (...) ... else ...)
+          text = re.sub(
+              r'signingConfig\s*=\s*if\s*\([^)]*\)\s*\{[^}]*\}\s*else\s*\{[^}]*\}',
+              'signingConfig = signingConfigs.getByName("release")',
+              text, flags=re.DOTALL
+          )
+          # Also handle single-line ternary / simple assignment to debug fallback
+          text = re.sub(
+              r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
+              'signingConfig = signingConfigs.getByName("release")',
+              text
+          )
+          # Ensure the release buildType actually assigns the release signingConfig
+          if 'getByName("release")' not in text and 'signingConfigs' in text:
+              text = re.sub(
+                  r'(getByName\("release"\)\s*\{)',
+                  r'\1\n            signingConfig = signingConfigs.getByName("release")',
+                  text, count=1
+              )
+          open(path, 'w').write(text)
+          print("Patched release signingConfig (no debug fallback).")
+          PYEOF
+
+          echo "--- Patched build.gradle.kts signingConfigs section ---"
+          grep -A 20 'signingConfigs' "$GRADLE" || true
 
       # ── Debug APK (every push / PR) ───────────────────────────────────────
       - name: Build debug APK
@@ -122,19 +223,11 @@ jobs:
           retention-days: 30
 
       # ── Release APK (only on GitHub Release events) ───────────────────────
-      # Signing is configured via repository secrets:
-      #   ANDROID_KEY_STORE_PATH     – absolute path to the .jks keystore
-      #   ANDROID_KEY_STORE_PASSWORD – keystore password
-      #   ANDROID_KEY_ALIAS          – key alias
-      #   ANDROID_KEY_PASSWORD       – key password
-      #
-      # If secrets are absent the app falls back to debug signing
-      # (see app/build.gradle.kts) — still installable via ADB / sideload.
       - name: Build release APK
         if: github.event_name == 'release'
         run: cargo tauri android build --release
         env:
-          ANDROID_KEY_STORE_PATH: ${{ secrets.ANDROID_KEY_STORE_PATH }}
+          ANDROID_KEY_STORE_PATH: ${{ env.ANDROID_KEY_STORE_PATH }}
           ANDROID_KEY_STORE_PASSWORD: ${{ secrets.ANDROID_KEY_STORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -155,6 +248,10 @@ jobs:
           fi
           cp "$APK" artifacts/SteloPTC-Android-Release.apk
           echo "Packaged: $(basename $APK) → SteloPTC-Android-Release.apk"
+
+          # Verify the APK is signed with the release key (not debug).
+          echo "--- APK signature info ---"
+          keytool -printcert -jarfile artifacts/SteloPTC-Android-Release.apk 2>/dev/null | head -20 || true
 
       - name: Upload release APK artifact
         if: github.event_name == 'release'

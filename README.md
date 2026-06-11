@@ -10,10 +10,11 @@ A desktop and Android application for tracking plant tissue culture specimens in
 
 | Platform | Artifact | Notes |
 |---|---|---|
-| **Windows** | [Latest Release →](../../releases/latest) | `.msi` installer + standalone `.exe` |
-| **Android** | [Latest Actions run →](../../actions/workflows/build-android.yml) | Grab the `SteloPTC-Android-Debug` artifact |
+| **Windows** | [Latest Release →](../../releases/latest) | `.msi` installer attached to every GitHub Release |
+| **Android** | [Latest Release →](../../releases/latest) | Release-signed `.apk` attached to every GitHub Release |
+| **Android (debug)** | [Latest Actions run →](../../actions/workflows/build-android.yml) | `SteloPTC-Android-Debug` artifact — every push, 30-day retention |
 
-On every **GitHub Release**, both the Windows MSI and the Android APK are attached directly to the release assets. Android release APKs are signed with the repository keystore secrets (or fall back to debug signing if secrets are not configured — the APK still installs fine via ADB).
+On every **GitHub Release**, both the Windows MSI and the Android release APK are attached directly to the release assets. The Android release APK is signed with the project release keystore (see `.github/SIGNING.md`) — **not** debug-signed — so it supports in-place upgrades on Android.
 
 ### Android APK
 

@@ -1,0 +1,83 @@
+# Android Release Signing Setup
+
+Release APKs for SteloPTC must be signed with the project keystore so Android
+devices can install updates in-place (same signature required across releases).
+
+The keystore was generated on 2026-06-11 with a 4096-bit RSA key, valid for
+10 000 days (~27 years):
+
+```
+CN=SteloPTC, O=SteloPTC, C=US
+Key alias : steloptc
+Algorithm : RSA 4096 / SHA384withRSA
+```
+
+---
+
+## GitHub Actions secrets to set
+
+Go to **Settings → Secrets and variables → Actions → New repository secret**
+and create the four secrets below.
+
+| Secret name | Value |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | *(base64 block — see below)* |
+| `ANDROID_KEY_STORE_PASSWORD` | *(keystore password — see below)* |
+| `ANDROID_KEY_ALIAS` | `steloptc` |
+| `ANDROID_KEY_PASSWORD` | *(key password — see below)* |
+
+**Keep the passwords somewhere safe (password manager).  
+If the keystore or passwords are lost, future APK updates cannot be signed
+with the same key and existing installs will not accept the upgrade.**
+
+---
+
+## Secret values
+
+### ANDROID_KEYSTORE_BASE64
+
+```
+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
+```
+
+### ANDROID_KEY_STORE_PASSWORD
+
+```
+Fqkjct6iT3sZblSjEPa0ZD6xXC77utc
+```
+
+### ANDROID_KEY_ALIAS
+
+```
+steloptc
+```
+
+### ANDROID_KEY_PASSWORD
+
+```
+sElL9vRtEWjpr9Tiy4UNqoigXwBX3ky
+```
+
+---
+
+## How CI uses these secrets
+
+`build-android.yml` on a `release` event:
+
+1. Checks all four secrets are present — fails immediately if any are absent.
+2. Base64-decodes `ANDROID_KEYSTORE_BASE64` to `$RUNNER_TEMP/keystore/steloptc-release.jks`.
+3. Sets `ANDROID_KEY_STORE_PATH` to that temp path.
+4. Patches the generated `build.gradle.kts` so the release build type uses the
+   release signing config (no debug fallback).
+5. Runs `cargo tauri android build --release` with the signing env vars set.
+6. Prints the APK certificate fingerprint for verification.
+7. Attaches `SteloPTC-Android-Release.apk` to the GitHub Release.
+
+## Verifying APK signature locally
+
+```bash
+keytool -printcert -jarfile SteloPTC-Android-Release.apk
+```
+
+The certificate should show `CN=SteloPTC, O=SteloPTC, C=US` with the serial
+`1513D7CC7C4C3434`.

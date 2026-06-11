@@ -13,21 +13,25 @@ android {
         applicationId = "com.steloptc.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 21
-        versionName = "0.1.21"
+        versionCode = 22
+        versionName = "1.0.0-1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     signingConfigs {
         create("release") {
-            // Configure via environment variables or local.properties for CI:
-            //   ANDROID_KEY_STORE_PATH, ANDROID_KEY_STORE_PASSWORD,
-            //   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
-            storeFile = System.getenv("ANDROID_KEY_STORE_PATH")?.let { file(it) }
+            // Configured via CI secrets decoded by build-android.yml.
+            // All four env vars must be set — the build fails if any are absent.
+            storeFile = System.getenv("ANDROID_KEY_STORE_PATH")
+                ?.let { file(it) }
+                ?: error("ANDROID_KEY_STORE_PATH is not set — cannot sign release APK")
             storePassword = System.getenv("ANDROID_KEY_STORE_PASSWORD")
+                ?: error("ANDROID_KEY_STORE_PASSWORD is not set — cannot sign release APK")
             keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                ?: error("ANDROID_KEY_ALIAS is not set — cannot sign release APK")
             keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                ?: error("ANDROID_KEY_PASSWORD is not set — cannot sign release APK")
         }
     }
 
@@ -43,13 +47,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            // Falls back to debug signing if release key env vars are not set
-            val releaseSigningConfig = signingConfigs.getByName("release")
-            signingConfig = if (releaseSigningConfig.storeFile != null) {
-                releaseSigningConfig
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

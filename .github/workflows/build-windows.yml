@@ -1,6 +1,10 @@
 name: Build Windows .exe + .msi
 
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  release:
+    types: [published]
 
 jobs:
   build-windows:
@@ -64,3 +68,11 @@ jobs:
           path: |
             src-tauri/target/release/stelo-ptc.exe
             src-tauri/target/release/bundle/msi/*.msi
+
+      - name: Attach Windows MSI to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: src-tauri/target/release/bundle/msi/*.msi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
