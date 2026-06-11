@@ -103,6 +103,7 @@ pub fn run() {
             commands::backup::list_backups,
             // Admin / Dev tools
             commands::admin::reset_database,
+            commands::admin::load_demo_data,
             // Error Logs
             commands::error_logs::log_error,
             commands::error_logs::list_error_logs,

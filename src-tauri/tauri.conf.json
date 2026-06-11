@@ -1,6 +1,6 @@
 {
   "productName": "SteloPTC",
-  "version": "1.0.0-2",
+  "version": "1.1.0",
   "identifier": "com.steloptc.app",
   "build": {
     "devUrl": "http://localhost:1420",
@@ -43,7 +43,7 @@
     "android": {
       "autoIncrementVersionCode": false,
       "minSdkVersion": 24,
-      "versionCode": 23
+      "versionCode": 24
     }
   },
   "plugins": {}

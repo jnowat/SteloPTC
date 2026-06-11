@@ -11,6 +11,7 @@
   import QrModal from './QrModal.svelte';
   import QrScanner from './QrScanner.svelte';
   import Tooltip from './Tooltip.svelte';
+  import FirstRun from './FirstRun.svelte';
 
   let specimens = $state<any[]>([]);
   let species = $state<any[]>([]);
@@ -378,10 +379,15 @@ ${filterLine}
 
   {#if loading}
     <div class="empty-state">Loading...</div>
+  {:else if specimens.length === 0 && !searchQuery && !filterSpecies && !filterStage && !filterProject && total === 0}
+    <FirstRun
+      onAddSpecimen={() => { showForm = true; window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+      onDemoLoaded={() => { load(); loadSpecies(); }}
+    />
   {:else if specimens.length === 0}
     <div class="empty-state">
       <p>No specimens found</p>
-      <p style="margin-top:8px;font-size:12px;">Create your first specimen or adjust your filters.</p>
+      <p style="margin-top:8px;font-size:12px;">Try adjusting your search or filters.</p>
     </div>
   {:else}
     <div class="card table-card">

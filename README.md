@@ -403,6 +403,7 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 
 - [x] First signed GitHub Release; Windows MSI and Android APK attached to release assets (v1.0.0-1)
 - [x] **Crash-proofing & data-integrity pass** — all `.unwrap()` calls in command handlers converted to returned errors; `create_subculture` and `create_media_batch` (including inventory stock depletion) wrapped in SQLite transactions; WAL checkpoint verified before backup copy (v1.0.0-2)
+- [x] **Onboarding empty state + seed-data toggle** — fresh installs show a guided first-run panel with step-by-step links to species registry and specimen form; supervisors/admins can load a ready-made sample lab (Asparagus, Nandina, Citrus with passages) in one click (v1.1.0)
 
 ### v0.1.x — Upcoming Patches
 

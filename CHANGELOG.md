@@ -5,6 +5,19 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-11
+
+### Added
+
+- **WP-05 — Onboarding empty state + seed-data toggle**
+  - **`FirstRun.svelte`** — new component shown whenever the lab has zero specimens. Displays a two-step guide ("Configure your species registry" → "Accession your first specimen"), with direct navigation buttons for each step. Supervisors and admins also see a **Load Sample Data** button (green, clearly labelled).
+  - **`Dashboard.svelte`** — shows `FirstRun` instead of the normal stats grid when `total_specimens === 0`. Returns to the full dashboard automatically once specimens exist (or after demo data is loaded).
+  - **`SpecimenList.svelte`** — shows `FirstRun` (with an inline "Add First Specimen" shortcut that scrolls to and opens the specimen form) when the list is genuinely empty (no search/filter active and `total === 0`). Filtered-but-empty searches still show the concise "No specimens found" message.
+  - **`load_demo_data` Tauri command** (`admin.rs`) — creates 1 demo MS media batch, 3 demo specimens (Asparagus, Nandina, Citrus) using the seeded species registry, each with 3 passages of subculture history, all in a single atomic transaction. Guard: returns an error if any specimens already exist so it can't clobber an active lab. Supervisors and admins only.
+  - **`loadDemoData` API function** (`api.ts`) wraps the new command.
+  - Removing demo data: use existing **Admin → Dev Tools → Reset Database** (preserves species/users).
+- Version bumped to **1.1.0** across `package.json`, `Cargo.toml`, `tauri.conf.json` (versionCode 24), `app/build.gradle.kts` (versionCode 24), and sidebar display.
+
 ## [1.0.0-2] - 2026-06-11
 
 ### Changed
