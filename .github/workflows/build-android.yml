@@ -124,76 +124,6 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x src-tauri/gen/android/gradlew
 
-      # ── Patch release signing in generated build.gradle.kts ───────────────
-      # cargo tauri android init regenerates gen/android/ on every run.
-      # This step rewrites the release buildType to:
-      #   - Use the decoded keystore when all signing env vars are set.
-      #   - FAIL the build (not fall back to debug) when they are absent.
-      - name: Patch release signing config
-        if: github.event_name == 'release'
-        run: |
-          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
-
-          # Ensure signingConfigs block exists; insert after android { if absent.
-          if ! grep -q 'signingConfigs' "$GRADLE"; then
-            python3 - "$GRADLE" <<'PYEOF'
-          import re, sys
-          path = sys.argv[1]
-          text = open(path).read()
-          signing_block = '''
-              signingConfigs {
-                  create("release") {
-                      storeFile = System.getenv("ANDROID_KEY_STORE_PATH")?.let { file(it) }
-                          ?: error("ANDROID_KEY_STORE_PATH is not set — cannot sign release APK")
-                      storePassword = System.getenv("ANDROID_KEY_STORE_PASSWORD")
-                          ?: error("ANDROID_KEY_STORE_PASSWORD is not set — cannot sign release APK")
-                      keyAlias = System.getenv("ANDROID_KEY_ALIAS")
-                          ?: error("ANDROID_KEY_ALIAS is not set — cannot sign release APK")
-                      keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
-                          ?: error("ANDROID_KEY_PASSWORD is not set — cannot sign release APK")
-                  }
-              }
-          '''
-          # Insert after the opening `android {` line
-          text = re.sub(r'(android\s*\{)', r'\1' + signing_block, text, count=1)
-          open(path, 'w').write(text)
-          print("Inserted signingConfigs block.")
-          PYEOF
-          fi
-
-          # Replace any existing release signingConfig assignment with the
-          # hard-fail version (no debug fallback).
-          python3 - "$GRADLE" <<'PYEOF'
-          import re, sys
-          path = sys.argv[1]
-          text = open(path).read()
-
-          # Remove any legacy fallback pattern (signingConfig = if (...) ... else ...)
-          text = re.sub(
-              r'signingConfig\s*=\s*if\s*\([^)]*\)\s*\{[^}]*\}\s*else\s*\{[^}]*\}',
-              'signingConfig = signingConfigs.getByName("release")',
-              text, flags=re.DOTALL
-          )
-          # Also handle single-line ternary / simple assignment to debug fallback
-          text = re.sub(
-              r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
-              'signingConfig = signingConfigs.getByName("release")',
-              text
-          )
-          # Ensure the release buildType actually assigns the release signingConfig
-          if 'getByName("release")' not in text and 'signingConfigs' in text:
-              text = re.sub(
-                  r'(getByName\("release"\)\s*\{)',
-                  r'\1\n            signingConfig = signingConfigs.getByName("release")',
-                  text, count=1
-              )
-          open(path, 'w').write(text)
-          print("Patched release signingConfig (no debug fallback).")
-          PYEOF
-
-          echo "--- Patched build.gradle.kts signingConfigs section ---"
-          grep -A 20 'signingConfigs' "$GRADLE" || true
-
       # ── Debug APK (every push / PR) ───────────────────────────────────────
       - name: Build debug APK
         run: cargo tauri android build --debug
@@ -223,6 +153,69 @@ jobs:
           name: SteloPTC-Android-Debug
           path: artifacts/SteloPTC-Android-Debug.apk
           retention-days: 30
+
+      # ── Patch release signing in generated build.gradle.kts ───────────────
+      # Runs AFTER the debug build so Gradle configuration-time evaluation of
+      # the signing block never affects the debug build.  Uses lazy
+      # providers.environmentVariable(...).orNull so missing vars produce null
+      # rather than throwing at configuration time.
+      - name: Patch release signing config
+        if: github.event_name == 'release'
+        run: |
+          GRADLE="src-tauri/gen/android/app/build.gradle.kts"
+
+          # Ensure signingConfigs block exists; insert after android { if absent.
+          if ! grep -q 'signingConfigs' "$GRADLE"; then
+            python3 - "$GRADLE" <<'PYEOF'
+          import re, sys
+          path = sys.argv[1]
+          text = open(path).read()
+          signing_block = '''
+              signingConfigs {
+                  create("release") {
+                      storeFile = providers.environmentVariable("ANDROID_KEY_STORE_PATH").orNull?.let { file(it) }
+                      storePassword = providers.environmentVariable("ANDROID_KEY_STORE_PASSWORD").orNull
+                      keyAlias = providers.environmentVariable("ANDROID_KEY_ALIAS").orNull
+                      keyPassword = providers.environmentVariable("ANDROID_KEY_PASSWORD").orNull
+                  }
+              }
+          '''
+          text = re.sub(r'(android\s*\{)', r'\1' + signing_block, text, count=1)
+          open(path, 'w').write(text)
+          print("Inserted signingConfigs block.")
+          PYEOF
+          fi
+
+          python3 - "$GRADLE" <<'PYEOF'
+          import re, sys
+          path = sys.argv[1]
+          text = open(path).read()
+
+          # Remove any legacy fallback pattern (signingConfig = if (...) ... else ...)
+          text = re.sub(
+              r'signingConfig\s*=\s*if\s*\([^)]*\)\s*\{[^}]*\}\s*else\s*\{[^}]*\}',
+              'signingConfig = signingConfigs.getByName("release")',
+              text, flags=re.DOTALL
+          )
+          # Handle simple assignment to debug fallback
+          text = re.sub(
+              r'signingConfig\s*=\s*signingConfigs\.getByName\("debug"\)',
+              'signingConfig = signingConfigs.getByName("release")',
+              text
+          )
+          # Ensure the release buildType assigns the release signingConfig
+          if 'getByName("release")' not in text and 'signingConfigs' in text:
+              text = re.sub(
+                  r'(getByName\("release"\)\s*\{)',
+                  r'\1\n            signingConfig = signingConfigs.getByName("release")',
+                  text, count=1
+              )
+          open(path, 'w').write(text)
+          print("Patched release signingConfig.")
+          PYEOF
+
+          echo "--- Patched build.gradle.kts signingConfigs section ---"
+          grep -A 20 'signingConfigs' "$GRADLE" || true
 
       # ── Release APK (only on GitHub Release events) ───────────────────────
       - name: Build release APK
