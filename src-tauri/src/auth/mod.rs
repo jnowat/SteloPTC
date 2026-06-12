@@ -39,7 +39,7 @@ pub fn create_session(db: &Database, user_id: &str) -> Result<String, String> {
     let id = uuid::Uuid::new_v4().to_string();
     let expires = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
-        .unwrap()
+        .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MAX_UTC)
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
 
