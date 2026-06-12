@@ -726,7 +726,7 @@ ${complianceRecords.length > 0 ? `
             </div>
 
             <!-- Contamination -->
-            <div class="contamination-row">
+            <div class="contamination-row" class:active={subcultureForm.contamination_flag}>
               <label class="contam-toggle-label" title="Flag this vessel as contaminated (bacterial, fungal, yeast, or other)">
                 <input type="checkbox" title="Flag this vessel as contaminated (bacterial, fungal, yeast, or other)" bind:checked={subcultureForm.contamination_flag} style="width:auto;" />
                 <span class="contam-toggle-text">Contamination detected in this vessel</span>
