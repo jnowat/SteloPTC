@@ -54,7 +54,7 @@
     align-items: center;
     justify-content: center;
     height: 100vh;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f4c2d 100%);
+    background: linear-gradient(135deg, #0f172a 0%, #1a1100 50%, #0f4c2d 100%);
   }
   .login-card {
     background: white;

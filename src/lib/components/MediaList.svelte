@@ -958,7 +958,7 @@
   .conc-toggle { margin-bottom: 10px; }
   .calc-hint {
     font-size: 12px;
-    color: #2563eb;
+    color: #ff8c00;
     margin-top: 4px;
     font-style: italic;
   }
@@ -1032,12 +1032,12 @@
     border-radius: 9999px;
     font-size: 10px;
     font-weight: 700;
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: rgba(202, 215, 255, 0.18);
+    color: #5b7de8;
     text-transform: uppercase;
     letter-spacing: 0.03em;
   }
-  :global(.dark) .badge-blue { background: #1e3a5f; color: #93c5fd; }
+  :global(.dark) .badge-blue { background: rgba(202, 215, 255, 0.1); color: #cad7ff; }
 
   .badge-teal {
     display: inline-block;

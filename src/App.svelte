@@ -198,7 +198,7 @@
     justify-content: center;
     height: 100vh;
     width: 100vw;
-    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f4c2d 100%);
+    background: linear-gradient(135deg, #0f172a 0%, #1a1100 50%, #0f4c2d 100%);
   }
 
   .init-content {
@@ -218,7 +218,7 @@
     width: 36px;
     height: 36px;
     border: 3px solid #334155;
-    border-top-color: #2563eb;
+    border-top-color: #ff8c00;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin: 0 auto 16px;
@@ -293,15 +293,15 @@
   }
   :global(.btn:hover) { background: #f3f4f6; }
   :global(.btn:disabled) { opacity: 0.5; cursor: not-allowed; }
-  :global(.btn-primary) { background: #2563eb; color: white; border-color: #2563eb; }
-  :global(.btn-primary:hover) { background: #1d4ed8; }
+  :global(.btn-primary) { background: #ff8c00; color: white; border-color: #ff8c00; }
+  :global(.btn-primary:hover) { background: #e07b00; }
   :global(.btn-danger) { background: #dc2626; color: white; border-color: #dc2626; }
   :global(.btn-danger:hover) { background: #b91c1c; }
   :global(.btn-sm) { padding: 4px 10px; font-size: 12px; }
 
   :global(.dark .btn) { background: #1e293b; color: #e2e8f0; border-color: #334155; }
   :global(.dark .btn:hover) { background: #334155; }
-  :global(.dark .btn-primary) { background: #2563eb; color: white; }
+  :global(.dark .btn-primary) { background: #ff8c00; color: white; }
 
   :global(.card) {
     background: white;
@@ -327,8 +327,8 @@
   }
   :global(input:focus), :global(select:focus), :global(textarea:focus) {
     outline: none;
-    border-color: #2563eb;
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    border-color: #ff8c00;
+    box-shadow: 0 0 0 3px rgba(255, 140, 0, 0.15);
   }
 
   :global(label) {
@@ -419,12 +419,12 @@
   :global(.badge-green) { background: #dcfce7; color: #166534; }
   :global(.badge-red) { background: #fef2f2; color: #991b1b; }
   :global(.badge-yellow) { background: #fef9c3; color: #854d0e; }
-  :global(.badge-blue) { background: #dbeafe; color: #1e40af; }
+  :global(.badge-blue) { background: rgba(202, 215, 255, 0.2); color: #5b7de8; }
   :global(.badge-gray) { background: #f1f5f9; color: #475569; }
   :global(.dark .badge-green) { background: #166534; color: #dcfce7; }
   :global(.dark .badge-red) { background: #991b1b; color: #fef2f2; }
   :global(.dark .badge-yellow) { background: #854d0e; color: #fef9c3; }
-  :global(.dark .badge-blue) { background: #1e40af; color: #dbeafe; }
+  :global(.dark .badge-blue) { background: rgba(170, 191, 255, 0.15); color: #cad7ff; }
   :global(.dark .badge-gray) { background: #334155; color: #94a3b8; }
 
   :global(.page-header) {

@@ -244,7 +244,7 @@
         Unknown / Awaiting Assessment
       </label>
       {#if healthUnknown}
-        <div class="health-display" style="color:#7c3aed;">? – Unknown / Awaiting Assessment</div>
+        <div class="health-display" style="color:#94a3b8;">? – Unknown / Awaiting Assessment</div>
       {:else}
         <input
           type="range"
@@ -330,7 +330,7 @@
   .location-preview {
     margin-top: 6px;
     font-size: 12px;
-    color: #2563eb;
+    color: #ff8c00;
     font-style: italic;
   }
 
@@ -344,7 +344,7 @@
     align-items: center;
     gap: 6px;
     font-size: 13px;
-    color: #7c3aed;
+    color: #94a3b8;
     cursor: pointer;
     text-transform: none;
     letter-spacing: 0;

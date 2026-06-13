@@ -223,7 +223,7 @@
     color: #e2e8f0;
   }
   .nav-item.active {
-    background: #2563eb;
+    background: #ff8c00;
     color: white;
   }
   .nav-icon { font-size: 16px; width: 20px; text-align: center; }

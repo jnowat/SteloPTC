@@ -559,8 +559,8 @@ ${filterLine}
 <style>
   .clickable { cursor: pointer; }
   .clickable:hover td { background: #eff6ff !important; }
-  :global(.dark) .clickable:hover td { background: #1e3a5f !important; }
-  .clickable.selected td { background: #dbeafe !important; }
+  :global(.dark) .clickable:hover td { background: #1e2535 !important; }
+  .clickable.selected td { background: rgba(255, 140, 0, 0.08) !important; }
   :global(.dark) .clickable.selected td { background: #1e3a8f !important; }
 
   .check-col {
@@ -577,12 +577,12 @@ ${filterLine}
   }
 
   .btn-print-summary {
-    background: #f5f3ff;
-    color: #5b21b6;
-    border-color: #c4b5fd;
+    background: rgba(170, 191, 255, 0.08);
+    color: #aabfff;
+    border-color: rgba(170, 191, 255, 0.3);
   }
-  .btn-print-summary:hover { background: #ede9fe; }
-  :global(.dark) .btn-print-summary { background: rgba(139,92,246,0.12); color: #a78bfa; border-color: #5b21b6; }
+  .btn-print-summary:hover { background: rgba(170, 191, 255, 0.15); }
+  :global(.dark) .btn-print-summary { background: rgba(170,191,255,0.1); color: #cad7ff; border-color: rgba(170,191,255,0.25); }
 
   .btn-scan {
     background: #0f172a;
@@ -688,7 +688,7 @@ ${filterLine}
     white-space: nowrap;
   }
   .batch-btn:hover:not(:disabled) { background: #475569; }
-  .batch-btn.active { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+  .batch-btn.active { background: #e07b00; border-color: #ff8c00; color: #fff; }
   .batch-btn-danger { background: #7f1d1d; border-color: #991b1b; }
   .batch-btn-danger:hover:not(:disabled) { background: #991b1b; }
   .batch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -710,9 +710,9 @@ ${filterLine}
   }
 
   .batch-apply {
-    background: #1d4ed8;
+    background: #ff8c00;
     color: #fff;
-    border: 1px solid #2563eb;
+    border: 1px solid #e07b00;
     border-radius: 6px;
     padding: 6px 16px;
     font-size: 12px;
@@ -721,7 +721,7 @@ ${filterLine}
     transition: background 0.1s;
     white-space: nowrap;
   }
-  .batch-apply:hover:not(:disabled) { background: #2563eb; }
+  .batch-apply:hover:not(:disabled) { background: #ff8c00; }
   .batch-apply:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ── Mobile ── */

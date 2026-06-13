@@ -175,7 +175,7 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: #2563eb;
+    background: #ff8c00;
     color: white;
     font-size: 16px;
     font-weight: 800;
