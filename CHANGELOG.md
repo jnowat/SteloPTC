@@ -5,6 +5,29 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.4] - 2026-06-13
+
+### Added — WP-13: Print / PDF Polish
+
+- **Professional print header band**: every print window (Culture Certificate, Specimens Summary) now opens with a consistent three-column header — a reserved logo area (64 px placeholder), the lab brand + report name, and a right-aligned metadata block (accession, generated date, prepared-by user).
+- **Professional print footer band**: footer displays `SteloPTC · Tissue Culture Management System · {date}` on the left and a CSS page-counter (`Page N of M` in print, `Page N` in preview) on the right.
+- **A4 + US Letter support**: both documents use `@page { size: auto; }` so the browser uses whatever paper size is selected in the print dialog (A4 or US Letter) without clipping content.
+- **Typography and spacing polish**: font stack updated to `'Segoe UI', -apple-system, Helvetica, Arial, sans-serif`; header brand is 21–22 px/900 weight; metadata is 9.5 px/1.8 line-height; table cells use 9–10.5 px body type with wider column padding; `thead { display: table-header-group }` ensures column headers repeat across page breaks.
+- **Page-break hygiene**: `tr { page-break-inside: avoid }` on all table rows and `page-break-inside: avoid` on the specimen info grid prevent orphaned rows and torn table cells.
+- **Specimen info grid**: label column widened to 155 px and label font dropped to 9.5 px for a cleaner two-column layout in the Culture Certificate.
+- **Filter highlight bar**: the Specimens Summary filter line is now displayed as a left-bordered highlight bar (`border-left: 3px solid #e2e8f0; background: #f8fafc`) for better visual hierarchy.
+
+### Added — WP-14: First Test Harness
+
+- **`src/lib/utils.ts`**: new shared TypeScript module containing pure, testable utility functions — `escHtml`, `healthLabel`, `stageFmt`, `composeLocation`, `formatAccessionNumber`, `computeStockAdjustment`, `datestamp` — extracted and suitable for use across print functions and form validation.
+- **`src/lib/utils.test.ts`**: Vitest test suite with 30 passing assertions covering all utility functions (null/undefined handling, HTML escaping, health level mapping and clamping, stage formatting, location composition, accession formatting, stock adjustment bounds).
+- **`vitest.config.ts`**: Vitest configuration with jsdom environment and `@sveltejs/vite-plugin-svelte` integration. Test glob: `src/**/*.test.ts`.
+- **`npm test` / `npm run test:watch`**: added `test` and `test:watch` scripts to `package.json`; `vitest`, `@testing-library/svelte`, `@testing-library/jest-dom`, and `jsdom` added to `devDependencies`.
+- **Rust unit tests — `db::queries`**: `#[cfg(test)]` module with 8 tests covering `generate_accession_number` (first specimen gets `001`, second gets `002`, different species resets sequence, different date resets sequence, 3-digit zero-padding) and `PaginationParams` (offset on page 1, offset on page 2, no underflow on page 0).
+- **Rust unit tests — `commands::inventory`**: extracted `apply_stock_adjustment(current, adjustment) -> Result<f64, String>` and `is_low_stock(current, minimum) -> bool` as `pub` helper functions; 8 `#[cfg(test)]` assertions covering positive/negative adjustment, exact-zero, below-zero error, and low-stock threshold comparisons.
+- **Rust unit tests — `commands::compliance`**: `#[cfg(test)]` module with 10 assertions using in-memory SQLite (minimal schema created inline); tests cover all four auto-flag rules — expired permit (detected/not-detected), quarantine-no-release (detected/with-date-excluded), positive-not-quarantined (detected/already-quarantined-excluded), citrus HLB missing/recent test, and the cross-cutting rule that archived specimens are excluded from every flag query.
+- **`.github/workflows/test.yml`**: new CI workflow that runs `npm test` (Vitest) and `cargo test --lib` (Rust) on every push and pull request to `master`. Runs on separate jobs (`frontend-tests` and `rust-tests`) so failures are reported independently. Blocks merges on any test failure.
+
 ## [1.2.3] - 2026-06-13
 
 ### Fixed
