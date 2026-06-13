@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import QRCode from 'qrcode';
   import Tooltip from './Tooltip.svelte';
   import { addNotification } from '../stores/app';
@@ -23,6 +23,7 @@
   let { specimen, onclose }: Props = $props();
 
   let canvas: HTMLCanvasElement;
+  let modalEl: HTMLDivElement;
   let qrDataUrl = $state('');
   let generating = $state(true);
   let error = $state('');
@@ -39,6 +40,10 @@
   }));
 
   onMount(async () => {
+    await tick();
+    // Move focus into modal when it opens (WCAG 2.4.3 — focus order)
+    modalEl?.querySelector<HTMLElement>('.close-btn')?.focus();
+
     try {
       qrDataUrl = await QRCode.toDataURL(qrPayload, {
         errorCorrectionLevel: 'M',
@@ -134,7 +139,21 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onclose();
+    if (e.key === 'Escape') { onclose(); return; }
+    // Focus trap: cycle Tab within modal (WCAG 2.1.2)
+    if (e.key === 'Tab' && modalEl) {
+      const focusable = Array.from(modalEl.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      ));
+      if (focusable.length === 0) { e.preventDefault(); return; }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    }
   }
 </script>
 
@@ -143,9 +162,9 @@
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div class="modal-backdrop" onclick={handleBackdropClick}>
-  <div class="modal" role="dialog" aria-modal="true" aria-label="QR Code">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="qr-modal-title" bind:this={modalEl}>
     <div class="modal-header">
-      <h2>QR Code <Tooltip text="QR code encodes the accession number, species, stage, and location. Scan with any QR reader or use SteloPTC's built-in scanner." position="bottom" /></h2>
+      <h2 id="qr-modal-title">QR Code <Tooltip text="QR code encodes the accession number, species, stage, and location. Scan with any QR reader or use SteloPTC's built-in scanner." position="bottom" /></h2>
       <button title="Close this QR code modal" class="close-btn" onclick={onclose} aria-label="Close">&#10005;</button>
     </div>
 

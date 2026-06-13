@@ -5,6 +5,20 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] - 2026-06-13
+
+### Added
+
+- **WP-12 — Accessibility & keyboard pass (WCAG 2.1 AA target)**
+  - **Skip-to-content link** (`App.svelte`): A visually-hidden "Skip to main content" link appears at the top of the layout and becomes visible on keyboard focus, letting keyboard-only users bypass the sidebar navigation (WCAG 2.4.1).
+  - **Visible focus indicators** (`App.svelte`): `:focus-visible` global rule adds a `2px solid #2563eb` outline with 2px offset on all focusable elements so keyboard users always see where focus is; `:focus:not(:focus-visible)` suppresses the outline for mouse clicks only (WCAG 2.4.7).
+  - **Sidebar ARIA improvements** (`Sidebar.svelte`): Navigation landmark now has `aria-label="Main navigation"` and `id="sidebar-nav"`. Hamburger button gains `aria-expanded` (reflects drawer open/closed state) and `aria-controls="sidebar-nav"`. Each nav-item button gains an `aria-label` that includes the keyboard shortcut where applicable (e.g., `"Dashboard — overview of all key metrics (Ctrl+1)"`). Active nav item carries `aria-current="page"`. Dark mode toggle button carries `aria-label` describing the action ("Switch to light theme" / "Switch to dark theme"). Logout button carries `aria-label="Log out"`.
+  - **QR Modal focus trap** (`QrModal.svelte`): On open, focus moves to the close button automatically. Tab/Shift+Tab cycle is constrained within the modal dialog — focus cannot escape to the backdrop or page behind (WCAG 2.1.2). `aria-labelledby` points to the modal heading; heading carries the matching `id`.
+  - **Lightbox accessibility** (`SpecimenDetail.svelte`): Photo lightbox is now a proper `role="dialog"` with `aria-modal="true"` and `aria-label="Photo viewer"`. Focus moves to the close button when the lightbox opens (`$effect` watches `lightboxSrc`). Pressing Escape closes the lightbox. Close button carries `aria-label="Close photo viewer"`.
+  - **Health slider ARIA** (`SpecimenForm.svelte`, `SpecimenDetail.svelte`): Both the New Specimen form and the Record Passage form health sliders now carry `aria-label="Health status"`, `aria-valuemin`, `aria-valuemax`, `aria-valuenow`, and `aria-valuetext` (e.g., "2 – Fair"), giving screen readers meaningful feedback as the slider moves.
+  - **Keyboard shortcuts documented** in nav item `aria-label` attributes and existing sidebar `title` tooltips. Shortcuts: Ctrl+1 Dashboard, Ctrl+2 Specimens, Ctrl+3 Media Logs, Ctrl+4 Reminders, Ctrl+5 Error Log.
+- Version bumped to **1.2.6** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [1.2.5] - 2026-06-13
 
 ### Fixed — WP-09: Tauri-reliable print invocation

@@ -135,8 +135,9 @@
     <ForceChangePassword />
   {:else}
     <div class="layout">
+      <a class="skip-link" href="#main-content">Skip to main content</a>
       <Sidebar onlogout={handleLogout} ontoggleDark={toggleDark} isDark={$darkMode} />
-      <main class="main-content">
+      <main class="main-content" id="main-content">
         <Notifications />
         {#if $currentView === 'dashboard'}
           <Dashboard />
@@ -342,6 +343,35 @@
     outline: none;
     border-color: #2563eb;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+  }
+
+  /* Visible keyboard focus indicators (WCAG 2.4.7) */
+  :global(*:focus-visible) {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  :global(*:focus:not(:focus-visible)) {
+    outline: none;
+  }
+
+  /* Skip-to-content link for keyboard users (WCAG 2.4.1) */
+  :global(.skip-link) {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    padding: 8px 16px;
+    background: #2563eb;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 9999;
+    border-radius: 0 0 4px 0;
+    text-decoration: none;
+    transition: top 0.1s;
+  }
+  :global(.skip-link:focus) {
+    top: 0;
   }
 
   :global(label) {

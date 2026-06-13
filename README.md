@@ -62,13 +62,14 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Photo Attachments** — Attach images directly to specimen records. Upload via OS file picker (desktop) or rear camera (Android). Responsive gallery grid with lightbox viewer and in-memory thumbnail cache. Images stored on disk under `<appDataDir>/attachments/`.
 - **Export & Backup** — Dedicated Export Data page with Excel (`.xlsx`) multi-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance), plus CSV and JSON. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing.
 - **Mobile-First UI** — Hamburger + slide-out drawer on all screens < 1024 px, 48 px touch targets (WCAG 2.5.5), safe-area insets for notches and home indicators (v0.1.11+).
-- **Keyboard Shortcuts** — Ctrl+1–5: Dashboard, Specimens, Media, Reminders, Error Log.
+- **Keyboard Shortcuts** — Ctrl+1: Dashboard, Ctrl+2: Specimens, Ctrl+3: Media Logs, Ctrl+4: Reminders, Ctrl+5: Error Log. Ctrl/Cmd both work on macOS.
 - **Contextual Tooltips** — "?" badge on every form field and action button with help text (v0.1.15).
 - **Dark Mode** — System-aware with manual toggle, driven by a `data-theme` attribute on `<html>`. Inter font throughout.
 - **Design Token System** — All colors, spacing, typography, radii, shadows, and z-index layers are defined as CSS custom properties in `src/lib/styles/tokens.css`. Changing a single token updates the UI consistently across all token-aware components (v1.2.2).
 - **Consistent Data States** — `DataState.svelte` provides a unified skeleton loading state, friendly empty state with optional CTA, and inline error state with retry across all list views (v1.2.3).
 - **Professional Print / PDF Output** — Culture Certificates and Specimens Summary reports open as formatted print windows with consistent header (logo space, lab name, accession, date, prepared-by) and footer (lab name, page numbers). Layouts are clean and well-organized on both A4 and US Letter paper, portrait and landscape (v1.2.4).
 - **Automated Tests** — Vitest test suite covers core utility functions (HTML escaping, health labels, stage formatting, location composition, accession number formatting, stock adjustment math). Rust unit tests cover accession number generation, pagination helpers, stock depletion rules, and all four compliance auto-flag SQL rules. Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4).
+- **Accessibility** — WCAG 2.1 AA target: visible `:focus-visible` keyboard indicators, skip-to-content link, ARIA landmarks and `aria-current` on sidebar navigation, focus trapping in QR modal and photo lightbox, `aria-label` on all icon-only buttons, ARIA attributes (`aria-valuenow`/`aria-valuetext`) on health status sliders (v1.2.6).
 
 ### Species Registry
 
@@ -262,8 +263,8 @@ android {
     defaultConfig {
         targetSdk = 35
         minSdk = 24
-        versionCode = 15
-        versionName = "0.1.15"
+        versionCode = 26
+        versionName = "1.2.6"
     }
 }
 ```
@@ -306,10 +307,16 @@ SteloPTC/
 │       │   ├── QrScanner.svelte      # Camera-based QR scanning
 │       │   ├── ExportManager.svelte  # Excel/CSV/JSON export hub
 │       │   ├── Tooltip.svelte        # Reusable "?" contextual help badge
-│       │   └── Notifications.svelte  # Toast notification renderer
+│       │   ├── Notifications.svelte  # Toast notification renderer
+│       │   ├── WorkQueue.svelte      # Prioritized daily task view
+│       │   ├── ForceChangePassword.svelte # First-login mandatory password change
+│       │   ├── FirstRun.svelte       # Onboarding guide for fresh installs
+│       │   ├── SkeletonLoader.svelte # Animated shimmer skeleton for loading states
+│       │   ├── EmptyState.svelte     # Friendly empty state with icon and CTA
+│       │   └── DataState.svelte      # Unified loading/error/empty/ready state wrapper
 │       └── stores/
-│           ├── auth.ts               # Auth state, session restore
-│           └── app.ts                # Notifications, error logger
+│           ├── auth.ts               # Auth state, session restore, mustChangePassword gate
+│           └── app.ts                # View routing, notifications, error logger, work queue count
 │
 ├── src-tauri/                        # Rust backend
 │   ├── Cargo.toml
@@ -393,6 +400,7 @@ SQLite, stored at:
 | 003 | v0.1.10 | Fixed specimen stage CHECK constraint; added error_logs table |
 | 004 | v0.1.14 | Added qr_scans table |
 | 005 | v0.1.15 | Added contamination_flag and contamination_notes to subcultures |
+| 006 | v0.1.20 | Added must_change_password to users; seeded admin row with flag set |
 
 ### Backup
 
@@ -447,15 +455,20 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] Excel workbook export — six-sheet `.xlsx` file (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance) via SheetJS; dedicated Export Data page in sidebar (v0.1.18)
 - [x] Photo attachments — upload images per specimen via OS file picker or Android rear camera; gallery grid with lightbox viewer, delete, and in-memory cache; stored on disk under appDataDir (v0.1.19)
 
-### v1.0.0-x — Completed
+### v1.0.0-x — v1.2.x — Completed
 
 - [x] First signed GitHub Release; Windows MSI and Android APK attached to release assets (v1.0.0-1)
-- [x] **Crash-proofing & data-integrity pass** — all `.unwrap()` calls in command handlers converted to returned errors; `create_subculture` and `create_media_batch` (including inventory stock depletion) wrapped in SQLite transactions; WAL checkpoint verified before backup copy (v1.0.0-2)
-- [x] **Onboarding empty state + seed-data toggle** — fresh installs show a guided first-run panel with step-by-step links to species registry and specimen form; supervisors/admins can load a ready-made sample lab (Asparagus, Nandina, Citrus with passages) in one click (v1.1.0)
-- [x] **QR scanner rejects non-SteloPTC codes gracefully** — scanning a URL, email, or other non-specimen QR code shows a clear "This QR code is not a SteloPTC specimen label" message instead of attempting a specimen lookup; valid SteloPTC codes continue to work normally (v1.1.1)
-- [x] **Print error handling** — "Print Summary" and "Print Label" now surface a clear error notification when the browser blocks the popup instead of silently failing (v1.1.1)
+- [x] **Crash-proofing & data-integrity pass** — all `.unwrap()` calls in command handlers converted to returned errors; `create_subculture` and `create_media_batch` wrapped in SQLite transactions; WAL checkpoint verified before backup copy (v1.0.0-2)
+- [x] **Onboarding empty state + seed-data toggle** — guided first-run panel; supervisors/admins can load a ready-made sample lab in one click (v1.1.0)
+- [x] **QR scanner rejects non-SteloPTC codes gracefully** — non-specimen QR codes show a clear warning instead of triggering a failed specimen lookup (v1.1.1)
+- [x] **Print error handling** — "Print Summary" and "Print Label" surface a clear error notification when the browser blocks the popup (v1.1.1)
+- [x] **Work Queue** — daily task view listing every specimen needing immediate attention, sorted by urgency; amber sidebar badge (v1.2.0)
+- [x] **Skeleton loaders & empty states** — animated shimmer skeleton for loading; friendly icon-led empty states with CTAs across all list views (v1.2.1)
+- [x] **Design Token System** — all colors, spacing, typography, radii, shadows, and z-index values defined as CSS custom properties in `tokens.css`; automatic light/dark switching via `data-theme` attribute (v1.2.2)
+- [x] **Unified data states** — `DataState.svelte` provides skeleton loading, inline error-with-retry, and descriptive empty states across all list views; dark mode text visibility fixed (v1.2.3)
+- [x] **Accessibility pass (WCAG 2.1 AA target)** — visible keyboard focus indicators, skip-to-content link, ARIA landmarks, `aria-current` navigation, focus traps in QR modal and photo lightbox, `aria-label` on all icon-only buttons, health slider ARIA attributes (v1.2.6)
 
-### v0.1.x — Upcoming Patches
+### Upcoming Patches
 
 - [ ] **Excel import** — parse `.xlsx` workbooks to create or update specimens and subculture records
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
