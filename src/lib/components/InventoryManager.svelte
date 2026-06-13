@@ -3,6 +3,8 @@
   import { listInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem, adjustStock, listPreparedSolutions, createPreparedSolution, updatePreparedSolution, deletePreparedSolution } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import SkeletonLoader from './SkeletonLoader.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   let items = $state<any[]>([]);
   let loading = $state(true);
@@ -429,9 +431,25 @@
   {/if}
 
   {#if loading}
-    <div class="empty-state">Loading inventory...</div>
+    <div class="card" style="overflow-x:auto;">
+      <SkeletonLoader rows={5} cols={4} />
+    </div>
   {:else if filtered.length === 0}
-    <div class="empty-state">{items.length === 0 ? 'No inventory items yet' : 'No items match filters'}</div>
+    {#if items.length === 0}
+      <EmptyState
+        icon="📦"
+        title="No inventory items yet"
+        message="Add your first item to start tracking stock levels and low-stock alerts."
+        actionLabel="+ New Item"
+        onaction={() => { resetForm(); showForm = true; }}
+      />
+    {:else}
+      <EmptyState
+        icon="🔍"
+        title="No items match your filters"
+        message="Try a different search term or category."
+      />
+    {/if}
   {:else}
     <div class="card" style="overflow-x:auto;">
       <table>
@@ -617,7 +635,11 @@
     {/if}
 
     {#if solutions.length === 0}
-      <div class="empty-state">No prepared solutions yet</div>
+      <EmptyState
+        icon="⚗️"
+        title="No prepared solutions yet"
+        message="Record a stock solution to track its volume and expiry."
+      />
     {:else}
       <div class="card" style="overflow-x:auto;">
         <table>

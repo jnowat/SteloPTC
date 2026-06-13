@@ -3,6 +3,8 @@
   import { listMedia, createMediaBatch, updateMediaBatch, deleteMediaBatch, listInventory } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import SkeletonLoader from './SkeletonLoader.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   type ReagentRow = {
     item_id: string;
@@ -850,9 +852,17 @@
   {/if}
 
   {#if loading}
-    <div class="empty-state">Loading...</div>
+    <div class="card" style="overflow-x:auto;">
+      <SkeletonLoader rows={4} cols={5} />
+    </div>
   {:else if media.length === 0}
-    <div class="empty-state">No media batches yet</div>
+    <EmptyState
+      icon="🧪"
+      title="No media batches yet"
+      message="Create your first batch to start tracking formulations and expiry dates."
+      actionLabel="+ New Batch"
+      onaction={() => (showForm = true)}
+    />
   {:else}
     <div class="card" style="overflow-x:auto;">
       <table>

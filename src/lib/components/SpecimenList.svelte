@@ -12,6 +12,8 @@
   import QrScanner from './QrScanner.svelte';
   import Tooltip from './Tooltip.svelte';
   import FirstRun from './FirstRun.svelte';
+  import SkeletonLoader from './SkeletonLoader.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   let specimens = $state<any[]>([]);
   let species = $state<any[]>([]);
@@ -392,17 +394,20 @@ ${filterLine}
   {/if}
 
   {#if loading}
-    <div class="empty-state">Loading...</div>
+    <div class="card" style="overflow-x:auto;">
+      <SkeletonLoader rows={6} cols={5} />
+    </div>
   {:else if specimens.length === 0 && !searchQuery && !filterSpecies && !filterStage && !filterProject && total === 0}
     <FirstRun
       onAddSpecimen={() => { showForm = true; window.scrollTo({ top: 0, behavior: 'smooth' }); }}
       onDemoLoaded={() => { load(); loadSpecies(); }}
     />
   {:else if specimens.length === 0}
-    <div class="empty-state">
-      <p>No specimens found</p>
-      <p style="margin-top:8px;font-size:12px;">Try adjusting your search or filters.</p>
-    </div>
+    <EmptyState
+      icon="🔍"
+      title="No specimens found"
+      message="Try adjusting your search or filters."
+    />
   {:else}
     <div class="card table-card">
       <table>

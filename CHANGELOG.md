@@ -5,6 +5,18 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-06-13
+
+### Added
+- `SkeletonLoader.svelte`: reusable animated shimmer skeleton for table list views, supports configurable row/column counts and both light and dark mode.
+- `EmptyState.svelte`: reusable friendly empty state with icon, title, message, and optional call-to-action button.
+
+### Changed
+- `SpecimenList.svelte`: loading state now shows an animated skeleton; filtered-empty state uses the new `EmptyState` component with a search icon and helpful message.
+- `MediaList.svelte`: loading state shows skeleton; empty state shows a friendly prompt with a "New Batch" CTA.
+- `InventoryManager.svelte`: loading state shows skeleton; empty inventory shows a "New Item" CTA; filter-empty and no-solutions states use `EmptyState`.
+- `ReminderList.svelte`: loading state shows skeleton; empty state shows a "New Reminder" CTA.
+
 ## [1.2.0] - 2026-06-13
 
 ### Added
