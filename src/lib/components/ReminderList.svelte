@@ -3,6 +3,8 @@
   import { listReminders, createReminder, dismissReminder } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import SkeletonLoader from './SkeletonLoader.svelte';
+  import EmptyState from './EmptyState.svelte';
 
   let reminders = $state<any[]>([]);
   let loading = $state(true);
@@ -143,9 +145,17 @@
   {/if}
 
   {#if loading}
-    <div class="empty-state">Loading...</div>
+    <div class="card" style="overflow-x:auto;">
+      <SkeletonLoader rows={4} cols={4} />
+    </div>
   {:else if reminders.length === 0}
-    <div class="empty-state">No reminders</div>
+    <EmptyState
+      icon="🔔"
+      title="No reminders"
+      message="Add a reminder to stay on top of subcultures, media expiry, and other scheduled tasks."
+      actionLabel="+ New Reminder"
+      onaction={() => (showForm = true)}
+    />
   {:else}
     <div class="card" style="overflow-x:auto;">
       <table>
