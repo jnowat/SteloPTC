@@ -174,6 +174,7 @@
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  @import './lib/styles/tokens.css';
 
   :global(*) {
     margin: 0;
@@ -196,13 +197,13 @@
     height: 100dvh;
     height: 100vh; /* fallback for older browsers */
     width: 100vw;
-    background: #f8fafc;
-    color: #1e293b;
+    background: var(--color-bg);
+    color: var(--color-text);
   }
 
   .app.dark {
-    background: #0f172a;
-    color: #e2e8f0;
+    background: var(--color-bg);
+    color: var(--color-text);
   }
 
   .init-screen {

@@ -62,7 +62,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v1.2.0</span>
+    <span class="version" title="Application version">v1.2.2</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -130,24 +130,24 @@
     /* Shift down by the status-bar / notch safe area so it's never hidden */
     top: calc(14px + env(safe-area-inset-top, 0px));
     left: calc(14px + env(safe-area-inset-left, 0px));
-    z-index: 1100;
+    z-index: var(--z-sidebar);
     width: 48px;
     height: 48px;
     min-height: 48px;
-    padding: 12px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 10px;
+    padding: var(--space-3);
+    background: var(--color-sidebar-bg);
+    border: 1px solid var(--color-sidebar-border);
+    border-radius: var(--radius-xl);
     cursor: pointer;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    transition: background 0.15s;
+    box-shadow: var(--shadow-hamburger);
+    transition: background var(--transition-fast);
   }
-  .hamburger:hover { background: #334155; }
+  .hamburger:hover { background: var(--color-sidebar-hover); }
   .hamburger span {
     display: block;
     width: 100%;
     height: 2px;
-    background: #94a3b8;
+    background: var(--color-sidebar-text);
     border-radius: 2px;
   }
 
@@ -156,7 +156,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    z-index: 1050;
+    z-index: var(--z-overlay);
     background: rgba(0, 0, 0, 0.55);
   }
 
@@ -167,43 +167,43 @@
     height: 100dvh; /* dynamic viewport height for mobile */
     display: flex;
     flex-direction: column;
-    background: #1e293b;
-    color: #94a3b8;
-    border-right: 1px solid #334155;
+    background: var(--color-sidebar-bg);
+    color: var(--color-sidebar-text);
+    border-right: 1px solid var(--color-sidebar-border);
     flex-shrink: 0;
   }
   .sidebar-header {
-    padding: 20px;
-    border-bottom: 1px solid #334155;
+    padding: var(--space-5);
+    border-bottom: 1px solid var(--color-sidebar-border);
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: var(--space-2);
     flex-wrap: wrap;
   }
   .sidebar-header h2 {
-    color: #f1f5f9;
-    font-size: 18px;
+    color: var(--color-sidebar-bright);
+    font-size: var(--font-size-xl);
     font-weight: 800;
     letter-spacing: -0.5px;
   }
   .version {
-    font-size: 11px;
-    color: #64748b;
+    font-size: var(--font-size-xs);
+    color: var(--color-sidebar-muted);
   }
   .drawer-close {
     display: none;
     margin-left: auto;
     background: none;
     border: none;
-    color: #64748b;
-    font-size: 16px;
+    color: var(--color-sidebar-muted);
+    font-size: var(--font-size-md);
     cursor: pointer;
-    padding: 4px;
+    padding: var(--space-1);
     line-height: 1;
   }
   .nav {
     flex: 1;
-    padding: 12px 8px;
+    padding: var(--space-3) var(--space-2);
     overflow-y: auto;
   }
   .nav-item {
@@ -211,27 +211,27 @@
     align-items: center;
     gap: 10px;
     width: 100%;
-    padding: 10px 12px;
+    padding: 10px var(--space-3);
     border: none;
     background: none;
-    color: #94a3b8;
-    font-size: 13px;
+    color: var(--color-sidebar-text);
+    font-size: var(--font-size-base);
     font-weight: 500;
     cursor: pointer;
-    border-radius: 6px;
-    transition: all 0.15s;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
     text-align: left;
     position: relative;
   }
   .nav-item:hover {
-    background: #334155;
-    color: #e2e8f0;
+    background: var(--color-sidebar-hover);
+    color: var(--color-text);
   }
   .nav-item.active {
-    background: #2563eb;
+    background: var(--color-sidebar-active);
     color: white;
   }
-  .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+  .nav-icon { font-size: var(--font-size-md); width: 20px; text-align: center; }
   .nav-label { flex: 1; }
 
   .queue-badge {
@@ -241,7 +241,7 @@
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
-    border-radius: 9px;
+    border-radius: var(--radius-full);
     background: #d97706;
     color: #fff;
     font-size: 10px;
@@ -258,8 +258,8 @@
     min-width: 18px;
     height: 18px;
     padding: 0 5px;
-    border-radius: 9px;
-    background: #dc2626;
+    border-radius: var(--radius-full);
+    background: var(--color-danger);
     color: #fff;
     font-size: 10px;
     font-weight: 700;
@@ -273,36 +273,36 @@
   }
 
   .sidebar-footer {
-    padding: 16px;
+    padding: var(--space-4);
     /* Reserve home-indicator height at the bottom */
-    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid #334155;
+    padding-bottom: calc(var(--space-4) + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid var(--color-sidebar-border);
     display: flex;
     justify-content: space-between;
     align-items: center;
   }
-  .user-name { font-size: 13px; color: #e2e8f0; font-weight: 600; }
-  .user-role { font-size: 11px; color: #64748b; text-transform: capitalize; }
-  .footer-actions { display: flex; gap: 4px; }
+  .user-name { font-size: var(--font-size-base); color: var(--color-text); font-weight: 600; }
+  .user-role { font-size: var(--font-size-xs); color: var(--color-sidebar-muted); text-transform: capitalize; }
+  .footer-actions { display: flex; gap: var(--space-1); }
   .icon-btn {
     background: none;
-    border: 1px solid #475569;
-    color: #94a3b8;
+    border: 1px solid var(--color-sidebar-icon-btn);
+    color: var(--color-sidebar-text);
     width: 32px;
     height: 32px;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 14px;
+    font-size: var(--font-size-md);
   }
-  .icon-btn:hover { background: #334155; color: #e2e8f0; }
+  .icon-btn:hover { background: var(--color-sidebar-hover); color: var(--color-text); }
 
   /* ── Sidebar header safe-area top padding on mobile/tablet ───── */
   @media (max-width: 1024px) {
     .sidebar-header {
-      padding-top: calc(20px + env(safe-area-inset-top, 0px));
+      padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
     }
   }
 
@@ -323,10 +323,10 @@
       left: 0;
       width: min(280px, 85vw);
       height: 100dvh;
-      z-index: 1100;
+      z-index: var(--z-sidebar);
       transform: translateX(-100%);
-      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-      box-shadow: 4px 0 32px rgba(0, 0, 0, 0.5);
+      transition: transform var(--transition-drawer);
+      box-shadow: var(--shadow-sidebar);
     }
     .sidebar.mobile-open {
       transform: translateX(0);
@@ -338,10 +338,10 @@
 
     /* Larger touch targets on mobile/tablet (48px = WCAG 2.5.5 / Apple HIG) */
     .nav-item {
-      padding: 14px 16px;
-      font-size: 15px;
+      padding: 14px var(--space-4);
+      font-size: var(--font-size-lg);
       min-height: 52px;
-      border-radius: 8px;
+      border-radius: var(--radius-lg);
     }
     .nav-icon { font-size: 18px; }
     .icon-btn {

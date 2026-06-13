@@ -1,0 +1,103 @@
+/* ── Design tokens — single source of truth for colors, spacing,
+   typography, radii, shadows, and z-index layers.
+   Import once in App.svelte; override via [data-theme="dark"]. ── */
+
+:root {
+  /* ── Colors: light (default) ─────────────────────────────────── */
+  --color-bg:               #f8fafc;
+  --color-surface:          #ffffff;
+  --color-surface-raised:   #f8fafc;
+  --color-surface-danger:   rgba(220, 38, 38, 0.04);
+  --color-surface-overdue:  #fff1f2;
+  --color-border:           #e2e8f0;
+  --color-border-input:     #d1d5db;
+  --color-border-subtle:    #f1f5f9;
+  --color-text:             #1e293b;
+  --color-text-muted:       #6b7280;
+  --color-text-faint:       #9ca3af;
+  --color-text-strong:      #1e293b;
+  --color-overdue-label:    #b91c1c;
+  --color-contam-high:      #b91c1c;
+  --color-fill-track:       #f1f5f9;
+
+  /* ── Accent & semantic ───────────────────────────────────────── */
+  --color-accent:           #2563eb;
+  --color-accent-hover:     #1d4ed8;
+  --color-warn:             #f59e0b;
+  --color-danger:           #dc2626;
+  --color-danger-hover:     #b91c1c;
+  --color-success:          #059669;
+
+  /* ── Chart fills (not theme-sensitive) ──────────────────────── */
+  --color-fill-stage:       #2563eb;
+  --color-fill-species:     #059669;
+  --color-fill-contam:      #ef4444;
+
+  /* ── Sidebar (always dark — unchanged between themes) ───────── */
+  --color-sidebar-bg:       #1e293b;
+  --color-sidebar-border:   #334155;
+  --color-sidebar-text:     #94a3b8;
+  --color-sidebar-bright:   #f1f5f9;
+  --color-sidebar-hover:    #334155;
+  --color-sidebar-active:   #2563eb;
+  --color-sidebar-muted:    #64748b;
+  --color-sidebar-icon-btn: #475569;
+
+  /* ── Spacing scale (4-point grid) ───────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* ── Typography ─────────────────────────────────────────────── */
+  --font-size-xs:   11px;
+  --font-size-sm:   12px;
+  --font-size-base: 13px;
+  --font-size-md:   14px;
+  --font-size-lg:   15px;
+  --font-size-xl:   18px;
+  --font-size-2xl:  24px;
+  --font-size-3xl:  32px;
+  --font-size-stat: 36px;
+
+  /* ── Border radii ────────────────────────────────────────────── */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   8px;
+  --radius-xl:   10px;
+  --radius-full: 9999px;
+
+  /* ── Shadows ────────────────────────────────────────────────── */
+  --shadow-card:      0 2px 8px rgba(0, 0, 0, 0.1);
+  --shadow-sidebar:   4px 0 32px rgba(0, 0, 0, 0.5);
+  --shadow-hamburger: 0 2px 8px rgba(0, 0, 0, 0.3);
+
+  /* ── Z-index layers ─────────────────────────────────────────── */
+  --z-overlay: 1050;
+  --z-sidebar: 1100;
+
+  /* ── Transitions ────────────────────────────────────────────── */
+  --transition-fast:   0.15s;
+  --transition-drawer: 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Dark mode overrides ────────────────────────────────────────── */
+[data-theme="dark"] {
+  --color-bg:              #0f172a;
+  --color-surface:         #1e293b;
+  --color-surface-raised:  #0f172a;
+  --color-surface-danger:  rgba(220, 38, 38, 0.08);
+  --color-surface-overdue: #1c0404;
+  --color-border:          #334155;
+  --color-border-input:    #475569;
+  --color-border-subtle:   #1e293b;
+  --color-text:            #e2e8f0;
+  --color-text-muted:      #94a3b8;
+  --color-text-faint:      #64748b;
+  --color-text-strong:     #f1f5f9;
+  --color-overdue-label:   #f87171;
+  --color-contam-high:     #f87171;
+  --color-fill-track:      #0f172a;
+}
