@@ -25,6 +25,7 @@
   let cameras = $state<{ id: string; label: string }[]>([]);
   let selectedCamera = $state('');
   let cameraStarted = $state(false);
+  let invalidQr = $state(false);
 
   onMount(async () => {
     try {
@@ -83,24 +84,40 @@
     result = '';
     parsedAccession = '';
     parsedSpecies = '';
+    invalidQr = false;
     await startScanner();
+  }
+
+  function looksLikeNonSteloPTC(text: string): boolean {
+    const t = text.trim();
+    return /^https?:\/\//i.test(t) || /^ftp:\/\//i.test(t) || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t);
   }
 
   function onScanSuccess(decodedText: string) {
     if (result === decodedText) return; // debounce duplicate scans
     result = decodedText;
+    invalidQr = false;
 
     // Try to parse SteloPTC QR JSON payload
     try {
       const payload = JSON.parse(decodedText);
-      if (payload.accession) parsedAccession = payload.accession;
-      if (payload.species) parsedSpecies = payload.species;
+      if (payload.accession) {
+        parsedAccession = payload.accession;
+        if (payload.species) parsedSpecies = payload.species;
+      } else {
+        // JSON but no accession field — not a SteloPTC label
+        invalidQr = true;
+      }
     } catch {
-      // Not JSON, try plain accession
-      parsedAccession = decodedText.trim();
+      // Not JSON — check if it looks like a URL or email before treating as accession
+      if (looksLikeNonSteloPTC(decodedText)) {
+        invalidQr = true;
+      } else {
+        parsedAccession = decodedText.trim();
+      }
     }
 
-    // Store scan event
+    // Store scan event for audit regardless of validity
     storeScan(decodedText);
 
     // Callback
@@ -143,6 +160,7 @@
     result = '';
     parsedAccession = '';
     parsedSpecies = '';
+    invalidQr = false;
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -194,34 +212,49 @@
 
       <!-- Result -->
       {#if result}
-        <div class="result-card">
-          <div class="result-header">
-            <span class="result-icon">&#10003;</span>
-            <strong>QR Code Detected</strong>
-            <button title="Clear the current scan result and scan another QR code" class="btn btn-sm" onclick={clearResult}>Clear</button>
-          </div>
-          {#if parsedAccession}
-            <div class="result-row">
-              <span title="Accession number parsed from the scanned QR code" class="result-label">Accession</span>
-              <span title="The specimen accession number extracted from the QR code payload" class="result-value mono">{parsedAccession}</span>
+        {#if invalidQr}
+          <div class="result-card result-card--invalid">
+            <div class="result-header">
+              <span class="result-icon result-icon--invalid">&#9888;</span>
+              <strong>Not a SteloPTC label</strong>
+              <button title="Clear the current scan result and scan another QR code" class="btn btn-sm" onclick={clearResult}>Clear</button>
             </div>
-          {/if}
-          {#if parsedSpecies}
+            <p class="invalid-msg">This QR code is not a SteloPTC specimen label.</p>
             <div class="result-row">
-              <span title="Species identifier parsed from the scanned QR code" class="result-label">Species</span>
-              <span title="The species code or genus/species name extracted from the QR code payload" class="result-value">{parsedSpecies}</span>
+              <span title="The full raw text data decoded from the QR code" class="result-label">Raw data</span>
+              <span title="Complete raw content of the scanned QR code" class="result-value raw">{result.length > 80 ? result.slice(0, 80) + '…' : result}</span>
             </div>
-          {/if}
-          <div class="result-row">
-            <span title="The full raw text data decoded from the QR code" class="result-label">Raw data</span>
-            <span title="Complete raw content of the scanned QR code — may be JSON or a plain accession number" class="result-value raw">{result.length > 80 ? result.slice(0, 80) + '…' : result}</span>
           </div>
-          {#if parsedAccession}
-            <button title="Search for the specimen with this accession number and open its detail page" class="btn btn-primary" onclick={navigateToSpecimen} disabled={navigating}>
-              {navigating ? 'Searching…' : '→ Open Specimen'}
-            </button>
-          {/if}
-        </div>
+        {:else}
+          <div class="result-card">
+            <div class="result-header">
+              <span class="result-icon">&#10003;</span>
+              <strong>QR Code Detected</strong>
+              <button title="Clear the current scan result and scan another QR code" class="btn btn-sm" onclick={clearResult}>Clear</button>
+            </div>
+            {#if parsedAccession}
+              <div class="result-row">
+                <span title="Accession number parsed from the scanned QR code" class="result-label">Accession</span>
+                <span title="The specimen accession number extracted from the QR code payload" class="result-value mono">{parsedAccession}</span>
+              </div>
+            {/if}
+            {#if parsedSpecies}
+              <div class="result-row">
+                <span title="Species identifier parsed from the scanned QR code" class="result-label">Species</span>
+                <span title="The species code or genus/species name extracted from the QR code payload" class="result-value">{parsedSpecies}</span>
+              </div>
+            {/if}
+            <div class="result-row">
+              <span title="The full raw text data decoded from the QR code" class="result-label">Raw data</span>
+              <span title="Complete raw content of the scanned QR code — may be JSON or a plain accession number" class="result-value raw">{result.length > 80 ? result.slice(0, 80) + '…' : result}</span>
+            </div>
+            {#if parsedAccession}
+              <button title="Search for the specimen with this accession number and open its detail page" class="btn btn-primary" onclick={navigateToSpecimen} disabled={navigating}>
+                {navigating ? 'Searching…' : '→ Open Specimen'}
+              </button>
+            {/if}
+          </div>
+        {/if}
       {:else if scanning && !error}
         <p class="hint">Point the camera at a SteloPTC QR code</p>
       {/if}
@@ -373,6 +406,14 @@
   }
 
   :global(.dark) .result-card { background: rgba(34,197,94,0.1); border-color: #16a34a; }
+
+  .result-card--invalid { background: #fffbeb; border-color: #fbbf24; }
+  :global(.dark) .result-card--invalid { background: rgba(251,191,36,0.1); border-color: #d97706; }
+  .result-card--invalid .result-header strong { color: #92400e; }
+  :global(.dark) .result-card--invalid .result-header strong { color: #fcd34d; }
+  .result-icon--invalid { color: #d97706; }
+  .invalid-msg { font-size: 13px; color: #78350f; margin: 0; }
+  :global(.dark) .invalid-msg { color: #fde68a; }
 
   .result-header {
     display: flex;
