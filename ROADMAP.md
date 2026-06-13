@@ -114,6 +114,24 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** JSON payload parsing, `onscan` callback, scan storage, camera lifecycle.
 - **Bump:** patch.
 
+### WP-08 — Specimen Work Queue / Daily Task View
+- **Goal:** Give lab technicians a single view showing which specimens need attention today — removing the need to scan the full list looking for overdue actions.
+- **Files:** new `src/lib/components/WorkQueue.svelte`, `src-tauri/src/commands/specimens.rs` (new `get_work_queue` command), `src/lib/api.ts`, `src/lib/components/Sidebar.svelte` (add nav entry).
+- **Steps:**
+  1. Add a `get_work_queue` Tauri command that queries the database and returns a list of `WorkQueueItem` records. Each item carries: specimen accession, species, stage, location, and a `reason` tag indicating why it needs attention. Initial reasons to detect:
+     - **Subculture due** — last subculture was more than N days ago (use the per-species expected subculture interval if available, otherwise a lab-wide default of 30 days).
+     - **Media change due** — same interval logic applied to the last media-change passage type.
+     - **Contamination check overdue** — any specimen flagged with an open contamination event older than 7 days that has not been resolved.
+     - **No passage ever recorded** — specimens older than 14 days with zero subculture history.
+     - **Quarantine without release** — specimens in quarantine status with no resolution passage in the last 30 days (this mirrors the existing compliance rule but surfaces it as an action item, not just a flag).
+  2. Return items sorted by urgency: contamination and quarantine issues first, then most-overdue subcultures descending.
+  3. Build `WorkQueue.svelte` as a simple list view (not a calendar, not a Kanban — just a prioritised table). Columns: accession, species, stage, location, reason badge, and a **quick-action button** that navigates directly to the specimen detail for that row.
+  4. Add the Work Queue as a sidebar nav item (between Dashboard and Specimens, or after Specimens — pick whichever feels natural in the navigation order). Use a clock or checklist emoji icon consistent with the existing sidebar icon style.
+  5. Show a count badge on the nav item when the queue is non-empty (mirrors the existing error-log badge pattern).
+- **Acceptance:** Opening the Work Queue shows every specimen that meets at least one overdue criterion; clicking the action button navigates to the correct specimen detail; specimens with no overdue actions produce an empty-state message ("All specimens are on schedule"); the count badge on the nav item reflects the current queue length.
+- **Preserve:** The existing compliance-flag system and audit trail — the Work Queue is a read-only derived view, not a replacement for compliance records. Do not write any audit or compliance entries from this view.
+- **Bump:** minor.
+
 ### Looking great — design system & polish
 
 ### WP-10 — Extract a central design-token system
@@ -252,7 +270,7 @@ The work is staged so that real value lands early and nothing is over-built befo
   3. Ship a minimal standalone verifier (a short Node or Python script in `docs/`) that takes the exported JSON and confirms the proof against the root.
 - **Acceptance:** An exported proof verifies with the standalone script against the stored root; tampering with any field of the exported record fails verification.
 - **Preserve:** The WP-20 checkpoint format (this consumes it); export must not mutate any audit data.
-- **Bump:** minor → ships the Phase-1 Trust layer as **v1.2.0**.
+- **Bump:** minor → ships the Phase-1 Trust layer as **v1.3.0**.
 
 #### Phase 2 — On-Chain Anchoring (Dogecoin first) — *future, not yet scoped*
 
@@ -420,11 +438,12 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | **v1.1.0** | WP-05 onboarding + demo data — **Phase A complete** | ✅ shipped |
 | v1.1.1 | WP-06 bug/polish backlog clearance (Print Summary fix, QR button text fix) | planned |
 | v1.1.2 | WP-07 QR scanner rejects non-SteloPTC codes | planned |
-| v1.1.x | WP-10–13 design tokens, states, a11y, print polish | planned |
-| v1.1.x | WP-14 first test harness — **gate on WP-18** | planned |
-| v1.1.x | WP-15–17 perf/indexing, backup restore, Excel import | planned |
-| **v1.2.0** | **Trust(less) & Audit Layer — Phase 1** (hash-chain + Merkle checkpoints + proof export, WP-18–21) | planned |
-| v1.3.x | *Buffer for Phase B overflow, additional patch releases, or Trust Layer follow-up work. Version numbers here are approximate targets; Phase B may land cleanly in v1.1.x or may need a v1.3.x cycle before Phase C begins — either is fine.* | planned |
+| **v1.2.0** | WP-08 Specimen Work Queue / Daily Task View | planned |
+| v1.2.x | WP-10–13 design tokens, states, a11y, print polish | planned |
+| v1.2.x | WP-14 first test harness — **gate on WP-18** | planned |
+| v1.2.x | WP-15–17 perf/indexing, backup restore, Excel import | planned |
+| **v1.3.0** | **Trust(less) & Audit Layer — Phase 1** (hash-chain + Merkle checkpoints + proof export, WP-18–21) | planned |
+| v1.3.x | *Buffer for Phase B overflow, additional patch releases, or Trust Layer follow-up work. Version numbers here are approximate targets — Phase B work may land cleanly in the v1.2.x series or may need extra cycles before Phase C begins. Either is fine.* | planned |
 | **v1.4.0** | Phase C — profile-ready engine (PTC behavior unchanged, WP-22–27) | planned |
 | v2.0.0 | First multi-app release: SteloPTC + **SteloCC** | planned |
 | v2.1.0 | **SteloMyco** | planned |
