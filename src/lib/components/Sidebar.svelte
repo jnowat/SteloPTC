@@ -44,6 +44,8 @@
 <button
   class="hamburger"
   aria-label="Open navigation menu"
+  aria-expanded={mobileOpen}
+  aria-controls="sidebar-nav"
   title="Open navigation menu"
   onclick={() => (mobileOpen = true)}
 >
@@ -62,18 +64,34 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v1.2.2</span>
+    <span class="version" title="Application version">v1.2.6</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
 
-  <nav class="nav">
+  <nav id="sidebar-nav" class="nav" aria-label="Main navigation">
     {#each navItems as item}
       {#if canSee(item)}
         <button
           class="nav-item"
           class:active={$currentView === item.id}
+          aria-current={$currentView === item.id ? 'page' : undefined}
           onclick={() => handleNavTap(item.id)}
+          aria-label={
+            item.id === 'dashboard' ? 'Dashboard — overview of all key metrics (Ctrl+1)' :
+            item.id === 'work-queue' ? 'Work Queue — specimens needing attention today' :
+            item.id === 'specimens' ? 'Specimens — manage and view all tissue culture specimens (Ctrl+2)' :
+            item.id === 'media' ? 'Media Logs — track media preparation and usage records (Ctrl+3)' :
+            item.id === 'reminders' ? 'Reminders — view and manage scheduled tasks and alerts (Ctrl+4)' :
+            item.id === 'compliance' ? 'Compliance — review compliance flags and regulatory records' :
+            item.id === 'species' ? 'Species — manage species definitions and subculture intervals' :
+            item.id === 'inventory' ? 'Inventory — track stock levels and supply usage' :
+            item.id === 'users' ? 'Users — manage user accounts and roles (admin only)' :
+            item.id === 'audit' ? 'Audit Log — view system-wide change history (admin/supervisor)' :
+            item.id === 'error-log' ? 'Error Log — review application errors and warnings (Ctrl+5)' :
+            item.id === 'export' ? 'Export Data — download data as Excel, CSV, or JSON' :
+            item.label
+          }
           title={
             item.id === 'dashboard' ? 'Go to Dashboard — overview of all key metrics' :
             item.id === 'work-queue' ? 'Go to Work Queue — specimens needing attention today' :
@@ -109,10 +127,10 @@
       <div class="user-role" title="Your account role determines which features and data you can access">{$currentUser?.role || ''}</div>
     </div>
     <div class="footer-actions">
-      <button class="icon-btn" onclick={ontoggleDark} title="Toggle dark/light theme">
+      <button class="icon-btn" onclick={ontoggleDark} title="Toggle dark/light theme" aria-label={isDark ? 'Switch to light theme' : 'Switch to dark theme'}>
         {@html isDark ? '&#9728;' : '&#127769;'}
       </button>
-      <button class="icon-btn" onclick={onlogout} title="Log out of the current session">
+      <button class="icon-btn" onclick={onlogout} title="Log out of the current session" aria-label="Log out">
         {@html '&#10140;'}
       </button>
     </div>

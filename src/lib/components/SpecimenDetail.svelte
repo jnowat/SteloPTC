@@ -25,6 +25,13 @@
   let uploadingPhoto = $state(false);
   let lightboxSrc = $state<string | null>(null);
   let lightboxMime = $state<string>('image/jpeg');
+  let lightboxCloseBtn = $state<HTMLButtonElement | null>(null);
+
+  $effect(() => {
+    if (lightboxSrc && lightboxCloseBtn) {
+      lightboxCloseBtn.focus();
+    }
+  });
   let fileInputEl = $state<HTMLInputElement | null>(null);
   let isSplitting = $state(false);
   let splitCount = $state(2);
@@ -671,6 +678,11 @@
                     step="1"
                     bind:value={passageHealthValue}
                     class="health-slider"
+                    aria-label="Health status"
+                    aria-valuemin="0"
+                    aria-valuemax="4"
+                    aria-valuenow={passageHealthValue}
+                    aria-valuetext="{passageHealthValue} – {healthLabels[passageHealthValue]}"
                     title="Drag to set health score: 0=Dead, 1=Poor, 2=Fair, 3=Good, 4=Healthy"
                     style="--track-color: {healthColors[passageHealthValue]};"
                   />
@@ -1073,8 +1085,22 @@
 {#if lightboxSrc}
   <!-- svelte-ignore a11y_click_events_have_key_events -->
   <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="lightbox" onclick={() => (lightboxSrc = null)} title="Click to close">
-    <button class="lightbox-close" onclick={() => (lightboxSrc = null)} title="Close">&#10005;</button>
+  <div
+    class="lightbox"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Photo viewer"
+    onclick={() => (lightboxSrc = null)}
+    onkeydown={(e) => { if (e.key === 'Escape') lightboxSrc = null; }}
+    tabindex="-1"
+  >
+    <button
+      class="lightbox-close"
+      onclick={() => (lightboxSrc = null)}
+      aria-label="Close photo viewer"
+      title="Close"
+      bind:this={lightboxCloseBtn}
+    >&#10005;</button>
     <img src={lightboxSrc} alt="Specimen photo" onclick={(e) => e.stopPropagation()} />
   </div>
 {/if}

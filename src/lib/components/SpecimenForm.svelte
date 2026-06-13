@@ -248,12 +248,18 @@
       {:else}
         <input
           type="range"
+          id="health-slider"
           min="0"
           max="4"
           step="1"
           bind:value={healthValue}
           class="health-slider"
           style="--track-color: {healthColors[healthValue]};"
+          aria-label="Health status"
+          aria-valuemin="0"
+          aria-valuemax="4"
+          aria-valuenow={healthValue}
+          aria-valuetext="{healthValue} – {healthLabels[healthValue]}"
           title="Rate specimen health from 0 (Dead) to 4 (Healthy) — current: {healthValue} ({healthLabels[healthValue]})"
         />
         <div class="health-ticks">
