@@ -20,6 +20,7 @@
   import ErrorLog from './lib/components/ErrorLog.svelte';
   import Notifications from './lib/components/Notifications.svelte';
   import ExportManager from './lib/components/ExportManager.svelte';
+  import ImportManager from './lib/components/ImportManager.svelte';
   import WorkQueue from './lib/components/WorkQueue.svelte';
 
   let startupError = '';
@@ -163,6 +164,8 @@
           <ErrorLog />
         {:else if $currentView === 'export'}
           <ExportManager />
+        {:else if $currentView === 'import'}
+          <ImportManager />
         {:else if $currentView === 'work-queue'}
           <WorkQueue />
         {:else}

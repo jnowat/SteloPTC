@@ -5,6 +5,28 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-13
+
+### Added
+
+- **WP-17 — Excel import**
+  - New `ImportManager.svelte` component accessible from the sidebar ("Import Data").
+  - Users can select any `.xlsx` file produced by the SteloPTC Excel export.
+  - SheetJS parses the six-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance) entirely on the frontend.
+  - A **dry-run preview** is always shown first: the backend processes every row inside a transaction, returns per-sheet counts (creates / updates / skips) and a list of row-level errors, then rolls back — no data is changed.
+  - After reviewing the preview the user clicks **Confirm Import**; the same payload is committed in a single atomic transaction (rolled back automatically on any database-level failure).
+  - **Upsert semantics** — rows are matched by their natural key:
+    - Specimens → `accession_number`
+    - Media Batches → `batch_id` (Batch Code column), falling back to `name`
+    - Prepared Solutions / Inventory → `name`
+    - Subcultures → `(specimen_id, passage_number)`; `Specimen ID` is resolved against `specimens.id` (UUID) first, then `specimens.accession_number`
+    - Compliance → always inserted (no unique natural key)
+  - Species referenced by an unknown `Species Code` are auto-created as stub entries using the exported `Species` (genus + name) value.
+  - Malformed or invalid rows are reported precisely (sheet name + 1-based row number + reason) rather than silently skipped.
+  - Exporting a lab, wiping specimen/inventory/media data, then importing the same file fully restores specimens, media batches, prepared solutions, and inventory. Subcultures link to specimens via UUID or accession number, so they also restore correctly when specimens are imported in the same file.
+  - New Tauri command `import_xlsx` in `src-tauri/src/commands/import.rs`; requires `can_write` permission.
+- Version bumped to **1.3.0** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [1.2.7] - 2026-06-13
 
 ### Changed
