@@ -238,6 +238,6 @@
   .tabs { display: flex; gap: 0; border-bottom: 2px solid #e2e8f0; }
   :global(.dark) .tabs { border-color: #334155; }
   .tab { padding: 10px 20px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: 13px; font-weight: 600; color: #6b7280; }
-  .tab.active { color: #ff8c00; border-bottom-color: #ff8c00; }
+  .tab.active { color: #ffd2a1; border-bottom-color: #ffd2a1; }
   .pagination { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; justify-content: center; font-size: 13px; }
 </style>

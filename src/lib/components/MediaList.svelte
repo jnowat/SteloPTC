@@ -958,7 +958,7 @@
   .conc-toggle { margin-bottom: 10px; }
   .calc-hint {
     font-size: 12px;
-    color: #ff8c00;
+    color: #ffd2a1;
     margin-top: 4px;
     font-style: italic;
   }

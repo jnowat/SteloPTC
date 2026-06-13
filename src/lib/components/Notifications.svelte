@@ -66,7 +66,7 @@
     opacity: 0.7;
     letter-spacing: 0.2px;
   }
-  .notif-info { background: rgba(255, 140, 0, 0.1); color: #c2410c; }
+  .notif-info { background: rgba(255, 210, 161, 0.20); color: #c2410c; }
   .notif-success { background: #dcfce7; color: #166534; }
   .notif-warning { background: #fef9c3; color: #854d0e; }
   .notif-error { background: #fef2f2; color: #991b1b; }

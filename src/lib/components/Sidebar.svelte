@@ -223,8 +223,8 @@
     color: #e2e8f0;
   }
   .nav-item.active {
-    background: #ff8c00;
-    color: white;
+    background: #ffd2a1;
+    color: #1a0e00;
   }
   .nav-icon { font-size: 16px; width: 20px; text-align: center; }
   .nav-label { flex: 1; }

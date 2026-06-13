@@ -175,8 +175,8 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    background: #ff8c00;
-    color: white;
+    background: #ffd2a1;
+    color: #1a0e00;
     font-size: 16px;
     font-weight: 800;
     display: flex;

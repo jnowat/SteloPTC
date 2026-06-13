@@ -330,7 +330,7 @@
   .location-preview {
     margin-top: 6px;
     font-size: 12px;
-    color: #ff8c00;
+    color: #ffd2a1;
     font-style: italic;
   }
 

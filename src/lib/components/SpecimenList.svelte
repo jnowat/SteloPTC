@@ -560,7 +560,7 @@ ${filterLine}
   .clickable { cursor: pointer; }
   .clickable:hover td { background: #eff6ff !important; }
   :global(.dark) .clickable:hover td { background: #1e2535 !important; }
-  .clickable.selected td { background: rgba(255, 140, 0, 0.08) !important; }
+  .clickable.selected td { background: rgba(255, 210, 161, 0.16) !important; }
   :global(.dark) .clickable.selected td { background: #1e3a8f !important; }
 
   .check-col {
@@ -688,7 +688,7 @@ ${filterLine}
     white-space: nowrap;
   }
   .batch-btn:hover:not(:disabled) { background: #475569; }
-  .batch-btn.active { background: #e07b00; border-color: #ff8c00; color: #fff; }
+  .batch-btn.active { background: #d4a873; border-color: #ffd2a1; color: #1a0e00; }
   .batch-btn-danger { background: #7f1d1d; border-color: #991b1b; }
   .batch-btn-danger:hover:not(:disabled) { background: #991b1b; }
   .batch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -710,9 +710,9 @@ ${filterLine}
   }
 
   .batch-apply {
-    background: #ff8c00;
-    color: #fff;
-    border: 1px solid #e07b00;
+    background: #ffd2a1;
+    color: #1a0e00;
+    border: 1px solid #d4a873;
     border-radius: 6px;
     padding: 6px 16px;
     font-size: 12px;
@@ -721,7 +721,7 @@ ${filterLine}
     transition: background 0.1s;
     white-space: nowrap;
   }
-  .batch-apply:hover:not(:disabled) { background: #ff8c00; }
+  .batch-apply:hover:not(:disabled) { background: #ffd2a1; }
   .batch-apply:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ── Mobile ── */

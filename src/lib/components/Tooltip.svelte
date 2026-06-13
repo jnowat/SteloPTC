@@ -73,7 +73,7 @@
 
   .tip-wrap:hover .tip-badge,
   .tip-wrap:focus .tip-badge {
-    background: #ff8c00;
+    background: #ffd2a1;
     color: #fff;
   }
 
