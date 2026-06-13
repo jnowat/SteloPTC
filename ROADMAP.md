@@ -1,7 +1,7 @@
 # SteloPTC → Stelo Lab Suite — Engineering Roadmap
 
 **Status as of June 2026:** **v1.1.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Phase A shipped — first signed GitHub Releases published**
-**Schema:** **6 migrations** total, latest is `migration_006_force_password_change` (added by WP-01); `migration_005_contamination_schedule` precedes it. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-21 will use one final time.
+**Schema:** **6 migrations** total, latest is `migration_006_force_password_change` (added by WP-01); `migration_005_contamination_schedule` precedes it. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Photos/attachments landed in v0.1.19; Phase A (security hardening, signed releases, crash-proofing, onboarding) shipped across v0.1.20 → v1.1.0.
 **In progress (Phase B):** a **Trust(less) and Audit Layer** — a cryptographically tamper-evident audit history (hash-chain + Merkle checkpoints now; optional Dogecoin anchoring later).
@@ -36,7 +36,7 @@ You want two things that pull against each other: **ship soon** and **three vert
 3. **Phase C — De-harden the domain (Section 4).** Convert the baked-in vocabulary (CHECK constraints, enums, labels) into data. This is the keystone. It's invisible to users but it's what makes one codebase serve three labs. Ships as v1.4 (still PTC-only behaviorally).
 4. **Phase D — Cell Culture vertical (Section 5)** and **Phase E — Mycology vertical (Section 6)**, built as *profiles* on the shared engine.
 
-> **Why de-harden before building verticals?** Your schema encodes plant vocabulary as SQL `CHECK` constraints — e.g. `stage CHECK(stage IN ('explant','callus','shoot_meristem',...))` at `migrations.rs:391`. The stage constraint was already **expanded in migration 002 and defensively rebuilt in migration 003** — that's two migrations whose job was to widen one constraint via a full table rebuild. WP-21 will run this table-rebuild pattern **one final time** to drop the constraint entirely. Cell lines don't have an "explant" stage; mushroom cultures don't "acclimatize." If you fork now, every vocabulary change is three migrations and three CHECK-constraint rebuilds forever. Lookup tables make vocabulary *data*, and data is cheap to vary per profile.
+> **Why de-harden before building verticals?** Your schema encodes plant vocabulary as SQL `CHECK` constraints — e.g. `stage CHECK(stage IN ('explant','callus','shoot_meristem',...))` at `migrations.rs:391`. The stage constraint was already **expanded in migration 002 and defensively rebuilt in migration 003** — that's two migrations whose job was to widen one constraint via a full table rebuild. WP-23 will run this table-rebuild pattern **one final time** to drop the constraint entirely. Cell lines don't have an "explant" stage; mushroom cultures don't "acclimatize." If you fork now, every vocabulary change is three migrations and three CHECK-constraint rebuilds forever. Lookup tables make vocabulary *data*, and data is cheap to vary per profile.
 
 ---
 
@@ -87,6 +87,51 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 
 ## 3. PHASE B — "Looking great / working great"
 
+### Immediate fixes
+
+### WP-06 — Bug/polish backlog clearance
+- **Goal:** Fix the known silent-failure bugs from Phase A so Phase B polish work (WP-13) is building on a working foundation.
+- **Files:** `src/lib/components/SpecimenList.svelte` (Print Summary fix). The QR scanner button-text fix (`QrScanner.svelte:221`, HTML entity `&#8594;` → Unicode `→`) was already applied as a standalone patch and does not need re-implementing.
+- **Steps:**
+  1. In `printSummaryReport`, wrap the entire function body in a `try/catch`. Any caught exception should call `addNotification('Print failed — check browser popup permissions or try again', 'error')` rather than crashing silently.
+  2. Replace the bare `if (!win) return;` null guard with a user-facing notification: `addNotification('Could not open print window — allow popups for this app in your OS or browser settings', 'error'); return;`. A silent no-op is never acceptable; the user must know something went wrong.
+  3. If the above two steps do not resolve the issue on Windows (i.e. `window.open` returns `null` consistently regardless of popup settings), investigate replacing `window.open` with Tauri's `WebviewWindow` API for reliable new-window creation in the Tauri 2 webview context. Apply the same fix to `QrModal.svelte`'s `printLabel` function at the same time to keep both print paths consistent.
+  4. Verify the fix: click "Print Summary" on the Specimens page — the print dialog must appear, or a clear error notification must appear. No silent no-op.
+- **Acceptance:** "Print Summary" either opens the OS print dialog or surfaces a notification explaining why it could not. The QR label print in `QrModal.svelte` continues to work as before (verified in WP-02).
+- **Preserve:** The `printSummaryReport` HTML output format and column layout; the `printLabel` QR label format.
+- **Bump:** patch.
+
+### WP-07 — QR scanner: reject non-SteloPTC codes gracefully
+- **Goal:** Scanning an arbitrary QR code (a URL, vCard, plain text) shows a clear "not a SteloPTC code" message instead of treating the payload as an accession number.
+- **Files:** `src/lib/components/QrScanner.svelte`.
+- **Steps:**
+  1. Add a `$state` boolean `invalidQr = false` alongside the existing result state.
+  2. In `onScanSuccess`, after a JSON parse failure, check whether the raw text is a plausible SteloPTC accession before setting `parsedAccession`. A minimal guard: if the text starts with `http://`, `https://`, or `mailto:`, or if it contains whitespace and is longer than 60 characters, it is not a valid accession. Set `invalidQr = true` and leave `parsedAccession` empty.
+  3. In the result card UI, when `invalidQr` is true, show a distinct warning row: *"This QR code is not a SteloPTC specimen label"* — do not render the "Open Specimen" button.
+  4. `clearResult` should also reset `invalidQr = false`.
+  5. Still call `storeScan` (the scan event is recorded for audit regardless of whether it resolved to a specimen).
+- **Acceptance:** Scanning a Wikipedia or other non-SteloPTC QR shows the warning message and no "Open Specimen" button. Scanning a real SteloPTC specimen QR (JSON payload with `accession` key, or a plain accession-format string) works as before.
+- **Preserve:** JSON payload parsing, `onscan` callback, scan storage, camera lifecycle.
+- **Bump:** patch.
+
+### WP-08 — Specimen Work Queue / Daily Task View
+- **Goal:** Give lab technicians a single view showing which specimens need attention today — removing the need to scan the full list looking for overdue actions.
+- **Files:** new `src/lib/components/WorkQueue.svelte`, `src-tauri/src/commands/specimens.rs` (new `get_work_queue` command), `src/lib/api.ts`, `src/lib/components/Sidebar.svelte` (add nav entry).
+- **Steps:**
+  1. Add a `get_work_queue` Tauri command that queries the database and returns a list of `WorkQueueItem` records. Each item carries: specimen accession, species, stage, location, and a `reason` tag indicating why it needs attention. Initial reasons to detect:
+     - **Subculture due** — last subculture was more than N days ago (use the per-species expected subculture interval if available, otherwise a lab-wide default of 30 days).
+     - **Media change due** — same interval logic applied to the last media-change passage type.
+     - **Contamination check overdue** — any specimen flagged with an open contamination event older than 7 days that has not been resolved.
+     - **No passage ever recorded** — specimens older than 14 days with zero subculture history.
+     - **Quarantine without release** — specimens in quarantine status with no resolution passage in the last 30 days (this mirrors the existing compliance rule but surfaces it as an action item, not just a flag).
+  2. Return items sorted by urgency: contamination and quarantine issues first, then most-overdue subcultures descending.
+  3. Build `WorkQueue.svelte` as a simple list view (not a calendar, not a Kanban — just a prioritised table). Columns: accession, species, stage, location, reason badge, and a **quick-action button** that navigates directly to the specimen detail for that row.
+  4. Add the Work Queue as a sidebar nav item (between Dashboard and Specimens, or after Specimens — pick whichever feels natural in the navigation order). Use a clock or checklist emoji icon consistent with the existing sidebar icon style.
+  5. Show a count badge on the nav item when the queue is non-empty (mirrors the existing error-log badge pattern).
+- **Acceptance:** Opening the Work Queue shows every specimen that meets at least one overdue criterion; clicking the action button navigates to the correct specimen detail; specimens with no overdue actions produce an empty-state message ("All specimens are on schedule"); the count badge on the nav item reflects the current queue length.
+- **Preserve:** The existing compliance-flag system and audit trail — the Work Queue is a read-only derived view, not a replacement for compliance records. Do not write any audit or compliance entries from this view.
+- **Bump:** minor.
+
 ### Looking great — design system & polish
 
 ### WP-10 — Extract a central design-token system
@@ -118,16 +163,18 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 
 ### WP-13 — Print / PDF polish
 - **Goal:** The Culture Certificate and Specimens Summary look like lab documents, not browser printouts.
-- **Files:** the PDF/print components.
+- **Depends on:** WP-06 (Print Summary must be working before polishing its output).
+- **Files:** `src/lib/components/SpecimenList.svelte`, `src/lib/components/SpecimenDetail.svelte`, `src/lib/components/QrModal.svelte`.
 - **Steps:** Add a print stylesheet with proper margins, a header/footer band (lab name, accession, generated date, page numbers), and a place for a lab logo.
-- **Acceptance:** A printed certificate is clean on A4 and US Letter.
-- **Preserve:** Existing print-API approach.
+- **Acceptance:** A printed certificate is clean on A4 and US Letter; the Specimens Summary prints cleanly in landscape.
+- **Preserve:** Existing print-API approach; do not change the HTML structure in ways that break the fix from WP-06.
 - **Bump:** patch.
 
 ### Working great — stability, performance, tests
 
 ### WP-14 — First test harness (the highest-leverage packet here)
 - **Goal:** Stop shipping blind. There are currently **zero tests**.
+- **Depends on:** Nothing — but WP-18 (hash-chain audit log) must not be implemented before this packet is complete. Tests are the gate on the Trust layer: cryptographic invariants must be encoded as assertions before being shipped.
 - **Files:** `src-tauri` (Rust `#[cfg(test)]` modules + an integration test dir), `package.json` (add Vitest), `vitest.config.ts`.
 - **Steps:**
   1. Rust: unit-test the pure logic that doesn't need a window — accession-number generation, basal-salts g/L auto-calc, compliance auto-flag rules, stock auto-depletion math. Use an in-memory SQLite for command tests.
@@ -167,15 +214,17 @@ SteloPTC already keeps an **immutable audit trail**, but "immutable" today means
 
 The work is staged so that real value lands early and nothing is over-built before it's needed:
 
-- **Phase 1 — Cryptographic Audit Log (Merkle-chained local history) — _begin now._** Hash-chain every audit entry and roll batches into Merkle checkpoints, entirely local. Delivers tamper-evidence with zero external dependencies. Packets **WP-60 → WP-63** below.
-- **Phase 2 — On-Chain Anchoring (Dogecoin first) — _future work, not yet scoped._** Periodically publish a checkpoint's Merkle root to Dogecoin so a third party can prove a record existed at a point in time without trusting the lab. Phase 1 deliberately leaves the hooks for this (see WP-62's `anchored_txid` column and the documented Merkle construction).
+- **Phase 1 — Cryptographic Audit Log (Merkle-chained local history) — _begin now._** Hash-chain every audit entry and roll batches into Merkle checkpoints, entirely local. Delivers tamper-evidence with zero external dependencies. Packets **WP-18 → WP-21** below.
+- **Phase 2 — On-Chain Anchoring (Dogecoin first) — _future work, not yet scoped._** Periodically publish a checkpoint's Merkle root to Dogecoin so a third party can prove a record existed at a point in time without trusting the lab. Phase 1 deliberately leaves the hooks for this (see WP-20's `anchored_txid` column and the documented Merkle construction).
 - **Phase 3 — Specimen Events as Transactions — _longer-term, deliberately deprioritized._** Modelling each specimen lifecycle event as a signed ledger transaction. Interesting, but not a near-term goal — listed only so the architecture in Phase 1 doesn't paint it into a corner.
 
-> **Numbering note:** the Trust & Audit layer reserves the **WP-60 series** so its packets stay uniquely numbered as Phase 1/2/3 grow, without colliding with Phases C–F (20s–50s). Only Phase 1 is scoped into packets below; Phase 2/3 are described, not packetized, to avoid over-scoping.
+> **Numbering note:** Trust & Audit Phase 1 packets (WP-18–21) are numbered sequentially within Phase B. Future Phase 2/3 packets are reserved in the **WP-60 series** — safely beyond Phases C–F (which use the 20s–50s) — so that all cryptographic infrastructure work remains grouped and easy to find. Only Phase 1 is scoped into packets below; Phase 2/3 are described, not packetized, to avoid over-scoping.
+
+> **Dependency:** WP-14 (first test harness) is a hard gate on WP-18. The canonical serialization and hash-chain continuity invariants introduced in WP-18 must be encoded as assertions before being shipped — do not hand WP-18 to Claude Code until `cargo test` is green.
 
 #### Phase 1 — Cryptographic Audit Log (start now)
 
-### WP-60 — Hash-chain the immutable audit log (tamper-evident core)
+### WP-18 — Hash-chain the immutable audit log (tamper-evident core)
 - **Goal:** Every `audit_log` entry carries a SHA-256 hash of its own canonical content plus the hash of the previous entry, forming an append-only hash chain.
 - **Files:** new migration (007), `src-tauri/src/models/audit.rs`, `src-tauri/src/commands/audit.rs`.
 - **Steps:**
@@ -187,7 +236,7 @@ The work is staged so that real value lands early and nothing is over-built befo
 - **Preserve:** The audit log stays append-only and immutable; existing columns unchanged; existing audit writes from every command keep working.
 - **Bump:** minor.
 
-### WP-61 — Chain verification command + integrity panel
+### WP-19 — Chain verification command + integrity panel
 - **Goal:** A backend command that re-walks the chain and reports the first broken link, surfaced in a small admin/supervisor panel.
 - **Files:** `src-tauri/src/commands/audit.rs` (`verify_audit_chain`), `src/lib/api.ts`, a new `AuditIntegrity.svelte` panel (reachable from the existing Audit Log view).
 - **Steps:**
@@ -197,27 +246,31 @@ The work is staged so that real value lands early and nothing is over-built befo
 - **Preserve:** Verification is strictly read-only; the existing audit viewer is untouched apart from the added entry point.
 - **Bump:** minor.
 
-### WP-62 — Periodic Merkle checkpoints over audit batches
+### WP-20 — Periodic Merkle checkpoints over audit batches
 - **Goal:** Roll ranges of audit entries into a Merkle tree and store the root, so verification is efficient and roots are ready to anchor later — without redesign.
 - **Files:** new migration (008) for an `audit_checkpoints` table, `src-tauri/src/commands/audit.rs` (`build_checkpoint`, `list_checkpoints`).
 - **Steps:**
   1. Migration 008: `audit_checkpoints (id, from_seq, to_seq, merkle_root, entry_count, created_at, created_by, anchored_txid TEXT NULL)`. The `anchored_txid` column is the **Phase 2 hook** — created now, unused until on-chain anchoring exists.
-  2. Implement a **deterministic Merkle tree** over the `entry_hash` leaves for the range (document the exact rule for odd node counts — e.g. duplicate-last — because an off-app/on-chain verifier must reproduce it byte-for-byte).
-  3. Checkpoint creation is manual (admin/supervisor) and/or triggered on backup; store root + range + count.
-- **Acceptance:** Building a checkpoint over a known entry set reproduces the **same** root deterministically across runs; a per-entry Merkle proof verifies against the stored root.
-- **Preserve:** The WP-60 hash chain — Merkle leaves *are* the `entry_hash` values, not a parallel hash.
+  2. Implement a **deterministic Merkle tree** over the `entry_hash` leaves for the range. **Locked construction rule:** for odd node counts, duplicate the last leaf before pairing (the same rule used by Bitcoin's Merkle tree). Document this rule precisely in code comments and in `docs/CRYPTO_AUDIT.md` (WP-21), because an off-app or on-chain verifier must reproduce it byte-for-byte. This choice is permanent — changing it after checkpoints exist invalidates all prior proofs.
+  3. Checkpoint creation is triggered in three ways:
+     - **Event-driven:** automatically after any high-value audit event — new subculture, new media batch, contamination flag, or specimen location change.
+     - **Manual:** admin/supervisor can trigger a checkpoint on demand from the Audit Log view.
+     - **On backup:** `create_backup` triggers a checkpoint before copying the WAL, so every backup file contains a complete, sealed checkpoint covering all records at the time of backup.
+  4. Store root + range + entry count for each checkpoint.
+- **Acceptance:** Building a checkpoint over a known entry set reproduces the **same** root deterministically across runs; a per-entry Merkle proof verifies against the stored root; the "duplicate-last" rule is visibly enforced in the implementation.
+- **Preserve:** The WP-18 hash chain — Merkle leaves *are* the `entry_hash` values, not a parallel hash. The WP-16 backup flow must still succeed after the pre-backup checkpoint step is added.
 - **Bump:** minor.
 
-### WP-63 — Merkle proof export & standalone re-verification
+### WP-21 — Merkle proof export & standalone re-verification
 - **Goal:** Export one record's audit history plus its Merkle proof to a checkpoint root as portable JSON, with a documented standalone verifier so a third party can confirm tamper-evidence without running SteloPTC.
 - **Files:** `src-tauri/src/commands/audit.rs` (`export_audit_proof`), `src/lib/components/ExportManager.svelte` hook, new `docs/CRYPTO_AUDIT.md`.
 - **Steps:**
   1. `export_audit_proof(entity_id)` produces `{ record, entries[], leaf_hashes[], proof_path[], merkle_root, checkpoint_range }`.
-  2. Write `docs/CRYPTO_AUDIT.md` specifying the canonical serialization (WP-60), the hash algorithm, and the Merkle construction (WP-62) precisely enough to reimplement.
+  2. Write `docs/CRYPTO_AUDIT.md` specifying the canonical serialization (WP-18), the hash algorithm (SHA-256), and the Merkle construction (WP-20, including the duplicate-last odd-node rule) precisely enough to reimplement independently.
   3. Ship a minimal standalone verifier (a short Node or Python script in `docs/`) that takes the exported JSON and confirms the proof against the root.
 - **Acceptance:** An exported proof verifies with the standalone script against the stored root; tampering with any field of the exported record fails verification.
-- **Preserve:** The WP-62 checkpoint format (this consumes it); export must not mutate any audit data.
-- **Bump:** minor → ships the Phase-1 Trust layer as **v1.2.0**.
+- **Preserve:** The WP-20 checkpoint format (this consumes it); export must not mutate any audit data.
+- **Bump:** minor → ships the Phase-1 Trust layer as **v1.3.0**.
 
 #### Phase 2 — On-Chain Anchoring (Dogecoin first) — *future, not yet scoped*
 
@@ -233,7 +286,7 @@ A more formal model in which specimen lifecycle events are individually signed a
 
 This is the work that turns one product into a platform. It is **behavior-preserving for PTC** — after this phase, the plant app looks and works identically, but the vocabulary lives in data instead of in `CHECK` constraints, Rust enums, and hardcoded labels. Do it in this order.
 
-### WP-20 — Introduce the `lab_profile` concept
+### WP-22 — Introduce the `lab_profile` concept
 - **Goal:** One app-level setting that says which kind of lab this install is.
 - **Files:** new migration, `src-tauri/src/commands/admin.rs`, a new `src/lib/profile.ts`.
 - **Steps:**
@@ -244,7 +297,7 @@ This is the work that turns one product into a platform. It is **behavior-preser
 - **Preserve:** Everything — this packet adds, removes nothing.
 - **Bump:** minor.
 
-### WP-21 — Convert stage `CHECK` constraints → a `stages` lookup table
+### WP-23 — Convert stage `CHECK` constraints → a `stages` lookup table
 - **Goal:** Make the specimen lifecycle vocabulary *data*. This is the single most important schema change for multi-vertical.
 - **Files:** new migration, `models/specimen.rs`, `commands/specimens.rs`, `SpecimenForm.svelte`, `SpecimenDetail.svelte`, dashboard "by_stage" panel.
 - **Steps:**
@@ -256,7 +309,7 @@ This is the work that turns one product into a platform. It is **behavior-preser
 - **Preserve:** All existing specimens' stage values (seed codes must match current strings exactly so existing rows stay valid).
 - **Bump:** minor.
 
-### WP-22 — Same treatment for the other hardcoded vocabularies
+### WP-24 — Same treatment for the other hardcoded vocabularies
 - **Goal:** Generalize `propagation_method`, `hormone_type`, compliance `record_type`/`agency`, and inventory `category` the same way.
 - **Files:** migration, the corresponding models/commands/components.
 - **Steps:** For each, create a profile-scoped lookup table seeded with today's plant values; drop the `CHECK` constraint; drive the UI from the table. Group related ones to minimize table-rebuild migrations.
@@ -264,7 +317,7 @@ This is the work that turns one product into a platform. It is **behavior-preser
 - **Preserve:** All existing enum values as seed data.
 - **Bump:** minor.
 
-### WP-23 — Extract a UI "profile manifest" for labels & terminology
+### WP-25 — Extract a UI "profile manifest" for labels & terminology
 - **Goal:** The words on screen (entity names, page titles, field labels) come from a per-profile manifest, not hardcoded strings.
 - **Files:** `src/lib/profile.ts` → add a `manifest` object keyed by profile; `Sidebar.svelte`, `index.html` title, all component headings.
 - **Steps:**
@@ -274,15 +327,15 @@ This is the work that turns one product into a platform. It is **behavior-preser
 - **Preserve:** PTC manifest must reproduce today's exact wording.
 - **Bump:** minor.
 
-### WP-24 — Profile-scoped compliance rules
+### WP-26 — Profile-scoped compliance rules
 - **Goal:** The auto-flag engine (currently citrus-HLB / USDA-specific in `compliance.rs:252`) becomes a profile-pluggable rule set.
 - **Files:** `src-tauri/src/commands/compliance.rs`.
-- **Steps:** Move each rule (expired permit, citrus HLB, quarantine-without-release, positive-without-quarantine) behind a profile gate. PTC keeps all four. Define the rule interface so cell-culture and mycology can register their own (Section 4/5) without editing the plant rules.
+- **Steps:** Move each rule (expired permit, citrus HLB, quarantine-without-release, positive-without-quarantine) behind a profile gate. PTC keeps all four. Define the rule interface so cell-culture and mycology can register their own (Section 5/6) without editing the plant rules.
 - **Acceptance:** PTC flags identically; the rule registry is profile-aware.
 - **Preserve:** All four current plant rules and their flag messages/types.
 - **Bump:** minor → ship as **v1.4.0** (still a PTC product, now profile-ready underneath).
 
-### WP-25 — Per-vertical app identity (build-time)
+### WP-27 — Per-vertical app identity (build-time)
 - **Goal:** Three installable apps from one repo, differentiated at build time, sharing 95%+ of the code.
 - **Files:** `tauri.conf.json` (+ per-profile overrides), CI workflows, package metadata.
 - **Steps:**
@@ -314,7 +367,7 @@ Built entirely as profile data + a handful of cell-specific features on the shar
 - The structured location entry (Room/Rack/Shelf/Tray) maps cleanly to **freezer/tower/box/position** for LN2 / -80°C storage. Add a frozen-vial record: cell line, passage #, vial count, freeze date, freeze medium (e.g. 10% DMSO), location, and a thaw action that decrements vial count and creates a new active culture with the carried-forward passage number.
 
 ### WP-33 — Mycoplasma & contamination testing (compliance rule)
-- Register a cell-culture compliance rule: flag lines with no **mycoplasma test** in the last N passages/days (mirrors the citrus-HLB rule pattern from WP-24). Add biosafety-level tracking to the cell-line registry.
+- Register a cell-culture compliance rule: flag lines with no **mycoplasma test** in the last N passages/days (mirrors the citrus-HLB rule pattern from WP-26). Add biosafety-level tracking to the cell-line registry.
 
 ### WP-34 — Cell-culture dashboard panels
 - Reuse the contamination-overview + schedule widgets: "passages due," "lines overdue for mycoplasma test," "vials in storage by line," "low-confluence alerts."
@@ -370,6 +423,7 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | Shipping slips chasing verticals | **Cut v1.0.0 at end of Phase A** before any vertical work. The verticals are additive; the plant product must not wait on them. |
 | Migration mistakes on table rebuilds | Every rebuild migration ships with WP-14 coverage that loads a pre-migration fixture DB and asserts row counts + values survive. |
 | Default-credential / CSP issues reach users | WP-01 and WP-02 are gates on v1.0 — non-negotiable. |
+| Cryptographic invariants broken by future audit writes | WP-14 tests must encode the canonical serialization and chain-continuity invariants from WP-18 before they are shipped. The chain must be verified by the CI test suite on every push. |
 
 ---
 
@@ -382,12 +436,18 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | v1.0.0-1 | WP-03 first signed GitHub Release (Windows MSI + signed Android APK) | ✅ shipped |
 | v1.0.0-2 | WP-04 crash-proofing & atomic transactions | ✅ shipped |
 | **v1.1.0** | WP-05 onboarding + demo data — **Phase A complete** | ✅ shipped |
-| v1.1.x | Phase B polish/stability — design tokens, states, a11y, tests, perf, restore, import (WP-10–17) | planned |
-| **v1.2.0** | **Trust(less) & Audit Layer — Phase 1** (hash-chain + Merkle checkpoints + proof export, WP-60–63) | planned |
-| **v1.4.0** | Phase C — profile-ready engine (PTC behavior unchanged) | planned |
+| v1.1.1 | WP-06 bug/polish backlog clearance (Print Summary fix, QR button text fix) | planned |
+| v1.1.2 | WP-07 QR scanner rejects non-SteloPTC codes | planned |
+| **v1.2.0** | WP-08 Specimen Work Queue / Daily Task View | planned |
+| v1.2.x | WP-10–13 design tokens, states, a11y, print polish | planned |
+| v1.2.x | WP-14 first test harness — **gate on WP-18** | planned |
+| v1.2.x | WP-15–17 perf/indexing, backup restore, Excel import | planned |
+| **v1.3.0** | **Trust(less) & Audit Layer — Phase 1** (hash-chain + Merkle checkpoints + proof export, WP-18–21) | planned |
+| v1.3.x | *Buffer for Phase B overflow, additional patch releases, or Trust Layer follow-up work. Version numbers here are approximate targets — Phase B work may land cleanly in the v1.2.x series or may need extra cycles before Phase C begins. Either is fine.* | planned |
+| **v1.4.0** | Phase C — profile-ready engine (PTC behavior unchanged, WP-22–27) | planned |
 | v2.0.0 | First multi-app release: SteloPTC + **SteloCC** | planned |
 | v2.1.0 | **SteloMyco** | planned |
-| v2.x+ | Phase F cross-cutting features; Trust Layer **Phase 2** (Dogecoin anchoring) when external proof is needed | future |
+| v2.x+ | Phase F cross-cutting features; Trust Layer **Phase 2** (Dogecoin anchoring, WP-65+) when external proof is needed | future |
 
 > **On the version history:** the jump from `0.1.19` to the `1.0.0-x` line was intentional — the `0.1.x` series was a feature-complete-but-unreleased prototype, and `1.0.0-x` marks the first **production-grade, security-hardened, signed** release with a real GitHub Release. Note the pre-release label shipped as numeric **`1.0.0-1`** (not `rc.1`): the WiX MSI bundler rejects non-numeric pre-release identifiers. Phase A then settled at **v1.1.0** once onboarding (WP-05) landed.
 

@@ -218,7 +218,7 @@
           </div>
           {#if parsedAccession}
             <button title="Search for the specimen with this accession number and open its detail page" class="btn btn-primary" onclick={navigateToSpecimen} disabled={navigating}>
-              {navigating ? 'Searching…' : '&#8594; Open Specimen'}
+              {navigating ? 'Searching…' : '→ Open Specimen'}
             </button>
           {/if}
         </div>
