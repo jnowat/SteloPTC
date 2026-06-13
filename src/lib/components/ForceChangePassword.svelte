@@ -65,7 +65,7 @@
     justify-content: center;
     height: 100vh;
     width: 100vw;
-    background: linear-gradient(135deg, #0f172a 0%, #1a1100 50%, #0f4c2d 100%);
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f4c2d 100%);
     position: fixed;
     top: 0;
     left: 0;

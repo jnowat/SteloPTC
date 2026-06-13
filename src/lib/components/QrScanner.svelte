@@ -351,7 +351,7 @@
   .scan-line {
     width: 220px;
     height: 2px;
-    background: linear-gradient(90deg, transparent, #ffd2a1, transparent);
+    background: linear-gradient(90deg, transparent, #2563eb, transparent);
     animation: scanLine 2s ease-in-out infinite;
   }
 

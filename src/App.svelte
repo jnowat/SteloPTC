@@ -183,12 +183,12 @@
     height: 100dvh;
     height: 100vh; /* fallback for older browsers */
     width: 100vw;
-    background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 55%, #f0fdf4 100%);
+    background: #f8fafc;
     color: #1e293b;
   }
 
   .app.dark {
-    background: linear-gradient(135deg, #08101e 0%, #0f172a 55%, #080f0a 100%);
+    background: #0f172a;
     color: #e2e8f0;
   }
 
@@ -198,7 +198,7 @@
     justify-content: center;
     height: 100vh;
     width: 100vw;
-    background: linear-gradient(135deg, #0f172a 0%, #1a1100 50%, #0f4c2d 100%);
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f4c2d 100%);
   }
 
   .init-content {
@@ -218,7 +218,7 @@
     width: 36px;
     height: 36px;
     border: 3px solid #334155;
-    border-top-color: #ffd2a1;
+    border-top-color: #2563eb;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
     margin: 0 auto 16px;
@@ -293,15 +293,15 @@
   }
   :global(.btn:hover) { background: #f3f4f6; }
   :global(.btn:disabled) { opacity: 0.5; cursor: not-allowed; }
-  :global(.btn-primary) { background: #ffd2a1; color: #1a0e00; border-color: #ffd2a1; }
-  :global(.btn-primary:hover) { background: #d4a873; }
+  :global(.btn-primary) { background: #2563eb; color: white; border-color: #2563eb; }
+  :global(.btn-primary:hover) { background: #1d4ed8; }
   :global(.btn-danger) { background: #dc2626; color: white; border-color: #dc2626; }
   :global(.btn-danger:hover) { background: #b91c1c; }
   :global(.btn-sm) { padding: 4px 10px; font-size: 12px; }
 
   :global(.dark .btn) { background: #1e293b; color: #e2e8f0; border-color: #334155; }
   :global(.dark .btn:hover) { background: #334155; }
-  :global(.dark .btn-primary) { background: #ffd2a1; color: #1a0e00; }
+  :global(.dark .btn-primary) { background: #2563eb; color: white; }
 
   :global(.card) {
     background: white;
@@ -327,8 +327,8 @@
   }
   :global(input:focus), :global(select:focus), :global(textarea:focus) {
     outline: none;
-    border-color: #ffd2a1;
-    box-shadow: 0 0 0 3px rgba(255, 210, 161, 0.35);
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
   }
 
   :global(label) {
@@ -370,10 +370,10 @@
     border-bottom: 1px solid #f1f5f9;
     font-size: 13px;
   }
-  :global(tr:hover td) { background: rgba(202, 215, 255, 0.10); }
+  :global(tr:hover td) { background: #f8fafc; }
   :global(.dark th) { color: #94a3b8; border-bottom-color: #334155; }
-  :global(.dark td) { border-bottom-color: rgba(255,255,255,0.04); }
-  :global(.dark tr:hover td) { background: rgba(255, 210, 161, 0.06); }
+  :global(.dark td) { border-bottom-color: #1e293b; }
+  :global(.dark tr:hover td) { background: #1e293b; }
 
   /* Horizontal-scroll tables + 48px touch targets on mobile/tablet */
   @media (max-width: 1024px) {
@@ -419,23 +419,13 @@
   :global(.badge-green) { background: #dcfce7; color: #166534; }
   :global(.badge-red) { background: #fef2f2; color: #991b1b; }
   :global(.badge-yellow) { background: #fef9c3; color: #854d0e; }
-  :global(.badge-blue) { background: rgba(202, 215, 255, 0.2); color: #5b7de8; }
+  :global(.badge-blue) { background: #dbeafe; color: #1e40af; }
   :global(.badge-gray) { background: #f1f5f9; color: #475569; }
   :global(.dark .badge-green) { background: #166534; color: #dcfce7; }
   :global(.dark .badge-red) { background: #991b1b; color: #fef2f2; }
   :global(.dark .badge-yellow) { background: #854d0e; color: #fef9c3; }
-  :global(.dark .badge-blue) { background: rgba(170, 191, 255, 0.15); color: #cad7ff; }
+  :global(.dark .badge-blue) { background: #1e40af; color: #dbeafe; }
   :global(.dark .badge-gray) { background: #334155; color: #94a3b8; }
-
-  /* Stage-specific badge colors — mapped to stellar spectral types */
-  :global(.badge-stage-warm)  { background: rgba(255, 204, 111, 0.20); color: #7a4a00; border: 1px solid rgba(255,204,111,0.35); }
-  :global(.badge-stage-cool)  { background: rgba(202, 215, 255, 0.25); color: #2d4db5; border: 1px solid rgba(202,215,255,0.4); }
-  :global(.badge-stage-earth) { background: rgba(212, 168, 115, 0.22); color: #6b3f10; border: 1px solid rgba(212,168,115,0.35); }
-  :global(.badge-stage-green) { background: rgba(34,  197,  94, 0.15); color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
-  :global(.dark .badge-stage-warm)  { background: rgba(255, 204, 111, 0.14); color: #ffcc6f; border-color: rgba(255,204,111,0.25); }
-  :global(.dark .badge-stage-cool)  { background: rgba(202, 215, 255, 0.12); color: #cad7ff; border-color: rgba(202,215,255,0.2); }
-  :global(.dark .badge-stage-earth) { background: rgba(212, 168, 115, 0.14); color: #d4a873; border-color: rgba(212,168,115,0.25); }
-  :global(.dark .badge-stage-green) { background: rgba(34,  197,  94, 0.12); color: #4ade80; border-color: rgba(34,197,94,0.2); }
 
   :global(.page-header) {
     display: flex;

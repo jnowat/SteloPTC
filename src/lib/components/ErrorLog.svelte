@@ -548,7 +548,7 @@
   .sev-critical { background: rgba(220,38,38,0.25); color: #fca5a5; border: 1px solid rgba(220,38,38,0.35); }
   .sev-error    { background: rgba(239,68,68,0.15);  color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
   .sev-warning  { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
-  .sev-info     { background: rgba(202,215,255,0.12); color: #cad7ff; border: 1px solid rgba(202,215,255,0.25); }
+  .sev-info     { background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.25); }
 
   /* ─── Expanded detail ──────────────────────────────────── */
   .el-detail-row td {

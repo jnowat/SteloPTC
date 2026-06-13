@@ -178,14 +178,6 @@
     return s?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
   }
 
-  function stageClass(s: string): string {
-    if (['explant','callus','suspension','protoplast'].includes(s)) return 'badge-stage-warm';
-    if (['shoot','shoot_meristem','apical_meristem','embryogenic'].includes(s)) return 'badge-stage-cool';
-    if (['root','root_meristem'].includes(s)) return 'badge-stage-earth';
-    if (['plantlet','acclimatized','stock'].includes(s)) return 'badge-stage-green';
-    return 'badge-stage-cool';
-  }
-
   function openBatchAction(action: 'location' | 'stage') {
     batchAction = batchAction === action ? null : action;
   }
@@ -441,7 +433,7 @@ ${filterLine}
               </td>
               <td><strong>{s.accession_number}</strong></td>
               <td>{s.species_code || '—'}</td>
-              <td><span class="badge {stageClass(s.stage)}" title="Development stage: {s.stage}">{stageFmt(s.stage)}</span></td>
+              <td><span class="badge badge-blue" title="Development stage: {s.stage}">{stageFmt(s.stage)}</span></td>
               <td>{s.location || '—'}</td>
               <td>{s.subculture_count}</td>
               <td>{healthLabel(s.health_status)}</td>
@@ -566,9 +558,9 @@ ${filterLine}
 
 <style>
   .clickable { cursor: pointer; }
-  .clickable:hover td { background: rgba(202, 215, 255, 0.14) !important; }
-  :global(.dark) .clickable:hover td { background: rgba(255, 210, 161, 0.07) !important; }
-  .clickable.selected td { background: rgba(255, 210, 161, 0.16) !important; }
+  .clickable:hover td { background: #eff6ff !important; }
+  :global(.dark) .clickable:hover td { background: #1e3a5f !important; }
+  .clickable.selected td { background: #dbeafe !important; }
   :global(.dark) .clickable.selected td { background: #1e3a8f !important; }
 
   .check-col {
@@ -585,12 +577,12 @@ ${filterLine}
   }
 
   .btn-print-summary {
-    background: rgba(170, 191, 255, 0.08);
-    color: #aabfff;
-    border-color: rgba(170, 191, 255, 0.3);
+    background: #f5f3ff;
+    color: #5b21b6;
+    border-color: #c4b5fd;
   }
-  .btn-print-summary:hover { background: rgba(170, 191, 255, 0.15); }
-  :global(.dark) .btn-print-summary { background: rgba(170,191,255,0.1); color: #cad7ff; border-color: rgba(170,191,255,0.25); }
+  .btn-print-summary:hover { background: #ede9fe; }
+  :global(.dark) .btn-print-summary { background: rgba(139,92,246,0.12); color: #a78bfa; border-color: #5b21b6; }
 
   .btn-scan {
     background: #0f172a;
@@ -696,7 +688,7 @@ ${filterLine}
     white-space: nowrap;
   }
   .batch-btn:hover:not(:disabled) { background: #475569; }
-  .batch-btn.active { background: #d4a873; border-color: #ffd2a1; color: #1a0e00; }
+  .batch-btn.active { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
   .batch-btn-danger { background: #7f1d1d; border-color: #991b1b; }
   .batch-btn-danger:hover:not(:disabled) { background: #991b1b; }
   .batch-btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -718,9 +710,9 @@ ${filterLine}
   }
 
   .batch-apply {
-    background: #ffd2a1;
-    color: #1a0e00;
-    border: 1px solid #d4a873;
+    background: #1d4ed8;
+    color: #fff;
+    border: 1px solid #2563eb;
     border-radius: 6px;
     padding: 6px 16px;
     font-size: 12px;
@@ -729,7 +721,7 @@ ${filterLine}
     transition: background 0.1s;
     white-space: nowrap;
   }
-  .batch-apply:hover:not(:disabled) { background: #ffd2a1; }
+  .batch-apply:hover:not(:disabled) { background: #2563eb; }
   .batch-apply:disabled { opacity: 0.5; cursor: not-allowed; }
 
   /* ── Mobile ── */

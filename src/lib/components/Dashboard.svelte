@@ -498,7 +498,7 @@
   .bar-label { width: 100px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
   .bar-track { flex: 1; height: 20px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
   :global(.dark) .bar-track { background: #0f172a; }
-  .bar-fill { height: 100%; background: #ffd2a1; border-radius: 4px; transition: width 0.3s; }
+  .bar-fill { height: 100%; background: #2563eb; border-radius: 4px; transition: width 0.3s; }
   .species-fill { background: #059669; }
   .bar-value { width: 40px; text-align: right; font-size: 13px; font-weight: 700; }
 

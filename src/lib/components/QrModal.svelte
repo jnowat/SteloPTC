@@ -403,7 +403,7 @@
     width: 32px;
     height: 32px;
     border: 3px solid #e2e8f0;
-    border-top-color: #ffd2a1;
+    border-top-color: #2563eb;
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
