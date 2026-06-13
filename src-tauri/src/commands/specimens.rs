@@ -27,10 +27,12 @@ pub fn list_specimens(
     let mut stmt = db.conn.prepare(
         "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
                 p.name as project_name,
-                (SELECT COALESCE(MAX(contamination_flag), 0) FROM subcultures WHERE specimen_id = s.id) AS has_contamination
+                COALESCE(cf.has_contamination, 0) AS has_contamination
          FROM specimens s
          LEFT JOIN species sp ON s.species_id = sp.id
          LEFT JOIN projects p ON s.project_id = p.id
+         LEFT JOIN (SELECT specimen_id, MAX(contamination_flag) AS has_contamination
+                    FROM subcultures GROUP BY specimen_id) cf ON cf.specimen_id = s.id
          WHERE s.is_archived = 0
          ORDER BY s.created_at DESC
          LIMIT ?1 OFFSET ?2"
@@ -98,10 +100,12 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
     db.conn.query_row(
         "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
                 p.name as project_name,
-                (SELECT COALESCE(MAX(contamination_flag), 0) FROM subcultures WHERE specimen_id = s.id) AS has_contamination
+                COALESCE(cf.has_contamination, 0) AS has_contamination
          FROM specimens s
          LEFT JOIN species sp ON s.species_id = sp.id
          LEFT JOIN projects p ON s.project_id = p.id
+         LEFT JOIN (SELECT specimen_id, MAX(contamination_flag) AS has_contamination
+                    FROM subcultures WHERE specimen_id = ?1 GROUP BY specimen_id) cf ON cf.specimen_id = s.id
          WHERE s.id = ?1",
         params![id],
         |row| {
@@ -365,10 +369,12 @@ pub fn search_specimens(
     let query_sql = format!(
         "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
                 p.name as project_name,
-                (SELECT COALESCE(MAX(contamination_flag), 0) FROM subcultures WHERE specimen_id = s.id) AS has_contamination
+                COALESCE(cf.has_contamination, 0) AS has_contamination
          FROM specimens s
          LEFT JOIN species sp ON s.species_id = sp.id
          LEFT JOIN projects p ON s.project_id = p.id
+         LEFT JOIN (SELECT specimen_id, MAX(contamination_flag) AS has_contamination
+                    FROM subcultures GROUP BY specimen_id) cf ON cf.specimen_id = s.id
          {}
          ORDER BY s.created_at DESC
          LIMIT ?{} OFFSET ?{}",

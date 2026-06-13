@@ -43,6 +43,34 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (6)", [])?;
     }
 
+    if current < 7 {
+        migration_007_perf_indexes(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (7)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_007_perf_indexes(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch("
+        -- specimens: ORDER BY created_at DESC (list/search views)
+        CREATE INDEX IF NOT EXISTS idx_specimens_created_at ON specimens(created_at);
+
+        -- specimens: parent_specimen_id used in lineage lookups
+        CREATE INDEX IF NOT EXISTS idx_specimens_parent ON specimens(parent_specimen_id);
+
+        -- specimens: composite covering common list filter + sort
+        CREATE INDEX IF NOT EXISTS idx_specimens_archived_created ON specimens(is_archived, created_at DESC);
+
+        -- subcultures: composite for per-specimen history queries (specimen_id + ORDER BY passage_number)
+        CREATE INDEX IF NOT EXISTS idx_subcultures_specimen_passage ON subcultures(specimen_id, passage_number);
+
+        -- subcultures: date used in schedule and recent-subculture stats
+        CREATE INDEX IF NOT EXISTS idx_subcultures_created_at ON subcultures(created_at);
+
+        -- subcultures: composite for contamination stats join
+        CREATE INDEX IF NOT EXISTS idx_subcultures_contamination_specimen ON subcultures(contamination_flag, specimen_id);
+    ")?;
     Ok(())
 }
 
