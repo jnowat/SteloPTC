@@ -389,31 +389,56 @@
 <title>Culture Certificate – ${esc(specimen.accession_number)}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:#fff;padding:.5in}
-@page{size:letter;margin:.5in}
-.hdr{border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:flex-end}
-.brand{font-size:22px;font-weight:900;letter-spacing:-.5px}
-.rpt{font-size:13px;color:#475569;margin-top:3px}
-.meta{text-align:right;font-size:10px;color:#64748b;line-height:1.7}
-h2{font-size:10px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:1px;margin:16px 0 7px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
-.ig{display:grid;grid-template-columns:150px 1fr;gap:3px 10px}
-.il{font-size:10px;color:#64748b;font-weight:600;text-align:right;padding:2px 0}
-.iv{font-size:11px;padding:2px 0}
-table{width:100%;border-collapse:collapse;font-size:10px;margin-top:4px}
-th{background:#f1f5f9;font-weight:700;text-align:left;padding:5px 7px;color:#475569;border:1px solid #e2e8f0;white-space:nowrap}
-td{padding:4px 7px;border:1px solid #e2e8f0;vertical-align:top}
+html,body{height:100%}
+body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:10.5px;color:#0f172a;background:#fff}
+@page{size:auto;margin:0.6in 0.65in}
+@page{counter-increment:page}
+/* ── header band ──────────────────────────────────── */
+.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:11px;margin-bottom:16px;gap:16px}
+.doc-logo-area{width:64px;height:44px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#94a3b8;letter-spacing:.5px;flex-shrink:0}
+.doc-title-block{flex:1}
+.doc-brand{font-size:22px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}
+.doc-report-name{font-size:12px;color:#475569;margin-top:3px;font-weight:500}
+.doc-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.8;flex-shrink:0}
+.doc-meta b{color:#0f172a}
+/* ── section headings ──────────────────────────────── */
+h2{font-size:9.5px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:1px;margin:18px 0 7px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}
+/* ── info grid ─────────────────────────────────────── */
+.ig{display:grid;grid-template-columns:155px 1fr;gap:4px 12px;page-break-inside:avoid}
+.il{font-size:9.5px;color:#64748b;font-weight:600;text-align:right;padding:2px 0}
+.iv{font-size:10.5px;padding:2px 0;color:#0f172a}
+/* ── tables ────────────────────────────────────────── */
+table{width:100%;border-collapse:collapse;font-size:9.5px;margin-top:5px}
+thead{display:table-header-group}
+th{background:#f1f5f9;font-weight:700;text-align:left;padding:5px 8px;color:#475569;border:1px solid #e2e8f0;white-space:nowrap;font-size:9px;letter-spacing:.2px}
+td{padding:4px 8px;border:1px solid #e2e8f0;vertical-align:top}
 tr:nth-child(even) td{background:#f8fafc}
+tr{page-break-inside:avoid}
 .ctr{text-align:center}
-.note-cell{max-width:160px;word-break:break-word}
-.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
-.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
-.b-blue{background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
-.chip{display:inline-block;background:#e2e8f0;color:#334155;padding:1px 5px;border-radius:3px;font-size:10px;margin:1px}
-.footer{margin-top:20px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
+.note-cell{max-width:150px;word-break:break-word}
+/* ── badges ────────────────────────────────────────── */
+.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}
+.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}
+.b-blue{background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}
+.chip{display:inline-block;background:#e2e8f0;color:#334155;padding:1px 5px;border-radius:3px;font-size:9.5px;margin:1px}
+/* ── footer band ───────────────────────────────────── */
+.doc-footer{margin-top:22px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}
+.doc-footer-pagenum::after{content:"Page " counter(page)}
+@media print{
+  .doc-footer-pagenum::after{content:"Page " counter(page) " of " counter(pages)}
+}
 </style></head><body>
-<div class="hdr">
-  <div><div class="brand">SteloPTC</div><div class="rpt">Culture Certificate</div></div>
-  <div class="meta"><div>Generated: ${reportDate}</div><div>By: ${esc(username)}</div><div>Ref: ${esc(specimen.accession_number)}</div></div>
+<div class="doc-header">
+  <div class="doc-logo-area">LOGO</div>
+  <div class="doc-title-block">
+    <div class="doc-brand">SteloPTC</div>
+    <div class="doc-report-name">Culture Certificate</div>
+  </div>
+  <div class="doc-meta">
+    <div><b>Accession:</b> ${esc(specimen.accession_number)}</div>
+    <div><b>Generated:</b> ${reportDate}</div>
+    <div><b>Prepared by:</b> ${esc(username)}</div>
+  </div>
 </div>
 <h2>Specimen Information</h2>
 <div class="ig">
@@ -435,15 +460,15 @@ tr:nth-child(even) td{background:#f8fafc}
 ${lineage}
 <h2>Passage History (${subcultures.length} passage${subcultures.length !== 1 ? 's' : ''})</h2>
 ${subcultures.length === 0
-  ? '<p style="color:#64748b;font-size:10px;margin-top:4px;">No passages recorded yet.</p>'
+  ? '<p style="color:#64748b;font-size:9.5px;margin-top:4px;">No passages recorded yet.</p>'
   : `<table><thead><tr><th>#</th><th>Date</th><th>Media Batch</th><th>Vessel</th><th>Transfer To</th><th>Health</th><th>Contamination</th><th>Notes</th></tr></thead><tbody>${passageRows}</tbody></table>`}
 ${complianceRecords.length > 0 ? `
 <h2>Compliance Records (${complianceRecords.length})</h2>
 <table><thead><tr><th>Type</th><th>Test/Issue Date</th><th>Agency</th><th>Result/Status</th><th>Expiry</th><th>Notes</th></tr></thead>
 <tbody>${complianceRows}</tbody></table>` : ''}
-<div class="footer">
-  <span>SteloPTC · Tissue Culture Management System</span>
-  <span>Generated ${reportDate}</span>
+<div class="doc-footer">
+  <span>SteloPTC · Tissue Culture Management System · ${reportDate}</span>
+  <span class="doc-footer-pagenum"></span>
 </div>
 <script>window.onload=function(){window.print();}<\/script>
 </body></html>`);

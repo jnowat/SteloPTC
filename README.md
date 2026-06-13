@@ -67,6 +67,8 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Dark Mode** — System-aware with manual toggle, driven by a `data-theme` attribute on `<html>`. Inter font throughout.
 - **Design Token System** — All colors, spacing, typography, radii, shadows, and z-index layers are defined as CSS custom properties in `src/lib/styles/tokens.css`. Changing a single token updates the UI consistently across all token-aware components (v1.2.2).
 - **Consistent Data States** — `DataState.svelte` provides a unified skeleton loading state, friendly empty state with optional CTA, and inline error state with retry across all list views (v1.2.3).
+- **Professional Print / PDF Output** — Culture Certificates and Specimens Summary reports open as formatted print windows with consistent header (logo space, lab name, accession, date, prepared-by) and footer (lab name, page numbers). Layouts are clean and well-organized on both A4 and US Letter paper, portrait and landscape (v1.2.4).
+- **Automated Tests** — Vitest test suite covers core utility functions (HTML escaping, health labels, stage formatting, location composition, accession number formatting, stock adjustment math). Rust unit tests cover accession number generation, pagination helpers, stock depletion rules, and all four compliance auto-flag SQL rules. Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4).
 
 ### Species Registry
 
@@ -112,6 +114,48 @@ All scan events are stored in the `qr_scans` SQLite table with raw data, accessi
 | Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile        |
 | QR Codes  | qrcode 1.5.4 (generation), html5-qrcode 2.3.8 (scanning) |
 | Excel     | xlsx 0.18.5 (SheetJS — multi-sheet workbook export)      |
+
+---
+
+## Testing
+
+SteloPTC ships with both frontend (TypeScript/Vitest) and backend (Rust/cargo) test suites.
+
+### Frontend tests
+
+```bash
+npm test          # run once (CI mode)
+npm run test:watch  # watch mode (development)
+```
+
+Tests live in `src/**/*.test.ts`. The current suite (`src/lib/utils.test.ts`) covers 30 assertions across the core utility functions used by all print reports and form validation:
+
+| Area | Coverage |
+|---|---|
+| `escHtml` | null/undefined/empty, HTML entities, number coercion |
+| `healthLabel` | null, NaN, all 5 health levels, clamping, rounding |
+| `stageFmt` | underscore → Title Case, empty input |
+| `composeLocation` | full 4-part, partial, empty |
+| `formatAccessionNumber` | zero-padding, 3-digit sequences |
+| `computeStockAdjustment` | positive/negative deltas, exact-zero, below-zero guard |
+
+### Rust tests
+
+```bash
+cd src-tauri && cargo test --lib
+```
+
+Requires Linux GTK system libraries (installed automatically in CI):
+
+| Module | Tests |
+|---|---|
+| `db::queries` | Accession number format, first/second/different-species/different-date sequences, zero-padding, pagination offset/limit calculations |
+| `commands::inventory` | `apply_stock_adjustment` — positive delta, negative delta, to-zero, below-zero error; `is_low_stock` — at/below/above minimum |
+| `commands::compliance` | Expired permit detected/not-detected; quarantine-no-release detected/not-detected; positive-not-quarantined detected/not-detected; HLB missing/recent; archived specimens excluded from all flags |
+
+### CI
+
+The `test.yml` GitHub Actions workflow runs both test suites on every push and pull request to `master`. Merges are blocked if either suite fails.
 
 ---
 

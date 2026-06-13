@@ -1,7 +1,7 @@
 {
   "name": "stelo-ptc",
   "private": true,
-  "version": "1.2.3",
+  "version": "1.2.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,9 @@
     "tauri": "cargo tauri",
     "android:dev": "cargo tauri android dev",
     "android:build": "cargo tauri android build --release",
-    "android:build-debug": "cargo tauri android build"
+    "android:build-debug": "cargo tauri android build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.5.0",
@@ -25,9 +27,13 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^4.0.0",
     "@tsconfig/svelte": "^5.0.0",
+    "@testing-library/svelte": "^5.0.0",
+    "@testing-library/jest-dom": "^6.0.0",
+    "jsdom": "^26.0.0",
     "svelte": "^5.0.0",
     "svelte-check": "^4.0.0",
     "typescript": "^5.5.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
   }
 }

@@ -286,7 +286,7 @@
 
     let win: Window | null = null;
     try {
-      win = window.open('', '_blank', 'width=1050,height=900');
+      win = window.open('', '_blank', 'width=1200,height=900');
       if (!win) {
         addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
         return;
@@ -300,39 +300,62 @@
 <title>Specimens Summary – ${reportDate}</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,'Segoe UI',Arial,sans-serif;font-size:11px;color:#0f172a;background:#fff;padding:.45in}
-@page{size:letter landscape;margin:.45in}
-.hdr{border-bottom:2px solid #0f172a;padding-bottom:10px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:flex-end}
-.brand{font-size:20px;font-weight:900;letter-spacing:-.5px}
-.rpt{font-size:12px;color:#475569;margin-top:2px}
-.meta{text-align:right;font-size:10px;color:#64748b;line-height:1.7}
-.filter-line{font-size:10px;color:#475569;margin-bottom:10px;font-style:italic}
-.summary{font-size:11px;font-weight:600;margin-bottom:8px;color:#0f172a}
-table{width:100%;border-collapse:collapse;font-size:10px}
-th{background:#0f172a;color:#e2e8f0;font-weight:700;text-align:left;padding:6px 8px;white-space:nowrap}
-td{padding:4px 8px;border-bottom:1px solid #e2e8f0;vertical-align:top}
+html,body{height:100%}
+body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:10.5px;color:#0f172a;background:#fff}
+@page{size:auto;margin:0.55in 0.6in}
+/* ── page counter ───────────────────────────────── */
+@page{counter-increment:page}
+/* ── print header / footer bands ──────────────────── */
+.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:10px;margin-bottom:14px;gap:16px}
+.doc-logo-area{width:64px;height:40px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#94a3b8;letter-spacing:.5px;flex-shrink:0}
+.doc-title-block{flex:1}
+.doc-brand{font-size:21px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}
+.doc-report-name{font-size:11.5px;color:#475569;margin-top:3px;font-weight:500}
+.doc-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.75;flex-shrink:0}
+.doc-meta b{color:#0f172a}
+/* ── body content ──────────────────────────────────── */
+.filter-line{font-size:9.5px;color:#475569;margin-bottom:10px;font-style:italic;padding:5px 8px;background:#f8fafc;border-left:3px solid #e2e8f0}
+.summary{font-size:10.5px;font-weight:600;margin-bottom:8px;color:#0f172a}
+table{width:100%;border-collapse:collapse;font-size:9.5px}
+thead{display:table-header-group}
+th{background:#0f172a;color:#e2e8f0;font-weight:700;text-align:left;padding:6px 9px;white-space:nowrap;font-size:9px;letter-spacing:.3px}
+td{padding:4.5px 9px;border-bottom:1px solid #e2e8f0;vertical-align:top}
 tr:nth-child(even) td{background:#f8fafc}
+tr{page-break-inside:avoid}
 .ctr{text-align:center}
-.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
-.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:600}
-.footer{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;font-size:9px;color:#94a3b8}
+.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}
+.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}
+/* ── footer ────────────────────────────────────────── */
+.doc-footer{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:7px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}
+.doc-footer-pagenum::after{content:"Page " counter(page)}
+@media print{
+  .doc-footer-pagenum::after{content:"Page " counter(page) " of " counter(pages)}
+}
 </style></head><body>
-<div class="hdr">
-  <div><div class="brand">SteloPTC</div><div class="rpt">Specimens Summary Report</div></div>
-  <div class="meta"><div>Generated: ${reportDate}</div><div>By: ${esc(username)}</div><div>Page 1 of ${totalPages || 1}</div></div>
+<div class="doc-header">
+  <div class="doc-logo-area">LOGO</div>
+  <div class="doc-title-block">
+    <div class="doc-brand">SteloPTC</div>
+    <div class="doc-report-name">Specimens Summary Report</div>
+  </div>
+  <div class="doc-meta">
+    <div><b>Generated:</b> ${reportDate}</div>
+    <div><b>Prepared by:</b> ${esc(username)}</div>
+    <div><b>Records:</b> ${specimens.length} of ${total} active</div>
+  </div>
 </div>
 ${filterLine}
-<div class="summary">Showing ${specimens.length} of ${total} total active specimens (page ${page} of ${totalPages || 1})</div>
+<div class="summary">Showing ${specimens.length} specimen${specimens.length !== 1 ? 's' : ''} — page ${page} of ${totalPages || 1}</div>
 <table>
   <thead><tr>
     <th>Accession</th><th>Species</th><th>Stage</th><th>Location</th>
-    <th>Passages</th><th>Health</th><th>Status</th><th>Initiated</th>
+    <th class="ctr">Passages</th><th>Health</th><th>Status</th><th>Initiated</th>
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
-<div class="footer">
-  <span>SteloPTC · Tissue Culture Management System</span>
-  <span>Generated ${reportDate}</span>
+<div class="doc-footer">
+  <span>SteloPTC · Tissue Culture Management System · ${reportDate}</span>
+  <span class="doc-footer-pagenum"></span>
 </div>
 <script>window.onload=function(){window.print();}<\/script>
 </body></html>`);

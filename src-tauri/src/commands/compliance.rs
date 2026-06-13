@@ -326,3 +326,279 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
 
     Ok(flags)
 }
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    /// Minimal schema for compliance flag query tests.
+    fn setup_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        conn.execute_batch(
+            "CREATE TABLE species (
+                id TEXT PRIMARY KEY,
+                genus TEXT NOT NULL,
+                species_name TEXT NOT NULL,
+                species_code TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE specimens (
+                id TEXT PRIMARY KEY,
+                accession_number TEXT NOT NULL UNIQUE,
+                species_id TEXT NOT NULL REFERENCES species(id),
+                permit_expiry TEXT,
+                quarantine_flag INTEGER NOT NULL DEFAULT 0,
+                quarantine_release_date TEXT,
+                is_archived INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE compliance_records (
+                id TEXT PRIMARY KEY,
+                specimen_id TEXT NOT NULL REFERENCES specimens(id),
+                test_type TEXT,
+                test_date TEXT,
+                test_result TEXT
+            );",
+        )
+        .expect("create tables");
+        conn
+    }
+
+    fn insert_species(conn: &Connection, id: &str, code: &str) {
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) VALUES (?1,'G','sp',?2)",
+            rusqlite::params![id, code],
+        )
+        .unwrap();
+    }
+
+    fn insert_specimen(conn: &Connection, id: &str, sp_id: &str, accession: &str) {
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id) VALUES (?1,?2,?3)",
+            rusqlite::params![id, accession, sp_id],
+        )
+        .unwrap();
+    }
+
+    // ── Expired permit flag ───────────────────────────────────────────────────
+
+    #[test]
+    fn flag_expired_permit_detected() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "CIT-01");
+        conn.execute(
+            "INSERT INTO specimens (id,accession_number,species_id,permit_expiry)
+             VALUES ('s1','2024-01-01-CIT-01-001','sp1','2020-01-01')",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+                 WHERE s.permit_expiry IS NOT NULL AND s.permit_expiry < date('now') AND s.is_archived=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn flag_valid_permit_not_flagged() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "CIT-01");
+        conn.execute(
+            "INSERT INTO specimens (id,accession_number,species_id,permit_expiry)
+             VALUES ('s1','2024-01-01-CIT-01-001','sp1','2099-12-31')",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+                 WHERE s.permit_expiry IS NOT NULL AND s.permit_expiry < date('now') AND s.is_archived=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    // ── Quarantine without release date flag ──────────────────────────────────
+
+    #[test]
+    fn flag_quarantine_no_release_date_detected() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "ABC");
+        conn.execute(
+            "INSERT INTO specimens (id,accession_number,species_id,quarantine_flag)
+             VALUES ('s1','ACC-001','sp1',1)",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+                 WHERE s.quarantine_flag=1 AND s.quarantine_release_date IS NULL AND s.is_archived=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn flag_quarantine_with_release_date_not_flagged() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "ABC");
+        conn.execute(
+            "INSERT INTO specimens (id,accession_number,species_id,quarantine_flag,quarantine_release_date)
+             VALUES ('s1','ACC-001','sp1',1,'2099-12-31')",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+                 WHERE s.quarantine_flag=1 AND s.quarantine_release_date IS NULL AND s.is_archived=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    // ── Positive test without quarantine flag ─────────────────────────────────
+
+    #[test]
+    fn flag_positive_test_not_quarantined() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "VAC-01");
+        insert_specimen(&conn, "s1", "sp1", "ACC-001");
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_result) VALUES ('cr1','s1','positive')",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(DISTINCT s.id) FROM specimens s
+                 JOIN species sp ON s.species_id=sp.id
+                 JOIN compliance_records cr ON cr.specimen_id=s.id
+                 WHERE cr.test_result='positive' AND s.quarantine_flag=0 AND s.is_archived=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn no_flag_positive_test_already_quarantined() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "VAC-01");
+        conn.execute(
+            "INSERT INTO specimens (id,accession_number,species_id,quarantine_flag)
+             VALUES ('s1','ACC-001','sp1',1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_result) VALUES ('cr1','s1','positive')",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(DISTINCT s.id) FROM specimens s
+                 JOIN species sp ON s.species_id=sp.id
+                 JOIN compliance_records cr ON cr.specimen_id=s.id
+                 WHERE cr.test_result='positive' AND s.quarantine_flag=0 AND s.is_archived=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    // ── Citrus HLB flag ───────────────────────────────────────────────────────
+
+    #[test]
+    fn flag_citrus_missing_hlb_test_detected() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "CIT-02");
+        insert_specimen(&conn, "s1", "sp1", "ACC-001");
+        // No HLB compliance record inserted → should be flagged.
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+                 WHERE sp.species_code LIKE 'CIT-%' AND s.is_archived=0
+                 AND s.id NOT IN (
+                     SELECT specimen_id FROM compliance_records
+                     WHERE test_type='HLB' AND test_date >= date('now','-12 months')
+                     AND test_result IS NOT NULL
+                 )",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn flag_citrus_recent_hlb_test_not_flagged() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "CIT-02");
+        insert_specimen(&conn, "s1", "sp1", "ACC-001");
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_type,test_date,test_result)
+             VALUES ('cr1','s1','HLB',date('now','-30 days'),'negative')",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+                 WHERE sp.species_code LIKE 'CIT-%' AND s.is_archived=0
+                 AND s.id NOT IN (
+                     SELECT specimen_id FROM compliance_records
+                     WHERE test_type='HLB' AND test_date >= date('now','-12 months')
+                     AND test_result IS NOT NULL
+                 )",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    // ── Archived specimens are excluded from all flags ─────────────────────────
+
+    #[test]
+    fn archived_specimens_excluded_from_flags() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "CIT-01");
+        conn.execute(
+            "INSERT INTO specimens (id,accession_number,species_id,permit_expiry,is_archived)
+             VALUES ('s1','ACC-001','sp1','2020-01-01',1)",
+            [],
+        )
+        .unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+                 WHERE s.permit_expiry IS NOT NULL AND s.permit_expiry < date('now') AND s.is_archived=0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+}

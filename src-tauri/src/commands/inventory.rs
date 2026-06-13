@@ -495,3 +495,65 @@ pub fn delete_prepared_solution(
 
     Ok(())
 }
+
+/// Pure stock-level computation extracted for testability.
+pub fn apply_stock_adjustment(current: f64, adjustment: f64) -> Result<f64, String> {
+    let next = current + adjustment;
+    if next < 0.0 {
+        Err("Stock cannot go below zero".to_string())
+    } else {
+        Ok(next)
+    }
+}
+
+/// Return whether a stock level is at or below the reorder threshold.
+pub fn is_low_stock(current: f64, minimum: f64) -> bool {
+    current <= minimum
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stock_add_positive_adjustment() {
+        assert_eq!(apply_stock_adjustment(10.0, 5.0).unwrap(), 15.0);
+    }
+
+    #[test]
+    fn stock_subtract_negative_adjustment() {
+        let r = apply_stock_adjustment(10.0, -3.5).unwrap();
+        assert!((r - 6.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn stock_adjustment_to_exact_zero_is_ok() {
+        assert_eq!(apply_stock_adjustment(5.0, -5.0).unwrap(), 0.0);
+    }
+
+    #[test]
+    fn stock_adjustment_below_zero_is_error() {
+        let err = apply_stock_adjustment(2.0, -3.0).unwrap_err();
+        assert!(err.contains("below zero"));
+    }
+
+    #[test]
+    fn stock_zero_current_with_positive_adjustment() {
+        assert_eq!(apply_stock_adjustment(0.0, 100.0).unwrap(), 100.0);
+    }
+
+    #[test]
+    fn low_stock_at_minimum() {
+        assert!(is_low_stock(5.0, 5.0));
+    }
+
+    #[test]
+    fn low_stock_below_minimum() {
+        assert!(is_low_stock(1.0, 10.0));
+    }
+
+    #[test]
+    fn low_stock_above_minimum() {
+        assert!(!is_low_stock(20.0, 10.0));
+    }
+}
