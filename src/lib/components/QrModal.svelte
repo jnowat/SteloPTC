@@ -54,19 +54,6 @@
   });
 
   function printLabel() {
-    let win: Window | null = null;
-    try {
-      win = window.open('', '_blank', 'width=360,height=540');
-      if (!win) {
-        addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
-        return;
-      }
-    } catch (_e) {
-      addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
-      return;
-    }
-    try {
-
     const speciesDisplay = specimen.species_code
       ? specimen.species_code
       : (`${specimen.genus ?? ''} ${specimen.species_name ?? ''}`).trim() || '—';
@@ -79,133 +66,9 @@
       ? `<div class="label-row"><span class="lbl">Location</span><span class="val">${specimen.location}</span></div>`
       : '';
 
-    win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>QR Label – ${specimen.accession_number}</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-      background: #fff;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 0;
-    }
-    .label {
-      width: 2in;
-      min-height: 3in;
-      padding: 0.12in 0.14in;
-      border: 1.5px solid #1e293b;
-      border-radius: 6px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 5px;
-      page-break-inside: avoid;
-    }
-    .label-header {
-      width: 100%;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid #e2e8f0;
-      padding-bottom: 4px;
-      margin-bottom: 2px;
-    }
-    .label-brand {
-      font-size: 7.5px;
-      font-weight: 800;
-      color: #475569;
-      letter-spacing: 0.8px;
-      text-transform: uppercase;
-    }
-    .label-acc {
-      font-size: 10px;
-      font-weight: 900;
-      color: #0f172a;
-      letter-spacing: -0.2px;
-      font-family: 'SF Mono', 'Consolas', monospace;
-    }
-    .label-qr {
-      margin: 2px 0;
-    }
-    .label-qr img {
-      width: 1.35in;
-      height: 1.35in;
-      display: block;
-      image-rendering: pixelated;
-    }
-    .label-species {
-      font-size: 9.5px;
-      font-weight: 800;
-      color: #0f172a;
-      text-align: center;
-      font-style: italic;
-    }
-    .label-common {
-      font-size: 8.5px;
-      color: #475569;
-      text-align: center;
-    }
-    .label-rows {
-      width: 100%;
-      display: flex;
-      flex-direction: column;
-      gap: 2px;
-      margin-top: 2px;
-      border-top: 1px solid #e2e8f0;
-      padding-top: 4px;
-    }
-    .label-row {
-      display: flex;
-      gap: 4px;
-      font-size: 7.5px;
-      line-height: 1.3;
-    }
-    .lbl {
-      font-weight: 700;
-      color: #64748b;
-      min-width: 0.45in;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-      flex-shrink: 0;
-    }
-    .val {
-      color: #1e293b;
-      font-weight: 500;
-      word-break: break-word;
-    }
-    .label-footer {
-      margin-top: auto;
-      padding-top: 4px;
-      font-size: 7px;
-      color: #94a3b8;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      border-top: 1px solid #f1f5f9;
-      width: 100%;
-      text-align: center;
-    }
-    @media print {
-      @page {
-        size: 2in 3in;
-        margin: 0;
-      }
-      body { padding: 0; background: #fff; }
-      .label {
-        width: 2in;
-        min-height: 3in;
-        border-color: #000;
-        border-radius: 0;
-      }
-    }
-  </style>
-</head>
-<body>
-  <div class="label">
+    const labelCss = `*{margin:0;padding:0;box-sizing:border-box}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;background:#fff;display:flex;align-items:flex-start;justify-content:center;padding:0}.label{width:2in;min-height:3in;padding:.12in .14in;border:1.5px solid #1e293b;border-radius:6px;display:flex;flex-direction:column;align-items:center;gap:5px;page-break-inside:avoid}.label-header{width:100%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:2px}.label-brand{font-size:7.5px;font-weight:800;color:#475569;letter-spacing:.8px;text-transform:uppercase}.label-acc{font-size:10px;font-weight:900;color:#0f172a;letter-spacing:-.2px;font-family:'SF Mono','Consolas',monospace}.label-qr{margin:2px 0}.label-qr img{width:1.35in;height:1.35in;display:block;image-rendering:pixelated}.label-species{font-size:9.5px;font-weight:800;color:#0f172a;text-align:center;font-style:italic}.label-common{font-size:8.5px;color:#475569;text-align:center}.label-rows{width:100%;display:flex;flex-direction:column;gap:2px;margin-top:2px;border-top:1px solid #e2e8f0;padding-top:4px}.label-row{display:flex;gap:4px;font-size:7.5px;line-height:1.3}.lbl{font-weight:700;color:#64748b;min-width:.45in;text-transform:uppercase;letter-spacing:.3px;flex-shrink:0}.val{color:#1e293b;font-weight:500;word-break:break-word}.label-footer{margin-top:auto;padding-top:4px;font-size:7px;color:#94a3b8;letter-spacing:.5px;text-transform:uppercase;border-top:1px solid #f1f5f9;width:100%;text-align:center}`;
+
+    const bodyHtml = `<div class="label">
     <div class="label-header">
       <span class="label-brand">SteloPTC</span>
       <span class="label-acc">${specimen.accession_number}</span>
@@ -221,14 +84,41 @@
       ${location}
     </div>
     <div class="label-footer">SteloPTC · Tissue Culture Management</div>
-  </div>
-  <script>window.onload = function() { window.print(); window.close(); };<\/script>
-</body>
-</html>`);
-      win.document.close();
+  </div>`;
+
+    // Popup path (works in browser / non-restricted WebView)
+    let win: Window | null = null;
+    try { win = window.open('', '_blank', 'width=360,height=540'); } catch (_) {}
+
+    if (win) {
+      try {
+        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QR Label – ${specimen.accession_number}</title><style>@page{size:2in 3in;margin:0}${labelCss}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();window.close();}<\/script></body></html>`);
+        win.document.close();
+      } catch (_e) {
+        addNotification('Failed to generate the print label. Please try again.', 'error');
+        try { win?.close(); } catch (_) {}
+      }
+      return;
+    }
+
+    // Tauri / WebView2 fallback: in-page print container
+    try {
+      const styleEl = document.createElement('style');
+      styleEl.setAttribute('data-ptc-print', 'qr-label');
+      styleEl.textContent = `@page{size:2in 3in;margin:0}@media print{body>*:not(#ptc-label-frame){display:none!important}#ptc-label-frame{display:block!important}${labelCss}}`;
+
+      const frame = document.createElement('div');
+      frame.id = 'ptc-label-frame';
+      frame.style.cssText = 'display:none';
+      frame.innerHTML = bodyHtml;
+
+      document.head.appendChild(styleEl);
+      document.body.appendChild(frame);
+
+      window.addEventListener('afterprint', () => { styleEl.remove(); frame.remove(); }, { once: true });
+      setTimeout(() => window.print(), 80);
     } catch (_e) {
       addNotification('Failed to generate the print label. Please try again.', 'error');
-      try { win?.close(); } catch (_) {}
     }
   }
 

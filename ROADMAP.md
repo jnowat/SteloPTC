@@ -132,6 +132,20 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** The existing compliance-flag system and audit trail — the Work Queue is a read-only derived view, not a replacement for compliance records. Do not write any audit or compliance entries from this view.
 - **Bump:** minor.
 
+### WP-09 — Tauri-reliable print invocation — ✅ Delivered in **v1.2.5**
+- **Goal:** All three print functions work on the Windows desktop (Tauri/WebView2) without the "Could not open print window" popup-blocked error.
+- **Root cause:** WebView2's popup policy blocks `window.open('', '_blank', ...)`, causing it to return `null`. The previous WP-06 fix surfaced a clear error notification but did not solve the underlying problem.
+- **Files:** `src/lib/components/SpecimenList.svelte` (`printSummaryReport`), `src/lib/components/SpecimenDetail.svelte` (`printCultureReport`), `src/lib/components/QrModal.svelte` (`printLabel`).
+- **Steps:**
+  1. For each print function, separate the CSS (`printCss`) and body HTML (`bodyHtml`) into local variables before the popup attempt.
+  2. Try `window.open` as before (preserves browser/web behavior). If the popup succeeds, write the document using those variables and return.
+  3. If the popup is blocked (returns `null` or throws), fall back to in-page DOM injection: create a `<style>` element with `@page` rules at top level and all print CSS wrapped in `@media print{body>*:not(#frame){display:none!important}#frame{display:block!important}...}`, append a hidden `<div id="frame">` containing `bodyHtml`, call `window.print()` after an 80 ms timeout, and clean up both elements in a `{ once: true }` `afterprint` listener.
+  4. Also fix the pre-WP-06 silent-fail in `printCultureReport` (`SpecimenDetail.svelte`): the old code had `if (!win) return;` with no user notification. The new fallback replaces this.
+  5. Bump all three version files to **1.2.5** (also corrects the `tauri.conf.json` drift: it was at 1.2.3 while the others were at 1.2.4).
+- **Acceptance:** Clicking "Print Summary", "Print Report", or "Print Label" in the Tauri desktop app opens the OS print dialog. Cancelling print cleans up the injected DOM. The WP-13 output quality is identical in both the popup and fallback paths.
+- **Preserve:** Popup path for browser/non-Tauri builds; WP-13 print CSS and layout exactly; `afterprint` cleanup so the injected frame never leaks into the live UI.
+- **Bump:** patch → **v1.2.5**.
+
 ### Looking great — design system & polish
 
 ### WP-10 — Extract a central design-token system
@@ -436,14 +450,14 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | v1.0.0-1 | WP-03 first signed GitHub Release (Windows MSI + signed Android APK) | ✅ shipped |
 | v1.0.0-2 | WP-04 crash-proofing & atomic transactions | ✅ shipped |
 | **v1.1.0** | WP-05 onboarding + demo data — **Phase A complete** | ✅ shipped |
-| v1.1.1 | WP-06 bug/polish backlog clearance (Print Summary fix, QR button text fix) | planned |
-| v1.1.2 | WP-07 QR scanner rejects non-SteloPTC codes | planned |
-| **v1.2.0** | WP-08 Specimen Work Queue / Daily Task View | planned |
-| v1.2.x | WP-10–13 design tokens, states, a11y, print polish | planned |
-| v1.2.x | WP-14 first test harness — **gate on WP-18** | planned |
+| v1.1.1 | WP-06 bug/polish backlog clearance (Print Summary fix, QR button text fix) | ✅ shipped |
+| v1.1.2 | WP-07 QR scanner rejects non-SteloPTC codes | ✅ shipped |
+| **v1.2.0** | WP-08 Specimen Work Queue / Daily Task View | ✅ shipped |
+| v1.2.1–v1.2.4 | WP-10–14 design tokens, states, a11y, print polish, first test harness | ✅ shipped |
+| **v1.2.5** | WP-09 Tauri-reliable print invocation (popup + in-page DOM fallback) | ✅ shipped |
 | v1.2.x | WP-15–17 perf/indexing, backup restore, Excel import | planned |
 | **v1.3.0** | **Trust(less) & Audit Layer — Phase 1** (hash-chain + Merkle checkpoints + proof export, WP-18–21) | planned |
-| v1.3.x | *Buffer for Phase B overflow, additional patch releases, or Trust Layer follow-up work. Version numbers here are approximate targets — Phase B work may land cleanly in the v1.2.x series or may need extra cycles before Phase C begins. Either is fine.* | planned |
+| v1.3.x | *Buffer for Phase B overflow, additional patch releases, or Trust Layer follow-up work.* | planned |
 | **v1.4.0** | Phase C — profile-ready engine (PTC behavior unchanged, WP-22–27) | planned |
 | v2.0.0 | First multi-app release: SteloPTC + **SteloCC** | planned |
 | v2.1.0 | **SteloMyco** | planned |
