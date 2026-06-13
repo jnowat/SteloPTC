@@ -26,6 +26,7 @@
     { id: 'audit', label: 'Audit Log', icon: '&#128220;', roles: ['admin', 'supervisor'] },
     { id: 'error-log', label: 'Error Log', icon: '&#9888;' },
     { id: 'export', label: 'Export Data', icon: '&#8659;' },
+    { id: 'import', label: 'Import Data', icon: '&#8657;' },
   ];
 
   function canSee(item: NavItem): boolean {
@@ -64,7 +65,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v1.2.7</span>
+    <span class="version" title="Application version">v1.3.0</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -90,6 +91,7 @@
             item.id === 'audit' ? 'Audit Log — view system-wide change history (admin/supervisor)' :
             item.id === 'error-log' ? 'Error Log — review application errors and warnings (Ctrl+5)' :
             item.id === 'export' ? 'Export Data — download data as Excel, CSV, or JSON' :
+            item.id === 'import' ? 'Import Data — restore or bulk-load data from an Excel workbook' :
             item.label
           }
           title={
@@ -105,6 +107,7 @@
             item.id === 'audit' ? 'Go to Audit Log — view system-wide change history (admin/supervisor)' :
             item.id === 'error-log' ? 'Go to Error Log — review application errors and warnings' :
             item.id === 'export' ? 'Go to Export — download data as Excel, CSV, or JSON' :
+            item.id === 'import' ? 'Go to Import — restore or bulk-load data from an Excel workbook' :
             `Navigate to ${item.label}`
           }
         >

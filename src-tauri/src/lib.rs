@@ -86,6 +86,7 @@ pub fn run() {
             // Export/Import
             commands::export::export_specimens_csv,
             commands::export::export_specimens_json,
+            commands::import::import_xlsx,
             // Inventory
             commands::inventory::list_inventory,
             commands::inventory::create_inventory_item,

@@ -204,6 +204,18 @@ export async function getAuditLog(search: any = {}) {
   return call<any>('get_audit_log', { search });
 }
 
+// Import
+export async function importXlsx(payload: {
+  specimens: string[][];
+  subcultures: string[][];
+  media: string[][];
+  prepared_solutions: string[][];
+  inventory: string[][];
+  compliance: string[][];
+}, dryRun: boolean) {
+  return call<any>('import_xlsx', { payload, dryRun });
+}
+
 // Export
 export async function exportSpecimensCsv() {
   return call<string>('export_specimens_csv');
