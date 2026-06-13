@@ -253,18 +253,18 @@
     const reportDate = new Date().toISOString().split('T')[0];
 
     const esc = (s: any) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') || '—';
-    const healthLabel = (val: any) => {
+    const healthFmt = (val: any) => {
       if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '—';
       const n = Math.round(Number(val));
       if (n === -1) return '?';
       return ['0-Dead','1-Poor','2-Fair','3-Good','4-Healthy'][Math.max(0,Math.min(4,n))];
     };
-    const stageFmt = (s: string) => s?.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
+    const stageFmtP = (s: string) => s?.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
 
     // Build filter description
     const filterParts: string[] = [];
     if (searchQuery) filterParts.push(`Search: "${searchQuery}"`);
-    if (filterStage) filterParts.push(`Stage: ${stageFmt(filterStage)}`);
+    if (filterStage) filterParts.push(`Stage: ${stageFmtP(filterStage)}`);
     if (filterSpecies) {
       const sp = species.find((s: any) => s.id === filterSpecies);
       if (sp) filterParts.push(`Species: ${sp.species_code}`);
@@ -276,63 +276,17 @@
     const rows = specimens.map((s: any) => `<tr>
       <td><b>${esc(s.accession_number)}</b></td>
       <td>${esc(s.species_code)}</td>
-      <td>${stageFmt(s.stage)}</td>
+      <td>${stageFmtP(s.stage)}</td>
       <td>${esc(s.location)}</td>
       <td class="ctr">${esc(s.subculture_count)}</td>
-      <td>${healthLabel(s.health_status)}</td>
+      <td>${healthFmt(s.health_status)}</td>
       <td>${s.quarantine_flag ? '<span class="b-red">Quarantine</span>' : '<span class="b-green">Active</span>'}</td>
       <td>${esc(s.initiation_date)}</td>
     </tr>`).join('');
 
-    let win: Window | null = null;
-    try {
-      win = window.open('', '_blank', 'width=1200,height=900');
-      if (!win) {
-        addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
-        return;
-      }
-    } catch (_e) {
-      addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
-      return;
-    }
-    try {
-    win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>Specimens Summary – ${reportDate}</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-html,body{height:100%}
-body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:10.5px;color:#0f172a;background:#fff}
-@page{size:auto;margin:0.55in 0.6in}
-/* ── page counter ───────────────────────────────── */
-@page{counter-increment:page}
-/* ── print header / footer bands ──────────────────── */
-.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:10px;margin-bottom:14px;gap:16px}
-.doc-logo-area{width:64px;height:40px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#94a3b8;letter-spacing:.5px;flex-shrink:0}
-.doc-title-block{flex:1}
-.doc-brand{font-size:21px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}
-.doc-report-name{font-size:11.5px;color:#475569;margin-top:3px;font-weight:500}
-.doc-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.75;flex-shrink:0}
-.doc-meta b{color:#0f172a}
-/* ── body content ──────────────────────────────────── */
-.filter-line{font-size:9.5px;color:#475569;margin-bottom:10px;font-style:italic;padding:5px 8px;background:#f8fafc;border-left:3px solid #e2e8f0}
-.summary{font-size:10.5px;font-weight:600;margin-bottom:8px;color:#0f172a}
-table{width:100%;border-collapse:collapse;font-size:9.5px}
-thead{display:table-header-group}
-th{background:#0f172a;color:#e2e8f0;font-weight:700;text-align:left;padding:6px 9px;white-space:nowrap;font-size:9px;letter-spacing:.3px}
-td{padding:4.5px 9px;border-bottom:1px solid #e2e8f0;vertical-align:top}
-tr:nth-child(even) td{background:#f8fafc}
-tr{page-break-inside:avoid}
-.ctr{text-align:center}
-.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}
-.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}
-/* ── footer ────────────────────────────────────────── */
-.doc-footer{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:7px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}
-.doc-footer-pagenum::after{content:"Page " counter(page)}
-@media print{
-  .doc-footer-pagenum::after{content:"Page " counter(page) " of " counter(pages)}
-}
-</style></head><body>
-<div class="doc-header">
+    const printCss = `*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%}body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:10.5px;color:#0f172a;background:#fff}.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:10px;margin-bottom:14px;gap:16px}.doc-logo-area{width:64px;height:40px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#94a3b8;letter-spacing:.5px;flex-shrink:0}.doc-title-block{flex:1}.doc-brand{font-size:21px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}.doc-report-name{font-size:11.5px;color:#475569;margin-top:3px;font-weight:500}.doc-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.75;flex-shrink:0}.doc-meta b{color:#0f172a}.filter-line{font-size:9.5px;color:#475569;margin-bottom:10px;font-style:italic;padding:5px 8px;background:#f8fafc;border-left:3px solid #e2e8f0}.summary{font-size:10.5px;font-weight:600;margin-bottom:8px;color:#0f172a}table{width:100%;border-collapse:collapse;font-size:9.5px}thead{display:table-header-group}th{background:#0f172a;color:#e2e8f0;font-weight:700;text-align:left;padding:6px 9px;white-space:nowrap;font-size:9px;letter-spacing:.3px}td{padding:4.5px 9px;border-bottom:1px solid #e2e8f0;vertical-align:top}tr:nth-child(even) td{background:#f8fafc}tr{page-break-inside:avoid}.ctr{text-align:center}.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.doc-footer{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:7px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}.doc-footer-pagenum::after{content:"Page " counter(page) " of " counter(pages)}`;
+
+    const bodyHtml = `<div class="doc-header">
   <div class="doc-logo-area">LOGO</div>
   <div class="doc-title-block">
     <div class="doc-brand">SteloPTC</div>
@@ -356,13 +310,41 @@ ${filterLine}
 <div class="doc-footer">
   <span>SteloPTC · Tissue Culture Management System · ${reportDate}</span>
   <span class="doc-footer-pagenum"></span>
-</div>
-<script>window.onload=function(){window.print();}<\/script>
-</body></html>`);
-      win.document.close();
+</div>`;
+
+    // Popup path (works in browser / non-restricted WebView)
+    let win: Window | null = null;
+    try { win = window.open('', '_blank', 'width=1200,height=900'); } catch (_) {}
+
+    if (win) {
+      try {
+        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Specimens Summary – ${reportDate}</title><style>@page{size:auto;margin:0.55in 0.6in}${printCss}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+        win.document.close();
+      } catch (_e) {
+        addNotification('Failed to generate the print report. Please try again.', 'error');
+        try { win?.close(); } catch (_) {}
+      }
+      return;
+    }
+
+    // Tauri / WebView2 fallback: in-page print container
+    try {
+      const styleEl = document.createElement('style');
+      styleEl.setAttribute('data-ptc-print', 'summary');
+      styleEl.textContent = `@page{size:auto;margin:0.55in 0.6in}@media print{body>*:not(#ptc-summary-frame){display:none!important}#ptc-summary-frame{display:block!important}${printCss}}`;
+
+      const frame = document.createElement('div');
+      frame.id = 'ptc-summary-frame';
+      frame.style.cssText = 'display:none';
+      frame.innerHTML = bodyHtml;
+
+      document.head.appendChild(styleEl);
+      document.body.appendChild(frame);
+
+      window.addEventListener('afterprint', () => { styleEl.remove(); frame.remove(); }, { once: true });
+      setTimeout(() => window.print(), 80);
     } catch (_e) {
       addNotification('Failed to generate the print report. Please try again.', 'error');
-      try { win?.close(); } catch (_) {}
     }
   }
 </script>
