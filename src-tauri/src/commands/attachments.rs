@@ -26,7 +26,6 @@ fn attachments_dir(entity_type: &str, entity_id: &str) -> Result<std::path::Path
     let base = crate::db::Database::db_path();
     let parent = base
         .parent()
-<<<<<<< HEAD
         .ok_or_else(|| "Could not determine attachments directory: database path has no parent".to_string())?;
     Ok(parent.join("attachments").join(entity_type).join(entity_id))
 }
