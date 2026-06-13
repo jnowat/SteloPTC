@@ -3,8 +3,7 @@
   import { listMedia, createMediaBatch, updateMediaBatch, deleteMediaBatch, listInventory } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
-  import SkeletonLoader from './SkeletonLoader.svelte';
-  import EmptyState from './EmptyState.svelte';
+  import DataState from './DataState.svelte';
 
   type ReagentRow = {
     item_id: string;
@@ -19,6 +18,7 @@
   let media = $state<any[]>([]);
   let inventoryItems = $state<any[]>([]);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let showForm = $state(false);
   let editingBatch = $state<any | null>(null);  // null = create, object = edit
 
@@ -80,8 +80,9 @@
 
   async function load() {
     loading = true;
+    error = null;
     try { media = await listMedia(); }
-    catch (e: any) { addNotification(e.message, 'error'); }
+    catch (e: any) { error = e.message; addNotification(e.message, 'error'); }
     finally { loading = false; }
   }
 
@@ -851,19 +852,19 @@
     </div>
   {/if}
 
-  {#if loading}
-    <div class="card" style="overflow-x:auto;">
-      <SkeletonLoader rows={4} cols={5} />
-    </div>
-  {:else if media.length === 0}
-    <EmptyState
-      icon="🧪"
-      title="No media batches yet"
-      message="Create your first batch to start tracking formulations and expiry dates."
-      actionLabel="+ New Batch"
-      onaction={() => (showForm = true)}
-    />
-  {:else}
+  <DataState
+    {loading}
+    {error}
+    empty={media.length === 0}
+    rows={4}
+    cols={5}
+    emptyIcon="🧪"
+    emptyTitle="No media batches yet"
+    emptyMessage="Create your first batch to start tracking formulations and expiry dates."
+    emptyActionLabel="+ New Batch"
+    onemptyaction={() => (showForm = true)}
+    onretry={load}
+  >
     <div class="card" style="overflow-x:auto;">
       <table>
         <thead>
@@ -939,7 +940,7 @@
         </tbody>
       </table>
     </div>
-  {/if}
+  </DataState>
 </div>
 
 <style>

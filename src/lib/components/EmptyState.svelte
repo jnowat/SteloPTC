@@ -44,12 +44,12 @@
   .empty-title {
     font-size: 16px;
     font-weight: 600;
-    color: #6b7280;
+    color: var(--color-text-muted, #6b7280);
     margin: 0;
   }
   .empty-message {
     font-size: 13px;
-    color: #9ca3af;
+    color: var(--color-text-faint, #9ca3af);
     margin: 0;
     max-width: 320px;
   }
@@ -57,8 +57,6 @@
     margin-top: 8px;
   }
 
-  @media (prefers-color-scheme: dark) {
-    .empty-title { color: #9ca3af; }
-    .empty-message { color: #6b7280; }
-  }
+  :global([data-theme="dark"]) .empty-title { color: #94a3b8; }
+  :global([data-theme="dark"]) .empty-message { color: #64748b; }
 </style>

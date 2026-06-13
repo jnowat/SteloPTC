@@ -3,10 +3,12 @@
   import { listComplianceRecords, getComplianceFlags, createComplianceRecord } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import DataState from './DataState.svelte';
 
   let records = $state<any[]>([]);
   let flags = $state<any[]>([]);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let showForm = $state(false);
   let activeTab = $state<'flags' | 'records'>('flags');
   let page = $state(1);
@@ -25,13 +27,14 @@
 
   async function load() {
     loading = true;
+    error = null;
     try {
       const [r, f] = await Promise.all([listComplianceRecords(undefined, page), getComplianceFlags()]);
       records = r.items;
       total = r.total;
       totalPages = r.total_pages;
       flags = f;
-    } catch (e: any) { addNotification(e.message, 'error'); }
+    } catch (e: any) { error = e.message; addNotification(e.message, 'error'); }
     finally { loading = false; }
   }
 
@@ -150,88 +153,102 @@
     </button>
   </div>
 
-  {#if loading}
-    <div class="empty-state">Loading...</div>
-  {:else if activeTab === 'flags'}
-    {#if flags.length === 0}
-      <div class="card empty-state">No compliance flags - all clear</div>
-    {:else}
-      <div class="card" style="overflow-x:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th title="Risk level of the compliance flag">Severity</th>
-              <th title="Specimen accession number with the flag">Accession</th>
-              <th title="Species code of the flagged specimen">Species</th>
-              <th title="Type of compliance issue detected">Flag</th>
-              <th title="Details about the compliance issue">Message</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each flags as f}
+  <DataState
+    {loading}
+    {error}
+    rows={5}
+    cols={5}
+    onretry={load}
+  >
+    {#if activeTab === 'flags'}
+      <DataState
+        empty={flags.length === 0}
+        emptyIcon="✅"
+        emptyTitle="No compliance flags"
+        emptyMessage="All specimens are clear — no active compliance issues were detected."
+      >
+        <div class="card" style="overflow-x:auto;">
+          <table>
+            <thead>
               <tr>
-                <td><span class="badge {getSeverityClass(f.severity)}" title="Severity level: {f.severity}">{f.severity}</span></td>
-                <td><strong>{f.accession_number}</strong></td>
-                <td>{f.species_code}</td>
-                <td>{f.flag_type.replace(/_/g, ' ')}</td>
-                <td>{f.message}</td>
+                <th title="Risk level of the compliance flag">Severity</th>
+                <th title="Specimen accession number with the flag">Accession</th>
+                <th title="Species code of the flagged specimen">Species</th>
+                <th title="Type of compliance issue detected">Flag</th>
+                <th title="Details about the compliance issue">Message</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-  {:else}
-    {#if records.length === 0}
-      <div class="card empty-state">No compliance records yet</div>
+            </thead>
+            <tbody>
+              {#each flags as f}
+                <tr>
+                  <td><span class="badge {getSeverityClass(f.severity)}" title="Severity level: {f.severity}">{f.severity}</span></td>
+                  <td><strong>{f.accession_number}</strong></td>
+                  <td>{f.species_code}</td>
+                  <td>{f.flag_type.replace(/_/g, ' ')}</td>
+                  <td>{f.message}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </DataState>
     {:else}
-      <div class="card" style="overflow-x:auto;">
-        <table>
-          <thead>
-            <tr>
-              <th title="Specimen accession number or ID">Specimen</th>
-              <th title="Category of compliance record">Type</th>
-              <th title="Regulatory agency associated with this record">Agency</th>
-              <th title="Test type or permit number">Test/Permit</th>
-              <th title="Outcome of the test">Result</th>
-              <th title="Current validity status of the record">Status</th>
-              <th title="Date the test or permit was issued">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {#each records as cr}
+      <DataState
+        empty={records.length === 0}
+        emptyIcon="📄"
+        emptyTitle="No compliance records yet"
+        emptyMessage="Add compliance records such as disease tests, permits, and inspections."
+        emptyActionLabel="+ New Record"
+        onemptyaction={() => (showForm = true)}
+      >
+        <div class="card" style="overflow-x:auto;">
+          <table>
+            <thead>
               <tr>
-                <td>{cr.specimen_accession || cr.specimen_id}</td>
-                <td>{cr.record_type.replace(/_/g, ' ')}</td>
-                <td>{cr.agency?.replace(/_/g, ' ') || '—'}</td>
-                <td>{cr.test_type || cr.permit_number || '—'}</td>
-                <td>
-                  {#if cr.test_result === 'positive'}
-                    <span class="badge badge-red" title="Test returned a positive result">Positive</span>
-                  {:else if cr.test_result === 'negative'}
-                    <span class="badge badge-green" title="Test returned a negative result">Negative</span>
-                  {:else if cr.test_result === 'pending'}
-                    <span class="badge badge-yellow" title="Test result is still pending">Pending</span>
-                  {:else}
-                    {cr.test_result || '—'}
-                  {/if}
-                </td>
-                <td><span class="badge" title="Record status: {cr.status}" class:badge-green={cr.status === 'valid'} class:badge-red={cr.status === 'flagged'}>{cr.status}</span></td>
-                <td>{cr.test_date || '—'}</td>
+                <th title="Specimen accession number or ID">Specimen</th>
+                <th title="Category of compliance record">Type</th>
+                <th title="Regulatory agency associated with this record">Agency</th>
+                <th title="Test type or permit number">Test/Permit</th>
+                <th title="Outcome of the test">Result</th>
+                <th title="Current validity status of the record">Status</th>
+                <th title="Date the test or permit was issued">Date</th>
               </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {#if totalPages > 1}
-      <div class="pagination">
-        <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }} title="Go to the previous page">Prev</button>
-        <span title="Current page position">Page {page} of {totalPages}</span>
-        <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }} title="Go to the next page">Next</button>
-      </div>
+            </thead>
+            <tbody>
+              {#each records as cr}
+                <tr>
+                  <td>{cr.specimen_accession || cr.specimen_id}</td>
+                  <td>{cr.record_type.replace(/_/g, ' ')}</td>
+                  <td>{cr.agency?.replace(/_/g, ' ') || '—'}</td>
+                  <td>{cr.test_type || cr.permit_number || '—'}</td>
+                  <td>
+                    {#if cr.test_result === 'positive'}
+                      <span class="badge badge-red" title="Test returned a positive result">Positive</span>
+                    {:else if cr.test_result === 'negative'}
+                      <span class="badge badge-green" title="Test returned a negative result">Negative</span>
+                    {:else if cr.test_result === 'pending'}
+                      <span class="badge badge-yellow" title="Test result is still pending">Pending</span>
+                    {:else}
+                      {cr.test_result || '—'}
+                    {/if}
+                  </td>
+                  <td><span class="badge" title="Record status: {cr.status}" class:badge-green={cr.status === 'valid'} class:badge-red={cr.status === 'flagged'}>{cr.status}</span></td>
+                  <td>{cr.test_date || '—'}</td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+        {#if totalPages > 1}
+          <div class="pagination">
+            <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }} title="Go to the previous page">Prev</button>
+            <span title="Current page position">Page {page} of {totalPages}</span>
+            <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }} title="Go to the next page">Next</button>
+          </div>
+        {/if}
+      </DataState>
     {/if}
-    {/if}
-  {/if}
+  </DataState>
 </div>
 
 <style>

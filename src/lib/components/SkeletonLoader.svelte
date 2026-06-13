@@ -41,15 +41,13 @@
     50% { opacity: 0.7; }
   }
 
-  /* Dark mode support */
-  @media (prefers-color-scheme: dark) {
-    .skeleton-cell {
-      background: linear-gradient(90deg, var(--skeleton-base, #374151) 25%, var(--skeleton-shine, #4b5563) 50%, var(--skeleton-base, #374151) 75%);
-      background-size: 200% 100%;
-      animation: skeleton-shimmer 1.4s ease-in-out infinite;
-    }
-    .skeleton-row {
-      border-bottom-color: var(--border, #374151);
-    }
+  /* Dark mode support — matches the app's manual toggle via data-theme */
+  :global([data-theme="dark"]) .skeleton-cell {
+    background: linear-gradient(90deg, #374151 25%, #4b5563 50%, #374151 75%);
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  }
+  :global([data-theme="dark"]) .skeleton-row {
+    border-bottom-color: #374151;
   }
 </style>

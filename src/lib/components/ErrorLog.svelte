@@ -10,6 +10,7 @@
   let logs = $state<any[]>([]);
   let totalLogs = $state(0);
   let loading = $state(true);
+  let fetchError = $state<string | null>(null);
   let expandedId = $state<string | null>(null);
 
   // Filters
@@ -25,6 +26,7 @@
 
   async function load() {
     loading = true;
+    fetchError = null;
     try {
       const result = await listErrorLogs({
         severity: filterSeverity || undefined,
@@ -35,8 +37,9 @@
       });
       logs = result.items;
       totalLogs = result.total;
-    } catch (_e) {
-      // silently ignore — don't recurse into error logger
+    } catch (e: any) {
+      fetchError = e.message;
+      // intentionally don't call addNotification — avoid recursion into error logger
     } finally {
       loading = false;
     }
@@ -204,6 +207,15 @@
       <div class="el-loading">
         <div class="el-spinner"></div>
         <span>Loading error logs…</span>
+      </div>
+    {:else if fetchError}
+      <div class="el-empty" role="alert">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity="0.4">
+          <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <p>Failed to load error logs</p>
+        <span>{fetchError}</span>
+        <button class="el-btn el-btn-ghost" style="margin-top:8px;" onclick={load}>Try again</button>
       </div>
     {:else if logs.length === 0}
       <div class="el-empty">

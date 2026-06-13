@@ -3,11 +3,11 @@
   import { listReminders, createReminder, dismissReminder } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
-  import SkeletonLoader from './SkeletonLoader.svelte';
-  import EmptyState from './EmptyState.svelte';
+  import DataState from './DataState.svelte';
 
   let reminders = $state<any[]>([]);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let showForm = $state(false);
   let snoozingId = $state<string | null>(null);
   let snoozeDays = $state(1);
@@ -23,8 +23,9 @@
 
   async function load() {
     loading = true;
+    error = null;
     try { reminders = await listReminders(); }
-    catch (e: any) { addNotification(e.message, 'error'); }
+    catch (e: any) { error = e.message; addNotification(e.message, 'error'); }
     finally { loading = false; }
   }
 
@@ -144,19 +145,19 @@
     </div>
   {/if}
 
-  {#if loading}
-    <div class="card" style="overflow-x:auto;">
-      <SkeletonLoader rows={4} cols={4} />
-    </div>
-  {:else if reminders.length === 0}
-    <EmptyState
-      icon="🔔"
-      title="No reminders"
-      message="Add a reminder to stay on top of subcultures, media expiry, and other scheduled tasks."
-      actionLabel="+ New Reminder"
-      onaction={() => (showForm = true)}
-    />
-  {:else}
+  <DataState
+    {loading}
+    {error}
+    empty={reminders.length === 0}
+    rows={4}
+    cols={4}
+    emptyIcon="🔔"
+    emptyTitle="No reminders"
+    emptyMessage="Add a reminder to stay on top of subcultures, media expiry, and other scheduled tasks."
+    emptyActionLabel="+ New Reminder"
+    onemptyaction={() => (showForm = true)}
+    onretry={load}
+  >
     <div class="card" style="overflow-x:auto;">
       <table>
         <thead>
@@ -205,5 +206,5 @@
         </tbody>
       </table>
     </div>
-  {/if}
+  </DataState>
 </div>

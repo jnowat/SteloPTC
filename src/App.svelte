@@ -174,7 +174,6 @@
 
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
-  @import './lib/styles/tokens.css';
 
   :global(*) {
     margin: 0;
@@ -383,10 +382,11 @@
     padding: 10px 12px;
     border-bottom: 1px solid #f1f5f9;
     font-size: 13px;
+    color: var(--color-text, #1e293b);
   }
   :global(tr:hover td) { background: #f8fafc; }
   :global(.dark th) { color: #94a3b8; border-bottom-color: #334155; }
-  :global(.dark td) { border-bottom-color: #1e293b; }
+  :global(.dark td) { border-bottom-color: #1e293b; color: #e2e8f0; }
   :global(.dark tr:hover td) { background: #1e293b; }
 
   /* Horizontal-scroll tables + 48px touch targets on mobile/tablet */

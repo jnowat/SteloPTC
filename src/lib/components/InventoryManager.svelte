@@ -3,11 +3,11 @@
   import { listInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem, adjustStock, listPreparedSolutions, createPreparedSolution, updatePreparedSolution, deletePreparedSolution } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
-  import SkeletonLoader from './SkeletonLoader.svelte';
-  import EmptyState from './EmptyState.svelte';
+  import DataState from './DataState.svelte';
 
   let items = $state<any[]>([]);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let showForm = $state(false);
   let editingId = $state<string | null>(null);
   let showAdjust = $state<string | null>(null);
@@ -53,8 +53,9 @@
 
   async function load() {
     loading = true;
+    error = null;
     try { items = await listInventory(); }
-    catch (e: any) { addNotification(e.message, 'error'); }
+    catch (e: any) { error = e.message; addNotification(e.message, 'error'); }
     finally { loading = false; }
     listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
   }
@@ -430,27 +431,19 @@
     </div>
   {/if}
 
-  {#if loading}
-    <div class="card" style="overflow-x:auto;">
-      <SkeletonLoader rows={5} cols={4} />
-    </div>
-  {:else if filtered.length === 0}
-    {#if items.length === 0}
-      <EmptyState
-        icon="📦"
-        title="No inventory items yet"
-        message="Add your first item to start tracking stock levels and low-stock alerts."
-        actionLabel="+ New Item"
-        onaction={() => { resetForm(); showForm = true; }}
-      />
-    {:else}
-      <EmptyState
-        icon="🔍"
-        title="No items match your filters"
-        message="Try a different search term or category."
-      />
-    {/if}
-  {:else}
+  <DataState
+    {loading}
+    {error}
+    empty={!loading && !error && filtered.length === 0}
+    rows={5}
+    cols={4}
+    emptyIcon={items.length === 0 ? '📦' : '🔍'}
+    emptyTitle={items.length === 0 ? 'No inventory items yet' : 'No items match your filters'}
+    emptyMessage={items.length === 0 ? 'Add your first item to start tracking stock levels and low-stock alerts.' : 'Try a different search term or category.'}
+    emptyActionLabel={items.length === 0 ? '+ New Item' : ''}
+    onemptyaction={items.length === 0 ? () => { resetForm(); showForm = true; } : undefined}
+    onretry={load}
+  >
     <div class="card" style="overflow-x:auto;">
       <table>
         <thead>
@@ -534,7 +527,7 @@
         </tbody>
       </table>
     </div>
-  {/if}
+  </DataState>
 
   <!-- Prepared Solutions Section -->
   <div style="margin-top:32px;">
@@ -634,13 +627,12 @@
       </div>
     {/if}
 
-    {#if solutions.length === 0}
-      <EmptyState
-        icon="⚗️"
-        title="No prepared solutions yet"
-        message="Record a stock solution to track its volume and expiry."
-      />
-    {:else}
+    <DataState
+      empty={solutions.length === 0}
+      emptyIcon="⚗️"
+      emptyTitle="No prepared solutions yet"
+      emptyMessage="Record a stock solution to track its volume and expiry."
+    >
       <div class="card" style="overflow-x:auto;">
         <table>
           <thead>
@@ -720,7 +712,7 @@
           </tbody>
         </table>
       </div>
-    {/if}
+    </DataState>
   </div>
 </div>
 
