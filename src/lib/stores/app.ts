@@ -38,8 +38,10 @@ darkMode.subscribe((value) => {
     localStorage.setItem('stelo_dark', String(value));
     if (value) {
       document.documentElement.classList.add('dark');
+      document.documentElement.setAttribute('data-theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
+      document.documentElement.setAttribute('data-theme', 'light');
     }
   } catch {
     // DOM not available

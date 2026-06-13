@@ -5,6 +5,17 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-06-13
+
+### Added
+- `src/lib/styles/tokens.css`: central design-token file defining CSS custom properties for colors (light + dark), spacing scale, typography sizes, border radii, shadows, z-index layers, and transitions. Single source of truth for all visual constants.
+
+### Changed
+- `app.ts`: dark mode subscriber now sets a `data-theme="dark"` / `data-theme="light"` attribute on `<html>` in addition to the existing `.dark` class, enabling token-based theming.
+- `App.svelte`: imports `tokens.css` once at the top of the style block; `.app` background and color now reference `--color-bg` / `--color-text` tokens.
+- `Dashboard.svelte`: all hardcoded color, spacing, radius, and typography values replaced with design tokens; `:global(.dark)` overrides removed in favour of automatic token switching via `data-theme`.
+- `Sidebar.svelte`: all hardcoded values replaced with sidebar-scoped tokens (`--color-sidebar-*`) and shared tokens for spacing, radii, shadows, z-index, and transitions.
+
 ## [1.2.1] - 2026-06-13
 
 ### Added

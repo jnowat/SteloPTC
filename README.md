@@ -64,7 +64,8 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Mobile-First UI** — Hamburger + slide-out drawer on all screens < 1024 px, 48 px touch targets (WCAG 2.5.5), safe-area insets for notches and home indicators (v0.1.11+).
 - **Keyboard Shortcuts** — Ctrl+1–5: Dashboard, Specimens, Media, Reminders, Error Log.
 - **Contextual Tooltips** — "?" badge on every form field and action button with help text (v0.1.15).
-- **Dark Mode** — System-aware with manual toggle. Inter font throughout.
+- **Dark Mode** — System-aware with manual toggle, driven by a `data-theme` attribute on `<html>`. Inter font throughout.
+- **Design Token System** — All colors, spacing, typography, radii, shadows, and z-index layers are defined as CSS custom properties in `src/lib/styles/tokens.css`. Changing a single token updates the UI consistently across all token-aware components (v1.2.2).
 
 ### Species Registry
 

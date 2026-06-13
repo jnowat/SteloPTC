@@ -446,36 +446,33 @@
   .stats-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 16px;
-    margin-bottom: 24px;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
   }
   .stat-card {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 20px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
     text-align: center;
   }
-  :global(.dark) .stat-card { background: #1e293b; border-color: #334155; }
-  .stat-card.warn { border-left: 4px solid #f59e0b; }
-  .stat-card.alert { border-left: 4px solid #dc2626; }
-  .stat-value { font-size: 32px; font-weight: 800; color: #1e293b; }
-  :global(.dark) .stat-value { color: #f1f5f9; }
-  .stat-label { font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+  .stat-card.warn { border-left: 4px solid var(--color-warn); }
+  .stat-card.alert { border-left: 4px solid var(--color-danger); }
+  .stat-value { font-size: var(--font-size-3xl); font-weight: 800; color: var(--color-text-strong); }
+  .stat-label { font-size: var(--font-size-sm); color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: var(--space-1); }
 
   .dashboard-panels {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 20px;
+    gap: var(--space-5);
   }
   .panel {
-    background: white;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 20px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--space-5);
   }
-  :global(.dark) .panel { background: #1e293b; border-color: #334155; }
-  .panel h3 { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+  .panel h3 { font-size: var(--font-size-lg); font-weight: 700; margin-bottom: var(--space-4); }
 
   .reminder-list, .flag-list { display: flex; flex-direction: column; gap: 10px; }
   .reminder-item, .flag-item {
@@ -483,30 +480,27 @@
     justify-content: space-between;
     align-items: center;
     padding: 10px;
-    border-radius: 6px;
-    background: #f8fafc;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-raised);
   }
-  :global(.dark) .reminder-item, :global(.dark) .flag-item { background: #0f172a; }
-  .flag-item { gap: 12px; justify-content: flex-start; }
-  .reminder-title { font-weight: 600; font-size: 13px; }
-  .reminder-meta { font-size: 11px; color: #6b7280; margin-top: 2px; }
-  .flag-accession { font-weight: 600; font-size: 13px; }
-  .flag-message { font-size: 12px; color: #6b7280; }
+  .flag-item { gap: var(--space-3); justify-content: flex-start; }
+  .reminder-title { font-weight: 600; font-size: var(--font-size-base); }
+  .reminder-meta { font-size: var(--font-size-xs); color: var(--color-text-muted); margin-top: 2px; }
+  .flag-accession { font-weight: 600; font-size: var(--font-size-base); }
+  .flag-message { font-size: var(--font-size-sm); color: var(--color-text-muted); }
 
-  .chart-bars { display: flex; flex-direction: column; gap: 8px; }
+  .chart-bars { display: flex; flex-direction: column; gap: var(--space-2); }
   .bar-row { display: flex; align-items: center; gap: 10px; }
-  .bar-label { width: 100px; font-size: 12px; font-weight: 600; text-transform: capitalize; }
-  .bar-track { flex: 1; height: 20px; background: #f1f5f9; border-radius: 4px; overflow: hidden; }
-  :global(.dark) .bar-track { background: #0f172a; }
-  .bar-fill { height: 100%; background: #2563eb; border-radius: 4px; transition: width 0.3s; }
-  .species-fill { background: #059669; }
-  .bar-value { width: 40px; text-align: right; font-size: 13px; font-weight: 700; }
+  .bar-label { width: 100px; font-size: var(--font-size-sm); font-weight: 600; text-transform: capitalize; }
+  .bar-track { flex: 1; height: 20px; background: var(--color-fill-track); border-radius: var(--radius-sm); overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--color-fill-stage); border-radius: var(--radius-sm); transition: width 0.3s; }
+  .species-fill { background: var(--color-fill-species); }
+  .bar-value { width: 40px; text-align: right; font-size: var(--font-size-base); font-weight: 700; }
 
   .danger-panel {
     border: 1px solid rgba(220, 38, 38, 0.35);
-    background: rgba(220, 38, 38, 0.04);
+    background: var(--color-surface-danger);
   }
-  :global(.dark) .danger-panel { background: rgba(220, 38, 38, 0.08); }
 
   .reset-confirm {
     display: flex;
@@ -514,43 +508,39 @@
   }
 
   /* ── Subculture Schedule ── */
-  .schedule-list { display: flex; flex-direction: column; gap: 8px; }
+  .schedule-list { display: flex; flex-direction: column; gap: var(--space-2); }
   .schedule-item {
     display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 10px; border-radius: 6px; background: #f8fafc; gap: 8px;
+    padding: var(--space-2) 10px; border-radius: var(--radius-md);
+    background: var(--color-surface-raised); gap: var(--space-2);
   }
-  :global(.dark) .schedule-item { background: #0f172a; }
-  .overdue-item { background: #fff1f2; }
-  :global(.dark) .overdue-item { background: #1c0404; }
+  .overdue-item { background: var(--color-surface-overdue); }
   .schedule-item-left { display: flex; flex-direction: column; gap: 2px; }
   .schedule-item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-  .schedule-accession { font-size: 13px; font-weight: 700; font-family: monospace; }
-  .schedule-species { font-size: 11px; color: #6b7280; }
-  .schedule-date { font-size: 11px; color: #6b7280; }
+  .schedule-accession { font-size: var(--font-size-base); font-weight: 700; font-family: monospace; }
+  .schedule-species { font-size: var(--font-size-xs); color: var(--color-text-muted); }
+  .schedule-date { font-size: var(--font-size-xs); color: var(--color-text-muted); }
   .schedule-section-label {
-    font-size: 11px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.5px; color: #6b7280; margin-bottom: 6px;
+    font-size: var(--font-size-xs); font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 6px;
   }
-  .overdue-label { color: #b91c1c; }
-  :global(.dark) .overdue-label { color: #f87171; }
+  .overdue-label { color: var(--color-overdue-label); }
 
   /* ── Contamination Overview ── */
   .contam-rate-row {
-    display: flex; align-items: center; gap: 16px;
-    padding: 12px; border-radius: 8px; background: #fff1f2;
-    margin-bottom: 12px;
+    display: flex; align-items: center; gap: var(--space-4);
+    padding: var(--space-3); border-radius: var(--radius-lg);
+    background: var(--color-surface-overdue);
+    margin-bottom: var(--space-3);
   }
-  :global(.dark) .contam-rate-row { background: #1c0404; }
   .contam-rate-value {
-    font-size: 36px; font-weight: 800; color: #374151; flex-shrink: 0;
+    font-size: var(--font-size-stat); font-weight: 800; color: var(--color-text); flex-shrink: 0;
   }
-  .contam-high { color: #b91c1c; }
-  :global(.dark) .contam-high { color: #f87171; }
-  :global(.dark) .contam-rate-value { color: #f1f5f9; }
-  .contam-rate-meta { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #6b7280; }
+  .contam-high { color: var(--color-contam-high); }
+  .contam-rate-meta { display: flex; flex-direction: column; gap: 2px; font-size: var(--font-size-sm); color: var(--color-text-muted); }
   .contam-breakdown-label {
-    font-size: 11px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.5px; color: #6b7280; margin-bottom: 6px;
+    font-size: var(--font-size-xs); font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 6px;
   }
-  .contam-fill { background: #ef4444; }
+  .contam-fill { background: var(--color-fill-contam); }
 </style>
