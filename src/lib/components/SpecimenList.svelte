@@ -31,6 +31,10 @@
   let qrSpecimen = $state<any>(null);
   let showScanner = $state(false);
 
+  // Print report options
+  let showPrintOptions = $state(false);
+  let printGroupBy = $state<'stage' | 'health' | 'none'>('stage');
+
   // Batch selection
   let selectedIds = $state(new Set<string>());
   let batchAction = $state<'location' | 'stage' | null>(null);
@@ -248,77 +252,379 @@
   }
 
   function printSummaryReport() {
+    showPrintOptions = false;
+
     const user = get(currentUser);
     const username = (user as any)?.display_name || (user as any)?.username || 'Unknown';
-    const reportDate = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const reportDate = now.toISOString().split('T')[0];
+    const reportTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-    const esc = (s: any) => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') || '—';
-    const healthFmt = (val: any) => {
-      if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '—';
-      const n = Math.round(Number(val));
-      if (n === -1) return '?';
-      return ['0-Dead','1-Poor','2-Fair','3-Good','4-Healthy'][Math.max(0,Math.min(4,n))];
+    // ── Utilities ──────────────────────────────────────────────────────────────
+    const esc = (s: any) => {
+      const str = String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      return str || '—';
     };
-    const stageFmtP = (s: string) => s?.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()) || '—';
 
-    // Build filter description
+    const stageFmtP = (s: string) => s?.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
+
+    const healthNum = (val: any): number | null => {
+      if (val === null || val === undefined || val === '' || isNaN(Number(val))) return null;
+      const n = Math.round(Number(val));
+      return (n >= -1 && n <= 4) ? n : null;
+    };
+
+    const healthText = (val: any): string => {
+      const n = healthNum(val);
+      if (n === null) return '—';
+      if (n === -1) return '? Unknown';
+      return ['0 – Dead', '1 – Poor', '2 – Fair', '3 – Good', '4 – Healthy'][n];
+    };
+
+    // Returns age in days from a YYYY-MM-DD date string
+    const ageDays = (dateStr: string | null | undefined): number | null => {
+      if (!dateStr) return null;
+      const [y, m, d] = dateStr.split('-').map(Number);
+      if (!y || !m || !d) return null;
+      const ms = Date.now() - new Date(y, m - 1, d).getTime();
+      const days = Math.floor(ms / 86400000);
+      return days >= 0 ? days : null;
+    };
+
+    const fmtAge = (dateStr: string | null | undefined): string => {
+      const d = ageDays(dateStr);
+      if (d === null) return '—';
+      if (d < 30) return `${d}d`;
+      const months = Math.floor(d / 30);
+      const rem = d % 30;
+      return rem > 0 ? `${months}mo ${rem}d` : `${months}mo`;
+    };
+
+    // ── Executive Summary Statistics ───────────────────────────────────────────
+    const totalShown = specimens.length;
+    const quarantineCount = specimens.filter((s: any) => s.quarantine_flag).length;
+    const contaminatedCount = specimens.filter((s: any) => s.has_contamination).length;
+    const criticalCount = specimens.filter((s: any) => {
+      const n = healthNum(s.health_status);
+      return s.quarantine_flag || s.has_contamination || (n !== null && n !== -1 && n <= 1);
+    }).length;
+
+    // Stage distribution (sorted by count desc)
+    const stageCounts = new Map<string, number>();
+    for (const s of specimens) {
+      const k = s.stage || 'unknown';
+      stageCounts.set(k, (stageCounts.get(k) || 0) + 1);
+    }
+    const stageDistHtml = [...stageCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([stage, count]) =>
+        `<span class="chip">${esc(stageFmtP(stage))} <b>${count}</b></span>`
+      ).join('') || '<span class="chip">—</span>';
+
+    // Health distribution
+    const hb = { dead: 0, poor: 0, fair: 0, good: 0, healthy: 0, unknown: 0 };
+    for (const s of specimens) {
+      const n = healthNum(s.health_status);
+      if (n === null || n === -1) hb.unknown++;
+      else if (n === 0) hb.dead++;
+      else if (n === 1) hb.poor++;
+      else if (n === 2) hb.fair++;
+      else if (n === 3) hb.good++;
+      else hb.healthy++;
+    }
+    const healthDistHtml = [
+      hb.dead     > 0 ? `<span class="chip ch-dead"><b>${hb.dead}</b> Dead</span>` : '',
+      hb.poor     > 0 ? `<span class="chip ch-poor"><b>${hb.poor}</b> Poor</span>` : '',
+      hb.fair     > 0 ? `<span class="chip ch-fair"><b>${hb.fair}</b> Fair</span>` : '',
+      hb.good     > 0 ? `<span class="chip ch-good"><b>${hb.good}</b> Good</span>` : '',
+      hb.healthy  > 0 ? `<span class="chip ch-healthy"><b>${hb.healthy}</b> Healthy</span>` : '',
+      hb.unknown  > 0 ? `<span class="chip"><b>${hb.unknown}</b> Unknown</span>` : '',
+    ].filter(Boolean).join('') || '<span class="chip">—</span>';
+
+    // Average health (excluding unknowns)
+    const healthNums = specimens
+      .map((s: any) => healthNum(s.health_status))
+      .filter((n): n is number => n !== null && n !== -1);
+    const avgHealth = healthNums.length > 0
+      ? (healthNums.reduce((a, b) => a + b, 0) / healthNums.length).toFixed(1)
+      : '—';
+
+    // ── Filter description ─────────────────────────────────────────────────────
     const filterParts: string[] = [];
-    if (searchQuery) filterParts.push(`Search: "${searchQuery}"`);
+    if (searchQuery) filterParts.push(`Search: &ldquo;${esc(searchQuery)}&rdquo;`);
     if (filterStage) filterParts.push(`Stage: ${stageFmtP(filterStage)}`);
     if (filterSpecies) {
       const sp = species.find((s: any) => s.id === filterSpecies);
-      if (sp) filterParts.push(`Species: ${sp.species_code}`);
+      if (sp) filterParts.push(`Species: ${esc(sp.species_code)}`);
     }
-    const filterLine = filterParts.length > 0
-      ? `<div class="filter-line">Filters: ${filterParts.join(' · ')}</div>`
-      : '<div class="filter-line">Showing all active specimens</div>';
+    if (filterProject) {
+      const proj = projects.find((p: any) => p.id === filterProject);
+      if (proj) filterParts.push(`Project: ${esc(proj.name)}`);
+    }
+    const isFiltered = filterParts.length > 0;
+    const filterBar = isFiltered
+      ? `<div class="filter-bar"><b>Active filters:</b> ${filterParts.join(' &nbsp;·&nbsp; ')} &nbsp;·&nbsp; Showing ${totalShown} of ${total} total records (page&nbsp;${page}/${totalPages || 1})</div>`
+      : `<div class="filter-bar">All active specimens &mdash; showing ${totalShown} of ${total} total records (page&nbsp;${page}/${totalPages || 1})</div>`;
 
-    const rows = specimens.map((s: any) => `<tr>
-      <td><b>${esc(s.accession_number)}</b></td>
-      <td>${esc(s.species_code)}</td>
-      <td>${stageFmtP(s.stage)}</td>
-      <td>${esc(s.location)}</td>
-      <td class="ctr">${esc(s.subculture_count)}</td>
-      <td>${healthFmt(s.health_status)}</td>
-      <td>${s.quarantine_flag ? '<span class="b-red">Quarantine</span>' : '<span class="b-green">Active</span>'}</td>
-      <td>${esc(s.initiation_date)}</td>
-    </tr>`).join('');
+    // ── Grouping ───────────────────────────────────────────────────────────────
+    type Group = { key: string; label: string; items: any[]; colorClass: string; };
+    let groups: Group[];
+    const groupLabel =
+      printGroupBy === 'stage'  ? 'Grouped by Development Stage' :
+      printGroupBy === 'health' ? 'Grouped by Health / Urgency' :
+                                  'All Specimens — Flat List';
 
-    const printCss = `*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%}body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:10.5px;color:#0f172a;background:#fff}.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:10px;margin-bottom:14px;gap:16px}.doc-logo-area{width:64px;height:40px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#94a3b8;letter-spacing:.5px;flex-shrink:0}.doc-title-block{flex:1}.doc-brand{font-size:21px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}.doc-report-name{font-size:11.5px;color:#475569;margin-top:3px;font-weight:500}.doc-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.75;flex-shrink:0}.doc-meta b{color:#0f172a}.filter-line{font-size:9.5px;color:#475569;margin-bottom:10px;font-style:italic;padding:5px 8px;background:#f8fafc;border-left:3px solid #e2e8f0}.summary{font-size:10.5px;font-weight:600;margin-bottom:8px;color:#0f172a}table{width:100%;border-collapse:collapse;font-size:9.5px}thead{display:table-header-group}th{background:#0f172a;color:#e2e8f0;font-weight:700;text-align:left;padding:6px 9px;white-space:nowrap;font-size:9px;letter-spacing:.3px}td{padding:4.5px 9px;border-bottom:1px solid #e2e8f0;vertical-align:top}tr:nth-child(even) td{background:#f8fafc}tr{page-break-inside:avoid}.ctr{text-align:center}.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.doc-footer{margin-top:16px;border-top:1px solid #e2e8f0;padding-top:7px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}.doc-footer-pagenum::after{content:"Page " counter(page) " of " counter(pages)}`;
+    if (printGroupBy === 'stage') {
+      const stageOrder = ['explant','callus','suspension','protoplast','shoot',
+        'shoot_meristem','apical_meristem','root','root_meristem','embryogenic',
+        'plantlet','acclimatized','stock'];
+      const map = new Map<string, any[]>();
+      for (const s of specimens) {
+        const k = s.stage || 'unknown';
+        if (!map.has(k)) map.set(k, []);
+        map.get(k)!.push(s);
+      }
+      groups = [...map.entries()]
+        .sort((a, b) => {
+          const ia = stageOrder.indexOf(a[0]), ib = stageOrder.indexOf(b[0]);
+          if (ia === -1 && ib === -1) return a[0].localeCompare(b[0]);
+          return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        })
+        .map(([k, items]) => ({ key: k, label: stageFmtP(k), items, colorClass: 'gh-default' }));
 
-    const bodyHtml = `<div class="doc-header">
-  <div class="doc-logo-area">LOGO</div>
+    } else if (printGroupBy === 'health') {
+      const buckets: Record<string, any[]> = { critical: [], fair: [], good: [], pending: [] };
+      for (const s of specimens) {
+        const n = healthNum(s.health_status);
+        if (n === null || n === -1)          buckets.pending.push(s);
+        else if (n <= 1)                     buckets.critical.push(s);
+        else if (n === 2)                    buckets.fair.push(s);
+        else                                 buckets.good.push(s);
+      }
+      groups = [
+        { key: 'critical', label: 'Critical — Requires Immediate Attention (Health 0–1)', items: buckets.critical, colorClass: 'gh-critical' },
+        { key: 'fair',     label: 'Fair — Monitor Closely (Health 2)',                    items: buckets.fair,     colorClass: 'gh-fair' },
+        { key: 'good',     label: 'Good / Healthy (Health 3–4)',                          items: buckets.good,     colorClass: 'gh-good' },
+        { key: 'pending',  label: 'Unknown / Pending Health Assessment',                  items: buckets.pending,  colorClass: 'gh-default' },
+      ].filter(g => g.items.length > 0);
+
+    } else {
+      groups = [{ key: 'all', label: '', items: specimens, colorClass: 'gh-default' }];
+    }
+
+    const isGrouped = printGroupBy !== 'none';
+
+    // ── Table row builder ──────────────────────────────────────────────────────
+    const buildRows = (items: any[]): string =>
+      items.map((s: any) => {
+        const n = healthNum(s.health_status);
+        const isCrit = n !== null && n !== -1 && n <= 1;
+        const status = s.quarantine_flag
+          ? '<span class="tag t-warn">Quarantine</span>'
+          : '<span class="tag t-ok">Active</span>';
+        const contam = s.has_contamination ? ' <span class="tag t-danger">Contam.</span>' : '';
+        const days = ageDays(s.initiation_date);
+        const ageStr = fmtAge(s.initiation_date);
+        // Flag old cultures (> 730 days) as potentially overdue for review
+        const ageFlag = days !== null && days > 730 ? ' <span class="tag t-warn">Old</span>' : '';
+
+        return `<tr class="${isCrit ? 'row-crit' : ''}">
+          <td class="mono">${esc(s.accession_number)}</td>
+          <td>${esc(s.species_code)}</td>
+          ${!isGrouped ? `<td>${stageFmtP(s.stage)}</td>` : ''}
+          <td>${esc(s.location)}</td>
+          <td class="num">${esc(s.subculture_count)}</td>
+          <td>${esc(s.initiation_date)}</td>
+          <td class="num">${ageStr}${ageFlag}</td>
+          <td class="${isCrit ? 'h-crit' : ''}">${healthText(s.health_status)}</td>
+          <td>${status}${contam}</td>
+        </tr>`;
+      }).join('');
+
+    // ── Group section builder ──────────────────────────────────────────────────
+    const buildGroup = (g: Group): string => {
+      const cnt = g.items.length;
+      const gQuar   = g.items.filter((s: any) => s.quarantine_flag).length;
+      const gContam = g.items.filter((s: any) => s.has_contamination).length;
+      const gNums   = g.items.map((s: any) => healthNum(s.health_status))
+                             .filter((n): n is number => n !== null && n !== -1);
+      const gAvg    = gNums.length > 0
+        ? (gNums.reduce((a, b) => a + b, 0) / gNums.length).toFixed(1)
+        : null;
+
+      const metaParts = [`${cnt} specimen${cnt !== 1 ? 's' : ''}`];
+      if (gAvg !== null) metaParts.push(`avg health ${gAvg}/4`);
+      if (gQuar   > 0)  metaParts.push(`<span class="meta-warn">${gQuar} quarantine</span>`);
+      if (gContam > 0)  metaParts.push(`<span class="meta-danger">${gContam} contaminated</span>`);
+
+      const header = isGrouped ? `
+        <div class="group-header ${g.colorClass}">
+          <span class="group-title">${esc(g.label)}</span>
+          <span class="group-meta">${metaParts.join(' &nbsp;·&nbsp; ')}</span>
+        </div>` : '';
+
+      const thead = `<thead><tr>
+        <th>Accession</th>
+        <th>Species</th>
+        ${!isGrouped ? '<th>Stage</th>' : ''}
+        <th>Location</th>
+        <th class="num">Passages</th>
+        <th>Initiated</th>
+        <th class="num">Age</th>
+        <th>Health</th>
+        <th>Status</th>
+      </tr></thead>`;
+
+      return `<div class="group-wrap">${header}<table>${thead}<tbody>${buildRows(g.items)}</tbody></table></div>`;
+    };
+
+    const mainHtml = groups.map(buildGroup).join('');
+
+    // ── Print CSS ──────────────────────────────────────────────────────────────
+    const printCss = `
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+html,body{background:#fff}
+body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:9.5px;color:#0f172a;line-height:1.4}
+
+/* ── Document header ── */
+.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:10px;margin-bottom:12px;gap:16px}
+.doc-logo{width:56px;height:40px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:7.5px;color:#94a3b8;flex-shrink:0}
+.doc-title-block{flex:1}
+.doc-brand{font-size:20px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}
+.doc-sub{font-size:10.5px;color:#475569;margin-top:3px;font-weight:600}
+.doc-groupby{font-size:8.5px;color:#94a3b8;margin-top:2px;font-weight:500;font-style:italic}
+.doc-meta{text-align:right;font-size:8.5px;color:#64748b;line-height:1.85;flex-shrink:0}
+.doc-meta b{color:#0f172a}
+
+/* ── Filter bar ── */
+.filter-bar{font-size:8px;color:#475569;margin-bottom:14px;padding:5px 9px;background:#f8fafc;border-left:3px solid #cbd5e1}
+.filter-bar b{color:#334155}
+
+/* ── Executive summary ── */
+.exec-section{margin-bottom:16px}
+.exec-title{font-size:7.5px;font-weight:800;text-transform:uppercase;letter-spacing:1.5px;color:#1d4ed8;border-bottom:1.5px solid #e2e8f0;padding-bottom:4px;margin-bottom:10px}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:12px}
+.stat-box{border:1px solid #e2e8f0;border-radius:5px;padding:9px 10px;text-align:center}
+.stat-num{font-size:26px;font-weight:900;color:#0f172a;line-height:1}
+.stat-lbl{font-size:7.5px;color:#64748b;text-transform:uppercase;letter-spacing:.6px;margin-top:4px}
+.stat-box.s-attn{border-color:#fca5a5}.stat-box.s-attn .stat-num{color:#dc2626}
+.stat-box.s-quar{border-color:#fcd34d}.stat-box.s-quar .stat-num{color:#b45309}
+.stat-box.s-contam{border-color:#f0abfc}.stat-box.s-contam .stat-num{color:#7e22ce}
+.stat-box.s-health{border-color:#86efac}.stat-box.s-health .stat-num{color:#15803d}
+
+.dist-row{display:flex;align-items:flex-start;gap:8px;margin-bottom:5px}
+.dist-lbl{font-size:7.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;min-width:52px;padding-top:3px;flex-shrink:0}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+.chip{display:inline-block;padding:2px 7px;border-radius:3px;font-size:8px;background:#f1f5f9;color:#334155}
+.chip b{font-weight:700}
+.ch-dead{background:#fee2e2;color:#7f1d1d}.ch-poor{background:#ffedd5;color:#7c2d12}
+.ch-fair{background:#fef9c3;color:#713f12}.ch-good{background:#dcfce7;color:#14532d}
+.ch-healthy{background:#d1fae5;color:#065f46}
+
+/* ── Group sections ── */
+.group-wrap{margin-bottom:18px;page-break-inside:avoid}
+.group-header{display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border-left:3.5px solid #334155;margin-bottom:0}
+.gh-default{background:#f1f5f9;border-color:#334155}
+.gh-critical{background:#fff1f2;border-color:#dc2626}
+.gh-fair{background:#fffbeb;border-color:#d97706}
+.gh-good{background:#f0fdf4;border-color:#16a34a}
+.group-title{font-size:10.5px;font-weight:700;color:#0f172a}
+.group-meta{font-size:8px;color:#475569}
+.meta-warn{color:#92400e;font-weight:600}
+.meta-danger{color:#991b1b;font-weight:600}
+
+/* ── Data table ── */
+table{width:100%;border-collapse:collapse;font-size:8.5px;margin-top:0}
+thead{display:table-header-group}
+th{background:#1e293b;color:#e2e8f0;font-weight:700;text-align:left;padding:5px 8px;white-space:nowrap;font-size:7.5px;letter-spacing:.4px;text-transform:uppercase}
+th.num{text-align:center}
+td{padding:4px 8px;border-bottom:1px solid #f1f5f9;vertical-align:middle;color:#1e293b}
+tr:nth-child(even) td{background:#f8fafc}
+tr.row-crit td{background:#fff5f5}
+tr.row-crit:nth-child(even) td{background:#fee2e2}
+tr{page-break-inside:avoid}
+.num{text-align:center}
+.mono{font-family:'Consolas','SF Mono',monospace;font-size:8px;font-weight:700;letter-spacing:-.2px}
+.h-crit{color:#dc2626;font-weight:700}
+
+/* ── Tags ── */
+.tag{display:inline-block;padding:1px 5px;border-radius:3px;font-size:7.5px;font-weight:700;line-height:1.5}
+.t-ok{background:#dcfce7;color:#166534}
+.t-warn{background:#fef3c7;color:#92400e}
+.t-danger{background:#fee2e2;color:#991b1b}
+
+/* ── Footer ── */
+.doc-footer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:7px;display:flex;justify-content:space-between;align-items:center;font-size:8px;color:#94a3b8}
+.doc-footer span+span{font-style:italic}
+.page-num::after{content:"Page " counter(page) " of " counter(pages)}
+`.trim();
+
+    // ── HTML body ──────────────────────────────────────────────────────────────
+    const bodyHtml = `
+<div class="doc-header">
+  <div class="doc-logo">LOGO</div>
   <div class="doc-title-block">
     <div class="doc-brand">SteloPTC</div>
-    <div class="doc-report-name">Specimens Summary Report</div>
+    <div class="doc-sub">Specimen Inventory Report</div>
+    <div class="doc-groupby">${groupLabel}</div>
   </div>
   <div class="doc-meta">
-    <div><b>Generated:</b> ${reportDate}</div>
+    <div><b>Generated:</b> ${reportDate} &nbsp;${reportTime}</div>
     <div><b>Prepared by:</b> ${esc(username)}</div>
-    <div><b>Records:</b> ${specimens.length} of ${total} active</div>
+    <div><b>Showing:</b> ${totalShown} of ${total} active records</div>
+    <div><b>Page:</b> ${page} of ${totalPages || 1}</div>
   </div>
 </div>
-${filterLine}
-<div class="summary">Showing ${specimens.length} specimen${specimens.length !== 1 ? 's' : ''} — page ${page} of ${totalPages || 1}</div>
-<table>
-  <thead><tr>
-    <th>Accession</th><th>Species</th><th>Stage</th><th>Location</th>
-    <th class="ctr">Passages</th><th>Health</th><th>Status</th><th>Initiated</th>
-  </tr></thead>
-  <tbody>${rows}</tbody>
-</table>
-<div class="doc-footer">
-  <span>SteloPTC · Tissue Culture Management System · ${reportDate}</span>
-  <span class="doc-footer-pagenum"></span>
-</div>`;
 
-    // Popup path (works in browser / non-restricted WebView)
+${filterBar}
+
+<div class="exec-section">
+  <div class="exec-title">Executive Summary</div>
+  <div class="stat-grid">
+    <div class="stat-box">
+      <div class="stat-num">${totalShown}</div>
+      <div class="stat-lbl">Specimens Shown</div>
+    </div>
+    <div class="stat-box${criticalCount > 0 ? ' s-attn' : ''}">
+      <div class="stat-num">${criticalCount}</div>
+      <div class="stat-lbl">Needs Attention</div>
+    </div>
+    <div class="stat-box${quarantineCount > 0 ? ' s-quar' : ''}">
+      <div class="stat-num">${quarantineCount}</div>
+      <div class="stat-lbl">In Quarantine</div>
+    </div>
+    <div class="stat-box${contaminatedCount > 0 ? ' s-contam' : ' s-health'}">
+      <div class="stat-num">${contaminatedCount > 0 ? contaminatedCount : avgHealth}</div>
+      <div class="stat-lbl">${contaminatedCount > 0 ? 'Contaminated' : 'Avg Health Score'}</div>
+    </div>
+  </div>
+  <div class="dist-row">
+    <span class="dist-lbl">By Stage</span>
+    <span class="chips">${stageDistHtml}</span>
+  </div>
+  <div class="dist-row">
+    <span class="dist-lbl">By Health</span>
+    <span class="chips">${healthDistHtml}</span>
+  </div>
+</div>
+
+${mainHtml}
+
+<div class="doc-footer">
+  <span>SteloPTC &nbsp;·&nbsp; Tissue Culture Management System &nbsp;·&nbsp; ${reportDate}</span>
+  <span class="page-num"></span>
+</div>`.trim();
+
+    // ── Print delivery (popup → in-page fallback) ──────────────────────────────
+    const pageTitle = `Specimen Inventory Report – ${reportDate}`;
+    const fullHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${pageTitle}</title><style>@page{size:auto;margin:.65in .7in}${printCss}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();}<\/script></body></html>`;
+
     let win: Window | null = null;
     try { win = window.open('', '_blank', 'width=1200,height=900'); } catch (_) {}
 
     if (win) {
       try {
-        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Specimens Summary – ${reportDate}</title><style>@page{size:auto;margin:0.55in 0.6in}${printCss}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();}<\/script></body></html>`);
+        win.document.write(fullHtml);
         win.document.close();
       } catch (_e) {
         addNotification('Failed to generate the print report. Please try again.', 'error');
@@ -331,7 +637,7 @@ ${filterLine}
     try {
       const styleEl = document.createElement('style');
       styleEl.setAttribute('data-ptc-print', 'summary');
-      styleEl.textContent = `@page{size:auto;margin:0.55in 0.6in}@media print{body>*:not(#ptc-summary-frame){display:none!important}#ptc-summary-frame{display:block!important}${printCss}}`;
+      styleEl.textContent = `@page{size:auto;margin:.65in .7in}@media print{body>*:not(#ptc-summary-frame){display:none!important}#ptc-summary-frame{display:block!important}${printCss}}`;
 
       const frame = document.createElement('div');
       frame.id = 'ptc-summary-frame';
@@ -356,7 +662,44 @@ ${filterLine}
       <button class="btn btn-scan" onclick={() => (showScanner = true)}>
         &#128247; Scan QR <Tooltip text="Open camera to scan a QR code label and jump directly to the matching specimen" position="bottom" />
       </button>
-      <button class="btn btn-sm btn-print-summary" onclick={printSummaryReport} title="Print a summary report of the currently visible specimens">&#128438; Print Summary <Tooltip text="Print a formatted summary table of the current specimen list view — respects active filters" position="bottom" /></button>
+      <div class="print-summary-wrap">
+        <button
+          class="btn btn-sm btn-print-summary"
+          class:active={showPrintOptions}
+          onclick={() => (showPrintOptions = !showPrintOptions)}
+          title="Configure and print a professional lab report of the currently visible specimens"
+        >
+          &#128438; Print Summary
+          <Tooltip text="Opens print options — choose how specimens are grouped in the report" position="bottom" />
+        </button>
+        {#if showPrintOptions}
+          <div class="print-options-panel" role="dialog" aria-label="Print report options">
+            <div class="pop-title">Report Options</div>
+            <div class="pop-field">
+              <div class="pop-label">Group specimens by</div>
+              <label class="pop-radio">
+                <input type="radio" bind:group={printGroupBy} value="stage" />
+                Development Stage
+              </label>
+              <label class="pop-radio">
+                <input type="radio" bind:group={printGroupBy} value="health" />
+                Health / Urgency
+              </label>
+              <label class="pop-radio">
+                <input type="radio" bind:group={printGroupBy} value="none" />
+                No grouping &mdash; flat list
+              </label>
+            </div>
+            <div class="pop-hint">
+              Showing {specimens.length} specimen{specimens.length !== 1 ? 's' : ''} on this page
+            </div>
+            <div class="pop-actions">
+              <button class="btn btn-sm" onclick={() => (showPrintOptions = false)}>Cancel</button>
+              <button class="btn btn-primary btn-sm" onclick={printSummaryReport}>&#128438; Generate Report</button>
+            </div>
+          </div>
+        {/if}
+      </div>
       {#if $currentUser?.role !== 'guest'}
         <button class="btn btn-primary" onclick={() => (showForm = true)}>+ New Specimen <Tooltip text="Register a new tissue culture specimen — auto-generates an accession number on save" position="bottom" /></button>
       {/if}
@@ -601,13 +944,96 @@ ${filterLine}
     align-items: center;
   }
 
+  /* ── Print options ── */
+  .print-summary-wrap {
+    position: relative;
+  }
+
   .btn-print-summary {
     background: #f5f3ff;
     color: #5b21b6;
     border-color: #c4b5fd;
   }
-  .btn-print-summary:hover { background: #ede9fe; }
+  .btn-print-summary:hover,
+  .btn-print-summary.active { background: #ede9fe; border-color: #a78bfa; }
   :global(.dark) .btn-print-summary { background: rgba(139,92,246,0.12); color: #a78bfa; border-color: #5b21b6; }
+
+  .print-options-panel {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.14);
+    z-index: 300;
+    min-width: 230px;
+    animation: popIn 0.12s ease;
+  }
+  :global(.dark) .print-options-panel {
+    background: #1e293b;
+    border-color: #334155;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .pop-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+  :global(.dark) .pop-title { color: #f1f5f9; border-color: #334155; }
+
+  .pop-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #6b7280;
+    margin-bottom: 6px;
+  }
+
+  .pop-field { margin-bottom: 12px; }
+
+  .pop-radio {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #374151;
+    cursor: pointer;
+    padding: 5px 4px;
+    border-radius: 5px;
+    transition: background 0.1s;
+  }
+  .pop-radio:hover { background: #f8fafc; }
+  :global(.dark) .pop-radio { color: #cbd5e1; }
+  :global(.dark) .pop-radio:hover { background: #0f172a; }
+  .pop-radio input[type="radio"] { width: auto; margin: 0; accent-color: #7c3aed; }
+
+  .pop-hint {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-bottom: 12px;
+    padding: 5px 4px;
+    background: #f8fafc;
+    border-radius: 4px;
+    text-align: center;
+  }
+  :global(.dark) .pop-hint { background: #0f172a; color: #64748b; }
+
+  .pop-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+  }
 
   .btn-scan {
     background: #0f172a;
