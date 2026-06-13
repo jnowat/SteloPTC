@@ -280,8 +280,18 @@
       <td>${esc(s.initiation_date)}</td>
     </tr>`).join('');
 
-    const win = window.open('', '_blank', 'width=1050,height=900');
-    if (!win) return;
+    let win: Window | null = null;
+    try {
+      win = window.open('', '_blank', 'width=1050,height=900');
+      if (!win) {
+        addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
+        return;
+      }
+    } catch (_e) {
+      addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
+      return;
+    }
+    try {
     win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <title>Specimens Summary – ${reportDate}</title>
 <style>
@@ -322,7 +332,11 @@ ${filterLine}
 </div>
 <script>window.onload=function(){window.print();}<\/script>
 </body></html>`);
-    win.document.close();
+      win.document.close();
+    } catch (_e) {
+      addNotification('Failed to generate the print report. Please try again.', 'error');
+      try { win?.close(); } catch (_) {}
+    }
   }
 </script>
 
