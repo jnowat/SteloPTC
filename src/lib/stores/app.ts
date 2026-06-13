@@ -1,6 +1,6 @@
 import { writable, derived } from 'svelte/store';
 
-export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 'reminders' | 'compliance' | 'species' | 'inventory' | 'users' | 'audit' | 'error-log' | 'export' | 'settings';
+export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 'reminders' | 'compliance' | 'species' | 'inventory' | 'users' | 'audit' | 'error-log' | 'export' | 'settings' | 'work-queue';
 
 export const currentView = writable<View>('dashboard');
 export const selectedSpecimenId = writable<string | null>(null);
@@ -29,6 +29,9 @@ export const notifications = writable<Array<{ id: string; message: string; type:
 
 // Error log state
 export const unreadErrorCount = writable<number>(0);
+
+// Work queue count (refreshed on login and view change)
+export const workQueueCount = writable<number>(0);
 
 darkMode.subscribe((value) => {
   try {

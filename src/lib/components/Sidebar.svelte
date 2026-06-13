@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { currentView, navigateTo, unreadErrorCount, type View } from '../stores/app';
+  import { currentView, navigateTo, unreadErrorCount, workQueueCount, type View } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
   let { onlogout, ontoggleDark, isDark }: { onlogout: () => void; ontoggleDark: () => void; isDark: boolean } = $props();
@@ -15,6 +15,7 @@
 
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: '&#9633;' },
+    { id: 'work-queue', label: 'Work Queue', icon: '&#9989;' },
     { id: 'specimens', label: 'Specimens', icon: '&#127793;' },
     { id: 'media', label: 'Media Logs', icon: '&#129514;' },
     { id: 'reminders', label: 'Reminders', icon: '&#128276;' },
@@ -61,7 +62,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v1.1.1</span>
+    <span class="version" title="Application version">v1.2.0</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -75,6 +76,7 @@
           onclick={() => handleNavTap(item.id)}
           title={
             item.id === 'dashboard' ? 'Go to Dashboard — overview of all key metrics' :
+            item.id === 'work-queue' ? 'Go to Work Queue — specimens needing attention today' :
             item.id === 'specimens' ? 'Go to Specimens — manage and view all tissue culture specimens' :
             item.id === 'media' ? 'Go to Media Logs — track media preparation and usage records' :
             item.id === 'reminders' ? 'Go to Reminders — view and manage scheduled tasks and alerts' :
@@ -90,6 +92,9 @@
         >
           <span class="nav-icon">{@html item.icon}</span>
           <span class="nav-label">{item.label}</span>
+          {#if item.id === 'work-queue' && $workQueueCount > 0}
+            <span class="queue-badge" title="{$workQueueCount} item{$workQueueCount === 1 ? '' : 's'} need attention">{$workQueueCount > 99 ? '99+' : $workQueueCount}</span>
+          {/if}
           {#if item.id === 'error-log' && $unreadErrorCount > 0}
             <span class="error-badge" title="{$unreadErrorCount} unread error{$unreadErrorCount === 1 ? '' : 's'}">{$unreadErrorCount > 99 ? '99+' : $unreadErrorCount}</span>
           {/if}
@@ -228,6 +233,23 @@
   }
   .nav-icon { font-size: 16px; width: 20px; text-align: center; }
   .nav-label { flex: 1; }
+
+  .queue-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: #d97706;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1;
+    animation: badgePop 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
 
   .error-badge {
     display: inline-flex;

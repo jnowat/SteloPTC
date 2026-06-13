@@ -5,6 +5,18 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-13
+
+### Added
+
+- **WP-08 — Specimen Work Queue / Daily Task View**
+  - **`get_work_queue` Tauri command** (`work_queue.rs`) — returns a prioritized list of specimens needing attention. Detects five conditions: (1) subculture due or overdue (based on species default interval), (2) media batch expired on most recent subculture, (3) contamination flag on most recent passage, (4) no recorded passages, (5) unresolved quarantine (no release date or release date passed). Results are sorted by urgency (critical → high → normal) then by days overdue descending.
+  - **`WorkQueue.svelte`** — new read-only view showing a prioritized table of specimens that need attention. Each row displays urgency badge (Critical/High/Normal), accession number, species, location, and a plain-language description of the issue. Clicking any row navigates to the specimen detail. Shows a summary badge row (count by urgency level) and an "All clear" state when no items are pending.
+  - **`getWorkQueue` API function** (`api.ts`) wraps the new command.
+  - **`workQueueCount` store** (`app.ts`) — writable integer store, populated on login and refreshed whenever the Work Queue view loads. Persists in memory for the session lifetime.
+  - **Work Queue nav entry** (`Sidebar.svelte`) — added between Dashboard and Specimens with a ✅ icon and an amber count badge matching the error-log badge style. Badge animates in when count > 0.
+  - **`work-queue` view route** (`App.svelte`, `app.ts`) — added to the View union type and the view-switcher conditional block.
+- Version bumped to **1.2.0** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
 ## [1.1.1] - 2026-06-13
 
 ### Changed
