@@ -5,6 +5,41 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-13
+
+### Changed
+
+- **WP-19 — Professional Specimen Inventory Report**
+  - **Print options panel** — clicking "Print Summary" now opens a lightweight options popover (no modal) before generating the report. Users choose a grouping strategy; the selection is remembered for the session.
+  - **Selectable grouping**: three modes:
+    - **By Development Stage** (default) — specimens grouped in canonical tissue-culture pipeline order (Explant → Callus → Shoot → … → Stock); unknown stages fall to the end.
+    - **By Health / Urgency** — four priority bands: Critical (health 0–1), Fair (health 2), Good/Healthy (health 3–4), Unknown/Pending. The Critical band renders with a red left-border so it is immediately visible when the report is opened.
+    - **Flat list** — single un-grouped table with a Stage column, identical pagination to the on-screen view.
+  - **Executive Summary section** — appears at the top of every report:
+    - Four stat boxes: Specimens Shown, Needs Attention (health ≤ 1 OR quarantine OR contamination), In Quarantine, and either Contaminated count (if > 0) or Average Health Score.
+    - Attention and quarantine boxes switch to colored borders/values when non-zero.
+    - Stage distribution chips (sorted by frequency).
+    - Health distribution chips (color-coded Dead → Healthy).
+  - **Per-group sub-headers** — each group shows its specimen count, average health score, and inline warning chips for quarantine / contamination counts. Critical and Fair groups carry distinguishing background colors.
+  - **Enhanced table columns**: Accession (monospace), Species, Location, Passages, Initiated date, **Age** (computed from initiation date, formatted as `Xd` or `Xmo Xd`), Health (plain text, bold red for critical), Status tags. Cultures older than 730 days display an "Old" warning tag. Critical-health rows have a pink row tint for easy scanning.
+  - **Filter bar** — clearly shows all active filters and total record counts (shown vs. total active).
+  - **Typography & layout** — dark navy table headers, tight but readable 8.5 px body type, inter-group spacing, `page-break-inside: avoid` on group sections, `thead { display: table-header-group }` so column headings repeat across page breaks.
+  - **Print delivery** — same popup → in-page fallback strategy from WP-09; all new content works in both paths.
+- Version bumped to **1.4.0** across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+
+## [1.3.1] - 2026-06-13
+
+### Fixed
+
+- **WP-18 — Print reliability audit & confirmation**
+  - Audited all three print functions (`printSummaryReport` in `SpecimenList.svelte`, `printLabel` in `QrModal.svelte`, `printCultureReport` in `SpecimenDetail.svelte`) against the WP-06/WP-09 requirements.
+  - Confirmed that no silent `if (!win) return` failures remain. All functions follow a consistent two-path strategy:
+    1. **Popup path** — attempts `window.open()` inside a `try/catch`; if the window opens, the report HTML is written and `window.print()` is called in the popup.
+    2. **In-page fallback** — if the popup is blocked or returns `null` (common in Tauri/WebView2), a hidden `<div>` and scoped `<style>` are injected into the current page, `window.print()` is called directly, and an `afterprint` listener removes both elements when done.
+  - All failure paths surface a clear `addNotification(…, 'error')` toast so the user is never left guessing why nothing happened.
+  - Print styling from WP-13 (professional header/footer, page counters, typography) is preserved in both paths.
+- Version bumped to **1.3.1** across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+
 ## [1.3.0] - 2026-06-13
 
 ### Added
