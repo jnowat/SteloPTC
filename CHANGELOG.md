@@ -17,18 +17,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Work Queue nav entry** (`Sidebar.svelte`) — added between Dashboard and Specimens with a ✅ icon and an amber count badge matching the error-log badge style. Badge animates in when count > 0.
   - **`work-queue` view route** (`App.svelte`, `app.ts`) — added to the View union type and the view-switcher conditional block.
 - Version bumped to **1.2.0** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [1.1.1] - 2026-06-13
+
+### Fixed
+
+- **WP-06 — Print Summary & Print Label error handling**
+  - `SpecimenList.svelte` — `printSummaryReport` now wraps the popup open and document write in try/catch blocks. A blocked or failed popup shows a user-facing error notification ("Could not open print window. Please allow popups for this site and try again.") instead of silently doing nothing.
+  - `QrModal.svelte` — `printLabel` receives the same treatment: popup-blocked and write failures both surface a clear error notification. Import of `addNotification` added.
 
 ### Changed
 
 - **WP-07 — QR Scanner: Reject Non-SteloPTC Codes Gracefully**
   - **`QrScanner.svelte`** — added `looksLikeNonSteloPTC()` helper that flags payloads starting with `http://`, `https://`, `ftp://`, or matching an email pattern. When a non-SteloPTC code is detected, a new `invalidQr` state is set and a yellow warning card ("This QR code is not a SteloPTC specimen label") is shown instead of the green result card. The "Open Specimen" button and `parsedAccession` are suppressed for invalid codes. The scan event is still recorded in the database for audit purposes. Valid SteloPTC JSON payloads and plain-text accession numbers continue to work normally.
 - Version bumped to **1.1.1** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
-### Fixed
-
-- **WP-06 — Print Summary & Print Label error handling**
-  - `SpecimenList.svelte` — `printSummaryReport` now wraps the popup open and document write in try/catch blocks. A blocked or failed popup shows a user-facing error notification ("Could not open print window. Please allow popups for this site and try again.") instead of silently doing nothing.
-  - `QrModal.svelte` — `printLabel` receives the same treatment: popup-blocked and write failures both surface a clear error notification. Import of `addNotification` added.
 
 ## [1.1.0] - 2026-06-11
 
