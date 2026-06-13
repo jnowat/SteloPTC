@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.1.1] - 2026-06-13
 
+### Changed
+
+- **WP-07 — QR Scanner: Reject Non-SteloPTC Codes Gracefully**
+  - **`QrScanner.svelte`** — added `looksLikeNonSteloPTC()` helper that flags payloads starting with `http://`, `https://`, `ftp://`, or matching an email pattern. When a non-SteloPTC code is detected, a new `invalidQr` state is set and a yellow warning card ("This QR code is not a SteloPTC specimen label") is shown instead of the green result card. The "Open Specimen" button and `parsedAccession` are suppressed for invalid codes. The scan event is still recorded in the database for audit purposes. Valid SteloPTC JSON payloads and plain-text accession numbers continue to work normally.
+- Version bumped to **1.1.1** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
 ### Fixed
 
 - **WP-06 — Print Summary & Print Label error handling**
