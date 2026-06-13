@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { isLoggedIn, token, currentUser, clearAuth, initializing, mustChangePassword } from './lib/stores/auth';
-  import { currentView, darkMode, navigateTo, setErrorLogger, unreadErrorCount } from './lib/stores/app';
-  import { getCurrentUser, logout as apiLogout, logError, getUnreadErrorCount } from './lib/api';
+  import { currentView, darkMode, navigateTo, setErrorLogger, unreadErrorCount, workQueueCount } from './lib/stores/app';
+  import { getCurrentUser, logout as apiLogout, logError, getUnreadErrorCount, getWorkQueue } from './lib/api';
   import Login from './lib/components/Login.svelte';
   import ForceChangePassword from './lib/components/ForceChangePassword.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
@@ -20,6 +20,7 @@
   import ErrorLog from './lib/components/ErrorLog.svelte';
   import Notifications from './lib/components/Notifications.svelte';
   import ExportManager from './lib/components/ExportManager.svelte';
+  import WorkQueue from './lib/components/WorkQueue.svelte';
 
   let startupError = '';
 
@@ -45,6 +46,15 @@
     }
   }
 
+  async function refreshWorkQueueCount() {
+    try {
+      const items = await getWorkQueue();
+      workQueueCount.set(items.length);
+    } catch {
+      // Ignore — not critical
+    }
+  }
+
   onMount(() => {
     try {
       const savedToken = get(token);
@@ -53,6 +63,7 @@
           currentUser.set(user);
           initializing.set(false);
           refreshUnreadCount();
+          refreshWorkQueueCount();
         }).catch((err) => {
           console.warn('Session restore failed:', err);
           clearAuth();
@@ -151,6 +162,8 @@
           <ErrorLog />
         {:else if $currentView === 'export'}
           <ExportManager />
+        {:else if $currentView === 'work-queue'}
+          <WorkQueue />
         {:else}
           <Dashboard />
         {/if}

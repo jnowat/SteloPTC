@@ -13,3 +13,4 @@ pub mod admin;
 pub mod error_logs;
 pub mod qr_scans;
 pub mod attachments;
+pub mod work_queue;

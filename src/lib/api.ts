@@ -327,3 +327,8 @@ export async function getAttachmentData(id: string) {
 export async function deleteAttachment(id: string) {
   return call<void>('delete_attachment', { id });
 }
+
+// Work Queue
+export async function getWorkQueue() {
+  return call<any[]>('get_work_queue');
+}
