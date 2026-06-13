@@ -5,6 +5,14 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-06-13
+
+### Fixed
+
+- **WP-06 — Print Summary & Print Label error handling**
+  - `SpecimenList.svelte` — `printSummaryReport` now wraps the popup open and document write in try/catch blocks. A blocked or failed popup shows a user-facing error notification ("Could not open print window. Please allow popups for this site and try again.") instead of silently doing nothing.
+  - `QrModal.svelte` — `printLabel` receives the same treatment: popup-blocked and write failures both surface a clear error notification. Import of `addNotification` added.
+
 ## [1.1.0] - 2026-06-11
 
 ### Added
