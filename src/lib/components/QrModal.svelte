@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import QRCode from 'qrcode';
   import Tooltip from './Tooltip.svelte';
+  import { addNotification } from '../stores/app';
 
   interface Props {
     specimen: {
@@ -53,8 +54,18 @@
   });
 
   function printLabel() {
-    const win = window.open('', '_blank', 'width=360,height=540');
-    if (!win) return;
+    let win: Window | null = null;
+    try {
+      win = window.open('', '_blank', 'width=360,height=540');
+      if (!win) {
+        addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
+        return;
+      }
+    } catch (_e) {
+      addNotification('Could not open print window. Please allow popups for this site and try again.', 'error');
+      return;
+    }
+    try {
 
     const speciesDisplay = specimen.species_code
       ? specimen.species_code
@@ -214,7 +225,11 @@
   <script>window.onload = function() { window.print(); window.close(); };<\/script>
 </body>
 </html>`);
-    win.document.close();
+      win.document.close();
+    } catch (_e) {
+      addNotification('Failed to generate the print label. Please try again.', 'error');
+      try { win?.close(); } catch (_) {}
+    }
   }
 
   function downloadQr() {
