@@ -285,6 +285,10 @@ export async function listBackups() {
   return call<any[]>('list_backups');
 }
 
+export async function restoreBackup(backupPath: string) {
+  return call<string>('restore_backup', { backupPath });
+}
+
 // Error Logs
 export async function logError(request: {
   title: string;

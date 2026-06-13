@@ -60,7 +60,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Error Log** — Persistent, searchable error tracking (all roles). Every error captured with severity badge, module, username, form payload JSON, and stack trace. Sidebar badge shows live unread count; toasts are clickable and navigate directly to the log (v0.1.10+).
 - **User Management & Audit** — Roles: Admin, Supervisor, Tech, Guest. bcrypt password hashing. Immutable audit trail for all create/update/delete/archive/login actions, filterable by entity, action, user, and date range.
 - **Photo Attachments** — Attach images directly to specimen records. Upload via OS file picker (desktop) or rear camera (Android). Responsive gallery grid with lightbox viewer and in-memory thumbnail cache. Images stored on disk under `<appDataDir>/attachments/`.
-- **Export & Backup** — Dedicated Export Data page with Excel (`.xlsx`) multi-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance), plus CSV and JSON. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing.
+- **Export & Backup** — Dedicated Export Data page with Excel (`.xlsx`) multi-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance), plus CSV and JSON. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing. Admins can restore from any listed backup via a two-step confirmation flow; the app restarts automatically after a successful restore.
 - **Excel Import** — Dedicated Import Data page that accepts any `.xlsx` file produced by SteloPTC's export. SheetJS parses the workbook in-browser; a dry-run preview shows per-sheet create/update/skip counts and row-level errors before any data is written. Confirmed imports run in a single atomic transaction. Upserts specimens (by accession number), media batches (by batch code), prepared solutions and inventory (by name), and subcultures (by specimen + passage); compliance records are appended. Missing species are auto-created. Round-trip tested: export → wipe → import restores the lab (v1.3.0).
 - **Mobile-First UI** — Hamburger + slide-out drawer on all screens < 1024 px, 48 px touch targets (WCAG 2.5.5), safe-area insets for notches and home indicators (v0.1.11+).
 - **Keyboard Shortcuts** — Ctrl+1: Dashboard, Ctrl+2: Specimens, Ctrl+3: Media Logs, Ctrl+4: Reminders, Ctrl+5: Error Log. Ctrl/Cmd both work on macOS.
@@ -407,6 +407,8 @@ SQLite, stored at:
 ### Backup
 
 On-demand backup from the Dashboard (supervisor/admin only). Backups are stored in a `backups/` subdirectory alongside the database file, with timestamped filenames. The process checkpoints the WAL first to ensure a consistent copy.
+
+Admins can restore from any previously created backup via the "Restore from Backup" panel on the Dashboard. The restore flow requires two explicit confirmations before the destructive action is taken. On success the current database is replaced with the backup and the application restarts automatically to load the restored data.
 
 ---
 

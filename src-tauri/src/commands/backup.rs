@@ -1,6 +1,7 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::AppState;
+use std::io::Read;
 use tauri::State;
 
 #[tauri::command]
@@ -124,6 +125,77 @@ pub fn list_backups(state: State<AppState>, token: String) -> Result<Vec<BackupI
 
     backups.sort_by(|a, b| b.created_at.cmp(&a.created_at));
     Ok(backups)
+}
+
+#[tauri::command]
+pub fn restore_backup(
+    app: tauri::AppHandle,
+    state: State<AppState>,
+    token: String,
+    backup_path: String,
+) -> Result<String, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.is_admin() {
+        return Err("Only admins can restore from a backup".to_string());
+    }
+
+    let src = std::path::PathBuf::from(&backup_path);
+
+    if !src.exists() {
+        return Err("Backup file not found".to_string());
+    }
+
+    // Validate: must match the backup filename pattern
+    let file_name = src
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if !file_name.starts_with("stelo_ptc_backup_") || !file_name.ends_with(".db") {
+        return Err("File does not appear to be a valid SteloPTC backup".to_string());
+    }
+
+    // Validate SQLite magic bytes (first 16 bytes: "SQLite format 3\0")
+    let mut magic = [0u8; 16];
+    let mut f = std::fs::File::open(&src)
+        .map_err(|e| format!("Cannot open backup file: {}", e))?;
+    std::io::Read::read_exact(&mut f, &mut magic)
+        .map_err(|_| "Backup file is too small to be a valid database".to_string())?;
+    if &magic != b"SQLite format 3\0" {
+        return Err("Backup file is not a valid SQLite database".to_string());
+    }
+
+    let db_path = crate::db::Database::db_path();
+
+    // Checkpoint current WAL so the live database file is self-contained
+    // before we overwrite it (preserves the existing WAL checkpoint logic).
+    let _ = db.conn.query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?, r.get::<_, i64>(2)?))
+    });
+
+    std::fs::copy(&src, &db_path)
+        .map_err(|e| format!("Failed to restore backup: {}", e))?;
+
+    // Also remove any stale WAL / SHM files so the restored snapshot is clean
+    for ext in &["-wal", "-shm"] {
+        let side = db_path.with_extension(format!("db{}", ext));
+        let _ = std::fs::remove_file(side);
+    }
+
+    queries::log_audit(
+        &db.conn,
+        Some(&user.id),
+        "restore",
+        "backup",
+        None,
+        None,
+        Some(&backup_path),
+        Some("Database restored from backup"),
+    )
+    .ok();
+
+    // Restart the application so it re-opens the restored database
+    app.restart();
 }
 
 #[derive(serde::Serialize)]
