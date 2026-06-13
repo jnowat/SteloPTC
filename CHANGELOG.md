@@ -5,6 +5,19 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-06-13
+
+### Fixed
+
+- **WP-18 — Print reliability audit & confirmation**
+  - Audited all three print functions (`printSummaryReport` in `SpecimenList.svelte`, `printLabel` in `QrModal.svelte`, `printCultureReport` in `SpecimenDetail.svelte`) against the WP-06/WP-09 requirements.
+  - Confirmed that no silent `if (!win) return` failures remain. All functions follow a consistent two-path strategy:
+    1. **Popup path** — attempts `window.open()` inside a `try/catch`; if the window opens, the report HTML is written and `window.print()` is called in the popup.
+    2. **In-page fallback** — if the popup is blocked or returns `null` (common in Tauri/WebView2), a hidden `<div>` and scoped `<style>` are injected into the current page, `window.print()` is called directly, and an `afterprint` listener removes both elements when done.
+  - All failure paths surface a clear `addNotification(…, 'error')` toast so the user is never left guessing why nothing happened.
+  - Print styling from WP-13 (professional header/footer, page counters, typography) is preserved in both paths.
+- Version bumped to **1.3.1** across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+
 ## [1.3.0] - 2026-06-13
 
 ### Added
