@@ -5,6 +5,22 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.7] - 2026-06-13
+
+### Changed
+
+- **WP-15 — Query performance & indexing audit**
+  - **Migration 007** adds six new indexes to eliminate full-table scans on large datasets:
+    - `idx_specimens_created_at` — covers `ORDER BY created_at DESC` in list and search views
+    - `idx_specimens_parent` — covers `parent_specimen_id` lineage lookups
+    - `idx_specimens_archived_created` — composite covering the common `is_archived = 0 … ORDER BY created_at DESC` path
+    - `idx_subcultures_specimen_passage` — composite covering per-specimen history queries ordered by `passage_number`
+    - `idx_subcultures_created_at` — covers recent-subculture stats
+    - `idx_subcultures_contamination_specimen` — composite covering contamination stats join
+  - **Eliminated N+1 correlated subquery** in `list_specimens`, `search_specimens`, and `get_specimen`: the per-row `(SELECT MAX(contamination_flag) FROM subcultures WHERE specimen_id = s.id)` is replaced by a single aggregating `LEFT JOIN` that executes once per query regardless of result-set size.
+  - **`list_subcultures` now returns `PaginatedResponse<Subculture>`** — accepts optional `page` / `per_page` parameters (defaults: page 1, 50 per page). The frontend API wrapper preserves the existing `any[]` contract for call sites that do not need pagination.
+- Version bumped to **1.2.7** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
+
 ## [1.2.6] - 2026-06-13
 
 ### Added

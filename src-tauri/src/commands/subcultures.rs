@@ -1,5 +1,6 @@
 use crate::auth as auth_service;
 use crate::db::queries;
+use crate::models::specimen::PaginatedResponse;
 use crate::models::subculture::*;
 use crate::AppState;
 use rusqlite::params;
@@ -51,9 +52,22 @@ pub fn list_subcultures(
     state: State<AppState>,
     token: String,
     specimen_id: String,
-) -> Result<Vec<Subculture>, String> {
+    page: Option<u32>,
+    per_page: Option<u32>,
+) -> Result<PaginatedResponse<Subculture>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
+
+    let pg = queries::PaginationParams {
+        page: page.unwrap_or(1),
+        per_page: per_page.unwrap_or(50),
+    };
+
+    let total: i64 = db.conn.query_row(
+        "SELECT COUNT(*) FROM subcultures WHERE specimen_id = ?1",
+        params![specimen_id],
+        |r| r.get(0),
+    ).map_err(|e| e.to_string())?;
 
     let mut stmt = db.conn.prepare(
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
@@ -61,15 +75,24 @@ pub fn list_subcultures(
          LEFT JOIN users u ON sc.performed_by = u.id
          LEFT JOIN media_batches mb ON sc.media_batch_id = mb.id
          WHERE sc.specimen_id = ?1
-         ORDER BY sc.passage_number DESC"
+         ORDER BY sc.passage_number DESC
+         LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
 
-    let subcultures = stmt.query_map(params![specimen_id], row_to_subculture)
+    let subcultures = stmt.query_map(params![specimen_id, pg.limit(), pg.offset()], row_to_subculture)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .collect();
+        .collect::<Vec<_>>();
 
-    Ok(subcultures)
+    let total_pages = ((total as f64) / (pg.per_page as f64)).ceil() as u32;
+
+    Ok(PaginatedResponse {
+        items: subcultures,
+        total,
+        page: pg.page,
+        per_page: pg.per_page,
+        total_pages,
+    })
 }
 
 #[tauri::command]

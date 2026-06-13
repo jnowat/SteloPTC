@@ -117,8 +117,11 @@ export async function deleteMediaBatch(id: string) {
 }
 
 // Subcultures
-export async function listSubcultures(specimenId: string) {
-  return call<any[]>('list_subcultures', { specimenId });
+export async function listSubcultures(specimenId: string, page = 1, perPage = 200) {
+  const resp = await call<{ items: any[]; total: number; page: number; per_page: number; total_pages: number }>(
+    'list_subcultures', { specimenId, page, perPage }
+  );
+  return resp.items;
 }
 
 export async function listAllSubcultures() {
