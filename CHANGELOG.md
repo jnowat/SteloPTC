@@ -5,6 +5,25 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-06-13
+
+### Fixed
+- Dark mode table text invisible: `td` elements now have an explicit `color: #e2e8f0` override in `:global(.dark td)` so text is always readable regardless of CSS variable resolution order.
+- `SkeletonLoader.svelte`: replaced `@media (prefers-color-scheme: dark)` with `:global([data-theme="dark"])` so the skeleton respects the app's manual dark-mode toggle rather than the system preference.
+- `EmptyState.svelte`: same `@media` → `[data-theme="dark"]` fix; title and message colors now use `var(--color-text-muted)` / `var(--color-text-faint)` tokens.
+
+### Added
+- `DataState.svelte`: new reusable component that unifies all four data-fetch states — `loading` (animated skeleton), `error` (inline retry panel), `empty` (friendly message + optional CTA), and `ready` (renders children). Replaces ad-hoc `{#if loading}` / `{:else if}` branches throughout list views.
+
+### Changed
+- `SpecimenList.svelte`: integrated `DataState` for loading and error states; inline error now shows a retry button; FirstRun and filter-empty states remain within the ready slot.
+- `MediaList.svelte`: loading, error, and empty states replaced with `DataState`.
+- `InventoryManager.svelte`: loading, error, and empty states (inventory items + prepared solutions) replaced with `DataState`.
+- `ReminderList.svelte`: loading, error, and empty states replaced with `DataState`.
+- `ComplianceView.svelte`: loading, error, and per-tab empty states replaced with `DataState`; flags tab shows a "✅ All clear" empty state; records tab shows an empty state with a "+ New Record" CTA.
+- `AuditLog.svelte`: plain-text loading/empty replaced with `DataState` skeleton + descriptive empty state.
+- `ErrorLog.svelte`: fetch errors are now surfaced inline (with retry) instead of silently swallowed; existing custom loading/empty UI preserved.
+
 ## [1.2.2] - 2026-06-13
 
 ### Added

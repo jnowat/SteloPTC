@@ -66,6 +66,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Contextual Tooltips** — "?" badge on every form field and action button with help text (v0.1.15).
 - **Dark Mode** — System-aware with manual toggle, driven by a `data-theme` attribute on `<html>`. Inter font throughout.
 - **Design Token System** — All colors, spacing, typography, radii, shadows, and z-index layers are defined as CSS custom properties in `src/lib/styles/tokens.css`. Changing a single token updates the UI consistently across all token-aware components (v1.2.2).
+- **Consistent Data States** — `DataState.svelte` provides a unified skeleton loading state, friendly empty state with optional CTA, and inline error state with retry across all list views (v1.2.3).
 
 ### Species Registry
 

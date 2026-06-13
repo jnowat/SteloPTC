@@ -12,8 +12,7 @@
   import QrScanner from './QrScanner.svelte';
   import Tooltip from './Tooltip.svelte';
   import FirstRun from './FirstRun.svelte';
-  import SkeletonLoader from './SkeletonLoader.svelte';
-  import EmptyState from './EmptyState.svelte';
+  import DataState from './DataState.svelte';
 
   let specimens = $state<any[]>([]);
   let species = $state<any[]>([]);
@@ -23,6 +22,7 @@
   let perPage = $state(50);
   let totalPages = $state(0);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let searchQuery = $state('');
   let filterSpecies = $state('');
   let filterStage = $state('');
@@ -86,6 +86,7 @@
 
   async function load() {
     loading = true;
+    error = null;
     try {
       let result;
       if (searchQuery || filterSpecies || filterStage || filterProject) {
@@ -104,6 +105,7 @@
       total = result.total;
       totalPages = result.total_pages;
     } catch (e: any) {
+      error = e.message;
       addNotification(e.message, 'error');
     } finally {
       loading = false;
@@ -393,22 +395,20 @@ ${filterLine}
     </div>
   {/if}
 
-  {#if loading}
-    <div class="card" style="overflow-x:auto;">
-      <SkeletonLoader rows={6} cols={5} />
-    </div>
-  {:else if specimens.length === 0 && !searchQuery && !filterSpecies && !filterStage && !filterProject && total === 0}
-    <FirstRun
-      onAddSpecimen={() => { showForm = true; window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-      onDemoLoaded={() => { load(); loadSpecies(); }}
-    />
-  {:else if specimens.length === 0}
-    <EmptyState
-      icon="🔍"
-      title="No specimens found"
-      message="Try adjusting your search or filters."
-    />
-  {:else}
+  <DataState {loading} {error} rows={6} cols={5} onretry={load}>
+    {#if specimens.length === 0 && !searchQuery && !filterSpecies && !filterStage && !filterProject && total === 0}
+      <FirstRun
+        onAddSpecimen={() => { showForm = true; window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+        onDemoLoaded={() => { load(); loadSpecies(); }}
+      />
+    {:else if specimens.length === 0}
+      <DataState
+        empty={true}
+        emptyIcon="🔍"
+        emptyTitle="No specimens found"
+        emptyMessage="Try adjusting your search or filters."
+      />
+    {:else}
     <div class="card table-card">
       <table>
         <thead>
@@ -490,7 +490,8 @@ ${filterLine}
         <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }} title="Go to the next page">Next</button>
       </div>
     {/if}
-  {/if}
+    {/if}
+  </DataState>
 </div>
 
 <!-- ── Batch Action Bar ─────────────────────────────────────────── -->

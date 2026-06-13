@@ -2,12 +2,14 @@
   import { onMount } from 'svelte';
   import { getAuditLog } from '../api';
   import { addNotification } from '../stores/app';
+  import DataState from './DataState.svelte';
 
   let entries = $state<any[]>([]);
   let total = $state(0);
   let page = $state(1);
   let totalPages = $state(0);
   let loading = $state(true);
+  let error = $state<string | null>(null);
   let filterEntity = $state('');
   let filterAction = $state('');
 
@@ -15,6 +17,7 @@
 
   async function load() {
     loading = true;
+    error = null;
     try {
       const result = await getAuditLog({
         entity_type: filterEntity || undefined,
@@ -25,8 +28,10 @@
       entries = result.items;
       total = result.total;
       totalPages = result.total_pages;
-    } catch (e: any) { addNotification(e.message, 'error'); }
-    finally { loading = false; }
+    } catch (e: any) {
+      error = e.message;
+      addNotification(e.message, 'error');
+    } finally { loading = false; }
   }
 </script>
 
@@ -64,11 +69,17 @@
     </div>
   </div>
 
-  {#if loading}
-    <div class="empty-state">Loading...</div>
-  {:else if entries.length === 0}
-    <div class="empty-state">No audit entries found</div>
-  {:else}
+  <DataState
+    {loading}
+    {error}
+    empty={entries.length === 0}
+    rows={6}
+    cols={5}
+    emptyIcon="📋"
+    emptyTitle="No audit entries found"
+    emptyMessage="Audit events will appear here as users create, update, or delete records."
+    onretry={load}
+  >
     <div class="card" style="overflow-x:auto;">
       <table>
         <thead>
@@ -100,5 +111,5 @@
         <button title="Go to the next page of audit entries" class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }}>Next</button>
       </div>
     {/if}
-  {/if}
+  </DataState>
 </div>
