@@ -178,6 +178,14 @@
     return s?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
   }
 
+  function stageClass(s: string): string {
+    if (['explant','callus','suspension','protoplast'].includes(s)) return 'badge-stage-warm';
+    if (['shoot','shoot_meristem','apical_meristem','embryogenic'].includes(s)) return 'badge-stage-cool';
+    if (['root','root_meristem'].includes(s)) return 'badge-stage-earth';
+    if (['plantlet','acclimatized','stock'].includes(s)) return 'badge-stage-green';
+    return 'badge-stage-cool';
+  }
+
   function openBatchAction(action: 'location' | 'stage') {
     batchAction = batchAction === action ? null : action;
   }
@@ -433,7 +441,7 @@ ${filterLine}
               </td>
               <td><strong>{s.accession_number}</strong></td>
               <td>{s.species_code || '—'}</td>
-              <td><span class="badge badge-blue" title="Development stage: {s.stage}">{stageFmt(s.stage)}</span></td>
+              <td><span class="badge {stageClass(s.stage)}" title="Development stage: {s.stage}">{stageFmt(s.stage)}</span></td>
               <td>{s.location || '—'}</td>
               <td>{s.subculture_count}</td>
               <td>{healthLabel(s.health_status)}</td>
@@ -558,8 +566,8 @@ ${filterLine}
 
 <style>
   .clickable { cursor: pointer; }
-  .clickable:hover td { background: #eff6ff !important; }
-  :global(.dark) .clickable:hover td { background: #1e2535 !important; }
+  .clickable:hover td { background: rgba(202, 215, 255, 0.14) !important; }
+  :global(.dark) .clickable:hover td { background: rgba(255, 210, 161, 0.07) !important; }
   .clickable.selected td { background: rgba(255, 210, 161, 0.16) !important; }
   :global(.dark) .clickable.selected td { background: #1e3a8f !important; }
 

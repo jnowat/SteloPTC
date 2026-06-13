@@ -183,12 +183,12 @@
     height: 100dvh;
     height: 100vh; /* fallback for older browsers */
     width: 100vw;
-    background: #f8fafc;
+    background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 55%, #f0fdf4 100%);
     color: #1e293b;
   }
 
   .app.dark {
-    background: #0f172a;
+    background: linear-gradient(135deg, #08101e 0%, #0f172a 55%, #080f0a 100%);
     color: #e2e8f0;
   }
 
@@ -370,10 +370,10 @@
     border-bottom: 1px solid #f1f5f9;
     font-size: 13px;
   }
-  :global(tr:hover td) { background: #f8fafc; }
+  :global(tr:hover td) { background: rgba(202, 215, 255, 0.10); }
   :global(.dark th) { color: #94a3b8; border-bottom-color: #334155; }
-  :global(.dark td) { border-bottom-color: #1e293b; }
-  :global(.dark tr:hover td) { background: #1e293b; }
+  :global(.dark td) { border-bottom-color: rgba(255,255,255,0.04); }
+  :global(.dark tr:hover td) { background: rgba(255, 210, 161, 0.06); }
 
   /* Horizontal-scroll tables + 48px touch targets on mobile/tablet */
   @media (max-width: 1024px) {
@@ -426,6 +426,16 @@
   :global(.dark .badge-yellow) { background: #854d0e; color: #fef9c3; }
   :global(.dark .badge-blue) { background: rgba(170, 191, 255, 0.15); color: #cad7ff; }
   :global(.dark .badge-gray) { background: #334155; color: #94a3b8; }
+
+  /* Stage-specific badge colors — mapped to stellar spectral types */
+  :global(.badge-stage-warm)  { background: rgba(255, 204, 111, 0.20); color: #7a4a00; border: 1px solid rgba(255,204,111,0.35); }
+  :global(.badge-stage-cool)  { background: rgba(202, 215, 255, 0.25); color: #2d4db5; border: 1px solid rgba(202,215,255,0.4); }
+  :global(.badge-stage-earth) { background: rgba(212, 168, 115, 0.22); color: #6b3f10; border: 1px solid rgba(212,168,115,0.35); }
+  :global(.badge-stage-green) { background: rgba(34,  197,  94, 0.15); color: #15803d; border: 1px solid rgba(34,197,94,0.3); }
+  :global(.dark .badge-stage-warm)  { background: rgba(255, 204, 111, 0.14); color: #ffcc6f; border-color: rgba(255,204,111,0.25); }
+  :global(.dark .badge-stage-cool)  { background: rgba(202, 215, 255, 0.12); color: #cad7ff; border-color: rgba(202,215,255,0.2); }
+  :global(.dark .badge-stage-earth) { background: rgba(212, 168, 115, 0.14); color: #d4a873; border-color: rgba(212,168,115,0.25); }
+  :global(.dark .badge-stage-green) { background: rgba(34,  197,  94, 0.12); color: #4ade80; border-color: rgba(34,197,94,0.2); }
 
   :global(.page-header) {
     display: flex;

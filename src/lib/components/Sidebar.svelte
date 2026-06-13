@@ -10,21 +10,22 @@
     id: View;
     label: string;
     icon: string;
+    iconColor?: string;
     roles?: string[];
   }
 
   const navItems: NavItem[] = [
-    { id: 'dashboard', label: 'Dashboard', icon: '&#9633;' },
-    { id: 'specimens', label: 'Specimens', icon: '&#127793;' },
-    { id: 'media', label: 'Media Logs', icon: '&#129514;' },
-    { id: 'reminders', label: 'Reminders', icon: '&#128276;' },
-    { id: 'compliance', label: 'Compliance', icon: '&#128203;' },
-    { id: 'species', label: 'Species', icon: '&#127807;' },
-    { id: 'inventory', label: 'Inventory', icon: '&#128230;' },
-    { id: 'users', label: 'Users', icon: '&#128101;', roles: ['admin'] },
-    { id: 'audit', label: 'Audit Log', icon: '&#128220;', roles: ['admin', 'supervisor'] },
-    { id: 'error-log', label: 'Error Log', icon: '&#9888;' },
-    { id: 'export', label: 'Export Data', icon: '&#8659;' },
+    { id: 'dashboard',  label: 'Dashboard',   icon: '&#9633;',   iconColor: '#9bb0ff' },
+    { id: 'specimens',  label: 'Specimens',    icon: '&#127793;', iconColor: '#ffd2a1' },
+    { id: 'media',      label: 'Media Logs',   icon: '&#129514;', iconColor: '#ffcc6f' },
+    { id: 'reminders',  label: 'Reminders',    icon: '&#128276;', iconColor: '#aabfff' },
+    { id: 'compliance', label: 'Compliance',   icon: '&#128203;', iconColor: '#cad7ff' },
+    { id: 'species',    label: 'Species',      icon: '&#127807;', iconColor: '#86efac' },
+    { id: 'inventory',  label: 'Inventory',    icon: '&#128230;', iconColor: '#ffd2a1' },
+    { id: 'users',      label: 'Users',        icon: '&#128101;', iconColor: '#94a3b8', roles: ['admin'] },
+    { id: 'audit',      label: 'Audit Log',    icon: '&#128220;', iconColor: '#64748b', roles: ['admin', 'supervisor'] },
+    { id: 'error-log',  label: 'Error Log',    icon: '&#9888;',   iconColor: '#f87171' },
+    { id: 'export',     label: 'Export Data',  icon: '&#8659;',   iconColor: '#ffcc6f' },
   ];
 
   function canSee(item: NavItem): boolean {
@@ -88,7 +89,7 @@
             `Navigate to ${item.label}`
           }
         >
-          <span class="nav-icon">{@html item.icon}</span>
+          <span class="nav-icon" style={item.iconColor && $currentView !== item.id ? `color:${item.iconColor}` : ''}>{@html item.icon}</span>
           <span class="nav-label">{item.label}</span>
           {#if item.id === 'error-log' && $unreadErrorCount > 0}
             <span class="error-badge" title="{$unreadErrorCount} unread error{$unreadErrorCount === 1 ? '' : 's'}">{$unreadErrorCount > 99 ? '99+' : $unreadErrorCount}</span>
@@ -162,18 +163,29 @@
     height: 100dvh; /* dynamic viewport height for mobile */
     display: flex;
     flex-direction: column;
-    background: #1e293b;
+    background: linear-gradient(180deg, #131c2e 0%, #182418 100%);
     color: #94a3b8;
-    border-right: 1px solid #334155;
+    border-right: 1px solid #1e2d1e;
     flex-shrink: 0;
   }
   .sidebar-header {
     padding: 20px;
-    border-bottom: 1px solid #334155;
+    border-bottom: none;
     display: flex;
     align-items: baseline;
     gap: 8px;
     flex-wrap: wrap;
+    position: relative;
+  }
+  .sidebar-header::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #9bb0ff, #aabfff, #cad7ff, #fff4ea, #ffd2a1, #ffcc6f);
+    opacity: 0.7;
   }
   .sidebar-header h2 {
     color: #f1f5f9;
