@@ -6,7 +6,9 @@ import {
   composeLocation,
   formatAccessionNumber,
   computeStockAdjustment,
+  datestamp,
 } from './utils';
+import { ageDays, fmtAge, healthNum } from './printUtils';
 
 // ── escHtml ───────────────────────────────────────────────────────────────────
 
@@ -128,6 +130,19 @@ describe('formatAccessionNumber', () => {
   });
 });
 
+// ── datestamp ─────────────────────────────────────────────────────────────────
+
+describe('datestamp', () => {
+  it('returns a string matching YYYY-MM-DD', () => {
+    expect(datestamp()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+
+  it('matches today in UTC', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    expect(datestamp()).toBe(today);
+  });
+});
+
 // ── computeStockAdjustment ────────────────────────────────────────────────────
 
 describe('computeStockAdjustment', () => {
@@ -155,5 +170,98 @@ describe('computeStockAdjustment', () => {
   it('handles zero current stock with positive adjustment', () => {
     const r = computeStockAdjustment(0.0, 100.0);
     expect(r).toEqual({ ok: true, value: 100.0 });
+  });
+});
+
+// ── ageDays (printUtils) ──────────────────────────────────────────────────────
+
+describe('ageDays', () => {
+  it('returns null for null input', () => {
+    expect(ageDays(null)).toBeNull();
+  });
+
+  it('returns null for undefined', () => {
+    expect(ageDays(undefined)).toBeNull();
+  });
+
+  it('returns null for invalid date string', () => {
+    expect(ageDays('not-a-date')).toBeNull();
+  });
+
+  it('returns 0 for today', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    expect(ageDays(today)).toBe(0);
+  });
+
+  it('returns positive integer for a past date', () => {
+    const past = new Date(Date.now() - 5 * 86400000).toISOString().slice(0, 10);
+    expect(ageDays(past)).toBe(5);
+  });
+
+  it('returns null for a future date', () => {
+    const future = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+    expect(ageDays(future)).toBeNull();
+  });
+});
+
+// ── fmtAge (printUtils) ───────────────────────────────────────────────────────
+
+describe('fmtAge', () => {
+  it('returns em-dash for null', () => {
+    expect(fmtAge(null)).toBe('—');
+  });
+
+  it('formats days under 30 as Xd', () => {
+    const past = new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
+    expect(fmtAge(past)).toBe('14d');
+  });
+
+  it('formats exact months with no remainder', () => {
+    // 60 days = 2mo exactly
+    const past = new Date(Date.now() - 60 * 86400000).toISOString().slice(0, 10);
+    expect(fmtAge(past)).toBe('2mo');
+  });
+
+  it('formats months with remaining days', () => {
+    // 35 days = 1mo 5d
+    const past = new Date(Date.now() - 35 * 86400000).toISOString().slice(0, 10);
+    expect(fmtAge(past)).toBe('1mo 5d');
+  });
+});
+
+// ── healthNum (printUtils) ────────────────────────────────────────────────────
+
+describe('healthNum', () => {
+  it('returns null for null', () => {
+    expect(healthNum(null)).toBeNull();
+  });
+
+  it('returns null for empty string', () => {
+    expect(healthNum('')).toBeNull();
+  });
+
+  it('returns null for NaN string', () => {
+    expect(healthNum('abc')).toBeNull();
+  });
+
+  it('returns -1 for -1', () => {
+    expect(healthNum(-1)).toBe(-1);
+  });
+
+  it('returns 0 for 0', () => {
+    expect(healthNum(0)).toBe(0);
+  });
+
+  it('returns 4 for 4', () => {
+    expect(healthNum(4)).toBe(4);
+  });
+
+  it('rounds float values', () => {
+    expect(healthNum(2.6)).toBe(3);
+  });
+
+  it('returns null for values outside [-1, 4]', () => {
+    expect(healthNum(5)).toBeNull();
+    expect(healthNum(-2)).toBeNull();
   });
 });

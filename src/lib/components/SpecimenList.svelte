@@ -7,6 +7,8 @@
   } from '../api';
   import { navigateTo, addNotification, selectedSpecimenId } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import { escHtml, stageFmt, healthLabel } from '../utils';
+  import { deliverPrint, ageDays, fmtAge, healthNum } from '../printUtils';
   import SpecimenForm from './SpecimenForm.svelte';
   import QrModal from './QrModal.svelte';
   import QrScanner from './QrScanner.svelte';
@@ -175,16 +177,6 @@
     batchAction = null;
   }
 
-  function healthLabel(val: any): string {
-    if (val === null || val === undefined || val === '' || isNaN(Number(val))) return '—';
-    const n = Math.round(Number(val));
-    if (n === -1) return '? Unknown';
-    return ['0 Dead', '1 Poor', '2 Fair', '3 Good', '4 Healthy'][Math.max(0, Math.min(4, n))];
-  }
-
-  function stageFmt(s: string): string {
-    return s?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
-  }
 
   function openBatchAction(action: 'location' | 'stage') {
     batchAction = batchAction === action ? null : action;
@@ -260,45 +252,10 @@
     const reportDate = now.toISOString().split('T')[0];
     const reportTime = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
-    // ── Utilities ──────────────────────────────────────────────────────────────
-    const esc = (s: any) => {
-      const str = String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      return str || '—';
-    };
-
-    const stageFmtP = (s: string) => s?.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase()) || '—';
-
-    const healthNum = (val: any): number | null => {
-      if (val === null || val === undefined || val === '' || isNaN(Number(val))) return null;
-      const n = Math.round(Number(val));
-      return (n >= -1 && n <= 4) ? n : null;
-    };
-
-    const healthText = (val: any): string => {
-      const n = healthNum(val);
-      if (n === null) return '—';
-      if (n === -1) return '? Unknown';
-      return ['0 – Dead', '1 – Poor', '2 – Fair', '3 – Good', '4 – Healthy'][n];
-    };
-
-    // Returns age in days from a YYYY-MM-DD date string
-    const ageDays = (dateStr: string | null | undefined): number | null => {
-      if (!dateStr) return null;
-      const [y, m, d] = dateStr.split('-').map(Number);
-      if (!y || !m || !d) return null;
-      const ms = Date.now() - new Date(y, m - 1, d).getTime();
-      const days = Math.floor(ms / 86400000);
-      return days >= 0 ? days : null;
-    };
-
-    const fmtAge = (dateStr: string | null | undefined): string => {
-      const d = ageDays(dateStr);
-      if (d === null) return '—';
-      if (d < 30) return `${d}d`;
-      const months = Math.floor(d / 30);
-      const rem = d % 30;
-      return rem > 0 ? `${months}mo ${rem}d` : `${months}mo`;
-    };
+    // Aliases for terser template expressions inside the HTML string builders.
+    const esc = escHtml;
+    const stageFmtP = stageFmt;
+    const healthText = healthLabel;
 
     // ── Executive Summary Statistics ───────────────────────────────────────────
     const totalShown = specimens.length;
@@ -615,47 +572,14 @@ ${mainHtml}
   <span class="page-num"></span>
 </div>`.trim();
 
-    // ── Print delivery (popup → in-page fallback) ──────────────────────────────
-    const pageTitle = `Specimen Inventory Report – ${reportDate}`;
-    // No inline <script> — Tauri's CSP (script-src 'self') blocks inline scripts in
-    // popup windows, so we call win.print() from the parent context after document.close().
-    const fullHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${pageTitle}</title><style>@page{size:auto;margin:.65in .7in}${printCss}</style></head><body>${bodyHtml}</body></html>`;
-
-    let win: Window | null = null;
-    try { win = window.open('', '_blank', 'width=1200,height=900'); } catch (_) {}
-
-    if (win) {
-      try {
-        win.document.write(fullHtml);
-        win.document.close();
-        win.focus();
-        win.print();
-      } catch (_e) {
-        addNotification('Failed to generate the print report. Please try again.', 'error');
-        try { win?.close(); } catch (_) {}
-      }
-      return;
-    }
-
-    // Tauri / WebView2 fallback: in-page print container
-    try {
-      const styleEl = document.createElement('style');
-      styleEl.setAttribute('data-ptc-print', 'summary');
-      styleEl.textContent = `@page{size:auto;margin:.65in .7in}@media print{body>*:not(#ptc-summary-frame){display:none!important}#ptc-summary-frame{display:block!important}${printCss}}`;
-
-      const frame = document.createElement('div');
-      frame.id = 'ptc-summary-frame';
-      frame.style.cssText = 'display:none';
-      frame.innerHTML = bodyHtml;
-
-      document.head.appendChild(styleEl);
-      document.body.appendChild(frame);
-
-      window.addEventListener('afterprint', () => { styleEl.remove(); frame.remove(); }, { once: true });
-      setTimeout(() => window.print(), 80);
-    } catch (_e) {
-      addNotification('Failed to generate the print report. Please try again.', 'error');
-    }
+    // ── Print delivery ─────────────────────────────────────────────────────────
+    deliverPrint({
+      frameId: 'ptc-summary-frame',
+      title: `Specimen Inventory Report – ${reportDate}`,
+      css: printCss,
+      body: bodyHtml,
+      onError: (msg) => addNotification(msg, 'error'),
+    });
   }
 </script>
 
@@ -677,10 +601,17 @@ ${mainHtml}
           <Tooltip text="Opens print options — choose how specimens are grouped in the report" position="bottom" />
         </button>
         {#if showPrintOptions}
-          <div class="print-options-panel" role="dialog" aria-label="Print report options">
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
+            class="print-options-panel"
+            role="dialog"
+            aria-label="Print report options"
+            aria-modal="true"
+            onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); showPrintOptions = false; } }}
+          >
             <div class="pop-title">Report Options</div>
-            <div class="pop-field">
-              <div class="pop-label">Group specimens by</div>
+            <div class="pop-field" role="radiogroup" aria-labelledby="pop-group-label">
+              <div class="pop-label" id="pop-group-label">Group specimens by</div>
               <label class="pop-radio">
                 <input type="radio" bind:group={printGroupBy} value="stage" />
                 Development Stage

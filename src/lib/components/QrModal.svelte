@@ -3,6 +3,8 @@
   import QRCode from 'qrcode';
   import Tooltip from './Tooltip.svelte';
   import { addNotification } from '../stores/app';
+  import { stageFmt } from '../utils';
+  import { deliverPrint } from '../printUtils';
 
   interface Props {
     specimen: {
@@ -63,7 +65,7 @@
       ? specimen.species_code
       : (`${specimen.genus ?? ''} ${specimen.species_name ?? ''}`).trim() || '—';
     const commonName = specimen.common_name ? `<div class="label-common">${specimen.common_name}</div>` : '';
-    const stageFormatted = specimen.stage.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const stageFormatted = stageFmt(specimen.stage);
     const initDate = specimen.initiation_date
       ? `<div class="label-row"><span class="lbl">Initiated</span><span class="val">${specimen.initiation_date}</span></div>`
       : '';
@@ -91,40 +93,15 @@
     <div class="label-footer">SteloPTC · Tissue Culture Management</div>
   </div>`;
 
-    // Popup path (works in browser / non-restricted WebView)
-    let win: Window | null = null;
-    try { win = window.open('', '_blank', 'width=360,height=540'); } catch (_) {}
-
-    if (win) {
-      try {
-        win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>QR Label – ${specimen.accession_number}</title><style>@page{size:2in 3in;margin:0}${labelCss}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();window.close();}<\/script></body></html>`);
-        win.document.close();
-      } catch (_e) {
-        addNotification('Failed to generate the print label. Please try again.', 'error');
-        try { win?.close(); } catch (_) {}
-      }
-      return;
-    }
-
-    // Tauri / WebView2 fallback: in-page print container
-    try {
-      const styleEl = document.createElement('style');
-      styleEl.setAttribute('data-ptc-print', 'qr-label');
-      styleEl.textContent = `@page{size:2in 3in;margin:0}@media print{body>*:not(#ptc-label-frame){display:none!important}#ptc-label-frame{display:block!important}${labelCss}}`;
-
-      const frame = document.createElement('div');
-      frame.id = 'ptc-label-frame';
-      frame.style.cssText = 'display:none';
-      frame.innerHTML = bodyHtml;
-
-      document.head.appendChild(styleEl);
-      document.body.appendChild(frame);
-
-      window.addEventListener('afterprint', () => { styleEl.remove(); frame.remove(); }, { once: true });
-      setTimeout(() => window.print(), 80);
-    } catch (_e) {
-      addNotification('Failed to generate the print label. Please try again.', 'error');
-    }
+    deliverPrint({
+      frameId: 'ptc-label-frame',
+      title: `QR Label – ${specimen.accession_number}`,
+      css: labelCss,
+      body: bodyHtml,
+      pageSize: '2in 3in',
+      margin: '0',
+      onError: (msg) => addNotification(msg, 'error'),
+    });
   }
 
   function downloadQr() {
