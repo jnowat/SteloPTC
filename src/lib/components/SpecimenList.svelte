@@ -617,7 +617,9 @@ ${mainHtml}
 
     // ── Print delivery (popup → in-page fallback) ──────────────────────────────
     const pageTitle = `Specimen Inventory Report – ${reportDate}`;
-    const fullHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${pageTitle}</title><style>@page{size:auto;margin:.65in .7in}${printCss}</style></head><body>${bodyHtml}<script>window.onload=function(){window.print();}<\/script></body></html>`;
+    // No inline <script> — Tauri's CSP (script-src 'self') blocks inline scripts in
+    // popup windows, so we call win.print() from the parent context after document.close().
+    const fullHtml = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>${pageTitle}</title><style>@page{size:auto;margin:.65in .7in}${printCss}</style></head><body>${bodyHtml}</body></html>`;
 
     let win: Window | null = null;
     try { win = window.open('', '_blank', 'width=1200,height=900'); } catch (_) {}
@@ -626,6 +628,8 @@ ${mainHtml}
       try {
         win.document.write(fullHtml);
         win.document.close();
+        win.focus();
+        win.print();
       } catch (_e) {
         addNotification('Failed to generate the print report. Please try again.', 'error');
         try { win?.close(); } catch (_) {}
