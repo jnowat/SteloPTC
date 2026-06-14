@@ -5,6 +5,40 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-06-14
+
+### Fixed
+
+- **Critical: print dialog never fired in Tauri (all three print functions)**
+  - `printCultureReport` and `printLabel` contained `<script>window.onload=function(){window.print()}</script>` inline in the popup HTML. Tauri's CSP (`script-src 'self'`) silently blocks all inline scripts in popup windows, so the print dialog never opened automatically and users who pressed Ctrl+P on the main window printed the raw app UI instead of the report.
+  - All three print functions (`printSummaryReport`, `printCultureReport`, `printLabel`) now call `win.print()` from the parent WebView context after `document.close()`, which is not subject to the popup's CSP.
+
+### Changed
+
+- **Print delivery extracted to shared `src/lib/printUtils.ts`**
+  - The popup-window + in-page-fallback delivery pattern was duplicated verbatim in all three print functions (~60 lines each). It now lives in a single `deliverPrint()` function imported by all three components.
+  - Each component passes `{ frameId, title, css, body, margin?, pageSize?, onError }` — the delivery mechanism is no longer tangled with report-building logic.
+  - `ageDays()`, `fmtAge()`, and `healthNum()` (previously private inline functions in `printSummaryReport`) moved into `printUtils.ts` so they are testable and reusable.
+
+- **Removed duplicate utility definitions from components**
+  - `SpecimenList.svelte`, `SpecimenDetail.svelte`, and `QrModal.svelte` each had their own copies of `escHtml`/`stageFmt`/`healthLabel`. All three now import directly from `utils.ts`. Eliminated ~30 lines of duplicated code.
+
+- **Print options panel accessibility** (`SpecimenList`)
+  - Added `aria-modal="true"` to the popover.
+  - Added `role="radiogroup"` + `aria-labelledby` to the radio group.
+  - Pressing **Escape** while focused anywhere inside the panel now closes it.
+
+- **`printCultureReport` body HTML readability** (`SpecimenDetail`)
+  - The entire report body was a single 400-character concatenated string. Refactored into clearly-named intermediate variables (`infoRows`, `passageTable`, `complianceSection`) and a multi-line template literal.
+
+- **`printLabel` uses `stageFmt` from utils** (`QrModal`)
+  - Replaced the inline `.replace(/_/g, ' ').replace(...)` with the shared `stageFmt()` function.
+
+### Tests
+
+- Added `datestamp()` tests to `utils.test.ts` (was the only exported util without test coverage).
+- Added tests for `ageDays`, `fmtAge`, and `healthNum` from `printUtils.ts` (17 new test cases, 50 total — all passing).
+
 ## [1.4.0] - 2026-06-13
 
 ### Changed
