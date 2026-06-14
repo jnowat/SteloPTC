@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, resetDatabase, getContaminationStats, getSubcultureSchedule } from '../api';
+  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, listBackups, restoreBackup, resetDatabase, getContaminationStats, getSubcultureSchedule } from '../api';
   import { navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import FirstRun from './FirstRun.svelte';
@@ -20,6 +20,15 @@
   let showResetPanel = $state(false);
   let resetPhrase = $state('');
   let resetting = $state(false);
+
+  // Restore state
+  let backups = $state<any[]>([]);
+  let loadingBackups = $state(false);
+  let showRestorePanel = $state(false);
+  let restoreTarget = $state<any>(null);
+  let restoreStep = $state<1 | 2>(1);
+  let restorePhrase = $state('');
+  let restoring = $state(false);
 
   onMount(() => {
     loadDashboard();
@@ -59,6 +68,55 @@
     } finally {
       backingUp = false;
     }
+  }
+
+  async function openRestorePanel() {
+    showRestorePanel = true;
+    restoreTarget = null;
+    restoreStep = 1;
+    restorePhrase = '';
+    loadingBackups = true;
+    try {
+      backups = await listBackups();
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      loadingBackups = false;
+    }
+  }
+
+  function selectRestoreTarget(backup: any) {
+    restoreTarget = backup;
+    restoreStep = 1;
+    restorePhrase = '';
+  }
+
+  function confirmRestoreStep1() {
+    restoreStep = 2;
+  }
+
+  async function handleRestore() {
+    if (restorePhrase !== 'RESTORE') {
+      addNotification('Type exactly: RESTORE', 'warning');
+      return;
+    }
+    restoring = true;
+    try {
+      await restoreBackup(restoreTarget.path);
+      // App restarts automatically after successful restore; message is a fallback.
+      addNotification('Restore successful — restarting…', 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      restoring = false;
+    }
+  }
+
+  function cancelRestore() {
+    showRestorePanel = false;
+    restoreTarget = null;
+    restoreStep = 1;
+    restorePhrase = '';
   }
 
   async function handleReset() {
@@ -382,6 +440,77 @@
           <p style="font-size:12px; color:#6b7280;">Supervisor or admin access required.</p>
         {/if}
       </div>
+
+      {#if $currentUser?.role === 'admin'}
+        <div class="panel danger-panel">
+          <h3 style="color:#dc2626;" title="Replace the current database with a previously created backup — this cannot be undone">⚠ Restore from Backup</h3>
+          <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+            Replaces all current data with the state at the time of the selected backup.
+            <strong>This cannot be undone.</strong>
+          </p>
+          {#if !showRestorePanel}
+            <button class="btn btn-danger btn-sm" onclick={openRestorePanel} title="Show available backups to restore from">
+              Show Restore Controls
+            </button>
+          {:else}
+            <div class="reset-confirm">
+              {#if loadingBackups}
+                <p style="font-size:13px; color:#6b7280;">Loading backups…</p>
+              {:else if backups.length === 0}
+                <p style="font-size:13px; color:#6b7280;">No backups found. Create a backup first.</p>
+                <button class="btn btn-sm" onclick={cancelRestore} style="margin-top:8px;" title="Close the restore panel">Cancel</button>
+              {:else if !restoreTarget}
+                <p style="font-size:12px; font-weight:600; margin-bottom:8px;">Select a backup to restore:</p>
+                <div style="display:flex; flex-direction:column; gap:6px; margin-bottom:10px; max-height:200px; overflow-y:auto;">
+                  {#each backups as b}
+                    <button
+                      class="btn btn-sm"
+                      style="text-align:left; font-family:monospace; font-size:11px;"
+                      onclick={() => selectRestoreTarget(b)}
+                      title="Restore from {b.file_name}"
+                    >
+                      {b.file_name} — {b.created_at} ({Math.round(b.size_bytes / 1024)} KB)
+                    </button>
+                  {/each}
+                </div>
+                <button class="btn btn-sm" onclick={cancelRestore} title="Cancel and close the restore panel">Cancel</button>
+              {:else if restoreStep === 1}
+                <p style="font-size:13px; margin-bottom:10px;">
+                  You are about to restore:<br />
+                  <strong style="font-family:monospace; font-size:11px;">{restoreTarget.file_name}</strong><br />
+                  <span style="color:#dc2626;">All current data will be permanently replaced.</span>
+                </p>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn btn-sm" onclick={cancelRestore} title="Cancel the restore">Cancel</button>
+                  <button class="btn btn-danger btn-sm" onclick={confirmRestoreStep1} title="Proceed to final confirmation">Yes, continue →</button>
+                </div>
+              {:else}
+                <p style="font-size:12px; font-weight:600; margin-bottom:8px;">
+                  Final confirmation — type <code>RESTORE</code> to proceed:
+                </p>
+                <input
+                  type="text"
+                  bind:value={restorePhrase}
+                  placeholder="RESTORE"
+                  style="margin-bottom:8px; font-family:monospace;"
+                  title="Type RESTORE exactly to unlock the restore button"
+                />
+                <div style="display:flex; gap:8px;">
+                  <button class="btn btn-sm" onclick={cancelRestore} title="Cancel the restore">Cancel</button>
+                  <button
+                    class="btn btn-danger btn-sm"
+                    onclick={handleRestore}
+                    disabled={restoring || restorePhrase !== 'RESTORE'}
+                    title="Permanently replace the current database with the selected backup"
+                  >
+                    {restoring ? 'Restoring…' : 'Restore Now'}
+                  </button>
+                </div>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       {#if $currentUser?.role === 'admin'}
         <div class="panel danger-panel">

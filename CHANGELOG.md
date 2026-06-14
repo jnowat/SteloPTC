@@ -60,6 +60,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Malformed or invalid rows are reported precisely (sheet name + 1-based row number + reason) rather than silently skipped.
   - Exporting a lab, wiping specimen/inventory/media data, then importing the same file fully restores specimens, media batches, prepared solutions, and inventory. Subcultures link to specimens via UUID or accession number, so they also restore correctly when specimens are imported in the same file.
   - New Tauri command `import_xlsx` in `src-tauri/src/commands/import.rs`; requires `can_write` permission.
+- **WP-16 — Backup → Restore (close the loop)**
+  - **`restore_backup` Tauri command** (`src-tauri/src/commands/backup.rs`): Admin-only command that validates a backup file (filename pattern + SQLite magic bytes), checkpoints and flushes the live WAL, overwrites the database file with the selected backup, cleans up stale `-wal`/`-shm` sidecar files, logs an audit record, then restarts the application so the restored data loads immediately.
+  - **Restore UI** (Dashboard): Admin-only "Restore from Backup" danger panel lists all available backups. Restoring requires two explicit confirmation steps — an initial "Yes, continue" acknowledgement followed by typing `RESTORE` before the destructive action is permitted.
+  - **`restoreBackup` API wrapper** (`src/lib/api.ts`): Frontend helper that invokes the new command with the selected backup path.
 - Version bumped to **1.3.0** across `package.json`, `Cargo.toml`, `tauri.conf.json`, and sidebar display.
 
 ## [1.2.7] - 2026-06-13
