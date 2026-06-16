@@ -79,11 +79,6 @@
   }
 
   // Counts of chained vs legacy rows on the current page
-  $derived.by(() => {
-    const chained = entries.filter(e => e.chain_seq != null).length;
-    const legacy = entries.length - chained;
-    return { chained, legacy };
-  });
   let chainedCount = $derived(entries.filter(e => e.chain_seq != null).length);
   let legacyCount = $derived(entries.length - chainedCount);
 </script>
