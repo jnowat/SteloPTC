@@ -5,6 +5,16 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-06-16
+
+### Added
+
+- **Audit Log UI: hash chain columns now visible**
+  - The Audit Log table now shows three new columns introduced in v1.5.0: **#** (chain sequence), **Prev Hash**, and **Entry Hash**.
+  - Hashes are truncated to 10 characters in the table cell. Hovering shows the full 64-character SHA-256 hex string as a tooltip. Clicking copies the full hash to the clipboard (brief "✓ copied" confirmation in-cell).
+  - Rows written after v1.5.0 display a 🔒 badge in the **#** column and have a faint green background to signal they are part of the verified chain. Legacy rows (written before the migration) show `—` in all three chain columns with no background tint.
+  - Existing filters, pagination, and all other columns are unchanged.
+
 ## [1.5.0] - 2026-06-16
 
 ### Added
