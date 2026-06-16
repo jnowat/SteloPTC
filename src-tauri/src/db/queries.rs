@@ -1,6 +1,33 @@
 // Query helpers and shared database utilities
 use rusqlite::{Connection, params};
+use sha2::{Sha256, Digest};
 use super::DbResult;
+
+/// Zero-hash used as prev_hash for the very first chained audit entry.
+const ZERO_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+/// Canonical serialization for an audit entry used in hash computation.
+///
+/// Format (pipe-separated, UTF-8, no trailing newline):
+///   chain_seq|timestamp|user_id|entity_type|entity_id|action|details
+///
+/// NULL optional fields are serialized as the empty string.
+/// Field order is fixed and must never change; add new fields only at the end.
+fn audit_canonical_bytes(
+    chain_seq: i64,
+    timestamp: &str,
+    user_id: &str,
+    entity_type: &str,
+    entity_id: &str,
+    action: &str,
+    details: &str,
+) -> Vec<u8> {
+    format!(
+        "{}|{}|{}|{}|{}|{}|{}",
+        chain_seq, timestamp, user_id, entity_type, entity_id, action, details
+    )
+    .into_bytes()
+}
 
 /// Generate a new accession number in format YYYY-MM-DD-SPECIESCODE-SEQ
 pub fn generate_accession_number(conn: &Connection, species_code: &str, date: &str) -> DbResult<String> {
@@ -14,7 +41,12 @@ pub fn generate_accession_number(conn: &Connection, species_code: &str, date: &s
     Ok(format!("{}-{:03}", prefix, seq))
 }
 
-/// Log an audit entry
+/// Log an audit entry and extend the tamper-evident hash chain atomically.
+///
+/// Every new row receives:
+///   chain_seq  — next integer after the current maximum (or 1 if none)
+///   prev_hash  — entry_hash of the preceding chained row (ZERO_HASH if first)
+///   entry_hash — SHA-256( canonical_bytes || prev_hash )
 pub fn log_audit(
     conn: &Connection,
     user_id: Option<&str>,
@@ -26,10 +58,49 @@ pub fn log_audit(
     details: Option<&str>,
 ) -> DbResult<()> {
     let id = uuid::Uuid::new_v4().to_string();
+
+    // Fetch the current chain head (highest chain_seq row that has an entry_hash).
+    let (next_seq, prev_hash): (i64, String) = conn
+        .query_row(
+            "SELECT COALESCE(MAX(chain_seq), 0) + 1, \
+                    COALESCE((SELECT entry_hash FROM audit_log \
+                               WHERE chain_seq = (SELECT MAX(chain_seq) FROM audit_log \
+                                                   WHERE entry_hash IS NOT NULL) \
+                               LIMIT 1), ?1) \
+             FROM audit_log",
+            params![ZERO_HASH],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap_or((1, ZERO_HASH.to_string()));
+
+    // Canonical timestamp for this entry.
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    let canonical = audit_canonical_bytes(
+        next_seq,
+        &timestamp,
+        user_id.unwrap_or(""),
+        entity_type,
+        entity_id.unwrap_or(""),
+        action,
+        details.unwrap_or(""),
+    );
+
+    let mut hasher = Sha256::new();
+    hasher.update(&canonical);
+    hasher.update(prev_hash.as_bytes());
+    let entry_hash = format!("{:x}", hasher.finalize());
+
     conn.execute(
-        "INSERT INTO audit_log (id, user_id, action, entity_type, entity_id, old_value, new_value, details)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-        params![id, user_id, action, entity_type, entity_id, old_value, new_value, details],
+        "INSERT INTO audit_log \
+         (id, user_id, action, entity_type, entity_id, old_value, new_value, details, created_at, \
+          chain_seq, prev_hash, entry_hash) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            id, user_id, action, entity_type, entity_id,
+            old_value, new_value, details, timestamp,
+            next_seq, prev_hash, entry_hash
+        ],
     )?;
     Ok(())
 }

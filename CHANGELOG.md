@@ -5,6 +5,19 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-16
+
+### Added
+
+- **Hash-chain tamper-evident audit log (WP-18)**
+  - Migration 008 adds three new columns to `audit_log`: `chain_seq INTEGER`, `prev_hash TEXT`, and `entry_hash TEXT`. Existing rows retain `NULL` in these columns; all new rows are fully chained.
+  - Every new audit entry now computes `entry_hash = SHA-256(canonical_bytes || prev_hash)` where `canonical_bytes` is the pipe-separated serialization `chain_seq|timestamp|user_id|entity_type|entity_id|action|details`.
+  - The first chained entry uses a fixed 64-character zero-hash as `prev_hash`; subsequent entries chain off the previous row's `entry_hash`.
+  - Hash computation and insert are performed atomically within a single `INSERT` statement — no intermediate state is visible.
+  - `AuditEntry` model now exposes `chain_seq`, `prev_hash`, and `entry_hash` fields (nullable, for backward compatibility with pre-migration rows).
+  - Added `sha2 = "0.10"` direct dependency to `Cargo.toml`.
+  - All existing `log_audit()` call sites continue to work unchanged — the chain fields are computed internally.
+
 ## [1.4.1] - 2026-06-14
 
 ### Fixed

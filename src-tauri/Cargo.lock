@@ -3233,7 +3233,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "stelo-ptc"
-version = "1.3.0"
+version = "1.5.0"
 dependencies = [
  "base64 0.22.1",
  "bcrypt",
@@ -3242,6 +3242,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
