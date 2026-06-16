@@ -1,7 +1,7 @@
 use crate::auth as auth_service;
 use crate::models::audit::*;
 use crate::models::specimen::PaginatedResponse;
-use crate::db::queries;
+use crate::db::queries::{self, audit_canonical_bytes, compute_entry_hash, ZERO_HASH};
 use crate::AppState;
 use tauri::State;
 
@@ -97,6 +97,7 @@ pub fn get_audit_log(
             new_value: row.get("new_value")?,
             details: row.get("details")?,
             created_at: row.get("created_at")?,
+            lineage_id: row.get("lineage_id")?,
             chain_seq: row.get("chain_seq")?,
             prev_hash: row.get("prev_hash")?,
             entry_hash: row.get("entry_hash")?,
@@ -113,5 +114,190 @@ pub fn get_audit_log(
         page: pg.page,
         per_page: pg.per_page,
         total_pages,
+    })
+}
+
+/// Verify a single audit entry by recomputing its hash from stored fields.
+/// Returns ok=true if the stored entry_hash matches the recomputed value.
+#[tauri::command]
+pub fn verify_audit_entry(
+    state: State<AppState>,
+    token: String,
+    entry_id: String,
+) -> Result<VerifyEntryResult, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    auth_service::validate_session(&db, &token)?;
+
+    let row: Option<(String, Option<String>, String, String, Option<String>, String, Option<String>, i64, String, String)> =
+        db.conn.query_row(
+            "SELECT lineage_id, user_id, entity_type, action, entity_id, created_at, details, \
+                    chain_seq, prev_hash, entry_hash \
+             FROM audit_log WHERE id = ?1",
+            rusqlite::params![entry_id],
+            |r| Ok((
+                r.get(0)?,  // lineage_id
+                r.get(1)?,  // user_id
+                r.get(2)?,  // entity_type
+                r.get(3)?,  // action
+                r.get(4)?,  // entity_id
+                r.get(5)?,  // created_at
+                r.get(6)?,  // details
+                r.get(7)?,  // chain_seq
+                r.get(8)?,  // prev_hash
+                r.get(9)?,  // entry_hash
+            )),
+        ).ok();
+
+    let Some((lineage_id, user_id, entity_type, action, entity_id, created_at, details, chain_seq, prev_hash, stored_hash)) = row else {
+        return Ok(VerifyEntryResult {
+            entry_id,
+            ok: false,
+            message: "Entry not found.".to_string(),
+            stored_hash: None,
+            computed_hash: None,
+        });
+    };
+
+    let canonical = audit_canonical_bytes(
+        &lineage_id,
+        chain_seq,
+        &created_at,
+        user_id.as_deref().unwrap_or(""),
+        &entity_type,
+        entity_id.as_deref().unwrap_or(""),
+        &action,
+        details.as_deref().unwrap_or(""),
+    );
+    let computed = compute_entry_hash(&canonical, &prev_hash);
+    let ok = computed == stored_hash;
+
+    Ok(VerifyEntryResult {
+        entry_id,
+        ok,
+        message: if ok {
+            "Hash matches — this record has not been tampered with.".to_string()
+        } else {
+            "Hash mismatch — this record may have been tampered with!".to_string()
+        },
+        stored_hash: Some(stored_hash),
+        computed_hash: Some(computed),
+    })
+}
+
+/// Verify the full hash chain for a given lineage (entity).
+///
+/// Checks two things for each consecutive pair of chained rows:
+///   1. The stored entry_hash matches the recomputed hash.
+///   2. The row's prev_hash matches the previous row's entry_hash.
+///
+/// Reports the chain_seq of the first break detected, if any.
+#[tauri::command]
+pub fn verify_audit_lineage(
+    state: State<AppState>,
+    token: String,
+    lineage_id: String,
+) -> Result<VerifyChainResult, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    auth_service::validate_session(&db, &token)?;
+
+    struct ChainRow {
+        chain_seq: i64,
+        user_id: Option<String>,
+        entity_type: String,
+        action: String,
+        entity_id: Option<String>,
+        created_at: String,
+        details: Option<String>,
+        prev_hash: String,
+        entry_hash: String,
+    }
+
+    let mut stmt = db.conn.prepare(
+        "SELECT chain_seq, user_id, entity_type, action, entity_id, created_at, details, prev_hash, entry_hash \
+         FROM audit_log \
+         WHERE lineage_id = ?1 AND entry_hash IS NOT NULL \
+         ORDER BY chain_seq ASC",
+    ).map_err(|e| e.to_string())?;
+
+    let rows: Vec<ChainRow> = stmt.query_map(rusqlite::params![lineage_id], |r| {
+        Ok(ChainRow {
+            chain_seq: r.get(0)?,
+            user_id: r.get(1)?,
+            entity_type: r.get(2)?,
+            action: r.get(3)?,
+            entity_id: r.get(4)?,
+            created_at: r.get(5)?,
+            details: r.get(6)?,
+            prev_hash: r.get(7)?,
+            entry_hash: r.get(8)?,
+        })
+    }).map_err(|e| e.to_string())?
+      .filter_map(|r| r.ok())
+      .collect();
+
+    if rows.is_empty() {
+        return Ok(VerifyChainResult {
+            lineage_id,
+            ok: true,
+            checked: 0,
+            first_break_seq: None,
+            message: "No chained entries found for this lineage.".to_string(),
+        });
+    }
+
+    let mut prev_entry_hash = ZERO_HASH.to_string();
+    for row in &rows {
+        // Verify the link: this row's prev_hash must equal the previous row's entry_hash.
+        if row.prev_hash != prev_entry_hash {
+            return Ok(VerifyChainResult {
+                lineage_id,
+                ok: false,
+                checked: (row.chain_seq - 1) as usize,
+                first_break_seq: Some(row.chain_seq),
+                message: format!(
+                    "Chain broken at seq {} — prev_hash does not match the preceding entry's hash.",
+                    row.chain_seq
+                ),
+            });
+        }
+
+        // Verify the hash of this row's content.
+        let canonical = audit_canonical_bytes(
+            &lineage_id,
+            row.chain_seq,
+            &row.created_at,
+            row.user_id.as_deref().unwrap_or(""),
+            &row.entity_type,
+            row.entity_id.as_deref().unwrap_or(""),
+            &row.action,
+            row.details.as_deref().unwrap_or(""),
+        );
+        let computed = compute_entry_hash(&canonical, &row.prev_hash);
+        if computed != row.entry_hash {
+            return Ok(VerifyChainResult {
+                lineage_id,
+                ok: false,
+                checked: (row.chain_seq - 1) as usize,
+                first_break_seq: Some(row.chain_seq),
+                message: format!(
+                    "Tamper detected at seq {} — stored hash does not match recomputed hash.",
+                    row.chain_seq
+                ),
+            });
+        }
+
+        prev_entry_hash = row.entry_hash.clone();
+    }
+
+    let checked = rows.len();
+    Ok(VerifyChainResult {
+        lineage_id,
+        ok: true,
+        checked,
+        first_break_seq: None,
+        message: format!(
+            "All {} entries verified — chain is intact.",
+            checked
+        ),
     })
 }

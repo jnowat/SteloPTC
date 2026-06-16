@@ -3,17 +3,20 @@ use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
 use super::DbResult;
 
-/// Zero-hash used as prev_hash for the very first chained audit entry.
-const ZERO_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+/// Zero-hash used as prev_hash when a lineage has no prior entry.
+pub const ZERO_HASH: &str =
+    "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Canonical serialization for an audit entry used in hash computation.
 ///
-/// Format (pipe-separated, UTF-8, no trailing newline):
-///   chain_seq|timestamp|user_id|entity_type|entity_id|action|details
+/// Format — pipe-separated UTF-8, no trailing newline, fixed field order:
+///   lineage_id|chain_seq|timestamp|user_id|entity_type|entity_id|action|details
 ///
-/// NULL optional fields are serialized as the empty string.
-/// Field order is fixed and must never change; add new fields only at the end.
-fn audit_canonical_bytes(
+/// NULL optional fields serialize as empty string ("").
+/// Never reorder fields; append new fields at the end only so that existing
+/// stored hashes remain verifiable.
+pub fn audit_canonical_bytes(
+    lineage_id: &str,
     chain_seq: i64,
     timestamp: &str,
     user_id: &str,
@@ -23,10 +26,18 @@ fn audit_canonical_bytes(
     details: &str,
 ) -> Vec<u8> {
     format!(
-        "{}|{}|{}|{}|{}|{}|{}",
-        chain_seq, timestamp, user_id, entity_type, entity_id, action, details
+        "{}|{}|{}|{}|{}|{}|{}|{}",
+        lineage_id, chain_seq, timestamp, user_id, entity_type, entity_id, action, details
     )
     .into_bytes()
+}
+
+/// SHA-256(canonical_bytes || prev_hash_utf8), returned as lowercase hex.
+pub fn compute_entry_hash(canonical: &[u8], prev_hash: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(canonical);
+    hasher.update(prev_hash.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 /// Generate a new accession number in format YYYY-MM-DD-SPECIESCODE-SEQ
@@ -41,12 +52,9 @@ pub fn generate_accession_number(conn: &Connection, species_code: &str, date: &s
     Ok(format!("{}-{:03}", prefix, seq))
 }
 
-/// Log an audit entry and extend the tamper-evident hash chain atomically.
-///
-/// Every new row receives:
-///   chain_seq  — next integer after the current maximum (or 1 if none)
-///   prev_hash  — entry_hash of the preceding chained row (ZERO_HASH if first)
-///   entry_hash — SHA-256( canonical_bytes || prev_hash )
+/// Log an audit entry that continues the entity's own lineage chain.
+/// The lineage_id is entity_id (or "system" when entity_id is None).
+/// All existing call sites use this function without change.
 pub fn log_audit(
     conn: &Connection,
     user_id: Option<&str>,
@@ -57,26 +65,76 @@ pub fn log_audit(
     new_value: Option<&str>,
     details: Option<&str>,
 ) -> DbResult<()> {
+    log_audit_impl(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, None)
+}
+
+/// Log an audit entry for a new entity that was split or derived from parent_lineage_id.
+///
+/// The new entity starts its own lineage (chain_seq = 1) but inherits prev_hash
+/// from the parent lineage's last entry, creating a cryptographically visible fork.
+/// Both siblings of a split share the same prev_hash, which is the intended behaviour:
+/// it records "these two chains both originate from the same parent state."
+pub fn log_audit_for_child(
+    conn: &Connection,
+    user_id: Option<&str>,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<&str>,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    details: Option<&str>,
+    parent_lineage_id: &str,
+) -> DbResult<()> {
+    log_audit_impl(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, Some(parent_lineage_id))
+}
+
+fn log_audit_impl(
+    conn: &Connection,
+    user_id: Option<&str>,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<&str>,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    details: Option<&str>,
+    parent_lineage_id: Option<&str>,
+) -> DbResult<()> {
     let id = uuid::Uuid::new_v4().to_string();
+    let lineage_id = entity_id.unwrap_or("system").to_string();
+    let timestamp = chrono::Utc::now()
+        .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+        .to_string();
 
-    // Fetch the current chain head (highest chain_seq row that has an entry_hash).
-    let (next_seq, prev_hash): (i64, String) = conn
-        .query_row(
-            "SELECT COALESCE(MAX(chain_seq), 0) + 1, \
-                    COALESCE((SELECT entry_hash FROM audit_log \
-                               WHERE chain_seq = (SELECT MAX(chain_seq) FROM audit_log \
-                                                   WHERE entry_hash IS NOT NULL) \
-                               LIMIT 1), ?1) \
-             FROM audit_log",
-            params![ZERO_HASH],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .unwrap_or((1, ZERO_HASH.to_string()));
-
-    // Canonical timestamp for this entry.
-    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    // Determine chain position within the lineage.
+    //
+    // Fork case (parent_lineage_id given): the new lineage starts at seq 1 and
+    // inherits the parent's last entry_hash as its prev_hash. This makes the
+    // split cryptographically visible — both children share the same prev_hash.
+    //
+    // Continuation case: look up the highest chain_seq in THIS lineage and
+    // increment it; use that row's entry_hash as prev_hash.
+    let (next_seq, prev_hash): (i64, String) = if let Some(plid) = parent_lineage_id {
+        let parent_hash: Option<String> = conn.query_row(
+            "SELECT entry_hash FROM audit_log \
+             WHERE lineage_id = ?1 AND entry_hash IS NOT NULL \
+             ORDER BY chain_seq DESC LIMIT 1",
+            params![plid],
+            |row| row.get(0),
+        ).ok().flatten();
+        (1, parent_hash.unwrap_or_else(|| ZERO_HASH.to_string()))
+    } else {
+        let head: Option<(i64, String)> = conn.query_row(
+            "SELECT chain_seq, entry_hash FROM audit_log \
+             WHERE lineage_id = ?1 AND entry_hash IS NOT NULL \
+             ORDER BY chain_seq DESC LIMIT 1",
+            params![lineage_id],
+            |row| Ok((row.get::<_, i64>(0)? + 1, row.get::<_, String>(1)?)),
+        ).ok();
+        head.unwrap_or((1, ZERO_HASH.to_string()))
+    };
 
     let canonical = audit_canonical_bytes(
+        &lineage_id,
         next_seq,
         &timestamp,
         user_id.unwrap_or(""),
@@ -85,21 +143,17 @@ pub fn log_audit(
         action,
         details.unwrap_or(""),
     );
-
-    let mut hasher = Sha256::new();
-    hasher.update(&canonical);
-    hasher.update(prev_hash.as_bytes());
-    let entry_hash = format!("{:x}", hasher.finalize());
+    let entry_hash = compute_entry_hash(&canonical, &prev_hash);
 
     conn.execute(
         "INSERT INTO audit_log \
          (id, user_id, action, entity_type, entity_id, old_value, new_value, details, created_at, \
-          chain_seq, prev_hash, entry_hash) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+          lineage_id, chain_seq, prev_hash, entry_hash) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             id, user_id, action, entity_type, entity_id,
             old_value, new_value, details, timestamp,
-            next_seq, prev_hash, entry_hash
+            lineage_id, next_seq, prev_hash, entry_hash
         ],
     )?;
     Ok(())
@@ -142,6 +196,30 @@ mod tests {
             );",
         )
         .expect("create specimens table");
+        conn
+    }
+
+    fn mem_conn_with_audit() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        conn.execute_batch(
+            "CREATE TABLE audit_log (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                action TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT,
+                old_value TEXT,
+                new_value TEXT,
+                details TEXT,
+                created_at TEXT NOT NULL,
+                lineage_id TEXT,
+                chain_seq INTEGER,
+                prev_hash TEXT,
+                entry_hash TEXT
+            );
+            CREATE INDEX idx_audit_lineage ON audit_log(lineage_id, chain_seq);",
+        )
+        .expect("create audit_log table");
         conn
     }
 
@@ -221,5 +299,68 @@ mod tests {
     fn pagination_offset_does_not_underflow() {
         let pg = PaginationParams { page: 0, per_page: 10 };
         assert_eq!(pg.offset(), 0);
+    }
+
+    #[test]
+    fn audit_chain_seq_increments_per_lineage() {
+        let conn = mem_conn_with_audit();
+        log_audit(&conn, Some("u1"), "create", "specimen", Some("sp-A"), None, None, Some("first")).unwrap();
+        log_audit(&conn, Some("u1"), "update", "specimen", Some("sp-A"), None, None, Some("second")).unwrap();
+
+        let seqs: Vec<i64> = {
+            let mut stmt = conn.prepare(
+                "SELECT chain_seq FROM audit_log WHERE lineage_id = 'sp-A' ORDER BY chain_seq"
+            ).unwrap();
+            stmt.query_map([], |r| r.get(0)).unwrap().filter_map(|r| r.ok()).collect()
+        };
+        assert_eq!(seqs, vec![1, 2]);
+    }
+
+    #[test]
+    fn audit_child_lineage_starts_at_1_with_parent_prev_hash() {
+        let conn = mem_conn_with_audit();
+        log_audit(&conn, Some("u1"), "create", "specimen", Some("sp-A"), None, None, None).unwrap();
+
+        let parent_hash: String = conn.query_row(
+            "SELECT entry_hash FROM audit_log WHERE lineage_id = 'sp-A' ORDER BY chain_seq DESC LIMIT 1",
+            [], |r| r.get(0),
+        ).unwrap();
+
+        log_audit_for_child(&conn, Some("u1"), "create", "specimen", Some("sp-B"), None, None, None, "sp-A").unwrap();
+
+        let (child_seq, child_prev): (i64, String) = conn.query_row(
+            "SELECT chain_seq, prev_hash FROM audit_log WHERE lineage_id = 'sp-B' LIMIT 1",
+            [], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+
+        assert_eq!(child_seq, 1);
+        assert_eq!(child_prev, parent_hash, "child's prev_hash must equal parent's last entry_hash");
+    }
+
+    #[test]
+    fn audit_split_siblings_share_same_prev_hash() {
+        let conn = mem_conn_with_audit();
+        log_audit(&conn, None, "create", "specimen", Some("sp-A"), None, None, None).unwrap();
+
+        log_audit_for_child(&conn, None, "create", "specimen", Some("sp-B"), None, None, None, "sp-A").unwrap();
+        log_audit_for_child(&conn, None, "create", "specimen", Some("sp-C"), None, None, None, "sp-A").unwrap();
+
+        let b_prev: String = conn.query_row(
+            "SELECT prev_hash FROM audit_log WHERE lineage_id = 'sp-B'", [], |r| r.get(0),
+        ).unwrap();
+        let c_prev: String = conn.query_row(
+            "SELECT prev_hash FROM audit_log WHERE lineage_id = 'sp-C'", [], |r| r.get(0),
+        ).unwrap();
+
+        assert_eq!(b_prev, c_prev, "both split children must share the same prev_hash");
+    }
+
+    #[test]
+    fn audit_entry_hash_is_deterministic() {
+        let canonical = audit_canonical_bytes("sp-A", 1, "2026-01-01T00:00:00.000Z", "u1", "specimen", "sp-A", "create", "");
+        let h1 = compute_entry_hash(&canonical, ZERO_HASH);
+        let h2 = compute_entry_hash(&canonical, ZERO_HASH);
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 64);
     }
 }

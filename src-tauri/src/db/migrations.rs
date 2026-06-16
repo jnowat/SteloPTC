@@ -53,6 +53,39 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (8)", [])?;
     }
 
+    if current < 9 {
+        migration_009_audit_lineage(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (9)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_009_audit_lineage(conn: &Connection) -> DbResult<()> {
+    // Switch the hash chain from a single global sequence to per-lineage sequences.
+    //
+    // lineage_id groups all audit entries that form a single verifiable chain.
+    // For entity events it equals entity_id; for system events it is "system".
+    // When a specimen is split, the child starts a new lineage (lineage_id = child id)
+    // but inherits prev_hash from the parent's last entry, creating a visible fork.
+    //
+    // chain_seq is now per-lineage, not global.
+    // The (lineage_id, chain_seq) pair uniquely identifies a position in any lineage.
+    //
+    // Rows from migration_008 (global chain) are considered legacy: they keep their
+    // chain_seq / prev_hash / entry_hash values but lineage_id is back-filled from
+    // entity_id so verification can still be attempted per-entity.
+    conn.execute_batch("
+        ALTER TABLE audit_log ADD COLUMN lineage_id TEXT;
+
+        -- Back-fill: assign lineage_id for any rows that already have chain data.
+        UPDATE audit_log
+           SET lineage_id = COALESCE(entity_id, 'system')
+         WHERE chain_seq IS NOT NULL;
+
+        -- Composite index used by chain-head lookups and verification queries.
+        CREATE INDEX IF NOT EXISTS idx_audit_lineage ON audit_log(lineage_id, chain_seq);
+    ")?;
     Ok(())
 }
 

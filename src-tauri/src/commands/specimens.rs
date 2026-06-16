@@ -193,10 +193,20 @@ pub fn create_specimen(
         ],
     ).map_err(|e| format!("Failed to create specimen: {}", e))?;
 
-    queries::log_audit(
-        &db.conn, Some(&user.id), "create", "specimen", Some(&id),
-        None, Some(&accession), Some("Specimen created"),
-    ).ok();
+    // If this specimen was split from a parent, link its lineage chain to the
+    // parent's last entry so the fork is cryptographically visible.
+    if let Some(ref parent_id) = request.parent_specimen_id {
+        queries::log_audit_for_child(
+            &db.conn, Some(&user.id), "create", "specimen", Some(&id),
+            None, Some(&accession), Some("Specimen created (split/derived)"),
+            parent_id,
+        ).ok();
+    } else {
+        queries::log_audit(
+            &db.conn, Some(&user.id), "create", "specimen", Some(&id),
+            None, Some(&accession), Some("Specimen created"),
+        ).ok();
+    }
 
     drop(db);
     get_specimen(state, token, id)
