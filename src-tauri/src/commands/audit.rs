@@ -97,6 +97,9 @@ pub fn get_audit_log(
             new_value: row.get("new_value")?,
             details: row.get("details")?,
             created_at: row.get("created_at")?,
+            chain_seq: row.get("chain_seq")?,
+            prev_hash: row.get("prev_hash")?,
+            entry_hash: row.get("entry_hash")?,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())

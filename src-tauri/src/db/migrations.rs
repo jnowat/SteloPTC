@@ -48,6 +48,25 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (7)", [])?;
     }
 
+    if current < 8 {
+        migration_008_audit_hash_chain(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (8)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_008_audit_hash_chain(conn: &Connection) -> DbResult<()> {
+    // Add three columns that make the audit_log a tamper-evident hash chain.
+    // Existing rows keep NULL in all three — only rows inserted after this
+    // migration carry chain values.
+    conn.execute_batch("
+        ALTER TABLE audit_log ADD COLUMN chain_seq  INTEGER;
+        ALTER TABLE audit_log ADD COLUMN prev_hash  TEXT;
+        ALTER TABLE audit_log ADD COLUMN entry_hash TEXT;
+
+        CREATE INDEX IF NOT EXISTS idx_audit_chain_seq ON audit_log(chain_seq);
+    ")?;
     Ok(())
 }
 

@@ -12,6 +12,9 @@ pub struct AuditEntry {
     pub new_value: Option<String>,
     pub details: Option<String>,
     pub created_at: String,
+    pub chain_seq: Option<i64>,
+    pub prev_hash: Option<String>,
+    pub entry_hash: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
