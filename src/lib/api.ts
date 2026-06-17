@@ -95,6 +95,31 @@ export async function bulkUpdateStage(ids: string[], stage: string) {
   return call<number>('bulk_update_stage', { ids, stage });
 }
 
+export async function splitSpecimen(request: {
+  parent_specimen_id: string;
+  date: string;
+  children: Array<{
+    location?: string;
+    media_batch_id?: string;
+    vessel_type?: string;
+    notes?: string;
+    health_status?: string;
+  }>;
+  observations?: string;
+  notes?: string;
+  employee_id?: string;
+  health_status?: string;
+  contamination_flag?: boolean;
+  contamination_notes?: string;
+  temperature_c?: number;
+  ph?: number;
+  light_cycle?: string;
+}) {
+  return call<{ archived_parent_id: string; children: Array<{ id: string; accession_number: string }> }>(
+    'split_specimen', { request }
+  );
+}
+
 // Media
 export async function listMedia() {
   return call<any[]>('list_media');

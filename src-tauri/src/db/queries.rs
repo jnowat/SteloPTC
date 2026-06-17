@@ -88,6 +88,65 @@ pub fn log_audit_for_child(
     log_audit_impl(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, Some(parent_lineage_id))
 }
 
+/// Log an audit entry at chain_seq = 0 with prev_hash = ZERO_HASH.
+///
+/// Used exclusively for species creation. seq=0 marks the "birth" of the
+/// species lineage and its entry_hash serves as the cryptographic seed that
+/// new specimens inherit via log_audit_seeded_by_species.
+pub fn log_audit_at_seq_zero(
+    conn: &Connection,
+    user_id: Option<&str>,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<&str>,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    details: Option<&str>,
+) -> DbResult<()> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let lineage_id = entity_id.unwrap_or("system").to_string();
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let canonical = audit_canonical_bytes(
+        &lineage_id, 0, &timestamp,
+        user_id.unwrap_or(""), entity_type, entity_id.unwrap_or(""),
+        action, details.unwrap_or(""),
+    );
+    let entry_hash = compute_entry_hash(&canonical, ZERO_HASH);
+    conn.execute(
+        "INSERT INTO audit_log \
+         (id, user_id, action, entity_type, entity_id, old_value, new_value, details, created_at, \
+          lineage_id, chain_seq, prev_hash, entry_hash) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11, ?12)",
+        params![
+            id, user_id, action, entity_type, entity_id,
+            old_value, new_value, details, timestamp,
+            lineage_id, ZERO_HASH, entry_hash
+        ],
+    )?;
+    Ok(())
+}
+
+/// Log an audit entry for a new root specimen, seeding its chain from the
+/// species lineage. The specimen starts its own chain at seq=1 with prev_hash
+/// set to the species' last entry_hash, cryptographically binding it to the
+/// species definition it was created from.
+///
+/// Falls back to ZERO_HASH if the species has no audit entries (e.g. seeded
+/// species written before the hash chain was introduced in v1.5.0).
+pub fn log_audit_seeded_by_species(
+    conn: &Connection,
+    user_id: Option<&str>,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<&str>,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    details: Option<&str>,
+    species_id: &str,
+) -> DbResult<()> {
+    log_audit_impl(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, Some(species_id))
+}
+
 fn log_audit_impl(
     conn: &Connection,
     user_id: Option<&str>,

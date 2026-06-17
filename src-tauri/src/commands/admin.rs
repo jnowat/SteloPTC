@@ -158,9 +158,12 @@ pub fn load_demo_data(
                      'Demo specimen — remove via Admin → Reset Database', ?7)",
             params![sp_id, acc, species_id, stage, location, qr, user.id],
         ).map_err(|e| format!("Failed to create demo specimen {}: {}", code, e))?;
-        queries::log_audit(
+        // Seed specimen's chain from the species lineage (falls back to ZERO_HASH
+        // for the default seeded species which predate the hash chain)
+        queries::log_audit_seeded_by_species(
             conn, Some(&user.id), "create", "specimen", Some(&sp_id),
             None, Some(acc.as_str()), Some("Demo specimen created"),
+            species_id,
         ).map_err(|e| format!("Failed to audit demo specimen {}: {}", code, e))?;
         total_specimens += 1;
 

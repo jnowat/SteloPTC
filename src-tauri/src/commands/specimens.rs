@@ -1,6 +1,10 @@
 use crate::auth as auth_service;
 use crate::db::queries;
-use crate::models::specimen::*;
+use crate::models::specimen::{
+    CreateSpecimenRequest, PaginatedResponse, Specimen, SpecimenSearchParams, SpecimenStats,
+    SplitChild, SplitChildResult, SplitResult, SplitSpecimenRequest, StageCount, SpeciesCount,
+    UpdateSpecimenRequest,
+};
 use crate::AppState;
 use rusqlite::params;
 use tauri::State;
@@ -204,8 +208,10 @@ pub fn create_specimen(
         ],
     ).map_err(|e| format!("Failed to create specimen: {}", e))?;
 
-    // Link the audit chain: split/derived specimens fork from their parent's
-    // last entry_hash so the branching event is cryptographically visible.
+    // Link the audit chain.
+    // - Split/derived: fork from parent's last entry_hash (cryptographically visible fork).
+    // - Root specimen: seed from species' last entry_hash (binds specimen to its species
+    //   definition; falls back to ZERO_HASH for pre-hash-chain species).
     if let Some(ref parent_id) = request.parent_specimen_id {
         queries::log_audit_for_child(
             &tx, Some(&user.id), "create", "specimen", Some(&id),
@@ -213,9 +219,10 @@ pub fn create_specimen(
             parent_id,
         ).map_err(|e| format!("Failed to write split audit entry: {}", e))?;
     } else {
-        queries::log_audit(
+        queries::log_audit_seeded_by_species(
             &tx, Some(&user.id), "create", "specimen", Some(&id),
             None, Some(&accession), Some("Specimen created"),
+            &request.species_id,
         ).map_err(|e| format!("Failed to write audit entry: {}", e))?;
     }
 
@@ -574,6 +581,163 @@ pub fn bulk_update_location(
         }
     }
     Ok(count)
+}
+
+/// Atomically split a specimen into N child specimens.
+///
+/// - Archives the parent (soft-delete) and appends a "split" event to its chain.
+/// - Each child inherits the parent's last entry_hash as its prev_hash, making
+///   the fork cryptographically visible (both siblings share the same prev_hash).
+/// - A first-passage subculture record is created for each child immediately.
+/// - Per-child media batch, vessel type, location, and notes are configurable.
+#[tauri::command]
+pub fn split_specimen(
+    state: State<AppState>,
+    token: String,
+    request: SplitSpecimenRequest,
+) -> Result<SplitResult, String> {
+    if request.children.len() < 2 {
+        return Err("Split requires at least 2 children".to_string());
+    }
+
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+
+    // Fetch parent info — fail if archived
+    let (parent_species_id, parent_species_code, parent_stage,
+         parent_provenance, parent_source_plant, parent_location): (
+        String, String, String, Option<String>, Option<String>, Option<String>,
+    ) = db.conn.query_row(
+        "SELECT s.species_id, sp.species_code, s.stage,
+                s.provenance, s.source_plant, s.location
+         FROM specimens s
+         JOIN species sp ON s.species_id = sp.id
+         WHERE s.id = ?1 AND s.is_archived = 0",
+        params![request.parent_specimen_id],
+        |row| Ok((
+            row.get(0)?, row.get(1)?, row.get(2)?,
+            row.get(3)?, row.get(4)?, row.get(5)?,
+        )),
+    ).map_err(|_| "Parent specimen not found or already archived".to_string())?;
+
+    let contamination_flag = request.contamination_flag.unwrap_or(false) as i32;
+
+    let tx = db.conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+
+    // 1. Archive the parent
+    tx.execute(
+        "UPDATE specimens SET is_archived = 1, archived_at = datetime('now'), \
+         updated_at = datetime('now') WHERE id = ?1",
+        params![request.parent_specimen_id],
+    ).map_err(|e| format!("Failed to archive parent: {}", e))?;
+
+    // 2. Log the split event on the parent's chain.
+    //    This becomes the parent's last entry_hash, which ALL children
+    //    will inherit as their shared prev_hash (the cryptographic fork point).
+    queries::log_audit(
+        &*tx, Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
+        None, None,
+        Some(&format!(
+            "Specimen split into {} children on {}",
+            request.children.len(), request.date
+        )),
+    ).map_err(|e| format!("Failed to log split event on parent: {}", e))?;
+
+    let mut child_results: Vec<SplitChildResult> = Vec::new();
+
+    // 3. Create each child
+    for (i, child) in request.children.iter().enumerate() {
+        let child_id = uuid::Uuid::new_v4().to_string();
+        let accession = queries::generate_accession_number(
+            &*tx, &parent_species_code, &request.date,
+        ).map_err(|e| format!("Failed to generate accession for child {}: {}", i + 1, e))?;
+        let qr_data = format!("STELO:{}", accession);
+
+        let child_location: Option<&str> = child.location.as_deref()
+            .or(parent_location.as_deref());
+        let child_health: Option<&str> = child.health_status.as_deref()
+            .or(request.health_status.as_deref());
+        let default_note = format!(
+            "Split from {} on {}. Container {} of {}.",
+            request.parent_specimen_id, request.date, i + 1, request.children.len()
+        );
+        let child_notes: &str = child.notes.as_deref().unwrap_or(default_note.as_str());
+
+        // Insert child specimen
+        tx.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, \
+              location, health_status, qr_code_data, parent_specimen_id, \
+              provenance, source_plant, notes, created_by) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            params![
+                child_id, accession, parent_species_id, parent_stage, request.date,
+                child_location, child_health, qr_data, request.parent_specimen_id,
+                parent_provenance, parent_source_plant, child_notes, user.id,
+            ],
+        ).map_err(|e| format!("Failed to create child specimen {}: {}", i + 1, e))?;
+
+        // Fork the audit chain from the parent (all children inherit the same
+        // parent prev_hash — the split event logged above — making the fork visible)
+        queries::log_audit_for_child(
+            &*tx, Some(&user.id), "create", "specimen", Some(&child_id),
+            None, Some(accession.as_str()),
+            Some(&format!(
+                "Split from {} — container {} of {}",
+                request.parent_specimen_id, i + 1, request.children.len()
+            )),
+            &request.parent_specimen_id,
+        ).map_err(|e| format!("Failed to audit child specimen {}: {}", i + 1, e))?;
+
+        // Create passage 1 for this child
+        let sc_id = uuid::Uuid::new_v4().to_string();
+        tx.execute(
+            "INSERT INTO subcultures \
+             (id, specimen_id, passage_number, date, media_batch_id, \
+              vessel_type, location_from, location_to, health_status, \
+              contamination_flag, contamination_notes, observations, notes, \
+              performed_by, employee_id, temperature_c, ph, light_cycle) \
+             VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+            params![
+                sc_id, child_id, request.date,
+                child.media_batch_id, child.vessel_type,
+                child_location, child_location,
+                child_health,
+                contamination_flag,
+                request.contamination_notes,
+                request.observations,
+                child_notes,
+                user.id, request.employee_id,
+                request.temperature_c, request.ph, request.light_cycle,
+            ],
+        ).map_err(|e| format!("Failed to create subculture for child {}: {}", i + 1, e))?;
+
+        tx.execute(
+            "UPDATE specimens SET subculture_count = 1 WHERE id = ?1",
+            params![child_id],
+        ).map_err(|e| e.to_string())?;
+
+        // Log passage 1 on the child's own chain (seq=2, after the "create" entry at seq=1)
+        queries::log_audit(
+            &*tx, Some(&user.id), "subcultured", "specimen", Some(&child_id),
+            None, None,
+            Some(&format!("Passage 1 — split from {}", request.parent_specimen_id)),
+        ).map_err(|e| format!("Failed to audit first passage for child {}: {}", i + 1, e))?;
+
+        child_results.push(SplitChildResult { id: child_id, accession_number: accession });
+    }
+
+    tx.commit().map_err(|e| format!("Failed to commit split: {}", e))?;
+
+    Ok(SplitResult {
+        archived_parent_id: request.parent_specimen_id,
+        children: child_results,
+    })
 }
 
 #[tauri::command]
