@@ -5,6 +5,15 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-06-17
+
+### Changed
+
+- **`load_demo_data` now generates fully hash-chained records**
+  - Previously, demo data was inserted via raw SQL with no audit calls, leaving every demo audit row with `NULL` in `lineage_id`, `chain_seq`, `prev_hash`, and `entry_hash` — making it useless for testing the hash chain feature.
+  - Rewrote the function to call `log_audit` for every record (media batch, each specimen, each subculture passage) and `log_audit_for_child` for split specimens. Every audit entry is now fully chained from the moment it is inserted.
+  - Added a cryptographic split demonstration: the first species' root specimen (`DEMO-{CODE}-001`) is split into two children (`002A` and `002B`). Both children receive `chain_seq = 1` with `prev_hash` set to the parent's last `entry_hash`, making the fork visible in the Audit Log and exercisable via the Verify buttons.
+
 ## [1.6.2] - 2026-06-17
 
 ### Fixed
