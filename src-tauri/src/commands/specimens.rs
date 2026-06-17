@@ -2,7 +2,7 @@ use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::specimen::{
     CreateSpecimenRequest, FamilyMember, PaginatedResponse, Specimen, SpecimenSearchParams,
-    SpecimenStats, SplitChild, SplitChildResult, SplitResult, SplitSpecimenRequest,
+    SpecimenStats, SplitChildResult, SplitResult, SplitSpecimenRequest,
     StageCount, SpeciesCount, UpdateSpecimenRequest,
 };
 use crate::AppState;
@@ -143,6 +143,9 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 ip_notes: row.get("ip_notes")?,
                 environmental_notes: row.get("environmental_notes")?,
                 subculture_count: row.get("subculture_count")?,
+                generation: row.get("generation")?,
+                lineage_passage_offset: row.get("lineage_passage_offset")?,
+                root_specimen_id: row.get("root_specimen_id")?,
                 parent_specimen_id: row.get("parent_specimen_id")?,
                 qr_code_data: row.get("qr_code_data")?,
                 notes: row.get("notes")?,
