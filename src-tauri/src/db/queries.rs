@@ -114,18 +114,27 @@ fn log_audit_impl(
     // Continuation case: look up the highest chain_seq in THIS lineage and
     // increment it; use that row's entry_hash as prev_hash.
     let (next_seq, prev_hash): (i64, String) = if let Some(plid) = parent_lineage_id {
+        // Prefer matching by lineage_id (set by the new per-lineage code).
+        // Fall back to entity_id for rows written before migration_009 where
+        // lineage_id may be NULL even though the entity_id is correct.
+        // The entry_hash IS NOT NULL guard means pre-WP-18 entries (no hash)
+        // are always excluded — in that case we anchor with ZERO_HASH.
         let parent_hash: Option<String> = conn.query_row(
             "SELECT entry_hash FROM audit_log \
-             WHERE lineage_id = ?1 AND entry_hash IS NOT NULL \
+             WHERE (lineage_id = ?1 OR (lineage_id IS NULL AND entity_id = ?1)) \
+               AND entry_hash IS NOT NULL \
              ORDER BY chain_seq DESC LIMIT 1",
             params![plid],
             |row| row.get(0),
         ).ok().flatten();
         (1, parent_hash.unwrap_or_else(|| ZERO_HASH.to_string()))
     } else {
+        // Continue the lineage's own chain.
+        // Same dual-lookup: prefer lineage_id, fall back to entity_id.
         let head: Option<(i64, String)> = conn.query_row(
             "SELECT chain_seq, entry_hash FROM audit_log \
-             WHERE lineage_id = ?1 AND entry_hash IS NOT NULL \
+             WHERE (lineage_id = ?1 OR (lineage_id IS NULL AND entity_id = ?1)) \
+               AND entry_hash IS NOT NULL \
              ORDER BY chain_seq DESC LIMIT 1",
             params![lineage_id],
             |row| Ok((row.get::<_, i64>(0)? + 1, row.get::<_, String>(1)?)),

@@ -5,6 +5,19 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.2] - 2026-06-17
+
+### Fixed
+
+- **`reset_database` now available in release builds**
+  - The command was previously guarded by `#[cfg(debug_assertions)]` in both `admin.rs` and `lib.rs`, making it disappear entirely in production. Removed the compile-time guard. The command remains protected by an admin-only role check and requires the exact confirmation phrase `"RESET DATABASE"`.
+
+- **Split audit: `entity_id` fallback in parent hash lookup**
+  - When creating a split/derived specimen, the parent's last `entry_hash` is fetched to anchor the child's chain. If the parent's audit row was written before migration 009 (no `lineage_id` back-fill), the lookup now falls back to matching on `entity_id` so the fork is still cryptographically linked rather than silently starting from `ZERO_HASH`.
+
+- **Specimen create: INSERT + audit wrapped in a transaction**
+  - The specimen `INSERT` and its corresponding audit log write are now executed within a single `unchecked_transaction`. A failure in either step rolls back both, preventing orphaned specimens with no audit trail or phantom audit entries with no specimen.
+
 ## [1.6.1] - 2026-06-16
 
 ### Fixed

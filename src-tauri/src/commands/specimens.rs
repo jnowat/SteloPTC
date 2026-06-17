@@ -175,7 +175,18 @@ pub fn create_specimen(
     let id = uuid::Uuid::new_v4().to_string();
     let qr_data = format!("STELO:{}", accession);
 
-    db.conn.execute(
+    // Wrap the specimen INSERT and the audit entry in a single transaction.
+    // This guarantees two things:
+    //   1. A specimen without an audit entry can never be committed to the DB.
+    //   2. When a child is split from a parent, the parent's audit entry_hash
+    //      is visible to the child's log_audit_for_child query (same txn is
+    //      not needed here since the parent was committed in a prior request,
+    //      but the transaction still ensures our own write is atomic).
+    let tx = db.conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
+    tx.execute(
         "INSERT INTO specimens (id, accession_number, species_id, project_id, stage, custom_stage,
          provenance, source_plant, initiation_date, location, location_details,
          propagation_method, acclimatization_status, health_status, disease_status,
@@ -193,20 +204,22 @@ pub fn create_specimen(
         ],
     ).map_err(|e| format!("Failed to create specimen: {}", e))?;
 
-    // If this specimen was split from a parent, link its lineage chain to the
-    // parent's last entry so the fork is cryptographically visible.
+    // Link the audit chain: split/derived specimens fork from their parent's
+    // last entry_hash so the branching event is cryptographically visible.
     if let Some(ref parent_id) = request.parent_specimen_id {
         queries::log_audit_for_child(
-            &db.conn, Some(&user.id), "create", "specimen", Some(&id),
+            &tx, Some(&user.id), "create", "specimen", Some(&id),
             None, Some(&accession), Some("Specimen created (split/derived)"),
             parent_id,
-        ).ok();
+        ).map_err(|e| format!("Failed to write split audit entry: {}", e))?;
     } else {
         queries::log_audit(
-            &db.conn, Some(&user.id), "create", "specimen", Some(&id),
+            &tx, Some(&user.id), "create", "specimen", Some(&id),
             None, Some(&accession), Some("Specimen created"),
-        ).ok();
+        ).map_err(|e| format!("Failed to write audit entry: {}", e))?;
     }
+
+    tx.commit().map_err(|e| format!("Failed to commit specimen: {}", e))?;
 
     drop(db);
     get_specimen(state, token, id)
