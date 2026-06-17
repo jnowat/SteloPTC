@@ -5,6 +5,61 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-06-16
+
+### Fixed
+
+- **`verify_audit_lineage` always failed for split/forked specimens**
+  - The verification loop was anchored to `ZERO_HASH` as the initial `prev_entry_hash`. Root lineages (no parent) have `prev_hash = ZERO_HASH` on their first row, so this worked. But forked lineages (split specimens) have `prev_hash = parent's last entry_hash ≠ ZERO_HASH` on their first row, so the link check `row.prev_hash != ZERO_HASH` immediately returned "Chain broken at seq 1" for every split specimen — making lineage verification completely unusable for the core split use case.
+  - Fixed by initializing `prev_entry_hash = rows[0].prev_hash` instead of `ZERO_HASH`. The anchor row's link check now trivially passes; all subsequent links and all entry hashes are still fully verified.
+
+- **`verify_audit_entry` silently returned "Entry not found" for chained rows**
+  - The function used non-`Option` Rust types (`String`, `i64`) for nullable database columns (`lineage_id`, `chain_seq`, `prev_hash`, `entry_hash`). When rusqlite encounters a NULL in a non-`Option` field it returns an error, which `.ok()` silently converts to `None`, making the function appear to not find the entry.
+  - Fixed by using `Option<String>` / `Option<i64>` for all nullable columns. Rows with no chain data (pre-v1.5.0) now receive a clear message: *"This entry has no chain data (written before the hash chain was introduced in v1.5.0)."*
+
+- **Added regression test** for fork lineage verification to prevent the `ZERO_HASH` anchor bug from re-appearing.
+
+## [1.6.0] - 2026-06-16
+
+### Changed (Breaking — reworks WP-18)
+
+- **Per-lineage hash chain replaces global sequence**
+  - The audit hash chain now uses a **per-lineage sequence** instead of a single global counter. Each entity (specimen, media batch, etc.) maintains its own independent chain: `lineage_id` = `entity_id` (or `"system"` for entity-less events), and `chain_seq` counts from 1 within that lineage.
+  - **Split/derived specimens** now receive `chain_seq = 1` on their first audit entry, with `prev_hash` set to the parent specimen's last `entry_hash`. Both children of a split share the same `prev_hash`, making the fork cryptographically visible — the canonical data proves they diverged from the same parent state.
+  - The canonical serialization format is updated to include `lineage_id`:
+    `lineage_id|chain_seq|timestamp|user_id|entity_type|entity_id|action|details`
+  - `log_audit()` call sites are **unchanged**. A new `log_audit_for_child(…, parent_lineage_id)` function handles the split case and is called automatically by `create_specimen` when `parent_specimen_id` is present.
+
+### Added
+
+- **Migration 009** adds the `lineage_id TEXT` column to `audit_log` with a composite index on `(lineage_id, chain_seq)`. Rows from migration 008 (global chain) are back-filled with their `entity_id` as `lineage_id` so per-entity verification still works on them.
+
+- **`verify_audit_entry` Tauri command** — recomputes the SHA-256 hash for a single audit row and returns `{ ok, message, stored_hash, computed_hash }`. Any mismatch indicates tampering.
+
+- **`verify_audit_lineage` Tauri command** — walks the entire chain for a `lineage_id`, checking both that each row's hash is correct and that each `prev_hash` matches the preceding row's `entry_hash`. Returns `{ ok, checked, first_break_seq, message }`.
+
+- **Audit Log UI verification**
+  - Each chained row now has **Row** and **Chain** verify buttons. **Row** checks just that single entry; **Chain** verifies every entry in the entity's lineage.
+  - Verification results appear inline beneath the row (✓ green / ✗ red) and can be dismissed.
+  - A **chain integrity banner** at the top of the page shows how many of the visible entries are chained vs legacy, and explains how to use verification.
+  - The `🔒 seq` badge in the **#** column now shows a tooltip with the full `lineage_id` on hover.
+
+- **Unit tests** for the new hash-chain logic in `queries.rs`:
+  - `chain_seq` increments per-lineage, not globally
+  - Child lineage starts at `chain_seq = 1` with parent's last `entry_hash` as `prev_hash`
+  - Split siblings share the same `prev_hash`
+  - `compute_entry_hash` is deterministic
+
+## [1.5.1] - 2026-06-16
+
+### Added
+
+- **Audit Log UI: hash chain columns now visible**
+  - The Audit Log table now shows three new columns introduced in v1.5.0: **#** (chain sequence), **Prev Hash**, and **Entry Hash**.
+  - Hashes are truncated to 10 characters in the table cell. Hovering shows the full 64-character SHA-256 hex string as a tooltip. Clicking copies the full hash to the clipboard (brief "✓ copied" confirmation in-cell).
+  - Rows written after v1.5.0 display a 🔒 badge in the **#** column and have a faint green background to signal they are part of the verified chain. Legacy rows (written before the migration) show `—` in all three chain columns with no background tint.
+  - Existing filters, pagination, and all other columns are unchanged.
+
 ## [1.5.0] - 2026-06-16
 
 ### Added

@@ -204,6 +204,14 @@ export async function getAuditLog(search: any = {}) {
   return call<any>('get_audit_log', { search });
 }
 
+export async function verifyAuditEntry(entryId: string) {
+  return call<any>('verify_audit_entry', { entryId });
+}
+
+export async function verifyAuditLineage(lineageId: string) {
+  return call<any>('verify_audit_lineage', { lineageId });
+}
+
 // Import
 export async function importXlsx(payload: {
   specimens: string[][];

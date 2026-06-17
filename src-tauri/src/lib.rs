@@ -83,6 +83,8 @@ pub fn run() {
             commands::species::list_projects,
             // Audit
             commands::audit::get_audit_log,
+            commands::audit::verify_audit_entry,
+            commands::audit::verify_audit_lineage,
             // Export/Import
             commands::export::export_specimens_csv,
             commands::export::export_specimens_json,
