@@ -58,6 +58,30 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (9)", [])?;
     }
 
+    if current < 10 {
+        migration_010_specimen_genealogy(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (10)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_010_specimen_genealogy(conn: &Connection) -> DbResult<()> {
+    // Track generational depth and cumulative passage history for split lineages.
+    //
+    // generation:             0 for root specimens, increments by 1 on each split.
+    // lineage_passage_offset: total subculture passages accumulated across ALL ancestor
+    //                         specimens at the moment this specimen was created.
+    //                         Enables "passages from root" = offset + subculture_count.
+    // root_specimen_id:       NULL for root specimens; ID of the absolute root ancestor
+    //                         for all derived specimens. Enables efficient family queries.
+    conn.execute_batch("
+        ALTER TABLE specimens ADD COLUMN generation               INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE specimens ADD COLUMN lineage_passage_offset   INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE specimens ADD COLUMN root_specimen_id         TEXT REFERENCES specimens(id);
+
+        CREATE INDEX IF NOT EXISTS idx_specimens_root ON specimens(root_specimen_id);
+    ")?;
     Ok(())
 }
 

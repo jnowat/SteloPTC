@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, splitSpecimen, listMedia, listComplianceRecords, listSpecimens, listAttachments, uploadAttachment, deleteAttachment, getAttachmentData } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, splitSpecimen, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, uploadAttachment, deleteAttachment, getAttachmentData } from '../api';
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import { escHtml, stageFmt, healthLabel } from '../utils';
@@ -18,6 +18,7 @@
   let complianceRecords = $state<any[]>([]);
   let parentSpecimen = $state<any>(null);
   let childSpecimens = $state<any[]>([]);
+  let familyMembers = $state<any[]>([]);
   let loading = $state(true);
   let showPassageForm = $state(false);
   let expandedPassages = $state(new Set<string>());
@@ -239,9 +240,10 @@
         parentSpecimen = null;
       }
 
-      // Lineage: find children via full list
-      const all = await listSpecimens(1, 500);
-      childSpecimens = (all.items || []).filter((sp: any) => sp.parent_specimen_id === id);
+      // Family tree: all specimens sharing the same root
+      const family = await getSpecimenFamily(id).catch(() => []);
+      familyMembers = family;
+      childSpecimens = family.filter((m: any) => m.parent_specimen_id === id && !m.is_archived);
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -520,6 +522,9 @@ ${complianceSection}
             <span class="health-badge" title="Current health score for this specimen (0=Dead, 4=Healthy)" style="background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">{hb.label}</span>
           {/if}
         {/if}
+        {#if specimen.generation > 0}
+          <span class="badge badge-purple" title="Generation {specimen.generation} — this specimen was derived from {specimen.generation} successive split{specimen.generation > 1 ? 's' : ''}">Gen {specimen.generation}</span>
+        {/if}
         {#if specimen.quarantine_flag}
           <span class="badge badge-red" title="This specimen is under quarantine — movement restricted">Quarantined</span>
         {:else}
@@ -548,6 +553,7 @@ ${complianceSection}
 
     <!-- ── Lineage Banner ── -->
     {#if parentSpecimen || childSpecimens.length > 0}
+      {@const siblings = familyMembers.filter((m: any) => m.parent_specimen_id === specimen.parent_specimen_id && m.id !== specimen.id && !m.is_archived && specimen.parent_specimen_id)}
       <div class="lineage-banner">
         {#if parentSpecimen}
           <div class="lineage-row">
@@ -557,6 +563,19 @@ ${complianceSection}
               {parentSpecimen.accession_number}
               <span class="lineage-chip-sub">{parentSpecimen.species_code}</span>
             </button>
+          </div>
+        {/if}
+        {#if siblings.length > 0}
+          <div class="lineage-row">
+            <span class="lineage-icon">↔</span>
+            <span class="lineage-label">Sibling{siblings.length > 1 ? 's' : ''}</span>
+            <div class="lineage-children">
+              {#each siblings as sib}
+                <button class="lineage-chip sibling-chip" title="Navigate to sibling specimen {sib.accession_number} — split from the same parent" onclick={() => navigateToSpecimen(sib.id)}>
+                  {sib.accession_number}
+                </button>
+              {/each}
+            </div>
           </div>
         {/if}
         {#if childSpecimens.length > 0}
@@ -600,8 +619,13 @@ ${complianceSection}
           <span class="info-value">{specimen.propagation_method || '—'}</span>
         </div>
         <div class="info-item">
-          <span class="info-label" title="Total number of subculture/transfer events recorded for this specimen">Passages</span>
-          <span class="info-value">{specimen.subculture_count}</span>
+          <span class="info-label" title="Passages recorded for this specimen (P-total = cumulative passages from the root ancestor across all splits)">Passages</span>
+          {#if specimen.generation > 0}
+            {@const totalFromRoot = specimen.lineage_passage_offset + specimen.subculture_count}
+            <span class="info-value">{specimen.subculture_count} <span style="color:#6b7280;font-size:12px;" title="P{totalFromRoot} = {specimen.lineage_passage_offset} ancestor passages + {specimen.subculture_count} own passages">(P{totalFromRoot} from root)</span></span>
+          {:else}
+            <span class="info-value">{specimen.subculture_count}</span>
+          {/if}
         </div>
         <div class="info-item">
           <span class="info-label" title="Origin or history of this specimen (wild-collected, ex-situ, cultivar, etc.)">Provenance</span>
@@ -1306,8 +1330,11 @@ ${complianceSection}
   .parent-chip:hover { background: #bfdbfe; }
   .child-chip { background: #dcfce7; color: #166534; }
   .child-chip:hover { background: #bbf7d0; }
+  .sibling-chip { background: #ede9fe; color: #6d28d9; }
+  .sibling-chip:hover { background: #ddd6fe; }
   :global(.dark) .parent-chip { background: #1e3a8a; color: #93c5fd; }
   :global(.dark) .child-chip { background: #14532d; color: #86efac; }
+  :global(.dark) .sibling-chip { background: #4c1d95; color: #c4b5fd; }
   .lineage-chip-sub { font-size: 10px; font-weight: 400; opacity: 0.7; }
 
   /* ── Tabs ── */

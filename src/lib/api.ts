@@ -83,6 +83,10 @@ export async function getSpecimenStats() {
   return call<any>('get_specimen_stats');
 }
 
+export async function getSpecimenFamily(id: string) {
+  return call<any[]>('get_specimen_family', { id });
+}
+
 export async function bulkArchiveSpecimens(ids: string[]) {
   return call<number>('bulk_archive_specimens', { ids });
 }

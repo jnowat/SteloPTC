@@ -468,6 +468,8 @@
   :global(.badge-yellow) { background: #fef9c3; color: #854d0e; }
   :global(.badge-blue) { background: #dbeafe; color: #1e40af; }
   :global(.badge-gray) { background: #f1f5f9; color: #475569; }
+  :global(.badge-purple) { background: #ede9fe; color: #6d28d9; }
+  :global(.dark .badge-purple) { background: #4c1d95; color: #ede9fe; }
   :global(.dark .badge-green) { background: #166534; color: #dcfce7; }
   :global(.dark .badge-red) { background: #991b1b; color: #fef2f2; }
   :global(.dark .badge-yellow) { background: #854d0e; color: #fef9c3; }
