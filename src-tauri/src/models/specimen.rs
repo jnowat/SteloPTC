@@ -130,3 +130,42 @@ pub struct PaginatedResponse<T> {
     pub per_page: u32,
     pub total_pages: u32,
 }
+
+/// Per-child configuration for a split operation.
+#[derive(Debug, Deserialize)]
+pub struct SplitChild {
+    pub location: Option<String>,
+    pub media_batch_id: Option<String>,
+    pub vessel_type: Option<String>,
+    pub notes: Option<String>,
+    pub health_status: Option<String>,
+}
+
+/// Request payload for splitting a specimen into N children.
+#[derive(Debug, Deserialize)]
+pub struct SplitSpecimenRequest {
+    pub parent_specimen_id: String,
+    pub date: String,
+    pub children: Vec<SplitChild>,
+    pub observations: Option<String>,
+    pub notes: Option<String>,
+    pub employee_id: Option<String>,
+    pub health_status: Option<String>,
+    pub contamination_flag: Option<bool>,
+    pub contamination_notes: Option<String>,
+    pub temperature_c: Option<f64>,
+    pub ph: Option<f64>,
+    pub light_cycle: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SplitResult {
+    pub archived_parent_id: String,
+    pub children: Vec<SplitChildResult>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SplitChildResult {
+    pub id: String,
+    pub accession_number: String,
+}

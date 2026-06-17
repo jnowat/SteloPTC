@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, createSpecimen, listMedia, listComplianceRecords, listSpecimens, listAttachments, uploadAttachment, deleteAttachment, getAttachmentData } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, splitSpecimen, listMedia, listComplianceRecords, listSpecimens, listAttachments, uploadAttachment, deleteAttachment, getAttachmentData } from '../api';
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import { escHtml, stageFmt, healthLabel } from '../utils';
@@ -38,6 +38,30 @@
   let isSplitting = $state(false);
   let splitCount = $state(2);
   let submitting = $state(false);
+
+  // Per-child configuration array for split mode
+  function makeChild() {
+    return {
+      locRoom: localStorage.getItem('sc_lastRoom') || '',
+      locRack: localStorage.getItem('sc_lastRack') || '',
+      locShelf: localStorage.getItem('sc_lastShelf') || '',
+      locTray: localStorage.getItem('sc_lastTray') || '',
+      media_batch_id: '',
+      vessel_type: '',
+      notes: '',
+    };
+  }
+  let splitChildren = $state([makeChild(), makeChild()]);
+
+  // Keep splitChildren in sync with splitCount
+  $effect(() => {
+    const n = splitCount;
+    if (splitChildren.length < n) {
+      splitChildren = [...splitChildren, ...Array.from({ length: n - splitChildren.length }, makeChild)];
+    } else if (splitChildren.length > n) {
+      splitChildren = splitChildren.slice(0, n);
+    }
+  });
 
   // Dev mode: inline edit state
   let editingPassageId = $state<string | null>(null);
@@ -225,71 +249,84 @@
     }
   }
 
+  function resetPassageForm() {
+    showPassageForm = false;
+    isSplitting = false;
+    splitCount = 2;
+    splitChildren = [makeChild(), makeChild()];
+    passageHealthValue = 4;
+    subcultureForm = {
+      date: new Date().toISOString().split('T')[0],
+      media_batch_id: '', vessel_type: '', temperature_c: '',
+      ph: '', light_cycle: '', notes: '', observations: '',
+      health_status: '', health_unknown: false, employee_id: '',
+      contamination_flag: false, contamination_notes: '',
+    };
+  }
+
   async function handlePassage(e: Event) {
     e.preventDefault();
     if (!$selectedSpecimenId || !specimen) return;
     submitting = true;
-    const locationTo = composeLocationTo();
-    const splitNote = isSplitting ? `Split into ${splitCount} container${splitCount > 1 ? 's' : ''}.` : '';
-    const combinedNotes = [splitNote, subcultureForm.notes].filter(Boolean).join(' ');
+
     try {
-      await createSubculture({
-        specimen_id: $selectedSpecimenId,
-        date: subcultureForm.date,
-        media_batch_id: subcultureForm.media_batch_id || undefined,
-        vessel_type: subcultureForm.vessel_type || undefined,
-        temperature_c: subcultureForm.temperature_c ? parseFloat(subcultureForm.temperature_c) : undefined,
-        ph: subcultureForm.ph ? parseFloat(subcultureForm.ph) : undefined,
-        light_cycle: subcultureForm.light_cycle || undefined,
-        location_from: specimen.location || undefined,
-        location_to: locationTo || undefined,
-        notes: combinedNotes || undefined,
-        observations: subcultureForm.observations || undefined,
-        health_status: effectivePassageHealth() !== '' ? effectivePassageHealth() : undefined,
-        employee_id: subcultureForm.employee_id || undefined,
-        contamination_flag: subcultureForm.contamination_flag || undefined,
-        contamination_notes: subcultureForm.contamination_notes || undefined,
-      });
-
-      if (isSplitting && splitCount > 1) {
-        const childPromises = Array.from({ length: splitCount }, (_, i) =>
-          createSpecimen({
-            species_id: specimen.species_id,
-            stage: specimen.stage,
-            health_status: specimen.health_status,
-            location: locationTo || undefined,
-            propagation_method: specimen.propagation_method || undefined,
-            initiation_date: subcultureForm.date,
-            parent_specimen_id: $selectedSpecimenId,
-            notes: `Split from ${specimen.accession_number} on ${subcultureForm.date}. Container ${i + 1} of ${splitCount}.`,
-            provenance: specimen.provenance || undefined,
-            source_plant: specimen.source_plant || undefined,
-          })
+      if (isSplitting) {
+        // ── Split path: archive parent, create N children each with passage 1 ──
+        const result = await splitSpecimen({
+          parent_specimen_id: $selectedSpecimenId,
+          date: subcultureForm.date,
+          children: splitChildren.map(c => ({
+            location: [c.locRoom, c.locRack, c.locShelf, c.locTray].filter(Boolean).join(' / ') || undefined,
+            media_batch_id: c.media_batch_id || undefined,
+            vessel_type: c.vessel_type || undefined,
+            notes: c.notes || undefined,
+          })),
+          observations: subcultureForm.observations || undefined,
+          notes: subcultureForm.notes || undefined,
+          health_status: effectivePassageHealth() !== '' ? effectivePassageHealth() : undefined,
+          employee_id: subcultureForm.employee_id || undefined,
+          contamination_flag: subcultureForm.contamination_flag || undefined,
+          contamination_notes: subcultureForm.contamination_notes || undefined,
+          temperature_c: subcultureForm.temperature_c ? parseFloat(subcultureForm.temperature_c) : undefined,
+          ph: subcultureForm.ph ? parseFloat(subcultureForm.ph) : undefined,
+          light_cycle: subcultureForm.light_cycle || undefined,
+        });
+        addNotification(
+          `Split complete. ${result.children.length} new specimens created (${result.children.map(c => c.accession_number).join(', ')}). Parent archived.`,
+          'success'
         );
-        await Promise.all(childPromises);
-        addNotification(`Passage recorded. ${splitCount} new specimens created.`, 'success');
+        resetPassageForm();
+        // Navigate away — parent is now archived
+        navigateTo('specimens');
       } else {
+        // ── Normal passage path ──
+        const locationTo = composeLocationTo();
+        await createSubculture({
+          specimen_id: $selectedSpecimenId,
+          date: subcultureForm.date,
+          media_batch_id: subcultureForm.media_batch_id || undefined,
+          vessel_type: subcultureForm.vessel_type || undefined,
+          temperature_c: subcultureForm.temperature_c ? parseFloat(subcultureForm.temperature_c) : undefined,
+          ph: subcultureForm.ph ? parseFloat(subcultureForm.ph) : undefined,
+          light_cycle: subcultureForm.light_cycle || undefined,
+          location_from: specimen.location || undefined,
+          location_to: locationTo || undefined,
+          notes: subcultureForm.notes || undefined,
+          observations: subcultureForm.observations || undefined,
+          health_status: effectivePassageHealth() !== '' ? effectivePassageHealth() : undefined,
+          employee_id: subcultureForm.employee_id || undefined,
+          contamination_flag: subcultureForm.contamination_flag || undefined,
+          contamination_notes: subcultureForm.contamination_notes || undefined,
+        });
+        // Persist location prefs
+        localStorage.setItem('sc_lastRoom', locToRoom);
+        localStorage.setItem('sc_lastRack', locToRack);
+        localStorage.setItem('sc_lastShelf', locToShelf);
+        localStorage.setItem('sc_lastTray', locToTray);
         addNotification('Passage recorded.', 'success');
+        resetPassageForm();
+        loadAll($selectedSpecimenId!);
       }
-
-      // Persist location prefs
-      localStorage.setItem('sc_lastRoom', locToRoom);
-      localStorage.setItem('sc_lastRack', locToRack);
-      localStorage.setItem('sc_lastShelf', locToShelf);
-      localStorage.setItem('sc_lastTray', locToTray);
-
-      showPassageForm = false;
-      isSplitting = false;
-      splitCount = 2;
-      passageHealthValue = 4;
-      subcultureForm = {
-        date: new Date().toISOString().split('T')[0],
-        media_batch_id: '', vessel_type: '', temperature_c: '',
-        ph: '', light_cycle: '', notes: '', observations: '',
-        health_status: '', health_unknown: false, employee_id: '',
-        contamination_flag: false, contamination_notes: '',
-      };
-      loadAll($selectedSpecimenId!);
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -778,34 +815,71 @@ ${complianceSection}
 
             <!-- Split Culture Toggle -->
             <div class="split-toggle-row">
-              <label class="split-toggle-label" title="Create multiple child specimens from this passage (split culture) — each will be linked to this specimen as parent">
-                <input type="checkbox" title="Create multiple child specimens from this passage (split culture)" bind:checked={isSplitting} style="margin-right:6px;" />
-                Split culture into multiple containers
+              <label class="split-toggle-label" title="Split this specimen into multiple child specimens — parent will be archived and each child gets its own passage record and audit chain">
+                <input type="checkbox" title="Enable split mode — parent specimen will be archived" bind:checked={isSplitting} style="margin-right:6px;" />
+                Split culture into multiple child specimens
               </label>
+
               {#if isSplitting}
                 <div class="split-count-row">
-                  <span class="split-desc">Number of new specimens to create:</span>
-                  <input type="number" min="2" max="100" title="Number of new child specimens to create from this split — each will be linked to this specimen as its parent" bind:value={splitCount} class="split-count-input" />
-                  <span class="split-hint">Each will be linked to this specimen as parent.</span>
+                  <span class="split-desc">Number of children:</span>
+                  <button type="button" class="split-count-btn" onclick={() => { if (splitCount > 2) splitCount--; }} title="Remove one child">−</button>
+                  <span class="split-count-display">{splitCount}</span>
+                  <button type="button" class="split-count-btn" onclick={() => { if (splitCount < 20) splitCount++; }} title="Add one child">+</button>
+                  <span class="split-hint">Parent will be <strong>archived</strong>. Each child starts its own chain at passage 1.</span>
                 </div>
-                <div class="split-preview">
-                  <span class="split-preview-parent">{specimen.accession_number}</span>
-                  <span class="split-arrow">→</span>
-                  <div class="split-preview-children">
-                    {#each Array.from({length: Math.min(splitCount, 5)}) as _, i}
-                      <span class="split-preview-child">Child {i + 1}</span>
-                    {/each}
-                    {#if splitCount > 5}
-                      <span class="split-preview-child muted">+{splitCount - 5} more</span>
-                    {/if}
+
+                <div class="split-children-header">
+                  <span>Ctr</span><span>Location</span><span>Media Batch</span><span>Vessel</span><span>Notes (optional)</span>
+                </div>
+                {#each splitChildren as child, i}
+                  <div class="split-child-row">
+                    <span class="split-child-num">{i + 1}</span>
+                    <div class="split-child-location">
+                      <select title="Room for child {i+1}" bind:value={child.locRoom}>
+                        <option value="">Room—</option>
+                        {#each rooms as r}<option value={r}>{r}</option>{/each}
+                      </select>
+                      <select title="Rack for child {i+1}" bind:value={child.locRack}>
+                        <option value="">Rack—</option>
+                        {#each racks as r}<option value={r}>{r}</option>{/each}
+                      </select>
+                      <select title="Shelf for child {i+1}" bind:value={child.locShelf}>
+                        <option value="">Shelf—</option>
+                        {#each shelves as s}<option value={s}>{s}</option>{/each}
+                      </select>
+                      <select title="Tray for child {i+1}" bind:value={child.locTray}>
+                        <option value="">Tray—</option>
+                        {#each trays as t}<option value={t}>{t}</option>{/each}
+                      </select>
+                    </div>
+                    <select class="split-child-select" title="Media batch for child {i+1}" bind:value={child.media_batch_id}>
+                      <option value="">No media</option>
+                      {#each mediaBatches.slice(0, 20) as mb}
+                        <option value={mb.id}>{mb.batch_id} — {mb.name}</option>
+                      {/each}
+                    </select>
+                    <select class="split-child-select" title="Vessel type for child {i+1}" bind:value={child.vessel_type}>
+                      <option value="">Select…</option>
+                      {#each vesselTypes as v}<option value={v}>{v}</option>{/each}
+                    </select>
+                    <input class="split-child-notes" type="text" placeholder="optional notes" title="Per-child notes for child {i+1}" bind:value={child.notes} />
                   </div>
-                </div>
+                {/each}
               {/if}
             </div>
 
             <div style="text-align:right;margin-top:12px;">
-              <button type="submit" class="btn btn-primary" title={isSplitting ? `Save this passage and create ${splitCount} new child specimens linked to this one` : 'Save this passage event to the specimen record'} disabled={submitting}>
-                {submitting ? 'Recording…' : isSplitting ? `Record + Create ${splitCount} Splits` : 'Record Passage'}
+              <button type="submit" class="btn btn-primary"
+                title={isSplitting
+                  ? `Archive this specimen and create ${splitCount} child specimens, each with passage 1 already recorded`
+                  : 'Save this passage event to the specimen record'}
+                disabled={submitting}>
+                {submitting
+                  ? (isSplitting ? 'Splitting…' : 'Recording…')
+                  : isSplitting
+                    ? `Split into ${splitCount} Children`
+                    : 'Record Passage'}
               </button>
             </div>
           </form>
@@ -1352,20 +1426,56 @@ ${complianceSection}
   .split-count-input { width: 70px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px; text-align: center; }
   :global(.dark) .split-count-input { background: #1e293b; color: #f1f5f9; border-color: #475569; }
   .split-hint { font-size: 11px; color: #6b7280; }
-  .split-preview { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
-  .split-preview-parent {
-    padding: 4px 12px; background: #dbeafe; color: #1d4ed8;
-    border-radius: 6px; font-size: 12px; font-weight: 700; font-family: monospace;
+  .split-count-btn {
+    width: 28px; height: 28px; border-radius: 6px; border: 1px solid #d1d5db;
+    background: #f9fafb; font-size: 18px; font-weight: 700; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; line-height: 1;
   }
-  .split-arrow { font-size: 16px; color: #9ca3af; font-weight: 700; }
-  .split-preview-children { display: flex; gap: 5px; flex-wrap: wrap; }
-  .split-preview-child {
-    padding: 3px 10px; background: #dcfce7; color: #166534;
-    border-radius: 12px; font-size: 11px; font-weight: 600;
+  .split-count-btn:hover { background: #e5e7eb; }
+  :global(.dark) .split-count-btn { background: #1e293b; border-color: #475569; color: #f1f5f9; }
+  .split-count-display {
+    min-width: 28px; text-align: center; font-size: 16px; font-weight: 700; color: #111827;
   }
-  .split-preview-child.muted { background: #f3f4f6; color: #6b7280; }
-  :global(.dark) .split-preview-parent { background: #1e3a8a; color: #93c5fd; }
-  :global(.dark) .split-preview-child { background: #14532d; color: #86efac; }
+  :global(.dark) .split-count-display { color: #f1f5f9; }
+
+  .split-children-header {
+    display: grid;
+    grid-template-columns: 28px 1fr 1fr 1fr 1fr;
+    gap: 6px;
+    margin-top: 12px;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.5px; color: #9ca3af; padding: 0 2px;
+  }
+  .split-child-row {
+    display: grid;
+    grid-template-columns: 28px 1fr 1fr 1fr 1fr;
+    gap: 6px;
+    align-items: center;
+    margin-top: 6px;
+    padding: 6px 4px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #fff;
+  }
+  :global(.dark) .split-child-row { background: #0f172a; border-color: #334155; }
+  .split-child-num {
+    font-size: 12px; font-weight: 700; color: #6b7280; text-align: center;
+  }
+  .split-child-location {
+    display: flex; gap: 4px; flex-wrap: wrap;
+  }
+  .split-child-location select {
+    flex: 1; min-width: 80px; padding: 4px 6px; font-size: 11px;
+  }
+  .split-child-select {
+    padding: 4px 6px; font-size: 11px; border: 1px solid #d1d5db; border-radius: 4px;
+  }
+  :global(.dark) .split-child-select { background: #1e293b; color: #f1f5f9; border-color: #475569; }
+  .split-child-notes {
+    padding: 4px 6px; font-size: 11px; border: 1px solid #d1d5db; border-radius: 4px;
+    width: 100%;
+  }
+  :global(.dark) .split-child-notes { background: #1e293b; color: #f1f5f9; border-color: #475569; }
 
   /* ── Timeline ── */
   .timeline { display: flex; flex-direction: column; gap: 0; }

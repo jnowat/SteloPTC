@@ -62,7 +62,7 @@ pub fn create_species(
                 request.species_code, request.default_subculture_interval_days, request.notes],
     ).map_err(|e| format!("Failed to create species: {}", e))?;
 
-    queries::log_audit(
+    queries::log_audit_at_seq_zero(
         &db.conn, Some(&user.id), "create", "species", Some(&id),
         None, Some(&request.species_code), None,
     ).ok();

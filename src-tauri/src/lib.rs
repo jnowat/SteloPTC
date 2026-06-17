@@ -52,6 +52,7 @@ pub fn run() {
             commands::specimens::bulk_archive_specimens,
             commands::specimens::bulk_update_location,
             commands::specimens::bulk_update_stage,
+            commands::specimens::split_specimen,
             // Media
             commands::media::list_media,
             commands::media::get_media_batch,

@@ -5,6 +5,30 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.4] - 2026-06-17
+
+### Changed
+
+- **Species creation now anchors its chain at `chain_seq = 0`**
+  - `create_species` now calls `log_audit_at_seq_zero` instead of `log_audit`. The species entry is inserted at seq=0 with `prev_hash = ZERO_HASH`. This marks the "birth" of the species lineage and its `entry_hash` serves as the cryptographic seed for any specimens created from it.
+
+- **New root specimens are cryptographically seeded from their species**
+  - `create_specimen` (root, no parent) now calls `log_audit_seeded_by_species`, which starts the specimen's chain at seq=1 with `prev_hash` set to the species' latest `entry_hash`. Falls back to `ZERO_HASH` for default/seeded species that predate the hash chain.
+
+- **Split is now a dedicated atomic backend command (`split_specimen`)**
+  - Previously, splitting was done in the frontend by calling `createSubculture` on the parent and then N `createSpecimen` calls. This was non-atomic and produced incorrect audit chains.
+  - `split_specimen` handles the full operation in a single SQLite transaction: archives the parent, appends a "split" event to the parent's chain, creates each child specimen, and creates passage 1 for each child — all in one commit.
+  - The parent's "split" audit entry is the last entry in its chain. Every child inherits that entry's `entry_hash` as its `prev_hash`, making the fork cryptographically unambiguous.
+
+- **Per-child media batch, vessel, location, and notes for splits**
+  - The split form now shows one configuration row per child instead of a shared form. Each child can be assigned a different media batch, vessel type, location, and optional notes.
+
+- **Passaging now increments the specimen's own chain**
+  - `create_subculture` now audits using `("subcultured", "specimen", specimen_id)` instead of `("create", "subculture", subculture_id)`. Each passage event extends the specimen's lineage chain (seq increments within the specimen), rather than starting a new per-subculture chain.
+
+- **Passaging now updates the specimen's health status**
+  - `create_subculture` now writes the observed health status back to the specimen record in the same transaction. A single `UPDATE` handles `subculture_count`, `location`, and `health_status` with `CASE WHEN` guards so unset fields are preserved.
+
 ## [1.6.3] - 2026-06-17
 
 ### Changed

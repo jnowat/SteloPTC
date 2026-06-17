@@ -142,24 +142,24 @@ pub fn create_subculture(
         ],
     ).map_err(|e| format!("Failed to create subculture: {}", e))?;
 
+    // Update specimen: subculture count, location (if transferred), health (if assessed)
     tx.execute(
-        "UPDATE specimens SET subculture_count = ?1, updated_at = datetime('now') WHERE id = ?2",
-        params![passage_number, request.specimen_id],
-    ).map_err(|e| format!("Failed to update subculture count: {}", e))?;
+        "UPDATE specimens SET
+         subculture_count = ?1,
+         location       = CASE WHEN ?2 IS NOT NULL THEN ?2 ELSE location       END,
+         health_status  = CASE WHEN ?3 IS NOT NULL THEN ?3 ELSE health_status  END,
+         updated_at     = datetime('now')
+         WHERE id = ?4",
+        params![passage_number, request.location_to, request.health_status, request.specimen_id],
+    ).map_err(|e| format!("Failed to update specimen after passage: {}", e))?;
 
-    if let Some(ref loc) = request.location_to {
-        tx.execute(
-            "UPDATE specimens SET location = ?1, updated_at = datetime('now') WHERE id = ?2",
-            params![loc, request.specimen_id],
-        ).map_err(|e| format!("Failed to update specimen location: {}", e))?;
-    }
+    // Audit passage on the SPECIMEN's chain so chain_seq increments for the specimen
+    queries::log_audit(
+        &*tx, Some(&user.id), "subcultured", "specimen", Some(&request.specimen_id),
+        None, None, Some(&format!("Passage #{} recorded", passage_number)),
+    ).map_err(|e| format!("Failed to write passage audit: {}", e))?;
 
     tx.commit().map_err(|e| format!("Failed to commit subculture transaction: {}", e))?;
-
-    queries::log_audit(
-        &db.conn, Some(&user.id), "create", "subculture", Some(&id),
-        None, None, Some(&format!("Passage #{} recorded", passage_number)),
-    ).ok();
 
     db.conn.query_row(
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
