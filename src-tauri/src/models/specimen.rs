@@ -28,6 +28,9 @@ pub struct Specimen {
     pub ip_notes: Option<String>,
     pub environmental_notes: Option<String>,
     pub subculture_count: i32,
+    pub generation: i32,
+    pub lineage_passage_offset: i32,
+    pub root_specimen_id: Option<String>,
     pub parent_specimen_id: Option<String>,
     pub qr_code_data: Option<String>,
     pub notes: Option<String>,
@@ -156,6 +159,22 @@ pub struct SplitSpecimenRequest {
     pub temperature_c: Option<f64>,
     pub ph: Option<f64>,
     pub light_cycle: Option<String>,
+}
+
+/// Lightweight summary of a specimen used in family-tree queries.
+#[derive(Debug, Serialize)]
+pub struct FamilyMember {
+    pub id: String,
+    pub accession_number: String,
+    pub generation: i32,
+    pub lineage_passage_offset: i32,
+    pub subculture_count: i32,
+    pub is_archived: bool,
+    pub parent_specimen_id: Option<String>,
+    pub root_specimen_id: Option<String>,
+    pub health_status: Option<String>,
+    pub location: Option<String>,
+    pub species_code: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

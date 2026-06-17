@@ -1,9 +1,9 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::specimen::{
-    CreateSpecimenRequest, PaginatedResponse, Specimen, SpecimenSearchParams, SpecimenStats,
-    SplitChild, SplitChildResult, SplitResult, SplitSpecimenRequest, StageCount, SpeciesCount,
-    UpdateSpecimenRequest,
+    CreateSpecimenRequest, FamilyMember, PaginatedResponse, Specimen, SpecimenSearchParams,
+    SpecimenStats, SplitChild, SplitChildResult, SplitResult, SplitSpecimenRequest,
+    StageCount, SpeciesCount, UpdateSpecimenRequest,
 };
 use crate::AppState;
 use rusqlite::params;
@@ -70,6 +70,9 @@ pub fn list_specimens(
             ip_notes: row.get("ip_notes")?,
             environmental_notes: row.get("environmental_notes")?,
             subculture_count: row.get("subculture_count")?,
+            generation: row.get("generation")?,
+            lineage_passage_offset: row.get("lineage_passage_offset")?,
+            root_specimen_id: row.get("root_specimen_id")?,
             parent_specimen_id: row.get("parent_specimen_id")?,
             qr_code_data: row.get("qr_code_data")?,
             notes: row.get("notes")?,
@@ -447,6 +450,9 @@ pub fn search_specimens(
             ip_notes: row.get("ip_notes")?,
             environmental_notes: row.get("environmental_notes")?,
             subculture_count: row.get("subculture_count")?,
+            generation: row.get("generation")?,
+            lineage_passage_offset: row.get("lineage_passage_offset")?,
+            root_specimen_id: row.get("root_specimen_id")?,
             parent_specimen_id: row.get("parent_specimen_id")?,
             qr_code_data: row.get("qr_code_data")?,
             notes: row.get("notes")?,
@@ -608,11 +614,15 @@ pub fn split_specimen(
 
     // Fetch parent info — fail if archived
     let (parent_species_id, parent_species_code, parent_stage,
-         parent_provenance, parent_source_plant, parent_location): (
+         parent_provenance, parent_source_plant, parent_location,
+         parent_generation, parent_passage_offset, parent_subculture_count,
+         parent_root_id): (
         String, String, String, Option<String>, Option<String>, Option<String>,
+        i32, i32, i32, Option<String>,
     ) = db.conn.query_row(
         "SELECT s.species_id, sp.species_code, s.stage,
-                s.provenance, s.source_plant, s.location
+                s.provenance, s.source_plant, s.location,
+                s.generation, s.lineage_passage_offset, s.subculture_count, s.root_specimen_id
          FROM specimens s
          JOIN species sp ON s.species_id = sp.id
          WHERE s.id = ?1 AND s.is_archived = 0",
@@ -620,8 +630,19 @@ pub fn split_specimen(
         |row| Ok((
             row.get(0)?, row.get(1)?, row.get(2)?,
             row.get(3)?, row.get(4)?, row.get(5)?,
+            row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?,
         )),
     ).map_err(|_| "Parent specimen not found or already archived".to_string())?;
+
+    // Compute genealogy values for children:
+    //   generation             = parent + 1
+    //   lineage_passage_offset = parent's offset + parent's own passage count
+    //   root_specimen_id       = parent's root (if set) else the parent itself
+    let child_generation = parent_generation + 1;
+    let child_passage_offset = parent_passage_offset + parent_subculture_count;
+    let child_root_id: &str = parent_root_id
+        .as_deref()
+        .unwrap_or(&request.parent_specimen_id);
 
     let contamination_flag = request.contamination_flag.unwrap_or(false) as i32;
 
@@ -668,17 +689,19 @@ pub fn split_specimen(
         );
         let child_notes: &str = child.notes.as_deref().unwrap_or(default_note.as_str());
 
-        // Insert child specimen
+        // Insert child specimen with genealogy fields
         tx.execute(
             "INSERT INTO specimens \
              (id, accession_number, species_id, stage, initiation_date, \
               location, health_status, qr_code_data, parent_specimen_id, \
-              provenance, source_plant, notes, created_by) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+              provenance, source_plant, notes, created_by, \
+              generation, lineage_passage_offset, root_specimen_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 child_id, accession, parent_species_id, parent_stage, request.date,
                 child_location, child_health, qr_data, request.parent_specimen_id,
                 parent_provenance, parent_source_plant, child_notes, user.id,
+                child_generation, child_passage_offset, child_root_id,
             ],
         ).map_err(|e| format!("Failed to create child specimen {}: {}", i + 1, e))?;
 
@@ -738,6 +761,65 @@ pub fn split_specimen(
         archived_parent_id: request.parent_specimen_id,
         children: child_results,
     })
+}
+
+/// Return all specimens that share the same root as the given specimen.
+///
+/// Includes the root itself plus every descendant (at any depth), both active
+/// and archived. The caller can use this to render a full family tree.
+#[tauri::command]
+pub fn get_specimen_family(
+    state: State<AppState>,
+    token: String,
+    id: String,
+) -> Result<Vec<FamilyMember>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+
+    // Determine the root: if this specimen has a root_specimen_id it IS the root,
+    // otherwise the specimen itself is the root.
+    let root_id: String = db.conn
+        .query_row(
+            "SELECT COALESCE(root_specimen_id, id) FROM specimens WHERE id = ?1",
+            params![id],
+            |r| r.get(0),
+        )
+        .map_err(|_| "Specimen not found".to_string())?;
+
+    // Fetch all members: the root itself + every specimen whose root_specimen_id = root.
+    let mut stmt = db.conn
+        .prepare(
+            "SELECT s.id, s.accession_number, s.generation, s.lineage_passage_offset,
+                    s.subculture_count, s.is_archived, s.parent_specimen_id,
+                    s.root_specimen_id, s.health_status, s.location, sp.species_code
+             FROM specimens s
+             LEFT JOIN species sp ON s.species_id = sp.id
+             WHERE s.id = ?1 OR s.root_specimen_id = ?1
+             ORDER BY s.generation ASC, s.created_at ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let members = stmt
+        .query_map(params![root_id], |row| {
+            Ok(FamilyMember {
+                id:                    row.get(0)?,
+                accession_number:      row.get(1)?,
+                generation:            row.get(2)?,
+                lineage_passage_offset: row.get(3)?,
+                subculture_count:      row.get(4)?,
+                is_archived:           row.get::<_, i32>(5)? != 0,
+                parent_specimen_id:    row.get(6)?,
+                root_specimen_id:      row.get(7)?,
+                health_status:         row.get(8)?,
+                location:              row.get(9)?,
+                species_code:          row.get(10)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(members)
 }
 
 #[tauri::command]

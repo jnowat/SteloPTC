@@ -5,6 +5,32 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-06-17
+
+### Added
+
+- **Generational depth tracking on specimens**
+  - New `generation` column on `specimens` (migration 010, default 0). Root specimens stay at generation 0. Each split increments the generation counter by 1 on every child, so a third-generation derived culture shows `generation = 3`.
+  - A **"Gen N" badge** appears in the specimen detail header for any non-root specimen so the generational depth is visible at a glance.
+
+- **Cumulative passage tracking across the full lineage**
+  - New `lineage_passage_offset` column on `specimens` (default 0). When a specimen is split, each child receives `lineage_passage_offset = parent's offset + parent's subculture_count` at the time of the split. This encodes how many passages occurred across all ancestor specimens before this one was created.
+  - The "Passages" row in the specimen info card now shows **"N (P{total} from root)"** for derived specimens, where total = `lineage_passage_offset + subculture_count`. Example: a specimen split after 5 parent passages, now on its 3rd passage, displays "3 (P8 from root)".
+
+- **Shared-root identifier for family queries**
+  - New `root_specimen_id` column on `specimens` (nullable). NULL for root specimens; set to the absolute root ancestor ID for all derived specimens, regardless of nesting depth. Enables efficient "give me the whole family tree" queries without recursive CTEs.
+  - New `get_specimen_family(id)` backend command returns all members of a specimen's family tree (root + all descendants, active and archived) as lightweight `FamilyMember` records including generation, passage offset, and health status.
+
+- **Sibling display in the lineage banner**
+  - When a specimen has siblings (other specimens split from the same parent that are still active), a "Siblings" row now appears in the lineage banner using purple chips. Click any sibling to navigate directly to it.
+
+- **`badge-purple` global CSS class** added to App.svelte for generation and sibling indicators; includes dark-mode variant.
+
+### Changed
+
+- `split_specimen` backend command now sets `generation`, `lineage_passage_offset`, and `root_specimen_id` on every child specimen in the same atomic transaction.
+- `SpecimenDetail` `loadAll` now calls `get_specimen_family` instead of filtering a full `listSpecimens(1, 500)` to populate child and sibling lists — more efficient and includes archived family members.
+
 ## [1.6.4] - 2026-06-17
 
 ### Changed
