@@ -7,8 +7,6 @@ use tauri::State;
 /// Wipes all operational data from the database while preserving
 /// user accounts, species definitions, and system tags.
 /// Admin-only. Requires passing the confirmation phrase "RESET DATABASE".
-/// Only available in debug builds — excluded from release binaries.
-#[cfg(debug_assertions)]
 #[tauri::command]
 pub fn reset_database(
     state: State<AppState>,

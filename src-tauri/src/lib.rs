@@ -105,8 +105,7 @@ pub fn run() {
             commands::backup::create_backup,
             commands::backup::list_backups,
             commands::backup::restore_backup,
-            // Admin / Dev tools (debug builds only)
-            #[cfg(debug_assertions)]
+            // Admin tools
             commands::admin::reset_database,
             commands::admin::load_demo_data,
             // Error Logs
