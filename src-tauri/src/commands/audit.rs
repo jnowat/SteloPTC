@@ -1,7 +1,7 @@
 use crate::auth as auth_service;
 use crate::models::audit::*;
 use crate::models::specimen::PaginatedResponse;
-use crate::db::queries::{self, audit_canonical_bytes, compute_entry_hash, ZERO_HASH};
+use crate::db::queries::{self, audit_canonical_bytes, compute_entry_hash};
 use crate::AppState;
 use tauri::State;
 
@@ -119,6 +119,8 @@ pub fn get_audit_log(
 
 /// Verify a single audit entry by recomputing its hash from stored fields.
 /// Returns ok=true if the stored entry_hash matches the recomputed value.
+///
+/// Returns ok=false with a clear message for legacy rows that predate the hash chain.
 #[tauri::command]
 pub fn verify_audit_entry(
     state: State<AppState>,
@@ -128,31 +130,59 @@ pub fn verify_audit_entry(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     auth_service::validate_session(&db, &token)?;
 
-    let row: Option<(String, Option<String>, String, String, Option<String>, String, Option<String>, i64, String, String)> =
-        db.conn.query_row(
-            "SELECT lineage_id, user_id, entity_type, action, entity_id, created_at, details, \
-                    chain_seq, prev_hash, entry_hash \
-             FROM audit_log WHERE id = ?1",
-            rusqlite::params![entry_id],
-            |r| Ok((
-                r.get(0)?,  // lineage_id
-                r.get(1)?,  // user_id
-                r.get(2)?,  // entity_type
-                r.get(3)?,  // action
-                r.get(4)?,  // entity_id
-                r.get(5)?,  // created_at
-                r.get(6)?,  // details
-                r.get(7)?,  // chain_seq
-                r.get(8)?,  // prev_hash
-                r.get(9)?,  // entry_hash
-            )),
-        ).ok();
+    // Use Option<> for every nullable column so rusqlite never errors on NULL.
+    // chain_seq, prev_hash, entry_hash, and lineage_id are all nullable for
+    // legacy (pre-v1.5.0) rows.
+    let row: Option<(
+        Option<String>,  // lineage_id
+        Option<String>,  // user_id
+        String,          // entity_type  (NOT NULL in schema)
+        String,          // action       (NOT NULL in schema)
+        Option<String>,  // entity_id
+        String,          // created_at   (NOT NULL in schema)
+        Option<String>,  // details
+        Option<i64>,     // chain_seq    (nullable)
+        Option<String>,  // prev_hash    (nullable)
+        Option<String>,  // entry_hash   (nullable)
+    )> = db.conn.query_row(
+        "SELECT lineage_id, user_id, entity_type, action, entity_id, created_at, details, \
+                chain_seq, prev_hash, entry_hash \
+         FROM audit_log WHERE id = ?1",
+        rusqlite::params![entry_id],
+        |r| Ok((
+            r.get(0)?,
+            r.get(1)?,
+            r.get(2)?,
+            r.get(3)?,
+            r.get(4)?,
+            r.get(5)?,
+            r.get(6)?,
+            r.get(7)?,
+            r.get(8)?,
+            r.get(9)?,
+        )),
+    ).ok();
 
-    let Some((lineage_id, user_id, entity_type, action, entity_id, created_at, details, chain_seq, prev_hash, stored_hash)) = row else {
+    let Some((lineage_id_opt, user_id, entity_type, action, entity_id, created_at, details,
+              chain_seq_opt, prev_hash_opt, stored_hash_opt)) = row
+    else {
         return Ok(VerifyEntryResult {
             entry_id,
             ok: false,
             message: "Entry not found.".to_string(),
+            stored_hash: None,
+            computed_hash: None,
+        });
+    };
+
+    // Guard: row exists but has no chain data (written before v1.5.0).
+    let (Some(lineage_id), Some(chain_seq), Some(prev_hash), Some(stored_hash)) =
+        (lineage_id_opt, chain_seq_opt, prev_hash_opt, stored_hash_opt)
+    else {
+        return Ok(VerifyEntryResult {
+            entry_id,
+            ok: false,
+            message: "This entry has no chain data (written before the hash chain was introduced in v1.5.0).".to_string(),
             stored_hash: None,
             computed_hash: None,
         });
@@ -245,9 +275,18 @@ pub fn verify_audit_lineage(
         });
     }
 
-    let mut prev_entry_hash = ZERO_HASH.to_string();
+    // For root lineages the first row's prev_hash is ZERO_HASH; for fork lineages
+    // (split specimens) it is the parent's last entry_hash. Either way, we anchor
+    // verification at the first row's own claimed prev_hash — we cannot independently
+    // verify the anchor without walking the parent lineage, but we verify every
+    // subsequent link and every entry_hash within this lineage.
+    //
+    // Previous (buggy) code used ZERO_HASH as the fixed anchor, which always
+    // reported "Chain broken at seq 1" for any forked lineage.
+    let mut prev_entry_hash = rows[0].prev_hash.clone();
     for row in &rows {
-        // Verify the link: this row's prev_hash must equal the previous row's entry_hash.
+        // Verify the link: this row's prev_hash must equal the previous row's entry_hash
+        // (or the anchor for the very first row, which trivially passes).
         if row.prev_hash != prev_entry_hash {
             return Ok(VerifyChainResult {
                 lineage_id,

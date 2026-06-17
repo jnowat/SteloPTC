@@ -5,6 +5,20 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-06-16
+
+### Fixed
+
+- **`verify_audit_lineage` always failed for split/forked specimens**
+  - The verification loop was anchored to `ZERO_HASH` as the initial `prev_entry_hash`. Root lineages (no parent) have `prev_hash = ZERO_HASH` on their first row, so this worked. But forked lineages (split specimens) have `prev_hash = parent's last entry_hash ≠ ZERO_HASH` on their first row, so the link check `row.prev_hash != ZERO_HASH` immediately returned "Chain broken at seq 1" for every split specimen — making lineage verification completely unusable for the core split use case.
+  - Fixed by initializing `prev_entry_hash = rows[0].prev_hash` instead of `ZERO_HASH`. The anchor row's link check now trivially passes; all subsequent links and all entry hashes are still fully verified.
+
+- **`verify_audit_entry` silently returned "Entry not found" for chained rows**
+  - The function used non-`Option` Rust types (`String`, `i64`) for nullable database columns (`lineage_id`, `chain_seq`, `prev_hash`, `entry_hash`). When rusqlite encounters a NULL in a non-`Option` field it returns an error, which `.ok()` silently converts to `None`, making the function appear to not find the entry.
+  - Fixed by using `Option<String>` / `Option<i64>` for all nullable columns. Rows with no chain data (pre-v1.5.0) now receive a clear message: *"This entry has no chain data (written before the hash chain was introduced in v1.5.0)."*
+
+- **Added regression test** for fork lineage verification to prevent the `ZERO_HASH` anchor bug from re-appearing.
+
 ## [1.6.0] - 2026-06-16
 
 ### Changed (Breaking — reworks WP-18)

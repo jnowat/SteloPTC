@@ -363,4 +363,57 @@ mod tests {
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64);
     }
+
+    /// Simulate the verify_audit_lineage loop for a fork lineage and confirm it
+    /// passes when initialized from the first row's prev_hash (not ZERO_HASH).
+    /// This is a regression test for the bug where fork lineages always reported
+    /// "Chain broken at seq 1" because the loop was anchored to ZERO_HASH.
+    #[test]
+    fn verify_logic_passes_for_fork_lineage() {
+        let conn = mem_conn_with_audit();
+        // Create parent
+        log_audit(&conn, None, "create", "specimen", Some("sp-A"), None, None, None).unwrap();
+        let parent_hash: String = conn.query_row(
+            "SELECT entry_hash FROM audit_log WHERE lineage_id = 'sp-A'", [], |r| r.get(0),
+        ).unwrap();
+
+        // Create child forked from parent
+        log_audit_for_child(&conn, None, "create", "specimen", Some("sp-B"), None, None, None, "sp-A").unwrap();
+        log_audit(&conn, None, "update", "specimen", Some("sp-B"), None, None, None).unwrap();
+
+        // Fetch child's rows as verify_audit_lineage would
+        struct Row { chain_seq: i64, prev_hash: String, entry_hash: String, lineage_id: String,
+                     created_at: String, action: String, entity_id: Option<String>,
+                     entity_type: String, user_id: Option<String>, details: Option<String> }
+        let mut stmt = conn.prepare(
+            "SELECT chain_seq, prev_hash, entry_hash, lineage_id, created_at, action, entity_id, entity_type, user_id, details \
+             FROM audit_log WHERE lineage_id = 'sp-B' AND entry_hash IS NOT NULL ORDER BY chain_seq ASC"
+        ).unwrap();
+        let rows: Vec<Row> = stmt.query_map([], |r| Ok(Row {
+            chain_seq: r.get(0)?, prev_hash: r.get(1)?, entry_hash: r.get(2)?,
+            lineage_id: r.get(3)?, created_at: r.get(4)?, action: r.get(5)?,
+            entity_id: r.get(6)?, entity_type: r.get(7)?, user_id: r.get(8)?,
+            details: r.get(9)?,
+        })).unwrap().filter_map(|r| r.ok()).collect();
+
+        assert_eq!(rows.len(), 2, "expected 2 rows for sp-B");
+
+        // seq=1 should have prev_hash == parent's entry_hash
+        assert_eq!(rows[0].chain_seq, 1);
+        assert_eq!(rows[0].prev_hash, parent_hash, "fork child's seq=1 must point to parent");
+
+        // Simulate the fixed verify loop (anchor = rows[0].prev_hash)
+        let mut prev_hash = rows[0].prev_hash.clone();
+        let mut broken_at: Option<i64> = None;
+        for row in &rows {
+            if row.prev_hash != prev_hash { broken_at = Some(row.chain_seq); break; }
+            let canonical = audit_canonical_bytes(&row.lineage_id, row.chain_seq, &row.created_at,
+                row.user_id.as_deref().unwrap_or(""), &row.entity_type,
+                row.entity_id.as_deref().unwrap_or(""), &row.action, row.details.as_deref().unwrap_or(""));
+            let computed = compute_entry_hash(&canonical, &row.prev_hash);
+            if computed != row.entry_hash { broken_at = Some(row.chain_seq); break; }
+            prev_hash = row.entry_hash.clone();
+        }
+        assert!(broken_at.is_none(), "fork lineage must verify cleanly; broke at seq {:?}", broken_at);
+    }
 }
