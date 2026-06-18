@@ -338,7 +338,7 @@ android {
         targetSdk = 35
         minSdk = 24
         versionCode = 26
-        versionName = "1.2.6"
+        versionName = "1.7.0"
     }
 }
 ```
@@ -401,7 +401,7 @@ SteloPTC/
 │       ├── auth/mod.rs               # bcrypt + session management
 │       ├── db/
 │       │   ├── mod.rs                # Connection pool, init
-│       │   ├── migrations.rs         # 5 schema migrations
+│       │   ├── migrations.rs         # 10 schema migrations
 │       │   └── queries.rs            # SQL helpers
 │       ├── models/                   # Rust data structures
 │       │   ├── user.rs, specimen.rs, media.rs
@@ -475,6 +475,10 @@ SQLite, stored at:
 | 004 | v0.1.14 | Added qr_scans table |
 | 005 | v0.1.15 | Added contamination_flag and contamination_notes to subcultures |
 | 006 | v0.1.20 | Added must_change_password to users; seeded admin row with flag set |
+| 007 | v1.2.7 | Six composite/covering indexes on specimens and subcultures for query performance |
+| 008 | v1.5.0 | Added chain_seq, prev_hash, entry_hash columns to audit_log (hash-chain tamper evidence) |
+| 009 | v1.6.0 | Added lineage_id column to audit_log; composite index on (lineage_id, chain_seq); per-lineage back-fill |
+| 010 | v1.7.0 | Added generation, lineage_passage_offset, root_specimen_id columns to specimens |
 
 ### Backup
 
@@ -546,7 +550,7 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 
 ### Upcoming Patches
 
-- [ ] **Excel import** — parse `.xlsx` workbooks to create or update specimens and subculture records
+- [x] **Excel import** — parse `.xlsx` workbooks to create or update specimens and subculture records (v1.3.0)
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
 
 ### v0.2.x — Multi-User & Network
