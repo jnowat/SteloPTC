@@ -1,7 +1,10 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, updateSubculture, splitSpecimen, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, uploadAttachment, deleteAttachment, getAttachmentData } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, splitSpecimen, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments } from '../api';
+  import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
+  import SpecimenComplianceTable from './SpecimenComplianceTable.svelte';
+  import SpecimenPassageTimeline from './SpecimenPassageTimeline.svelte';
   import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import { escHtml, stageFmt, healthLabel } from '../utils';
@@ -21,21 +24,8 @@
   let familyMembers = $state<any[]>([]);
   let loading = $state(true);
   let showPassageForm = $state(false);
-  let expandedPassages = $state(new Set<string>());
   let activeTab = $state<'history' | 'compliance' | 'photos'>('history');
   let photos = $state<any[]>([]);
-  let photoCache = $state(new Map<string, string>());
-  let uploadingPhoto = $state(false);
-  let lightboxSrc = $state<string | null>(null);
-  let lightboxMime = $state<string>('image/jpeg');
-  let lightboxCloseBtn = $state<HTMLButtonElement | null>(null);
-
-  $effect(() => {
-    if (lightboxSrc && lightboxCloseBtn) {
-      lightboxCloseBtn.focus();
-    }
-  });
-  let fileInputEl = $state<HTMLInputElement | null>(null);
   let isSplitting = $state(false);
   let splitCount = $state(2);
   let submitting = $state(false);
@@ -63,10 +53,6 @@
       splitChildren = splitChildren.slice(0, n);
     }
   });
-
-  // Dev mode: inline edit state
-  let editingPassageId = $state<string | null>(null);
-  let passageEditForm = $state({ notes: '', observations: '', vessel_type: '', location_to: '' });
 
   // Location dropdowns for transfer destination
   let locToRoom = $state(localStorage.getItem('sc_lastRoom') || '');
@@ -137,7 +123,6 @@
 
   const hlabels = ['Dead', 'Poor', 'Fair', 'Good', 'Healthy'];
   const hcolors = ['#dc2626', '#d97706', '#ca8a04', '#65a30d', '#16a34a'];
-  const dotColors = ['#2563eb', '#059669', '#7c3aed', '#0891b2', '#d97706', '#db2777'];
 
   function healthInfo(val: any) {
     if (val === null || val === '' || isNaN(Number(val))) return null;
@@ -151,10 +136,6 @@
     return stage?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) || stage || '—';
   }
 
-  function dotColor(passageNumber: number) {
-    return dotColors[(passageNumber - 1) % dotColors.length];
-  }
-
   $effect(() => {
     if ($selectedSpecimenId) untrack(() => loadAll($selectedSpecimenId));
   });
@@ -164,56 +145,6 @@
       photos = await listAttachments('specimen', id);
     } catch {
       // non-fatal
-    }
-  }
-
-  async function handlePhotoUpload(e: Event) {
-    const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file || !$selectedSpecimenId) return;
-    uploadingPhoto = true;
-    try {
-      const buf = await file.arrayBuffer();
-      const bytes = new Uint8Array(buf);
-      let binary = '';
-      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-      const b64 = btoa(binary);
-      await uploadAttachment('specimen', $selectedSpecimenId, file.name, file.type, b64);
-      addNotification('Photo added', 'success');
-      await loadPhotos($selectedSpecimenId);
-    } catch (err: any) {
-      addNotification(err.message, 'error');
-    } finally {
-      uploadingPhoto = false;
-      input.value = '';
-    }
-  }
-
-  async function viewPhoto(id: string, mime: string) {
-    let src = photoCache.get(id);
-    if (!src) {
-      try {
-        const b64 = await getAttachmentData(id);
-        src = `data:${mime || 'image/jpeg'};base64,${b64}`;
-        photoCache.set(id, src);
-      } catch (err: any) {
-        addNotification(err.message, 'error');
-        return;
-      }
-    }
-    lightboxMime = mime || 'image/jpeg';
-    lightboxSrc = src;
-  }
-
-  async function removePhoto(id: string) {
-    if (!confirm('Delete this photo? This cannot be undone.')) return;
-    try {
-      await deleteAttachment(id);
-      photoCache.delete(id);
-      photos = photos.filter((p) => p.id !== id);
-      addNotification('Photo deleted', 'success');
-    } catch (err: any) {
-      addNotification(err.message, 'error');
     }
   }
 
@@ -333,48 +264,6 @@
       addNotification(e.message, 'error');
     } finally {
       submitting = false;
-    }
-  }
-
-  function togglePassage(id: string) {
-    if (expandedPassages.has(id)) {
-      expandedPassages = new Set([...expandedPassages].filter(x => x !== id));
-    } else {
-      expandedPassages = new Set([...expandedPassages, id]);
-    }
-  }
-
-  function startEditPassage(sc: any) {
-    editingPassageId = sc.id;
-    passageEditForm = {
-      notes: sc.notes || '',
-      observations: sc.observations || '',
-      vessel_type: sc.vessel_type || '',
-      location_to: sc.location_to || '',
-    };
-  }
-
-  function cancelEditPassage() {
-    editingPassageId = null;
-    passageEditForm = { notes: '', observations: '', vessel_type: '', location_to: '' };
-  }
-
-  async function handleEditPassage(e: Event, scId: string) {
-    e.preventDefault();
-    try {
-      await updateSubculture({
-        id: scId,
-        notes: passageEditForm.notes || undefined,
-        observations: passageEditForm.observations || undefined,
-        vessel_type: passageEditForm.vessel_type || undefined,
-        location_to: passageEditForm.location_to || undefined,
-      });
-      addNotification('Passage updated.', 'success');
-      editingPassageId = null;
-      passageEditForm = { notes: '', observations: '', vessel_type: '', location_to: '' };
-      loadAll($selectedSpecimenId!);
-    } catch (e: any) {
-      addNotification(e.message, 'error');
     }
   }
 
@@ -910,337 +799,33 @@ ${complianceSection}
         {/if}
 
         <!-- ── Timeline ── -->
-        {#if subcultures.length === 0}
-          <div class="empty-state" style="padding:40px 0;">
-            No passages recorded yet.<br/>
-            <span style="font-size:12px;color:#9ca3af;">Use "Record Passage" above to log the first subculture event.</span>
-          </div>
-        {:else}
-          <div class="timeline" class:with-form={showPassageForm}>
-            {#each subcultures as sc, i}
-              {@const color = dotColor(sc.passage_number)}
-              {@const isExpanded = expandedPassages.has(sc.id)}
-              <div class="timeline-item">
-                <!-- Left: connector -->
-                <div class="timeline-left">
-                  <div class="tl-dot" style="background:{color};box-shadow:0 0 0 3px {color}30;"></div>
-                  {#if i < subcultures.length - 1}
-                    <div class="tl-line"></div>
-                  {/if}
-                </div>
+        <SpecimenPassageTimeline
+          subcultures={subcultures}
+          specimenId={$selectedSpecimenId!}
+          onreload={() => loadAll($selectedSpecimenId!)}
+        />
+      </div>
 
-                <!-- Right: card -->
-                <div class="tl-card" class:expanded={isExpanded}>
-                  <!-- svelte-ignore a11y_click_events_have_key_events -->
-                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                  <div class="tl-card-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
-                    <div class="tl-card-left">
-                      <span class="tl-passage-num" title="Passage number — number of times this specimen has been subcultured (P{sc.passage_number})" style="color:{color};">P{sc.passage_number}</span>
-                      <div class="tl-card-summary">
-                        <span class="tl-date">{sc.date}</span>
-                        {#if sc.contamination_flag}
-                          <span class="tl-pill contam-pill" title="Contamination was detected during this passage">⚠ Contaminated</span>
-                        {/if}
-                        {#if sc.media_batch_name}
-                          <span class="tl-pill media-pill" title="Media batch used for this passage: {sc.media_batch_name}">{sc.media_batch_name}</span>
-                        {/if}
-                        {#if sc.vessel_type}
-                          <span class="tl-pill vessel-pill" title="Vessel type used for this passage: {sc.vessel_type}">{sc.vessel_type}</span>
-                        {/if}
-                        {#if sc.location_to}
-                          <span class="tl-pill loc-pill" title="Destination location for this passage: {sc.location_to}">→ {sc.location_to}</span>
-                        {/if}
-                      </div>
-                    </div>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                      {#if $devMode && isExpanded}
-                        <button
-                          type="button"
-                          class="btn btn-sm"
-                          title={editingPassageId === sc.id ? 'Discard changes and exit inline edit mode for this passage' : 'Edit the notes, vessel, location, and observations for this passage record (dev mode)'}
-                          style="background:#dc2626; color:white;"
-                          onclick={(e) => { e.stopPropagation(); if (editingPassageId === sc.id) { cancelEditPassage(); } else { startEditPassage(sc); } }}
-                        >
-                          {editingPassageId === sc.id ? 'Cancel Edit' : 'Edit'}
-                        </button>
-                      {/if}
-                      <span class="tl-chevron">{isExpanded ? '▴' : '▾'}</span>
-                    </div>
-                  </div>
-
-                  {#if isExpanded}
-                    <div class="tl-card-body">
-                      {#if $devMode && editingPassageId === sc.id}
-                        <!-- Inline edit form -->
-                        <form onsubmit={(e) => handleEditPassage(e, sc.id)} style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
-                          <div class="form-row">
-                            <div class="form-group" style="flex:2;">
-                              <label title="Edit the vessel type used for this passage">Vessel Type</label>
-                              <select title="Edit the vessel type used for this passage" bind:value={passageEditForm.vessel_type}>
-                                <option value="">Select vessel…</option>
-                                {#each vesselTypes as v}
-                                  <option value={v}>{v}</option>
-                                {/each}
-                              </select>
-                            </div>
-                            <div class="form-group" style="flex:2;">
-                              <label title="Edit the destination location recorded for this passage">Location To</label>
-                              <input type="text" title="Edit the destination location recorded for this passage" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
-                            </div>
-                          </div>
-                          <div class="form-row">
-                            <div class="form-group" style="flex:1;">
-                              <label title="Edit the visual or qualitative observations recorded for this passage">Observations</label>
-                              <textarea title="Edit the visual or qualitative observations recorded for this passage" bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
-                            </div>
-                            <div class="form-group" style="flex:1;">
-                              <label title="Edit the procedural notes recorded for this passage">Notes</label>
-                              <textarea title="Edit the procedural notes recorded for this passage" bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
-                            </div>
-                          </div>
-                          <div style="text-align:right;">
-                            <button type="button" class="btn btn-sm" title="Discard changes and exit inline edit mode" onclick={cancelEditPassage} style="margin-right:6px;">Cancel</button>
-                            <button type="submit" class="btn btn-primary btn-sm" title="Save the edited fields for this passage record">Save Changes</button>
-                          </div>
-                        </form>
-                      {:else}
-                        <div class="tl-detail-grid">
-                          {#if sc.media_batch_name}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">Media Batch</span>
-                              <span class="tl-detail-value">{sc.media_batch_name}</span>
-                            </div>
-                          {/if}
-                          {#if sc.vessel_type}
-                            <div class="tl-detail-item span2">
-                              <span class="tl-detail-label">Vessel</span>
-                              <span class="tl-detail-value">{sc.vessel_type}</span>
-                            </div>
-                          {/if}
-                          {#if sc.temperature_c}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">Temperature</span>
-                              <span class="tl-detail-value">{sc.temperature_c} °C</span>
-                            </div>
-                          {/if}
-                          {#if sc.ph}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">pH</span>
-                              <span class="tl-detail-value">{sc.ph}</span>
-                            </div>
-                          {/if}
-                          {#if sc.light_cycle}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">Light Cycle</span>
-                              <span class="tl-detail-value">{sc.light_cycle} hrs on/off</span>
-                            </div>
-                          {/if}
-                          {#if sc.location_from}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">From Location</span>
-                              <span class="tl-detail-value">{sc.location_from}</span>
-                            </div>
-                          {/if}
-                          {#if sc.location_to}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">To Location</span>
-                              <span class="tl-detail-value">{sc.location_to}</span>
-                            </div>
-                          {/if}
-                          {#if sc.performer_name}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">Performed By</span>
-                              <span class="tl-detail-value">{sc.performer_name}</span>
-                            </div>
-                          {/if}
-                          {#if sc.employee_id}
-                            <div class="tl-detail-item">
-                              <span class="tl-detail-label">Employee ID</span>
-                              <span class="tl-detail-value">{sc.employee_id}</span>
-                            </div>
-                          {/if}
-                          {#if sc.health_status !== null && sc.health_status !== '' && !isNaN(Number(sc.health_status))}
-                            {@const hb = healthInfo(sc.health_status)}
-                            {#if hb}
-                              <div class="tl-detail-item">
-                                <span class="tl-detail-label">Health</span>
-                                <span class="tl-detail-value">
-                                  <span title="Health score at time of this passage (0=Dead, 1=Poor, 2=Fair, 3=Good, 4=Healthy)" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">
-                                    {hb.label}
-                                  </span>
-                                </span>
-                              </div>
-                            {/if}
-                          {/if}
-                        </div>
-                        {#if sc.contamination_flag}
-                          <div class="tl-detail-text contam-detail">
-                            <span class="tl-detail-label">Contamination</span>
-                            <p class="tl-detail-p">
-                              {sc.contamination_notes || 'Contamination flagged — no notes recorded.'}
-                            </p>
-                          </div>
-                        {/if}
-                        {#if sc.observations}
-                          <div class="tl-detail-text">
-                            <span class="tl-detail-label">Observations</span>
-                            <p class="tl-detail-p">{sc.observations}</p>
-                          </div>
-                        {/if}
-                        {#if sc.notes}
-                          <div class="tl-detail-text">
-                            <span class="tl-detail-label">Notes</span>
-                            <p class="tl-detail-p">{sc.notes}</p>
-                          </div>
-                        {/if}
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              </div>
-            {/each}
-          </div>
-        {/if}
+    <!-- ── Photos Tab ── -->
+    {:else if activeTab === 'photos'}
+      <div class="card" style="margin-top:0;border-top-left-radius:0;border-top-right-radius:0;">
+        <SpecimenPhotoGallery
+          specimenId={$selectedSpecimenId!}
+          photos={photos}
+          onphotoschanged={() => loadPhotos($selectedSpecimenId!)}
+        />
       </div>
 
     <!-- ── Compliance Tab ── -->
-    {:else if activeTab === 'photos'}
-      <div class="card" style="margin-top:0;border-top-left-radius:0;border-top-right-radius:0;">
-        <div class="photos-header">
-          <h3 style="font-size:15px;">Photos</h3>
-          {#if $currentUser?.role !== 'guest'}
-            <!-- Hidden file input — triggered by the button below -->
-            <input
-              bind:this={fileInputEl}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              style="display:none"
-              onchange={handlePhotoUpload}
-            />
-            <button
-              class="btn btn-primary btn-sm"
-              onclick={() => fileInputEl?.click()}
-              disabled={uploadingPhoto}
-              title="Upload a photo or capture from camera (Android)"
-            >
-              {#if uploadingPhoto}Uploading…{:else}+ Add Photo{/if}
-            </button>
-          {/if}
-        </div>
-
-        {#if photos.length === 0}
-          <div class="empty-state">
-            No photos yet.{#if $currentUser?.role !== 'guest'} Use <strong>+ Add Photo</strong> to attach an image.{/if}
-          </div>
-        {:else}
-          <div class="photo-grid">
-            {#each photos as photo (photo.id)}
-              {@const cached = photoCache.get(photo.id)}
-              <div class="photo-card" role="button" tabindex="0"
-                onclick={() => viewPhoto(photo.id, photo.mime_type)}
-                onkeydown={(e) => e.key === 'Enter' && viewPhoto(photo.id, photo.mime_type)}
-                title="Click to view full-size — {photo.file_name}"
-              >
-                <div class="photo-thumb">
-                  {#if cached}
-                    <img src={cached} alt={photo.file_name} />
-                  {:else}
-                    <span class="photo-icon">&#128247;</span>
-                  {/if}
-                </div>
-                <div class="photo-meta">
-                  <span class="photo-name" title={photo.file_name}>{photo.file_name}</span>
-                  <span class="photo-date">{photo.created_at?.split(' ')[0] ?? ''}</span>
-                </div>
-                {#if $currentUser?.role !== 'guest'}
-                  <button class="photo-delete" title="Delete this photo"
-                    onclick={(e) => { e.stopPropagation(); removePhoto(photo.id); }}
-                  >&#10005;</button>
-                {/if}
-              </div>
-            {/each}
-          </div>
-        {/if}
-      </div>
-
     {:else if activeTab === 'compliance'}
       <div class="card" style="margin-top:0;border-top-left-radius:0;border-top-right-radius:0;">
         <h3 style="margin-bottom:12px;font-size:15px;">Compliance Records</h3>
-        {#if complianceRecords.length === 0}
-          <div class="empty-state">No compliance records</div>
-        {:else}
-          <table>
-            <thead>
-              <tr>
-                <th title="Category of compliance record (e.g. phytosanitary test, import permit, CITES certificate)">Type</th>
-                <th title="Regulatory agency or authority that issued or required this record">Agency</th>
-                <th title="Specific test type performed or permit number associated with this record">Test / Permit</th>
-                <th title="Outcome of the test (Positive = pathogen detected, Negative = clean, Pending = awaiting result)">Result</th>
-                <th title="Current validity status of this compliance record (valid, pending, flagged, or expired)">Status</th>
-                <th title="Date the test was performed or the compliance record was created">Date</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each complianceRecords as cr}
-                <tr>
-                  <td>{cr.record_type}</td>
-                  <td>{cr.agency || '—'}</td>
-                  <td>{cr.test_type || cr.permit_number || '—'}</td>
-                  <td>
-                    {#if cr.test_result === 'positive'}
-                      <span class="badge badge-red">Positive</span>
-                    {:else if cr.test_result === 'negative'}
-                      <span class="badge badge-green">Negative</span>
-                    {:else if cr.test_result === 'pending'}
-                      <span class="badge badge-yellow">Pending</span>
-                    {:else}
-                      {cr.test_result || '—'}
-                    {/if}
-                  </td>
-                  <td>
-                    <span class="badge"
-                      class:badge-green={cr.status === 'valid'}
-                      class:badge-red={cr.status === 'flagged' || cr.status === 'expired'}
-                      class:badge-yellow={cr.status === 'pending'}>
-                      {cr.status}
-                    </span>
-                  </td>
-                  <td>{cr.test_date || cr.created_at?.split(' ')[0] || '—'}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {/if}
+        <SpecimenComplianceTable records={complianceRecords} />
       </div>
     {/if}
 
   {/if}
 </div>
-
-<!-- Photo Lightbox -->
-{#if lightboxSrc}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="lightbox"
-    role="dialog"
-    aria-modal="true"
-    aria-label="Photo viewer"
-    onclick={() => (lightboxSrc = null)}
-    onkeydown={(e) => { if (e.key === 'Escape') lightboxSrc = null; }}
-    tabindex="-1"
-  >
-    <button
-      class="lightbox-close"
-      onclick={() => (lightboxSrc = null)}
-      aria-label="Close photo viewer"
-      title="Close"
-      bind:this={lightboxCloseBtn}
-    >&#10005;</button>
-    <img src={lightboxSrc} alt="Specimen photo" onclick={(e) => e.stopPropagation()} />
-  </div>
-{/if}
 
 <!-- QR Code Modal -->
 {#if showQrModal && specimen}
@@ -1504,86 +1089,6 @@ ${complianceSection}
   }
   :global(.dark) .split-child-notes { background: #1e293b; color: #f1f5f9; border-color: #475569; }
 
-  /* ── Timeline ── */
-  .timeline { display: flex; flex-direction: column; gap: 0; }
-  .timeline.with-form { margin-top: 0; }
-  .timeline-item { display: flex; gap: 0; position: relative; }
-
-  .timeline-left {
-    display: flex; flex-direction: column; align-items: center;
-    width: 32px; flex-shrink: 0; padding-top: 16px;
-  }
-  .tl-dot {
-    width: 12px; height: 12px; border-radius: 50%;
-    flex-shrink: 0; z-index: 1; position: relative;
-  }
-  .tl-line {
-    width: 2px; flex: 1; background: #e2e8f0; margin-top: 4px; min-height: 16px;
-  }
-  :global(.dark) .tl-line { background: #334155; }
-
-  .tl-card {
-    flex: 1; margin: 8px 0 8px 8px;
-    border: 1px solid #e2e8f0; border-radius: 8px;
-    overflow: hidden; transition: box-shadow 0.15s;
-    background: #fff;
-  }
-  :global(.dark) .tl-card { background: #1e293b; border-color: #334155; }
-  .tl-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-  .tl-card.expanded { border-color: #93c5fd; box-shadow: 0 2px 12px rgba(37,99,235,0.1); }
-  :global(.dark) .tl-card.expanded { border-color: #1d4ed8; }
-
-  .tl-card-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 14px; width: 100%;
-    cursor: pointer; gap: 10px; user-select: none;
-  }
-  .tl-card-header:hover { background: #f8fafc; }
-  :global(.dark) .tl-card-header:hover { background: #0f172a; }
-  .tl-card-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; flex-wrap: wrap; }
-  .tl-passage-num { font-size: 15px; font-weight: 800; font-family: monospace; flex-shrink: 0; }
-  .tl-card-summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
-  .tl-date { font-size: 13px; font-weight: 600; color: #374151; }
-  :global(.dark) .tl-date { color: #cbd5e1; }
-  .tl-chevron { font-size: 12px; color: #9ca3af; flex-shrink: 0; }
-
-  .tl-pill {
-    display: inline-block; padding: 2px 8px; border-radius: 10px;
-    font-size: 11px; font-weight: 500; white-space: nowrap;
-    max-width: 200px; overflow: hidden; text-overflow: ellipsis;
-  }
-  .media-pill { background: #ede9fe; color: #5b21b6; }
-  .vessel-pill { background: #e0f2fe; color: #0369a1; }
-  .loc-pill { background: #f0fdf4; color: #166534; }
-  .contam-pill { background: #fee2e2; color: #b91c1c; font-weight: 700; }
-  :global(.dark) .media-pill { background: #3b0764; color: #c4b5fd; }
-  :global(.dark) .vessel-pill { background: #0c4a6e; color: #7dd3fc; }
-  :global(.dark) .loc-pill { background: #14532d; color: #86efac; }
-  :global(.dark) .contam-pill { background: #7f1d1d; color: #fca5a5; }
-
-  /* Card expanded body */
-  .tl-card-body { padding: 0 14px 14px; border-top: 1px solid #f1f5f9; }
-  :global(.dark) .tl-card-body { border-color: #334155; }
-  .tl-detail-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 10px; margin-top: 12px;
-  }
-  .tl-detail-item { display: flex; flex-direction: column; }
-  .tl-detail-item.span2 { grid-column: span 2; }
-  .tl-detail-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #9ca3af; }
-  .tl-detail-value { font-size: 13px; color: #111827; margin-top: 2px; }
-  :global(.dark) .tl-detail-value { color: #f1f5f9; }
-  .tl-detail-text { margin-top: 10px; }
-  .tl-detail-p { margin: 3px 0 0; font-size: 13px; color: #374151; white-space: pre-wrap; line-height: 1.5; }
-  :global(.dark) .tl-detail-p { color: #cbd5e1; }
-  .contam-detail { background: #fff1f2; border-radius: 6px; padding: 8px 10px; margin-top: 10px; }
-  :global(.dark) .contam-detail { background: #450a0a; }
-  .contam-detail .tl-detail-label { color: #b91c1c; }
-  :global(.dark) .contam-detail .tl-detail-label { color: #f87171; }
-  .contam-detail .tl-detail-p { color: #7f1d1d; }
-  :global(.dark) .contam-detail .tl-detail-p { color: #fca5a5; }
-
   /* Contamination toggle in passage form */
   .contamination-row {
     border: 1px dashed #fca5a5; border-radius: 6px;
@@ -1597,81 +1102,4 @@ ${complianceSection}
   .contam-toggle-text { color: #b91c1c; }
   :global(.dark) .contam-toggle-text { color: #f87171; }
 
-  /* ── Photos tab ── */
-  .photos-header {
-    display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 16px;
-  }
-
-  .photo-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-    gap: 12px;
-  }
-
-  .photo-card {
-    position: relative;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    overflow: hidden;
-    cursor: pointer;
-    transition: box-shadow 0.15s;
-    background: #f8fafc;
-  }
-  .photo-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
-  :global(.dark) .photo-card { border-color: #334155; background: #0f172a; }
-
-  .photo-thumb {
-    width: 100%; height: 110px;
-    display: flex; align-items: center; justify-content: center;
-    background: #f1f5f9; overflow: hidden;
-  }
-  :global(.dark) .photo-thumb { background: #1e293b; }
-  .photo-thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .photo-icon { font-size: 40px; opacity: 0.4; }
-
-  .photo-meta {
-    padding: 6px 8px;
-    display: flex; flex-direction: column; gap: 2px;
-  }
-  .photo-name {
-    font-size: 11px; font-weight: 600; color: #374151;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  :global(.dark) .photo-name { color: #e2e8f0; }
-  .photo-date { font-size: 10px; color: #9ca3af; }
-
-  .photo-delete {
-    position: absolute; top: 4px; right: 4px;
-    width: 22px; height: 22px;
-    background: rgba(220,38,38,0.85); color: white;
-    border: none; border-radius: 50%; cursor: pointer;
-    font-size: 10px; font-weight: 700; line-height: 1;
-    display: flex; align-items: center; justify-content: center;
-    opacity: 0; transition: opacity 0.15s;
-  }
-  .photo-card:hover .photo-delete { opacity: 1; }
-
-  /* ── Lightbox ── */
-  .lightbox {
-    position: fixed; inset: 0; z-index: 2000;
-    background: rgba(0,0,0,0.88);
-    display: flex; align-items: center; justify-content: center;
-    cursor: zoom-out;
-  }
-  .lightbox img {
-    max-width: 90vw; max-height: 90vh;
-    border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
-    cursor: default;
-  }
-  .lightbox-close {
-    position: absolute; top: 20px; right: 24px;
-    background: rgba(255,255,255,0.12); color: white;
-    border: 1px solid rgba(255,255,255,0.2);
-    width: 40px; height: 40px; border-radius: 50%;
-    font-size: 16px; cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s;
-  }
-  .lightbox-close:hover { background: rgba(255,255,255,0.2); }
 </style>

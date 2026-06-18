@@ -56,3 +56,43 @@ jobs:
       - name: Run cargo test
         working-directory: src-tauri
         run: cargo test --lib 2>&1
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Svelte type-check (svelte-check)
+        run: npm run check
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev \
+            librsvg2-dev libssl-dev
+
+      - name: Rust lint (cargo clippy)
+        working-directory: src-tauri
+        run: cargo clippy -- -D warnings

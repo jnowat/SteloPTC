@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { createSpecimen, listSpecies, listMedia } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
+  import { effectiveHealth } from '../utils';
   import Tooltip from './Tooltip.svelte';
 
   let { onclose, onsave }: { onclose: () => void; onsave: () => void } = $props();
@@ -16,9 +17,6 @@
   const healthLabels = ['Dead', 'Poor', 'Fair', 'Good', 'Healthy'];
   const healthColors = ['#dc2626', '#d97706', '#ca8a04', '#65a30d', '#16a34a'];
 
-  function effectiveHealth(): string {
-    return healthUnknown ? '-1' : String(healthValue);
-  }
 
   // Location parts
   let locRoom = $state(localStorage.getItem('spec_lastRoom') || '');
@@ -121,7 +119,7 @@
         source_plant: form.source_plant || undefined,
         location: location || undefined,
         propagation_method: form.propagation_method || undefined,
-        health_status: effectiveHealth(),
+        health_status: effectiveHealth(healthValue, healthUnknown),
         employee_id: form.employee_id || undefined,
         notes: notes || undefined,
       });
@@ -137,7 +135,7 @@
           stage: form.stage,
           initiation_date: form.initiation_date,
           propagation_method: form.propagation_method,
-          health_status: effectiveHealth(),
+          health_status: effectiveHealth(healthValue, healthUnknown),
           location: composeLocation(),
           provenance: form.provenance,
           source_plant: form.source_plant,

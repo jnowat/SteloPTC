@@ -57,3 +57,11 @@ export function computeStockAdjustment(
 export function datestamp(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+/**
+ * Compute the health_status string to submit: '-1' for unknown/awaiting,
+ * or the numeric value as a string. Used by both SpecimenForm and passage forms.
+ */
+export function effectiveHealth(value: number, unknown: boolean): string {
+  return unknown ? '-1' : String(value);
+}
