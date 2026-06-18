@@ -1,7 +1,7 @@
 // Query helpers and shared database utilities
 use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
-use super::DbResult;
+use super::{DbError, DbResult};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
 pub const ZERO_HASH: &str =
@@ -52,6 +52,49 @@ pub fn compute_entry_hash(canonical: &[u8], prev_hash: &str) -> String {
     hasher.update(canonical);
     hasher.update(prev_hash.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+/// Generate N letter-suffixed accession numbers for a split operation.
+///
+/// Each child gets the parent's accession number with an appended letter (A–Z).
+/// Any candidate that already exists in the database is skipped.
+///
+/// Example:
+///   parent="2026-06-13-CIT-SIN-001", count=3 → ["…-001A", "…-001B", "…-001C"]
+///   parent="2026-06-13-CIT-SIN-001B", count=2 → ["…-001BA", "…-001BB"]
+///
+/// Returns `DbError::Constraint` if all 26 letter slots are exhausted.
+pub fn generate_split_accession_numbers(
+    conn: &Connection,
+    parent_accession: &str,
+    count: usize,
+) -> DbResult<Vec<String>> {
+    let mut results = Vec::with_capacity(count);
+    let mut letter_idx: u8 = 0;
+
+    while results.len() < count {
+        if letter_idx > 25 {
+            return Err(DbError::Constraint(format!(
+                "Cannot generate {} split accession numbers from '{}': all 26 letter suffixes (A–Z) are already taken",
+                count, parent_accession
+            )));
+        }
+        let letter = char::from(b'A' + letter_idx);
+        let candidate = format!("{}{}", parent_accession, letter);
+        letter_idx += 1;
+
+        let taken: bool = conn.query_row(
+            "SELECT COUNT(*) FROM specimens WHERE accession_number = ?1",
+            params![&candidate],
+            |r| r.get::<_, i64>(0),
+        ).map(|c| c > 0)?;
+
+        if !taken {
+            results.push(candidate);
+        }
+    }
+
+    Ok(results)
 }
 
 /// Generate a new accession number in format YYYY-MM-DD-SPECIESCODE-SEQ

@@ -53,11 +53,13 @@ pub fn run() {
             commands::specimens::bulk_update_location,
             commands::specimens::bulk_update_stage,
             commands::specimens::split_specimen,
+            commands::specimens::preview_split_accessions,
             commands::specimens::get_specimen_family,
             // Media
             commands::media::list_media,
             commands::media::get_media_batch,
             commands::media::create_media_batch,
+            commands::media::create_draft_media_batch,
             commands::media::update_media_batch,
             commands::media::delete_media_batch,
             // Subcultures

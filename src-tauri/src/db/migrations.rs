@@ -63,6 +63,23 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (10)", [])?;
     }
 
+    if current < 11 {
+        migration_011_media_draft(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (11)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_011_media_draft(conn: &Connection) -> DbResult<()> {
+    // Add is_draft flag to media_batches.  Draft batches are created as
+    // lightweight placeholders during a split when the full formulation is
+    // not yet known; they are marked needs_review=1 and completed later in
+    // the Media Management screen.
+    conn.execute_batch("
+        ALTER TABLE media_batches ADD COLUMN is_draft INTEGER NOT NULL DEFAULT 0;
+        CREATE INDEX IF NOT EXISTS idx_media_batches_draft ON media_batches(is_draft);
+    ")?;
     Ok(())
 }
 

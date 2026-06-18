@@ -103,11 +103,14 @@ export async function splitSpecimen(request: {
   parent_specimen_id: string;
   date: string;
   children: Array<{
+    accession_number?: string;
     location?: string;
     media_batch_id?: string;
     vessel_type?: string;
     notes?: string;
     health_status?: string;
+    stage?: string;
+    reminder_days?: number | null;
   }>;
   observations?: string;
   notes?: string;
@@ -122,6 +125,14 @@ export async function splitSpecimen(request: {
   return call<{ archived_parent_id: string; children: Array<{ id: string; accession_number: string }> }>(
     'split_specimen', { request }
   );
+}
+
+export async function previewSplitAccessions(parentId: string, count: number) {
+  return call<string[]>('preview_split_accessions', { parentId, count });
+}
+
+export async function createDraftMediaBatch(name: string) {
+  return call<any>('create_draft_media_batch', { name });
 }
 
 // Media

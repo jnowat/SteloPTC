@@ -27,6 +27,7 @@ pub struct MediaBatch {
     pub conductivity: Option<f64>,
     pub is_custom: bool,
     pub needs_review: bool,
+    pub is_draft: bool,
     pub notes: Option<String>,
     pub hormones: Vec<MediaHormone>,
     pub employee_id: Option<String>,
