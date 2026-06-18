@@ -137,11 +137,17 @@ pub struct PaginatedResponse<T> {
 /// Per-child configuration for a split operation.
 #[derive(Debug, Deserialize)]
 pub struct SplitChild {
+    /// User-specified accession number; auto-generated from parent + letter suffix if None/empty.
+    pub accession_number: Option<String>,
     pub location: Option<String>,
     pub media_batch_id: Option<String>,
     pub vessel_type: Option<String>,
     pub notes: Option<String>,
     pub health_status: Option<String>,
+    /// Override the stage for this child (inherits parent stage when None).
+    pub stage: Option<String>,
+    /// If > 0, create a check-in reminder this many days after the split date.
+    pub reminder_days: Option<i64>,
 }
 
 /// Request payload for splitting a specimen into N children.

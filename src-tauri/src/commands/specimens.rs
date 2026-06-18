@@ -10,7 +10,9 @@ use rusqlite::params;
 use tauri::State;
 
 // Tuple returned by the parent-specimen query in split_specimen.
-type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>);
+// Fields: (species_id, species_code, stage, provenance, source_plant, location,
+//          generation, lineage_passage_offset, subculture_count, root_specimen_id, accession_number)
+type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>, String);
 
 #[tauri::command]
 pub fn list_specimens(
@@ -601,7 +603,10 @@ pub fn bulk_update_location(
 /// - Each child inherits the parent's last entry_hash as its prev_hash, making
 ///   the fork cryptographically visible (both siblings share the same prev_hash).
 /// - A first-passage subculture record is created for each child immediately.
-/// - Per-child media batch, vessel type, location, and notes are configurable.
+/// - Accession numbers use letter suffixes (e.g. 001 → 001A, 001B).
+///   User-provided accession numbers override auto-generation; uniqueness is enforced.
+/// - Per-child: accession number, stage, health, media batch, vessel, location, notes.
+/// - Optional per-child reminder (created atomically within the same transaction).
 #[tauri::command]
 pub fn split_specimen(
     state: State<AppState>,
@@ -622,10 +627,11 @@ pub fn split_specimen(
     let (parent_species_id, parent_species_code, parent_stage,
          parent_provenance, parent_source_plant, parent_location,
          parent_generation, parent_passage_offset, parent_subculture_count,
-         parent_root_id): ParentInfo = db.conn.query_row(
+         parent_root_id, parent_accession): ParentInfo = db.conn.query_row(
         "SELECT s.species_id, sp.species_code, s.stage,
                 s.provenance, s.source_plant, s.location,
-                s.generation, s.lineage_passage_offset, s.subculture_count, s.root_specimen_id
+                s.generation, s.lineage_passage_offset, s.subculture_count,
+                s.root_specimen_id, s.accession_number
          FROM specimens s
          JOIN species sp ON s.species_id = sp.id
          WHERE s.id = ?1 AND s.is_archived = 0",
@@ -633,9 +639,64 @@ pub fn split_specimen(
         |row| Ok((
             row.get(0)?, row.get(1)?, row.get(2)?,
             row.get(3)?, row.get(4)?, row.get(5)?,
-            row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?,
+            row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?,
         )),
     ).map_err(|_| "Parent specimen not found or already archived".to_string())?;
+
+    // Pre-generate accession numbers for children that did not specify one.
+    // These use the parent's full accession string with a letter suffix (A, B, C…),
+    // skipping any letters already taken in the database.
+    let auto_count: usize = request.children.iter()
+        .filter(|c| c.accession_number.as_deref().map(str::is_empty).unwrap_or(true))
+        .count();
+    let auto_generated: Vec<String> = if auto_count > 0 {
+        queries::generate_split_accession_numbers(&db.conn, &parent_accession, auto_count)
+            .map_err(|e| e.to_string())?
+    } else {
+        Vec::new()
+    };
+
+    // Assign and validate all accession numbers (pre-transaction).
+    let mut child_accessions: Vec<String> = Vec::with_capacity(request.children.len());
+    {
+        let mut auto_idx: usize = 0;
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for (i, child) in request.children.iter().enumerate() {
+            let acc = match child.accession_number.as_deref().filter(|s| !s.is_empty()) {
+                Some(provided) => {
+                    let exists: bool = db.conn.query_row(
+                        "SELECT COUNT(*) FROM specimens WHERE accession_number = ?1",
+                        params![provided],
+                        |r| r.get::<_, i64>(0),
+                    ).map(|c| c > 0).map_err(|e| e.to_string())?;
+                    if exists {
+                        return Err(format!(
+                            "Accession number '{}' for child {} is already in use",
+                            provided, i + 1
+                        ));
+                    }
+                    provided.to_string()
+                }
+                None => {
+                    let a = auto_generated.get(auto_idx).ok_or_else(|| {
+                        format!("Internal error: ran out of auto-generated accessions at child {}", i + 1)
+                    })?.clone();
+                    auto_idx += 1;
+                    a
+                }
+            };
+
+            if seen.contains(&acc) {
+                return Err(format!(
+                    "Duplicate accession number '{}' at child {} — each child must have a unique accession",
+                    acc, i + 1
+                ));
+            }
+            seen.insert(acc.clone());
+            child_accessions.push(acc);
+        }
+    }
 
     // Compute genealogy values for children:
     //   generation             = parent + 1
@@ -664,7 +725,7 @@ pub fn split_specimen(
     //    This becomes the parent's last entry_hash, which ALL children
     //    will inherit as their shared prev_hash (the cryptographic fork point).
     queries::log_audit(
-        &tx,Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
+        &tx, Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
         None, None,
         Some(&format!(
             "Specimen split into {} children on {}",
@@ -677,20 +738,25 @@ pub fn split_specimen(
     // 3. Create each child
     for (i, child) in request.children.iter().enumerate() {
         let child_id = uuid::Uuid::new_v4().to_string();
-        let accession = queries::generate_accession_number(
-            &tx,&parent_species_code, &request.date,
-        ).map_err(|e| format!("Failed to generate accession for child {}: {}", i + 1, e))?;
+        let accession = &child_accessions[i];
         let qr_data = format!("STELO:{}", accession);
 
         let child_location: Option<&str> = child.location.as_deref()
             .or(parent_location.as_deref());
         let child_health: Option<&str> = child.health_status.as_deref()
             .or(request.health_status.as_deref());
+        // Per-child stage override; falls back to parent stage.
+        let child_stage: &str = child.stage.as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(parent_stage.as_str());
+
         let default_note = format!(
             "Split from {} on {}. Container {} of {}.",
             request.parent_specimen_id, request.date, i + 1, request.children.len()
         );
-        let child_notes: &str = child.notes.as_deref().unwrap_or(default_note.as_str());
+        let child_notes: &str = child.notes.as_deref()
+            .filter(|s| !s.is_empty())
+            .unwrap_or(default_note.as_str());
 
         // Insert child specimen with genealogy fields
         tx.execute(
@@ -701,7 +767,7 @@ pub fn split_specimen(
               generation, lineage_passage_offset, root_specimen_id) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
-                child_id, accession, parent_species_id, parent_stage, request.date,
+                child_id, accession, parent_species_id, child_stage, request.date,
                 child_location, child_health, qr_data, request.parent_specimen_id,
                 parent_provenance, parent_source_plant, child_notes, user.id,
                 child_generation, child_passage_offset, child_root_id,
@@ -711,7 +777,7 @@ pub fn split_specimen(
         // Fork the audit chain from the parent (all children inherit the same
         // parent prev_hash — the split event logged above — making the fork visible)
         queries::log_audit_for_child(
-            &tx,Some(&user.id), "create", "specimen", Some(&child_id),
+            &tx, Some(&user.id), "create", "specimen", Some(&child_id),
             None, Some(accession.as_str()),
             Some(&format!(
                 "Split from {} — container {} of {}",
@@ -750,12 +816,36 @@ pub fn split_specimen(
 
         // Log passage 1 on the child's own chain (seq=2, after the "create" entry at seq=1)
         queries::log_audit(
-            &tx,Some(&user.id), "subcultured", "specimen", Some(&child_id),
+            &tx, Some(&user.id), "subcultured", "specimen", Some(&child_id),
             None, None,
             Some(&format!("Passage 1 — split from {}", request.parent_specimen_id)),
         ).map_err(|e| format!("Failed to audit first passage for child {}: {}", i + 1, e))?;
 
-        child_results.push(SplitChildResult { id: child_id, accession_number: accession });
+        // Create a check-in reminder if requested for this child
+        if let Some(days) = child.reminder_days.filter(|&d| d > 0) {
+            let reminder_id = uuid::Uuid::new_v4().to_string();
+            // Compute due_date using SQLite date arithmetic
+            let due_date: String = tx.query_row(
+                &format!("SELECT date(?1, '+{} days')", days),
+                params![request.date],
+                |r| r.get(0),
+            ).map_err(|e| format!("Failed to compute reminder due date for child {}: {}", i + 1, e))?;
+
+            tx.execute(
+                "INSERT INTO reminders \
+                 (id, specimen_id, title, description, reminder_type, due_date, \
+                  is_recurring, status, snooze_count, urgency, created_by) \
+                 VALUES (?1, ?2, ?3, ?4, 'custom', ?5, 0, 'active', 0, 'normal', ?6)",
+                params![
+                    reminder_id, child_id,
+                    format!("Check-in: {} ({} days post-split)", accession, days),
+                    format!("Post-split check-in reminder for {}", accession),
+                    due_date, user.id,
+                ],
+            ).map_err(|e| format!("Failed to create reminder for child {}: {}", i + 1, e))?;
+        }
+
+        child_results.push(SplitChildResult { id: child_id, accession_number: accession.clone() });
     }
 
     tx.commit().map_err(|e| format!("Failed to commit split: {}", e))?;
@@ -764,6 +854,31 @@ pub fn split_specimen(
         archived_parent_id: request.parent_specimen_id,
         children: child_results,
     })
+}
+
+/// Return the accession numbers that would be auto-generated for a split of the given specimen.
+/// Does not modify the database — safe to call for previewing the split.
+#[tauri::command]
+pub fn preview_split_accessions(
+    state: State<AppState>,
+    token: String,
+    parent_id: String,
+    count: u32,
+) -> Result<Vec<String>, String> {
+    if count == 0 || count > 26 {
+        return Err("Count must be between 1 and 26".to_string());
+    }
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+
+    let parent_accession: String = db.conn.query_row(
+        "SELECT accession_number FROM specimens WHERE id = ?1 AND is_archived = 0",
+        params![parent_id],
+        |r| r.get(0),
+    ).map_err(|_| "Parent specimen not found or already archived".to_string())?;
+
+    queries::generate_split_accession_numbers(&db.conn, &parent_accession, count as usize)
+        .map_err(|e| e.to_string())
 }
 
 /// Return all specimens that share the same root as the given specimen.

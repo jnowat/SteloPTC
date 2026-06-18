@@ -41,6 +41,7 @@ pub fn list_media(state: State<AppState>, token: String) -> Result<Vec<MediaBatc
             conductivity: row.get("conductivity")?,
             is_custom: row.get::<_, i32>("is_custom")? != 0,
             needs_review: row.get::<_, i32>("needs_review")? != 0,
+            is_draft: row.get::<_, i32>("is_draft").unwrap_or(0) != 0,
             notes: row.get("notes")?,
             hormones: Vec::new(), // loaded separately
             employee_id: row.get("employee_id")?,
@@ -113,6 +114,7 @@ pub fn get_media_batch(state: State<AppState>, token: String, id: String) -> Res
                 conductivity: row.get("conductivity")?,
                 is_custom: row.get::<_, i32>("is_custom")? != 0,
                 needs_review: row.get::<_, i32>("needs_review")? != 0,
+                is_draft: row.get::<_, i32>("is_draft").unwrap_or(0) != 0,
                 notes: row.get("notes")?,
                 hormones: Vec::new(),
                 employee_id: row.get("employee_id")?,
@@ -334,6 +336,76 @@ pub fn delete_media_batch(state: State<AppState>, token: String, id: String) -> 
     ).ok();
 
     Ok(())
+}
+
+/// Create a lightweight draft media batch to be filled in later.
+///
+/// Draft batches have `is_draft = 1` and `needs_review = 1`.  They appear in
+/// the media selection list clearly labelled "[DRAFT]" so lab staff know to
+/// complete the formulation in Media Management before the next passage.
+#[tauri::command]
+pub fn create_draft_media_batch(
+    state: State<AppState>,
+    token: String,
+    name: String,
+) -> Result<MediaBatch, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let batch_id = format!("DRAFT-{}", id[..8].to_uppercase().as_str());
+    let draft_name = format!("[DRAFT] {}", name.trim());
+
+    db.conn.execute(
+        "INSERT INTO media_batches \
+         (id, batch_id, name, preparation_date, is_custom, needs_review, is_draft, created_by) \
+         VALUES (?1, ?2, ?3, ?4, 0, 1, 1, ?5)",
+        params![id, batch_id, draft_name, today, user.id],
+    ).map_err(|e| format!("Failed to create draft media batch: {}", e))?;
+
+    queries::log_audit(
+        &db.conn, Some(&user.id), "create", "media_batch", Some(&id),
+        None, Some(&batch_id), Some("Draft media batch created during split"),
+    ).ok();
+
+    Ok(MediaBatch {
+        id,
+        batch_id,
+        name: draft_name,
+        preparation_date: today.clone(),
+        expiration_date: None,
+        basal_salts: None,
+        basal_salts_concentration: None,
+        vitamins: None,
+        sucrose_g_per_l: None,
+        agar_g_per_l: None,
+        gelling_agent: None,
+        ph_before_autoclave: None,
+        ph_after_autoclave: None,
+        sterilization_method: None,
+        volume_prepared_ml: None,
+        volume_used_ml: Some(0.0),
+        volume_remaining_ml: None,
+        storage_conditions: None,
+        qc_notes: None,
+        supplier_info: None,
+        cost_per_batch: None,
+        osmolarity: None,
+        conductivity: None,
+        is_custom: false,
+        needs_review: true,
+        is_draft: true,
+        notes: Some("Draft batch — complete formulation in Media Management".to_string()),
+        hormones: Vec::new(),
+        employee_id: None,
+        created_by: Some(user.id),
+        created_at: today.clone(),
+        updated_at: today,
+    })
 }
 
 fn generate_batch_id(conn: &rusqlite::Connection) -> String {
