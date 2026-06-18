@@ -44,21 +44,22 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 
 ### Feature Summary
 
-- **Specimen Tracking** — Unique accession numbers (YYYY-MM-DD-SPECIESCODE-SEQ), provenance, lineage trees (split culture parent/child), health/disease status (0–4 color-coded slider with "Unknown/Awaiting" option), quarantine flags, and IP protection markers. Stages: explant, callus, shoot, shoot meristem, apical meristem, root, root meristem, embryogenic, plantlet.
+- **Specimen Tracking** — Unique accession numbers (YYYY-MM-DD-SPECIESCODE-SEQ), provenance, lineage trees (split culture parent/child), health/disease status (0–4 color-coded slider with "Unknown/Awaiting" option), quarantine flags, and IP protection markers. Stages: explant, callus, shoot, shoot meristem, apical meristem, root, root meristem, embryogenic, plantlet. Each specimen tracks its **generation depth** (Gen N badge in the detail header) and **cumulative passage count from root** (`lineage_passage_offset + subculture_count`), enabling precise genealogical history across any number of splits. A `root_specimen_id` column links every derived specimen back to its absolute ancestor for efficient family-tree queries (v1.7.0).
 - **Structured Location Entry** — Room / Rack / Shelf / Tray dropdowns auto-populated with last-used values for fast data entry.
-- **Subculture History & Timeline** — Full passage log displayed as a vertical timeline (newest first). Each card shows media batch, vessel, location, and environment; click to expand. Supports **split culture** — one passage creates N linked child specimens with full lineage tracking. A lineage banner shows parent/child chips as clickable navigation links.
+- **Subculture History & Timeline** — Full passage log displayed as a vertical timeline (newest first). Each card shows media batch, vessel, location, and environment; click to expand. **Splitting** is handled by an atomic `split_specimen` backend command: the parent is archived, a "split" event is appended to its chain, and all children are created with their first passage in a single SQLite transaction — no partial state is possible. Each child can be assigned a different media batch, vessel, location, and notes per-child. The lineage banner shows parent, children, and **siblings** (other specimens split from the same parent) as clickable chips. A **"Gen N" badge** in the detail header shows the generational depth of any derived specimen. Each **passage event** extends the specimen's own cryptographic lineage chain (`chain_seq` increments within the specimen's lineage), so the audit history of a specimen and its passage history are a single continuous, verifiable sequence (v1.6.4, v1.7.0).
 - **Contamination Tracking** — Per-passage contamination flag and notes. Dashboard **Contamination Overview** panel shows lab-wide rate (%), affected specimens, vessel-type breakdown, and the 10 most recent events (v0.1.15).
 - **Subculture Scheduling** — Dashboard **Subculture Schedule** widget lists overdue and due-within-7-days specimens by species interval with day counts and direct links (v0.1.15).
 - **Work Queue** — Daily task view listing every specimen that needs immediate attention. Detects five conditions: subculture due/overdue (per species interval), media batch expired, contamination flag on most recent passage, no passages recorded, and unresolved quarantine. Items are sorted by urgency (Critical → High → Normal) then by days overdue. The sidebar shows an amber count badge when items are pending. Read-only in v1.2.0 — click any row to open the specimen and take action.
-- **Consistent Loading & Empty States** — All main list views (Specimens, Media, Inventory, Reminders) display an animated shimmer skeleton while data loads and a friendly, icon-led empty state with a contextual call-to-action when there is no data to show (v1.2.1).
+- **Consistent Loading & Empty States** — All list views (Specimens, Media, Inventory, Reminders, Compliance, Audit Log, Error Log) display an animated shimmer skeleton while data loads and a friendly, icon-led empty state with a contextual call-to-action when there is no data to show (v1.2.1, v1.2.3).
 - **Media Logs** — Batch database supporting MS and related formulations (MS, 1/2 MS, WPM, B5, N6, LS, White's, DKW). Tracks basal salts (auto-calculated g/L from weight + volume), hormones (auxins/cytokinins/gibberellins) with concentrations, pH, sterilization, vessel count, QC notes, and expiration. Stock reagent traceability with lot numbers and auto-depletion from inventory on batch creation.
 - **Inventory Management** — Full supply tracking with category organization (media ingredients, vessels, hormones, chemicals, consumables, equipment). Stock levels, reorder thresholds, physical state (solid/liquid with concentration units), stock adjustments with audit trail, low-stock dashboard alerts, and expiration tracking.
 - **Prepared Stock Solutions** — Track stock solutions made from solid reagents: source item, concentration, volume prepared/remaining, prep date, preparer, and inline volume updates.
-- **QR Codes** — Per-specimen QR code generation (256×256, Error Correction M), 2×3-inch print labels for lab label printers, camera-based scanning (rear camera on Android, webcam on desktop), and scan event logging in SQLite (v0.1.14+).
+- **QR Codes** — Per-specimen QR code generation (256×256, Error Correction M), 2×3-inch print labels for lab label printers, camera-based scanning (rear camera on Android, webcam on desktop), and scan event logging in SQLite. The scanner validates the payload: non-SteloPTC codes (URLs, plain text, vCards) show a distinct warning and suppress the "Open Specimen" action while still recording the scan event for audit (v0.1.14+, v1.1.1).
 - **Compliance** — Auto-flagging rules for expired permits, citrus HLB testing, quarantine without release date, and positive tests without quarantine. Agency tracking: USDA APHIS, TX Ag, FL FDACS.
 - **Reminders** — User-configurable rules and calendar reminders with urgency levels (low/normal/high/critical), snooze with auto-escalation after 2 snoozes, recurring support, and a 7-day upcoming dashboard widget.
 - **Error Log** — Persistent, searchable error tracking (all roles). Every error captured with severity badge, module, username, form payload JSON, and stack trace. Sidebar badge shows live unread count; toasts are clickable and navigate directly to the log (v0.1.10+).
-- **User Management & Audit** — Roles: Admin, Supervisor, Tech, Guest. bcrypt password hashing. Immutable audit trail for all create/update/delete/archive/login actions, filterable by entity, action, user, and date range.
+- **User Management & Audit** — Roles: Admin, Supervisor, Tech, Guest. bcrypt password hashing. Append-only audit trail for all create/update/delete/archive/login actions, filterable by entity, action, user, and date range. Every audit entry is **cryptographically hash-chained** (see Cryptographic Audit Chain below).
+- **Cryptographic Audit Chain** — Every audit entry carries a SHA-256 `entry_hash` computed over its canonical content plus the previous entry's hash, forming a **per-lineage append-only chain** (v1.5.0–v1.6.0). Species creation anchors a chain at seq 0; each new root specimen seeds its chain from its species' last hash; split children inherit the parent's last `entry_hash` as `prev_hash`, making fork points cryptographically unambiguous. The Audit Log UI shows chain columns (`#`, Prev Hash, Entry Hash) with truncated display and full-hash tooltips; each chained row has **Row** and **Chain** verify buttons that re-compute hashes on demand and report the first broken link. A chain-integrity banner shows chained vs. legacy entry counts at a glance (v1.5.1, v1.6.0).
 - **Photo Attachments** — Attach images directly to specimen records. Upload via OS file picker (desktop) or rear camera (Android). Responsive gallery grid with lightbox viewer and in-memory thumbnail cache. Images stored on disk under `<appDataDir>/attachments/`.
 - **Export & Backup** — Dedicated Export Data page with Excel (`.xlsx`) multi-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance), plus CSV and JSON. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing. Admins can restore from any listed backup via a two-step confirmation flow; the app restarts automatically after a successful restore.
 - **Excel Import** — Dedicated Import Data page that accepts any `.xlsx` file produced by SteloPTC's export. SheetJS parses the workbook in-browser; a dry-run preview shows per-sheet create/update/skip counts and row-level errors before any data is written. Confirmed imports run in a single atomic transaction. Upserts specimens (by accession number), media batches (by batch code), prepared solutions and inventory (by name), and subcultures (by specimen + passage); compliance records are appended. Missing species are auto-created. Round-trip tested: export → wipe → import restores the lab (v1.3.0).
@@ -68,8 +69,8 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Dark Mode** — System-aware with manual toggle, driven by a `data-theme` attribute on `<html>`. Inter font throughout.
 - **Design Token System** — All colors, spacing, typography, radii, shadows, and z-index layers are defined as CSS custom properties in `src/lib/styles/tokens.css`. Changing a single token updates the UI consistently across all token-aware components (v1.2.2).
 - **Consistent Data States** — `DataState.svelte` provides a unified skeleton loading state, friendly empty state with optional CTA, and inline error state with retry across all list views (v1.2.3).
-- **Professional Print / PDF Output** — Culture Certificates and Specimens Summary reports open as formatted print windows with consistent header (logo space, lab name, accession, date, prepared-by) and footer (lab name, page numbers). Layouts are clean and well-organized on both A4 and US Letter paper, portrait and landscape (v1.2.4).
-- **Automated Tests** — Vitest test suite covers core utility functions (HTML escaping, health labels, stage formatting, location composition, accession number formatting, stock adjustment math). Rust unit tests cover accession number generation, pagination helpers, stock depletion rules, and all four compliance auto-flag SQL rules. Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4).
+- **Professional Print / PDF Output** — Culture Certificates and Specimens Summary reports open as formatted print windows with consistent header (logo space, lab name, accession, date, prepared-by) and footer (lab name, page numbers). Layouts are clean and well-organized on both A4 and US Letter paper, portrait and landscape. The Specimens Summary supports three grouping modes: by development stage, by health/urgency, or flat list — with an executive summary section (stats, stage distribution, health distribution) at the top. All three print functions (`printSummaryReport`, `printCultureReport`, `printLabel`) use a shared `printUtils.ts` delivery module: popup path for browsers, in-page DOM fallback for Tauri/WebView2 where `window.open` is blocked (v1.2.4, v1.4.0, v1.4.1).
+- **Automated Tests** — Vitest test suite covers core utility functions (`utils.ts`) and print utilities (`printUtils.ts`) — 50 assertions total. Rust unit tests cover accession number generation, pagination helpers, stock depletion rules, all four compliance auto-flag SQL rules, and **hash-chain invariants** (per-lineage `chain_seq` increments, child chains inherit parent's last `entry_hash`, split siblings share the same `prev_hash`, `compute_entry_hash` determinism). Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4, v1.4.1, v1.6.0).
 - **Accessibility** — WCAG 2.1 AA target: visible `:focus-visible` keyboard indicators, skip-to-content link, ARIA landmarks and `aria-current` on sidebar navigation, focus trapping in QR modal and photo lightbox, `aria-label` on all icon-only buttons, ARIA attributes (`aria-valuenow`/`aria-valuetext`) on health status sliders (v1.2.6).
 - **Query Performance** — Six composite and covering indexes added (migration 007) on `specimens(created_at)`, `specimens(parent_specimen_id)`, `specimens(is_archived, created_at)`, `subcultures(specimen_id, passage_number)`, `subcultures(created_at)`, and `subcultures(contamination_flag, specimen_id)`. Correlated per-row contamination subqueries in specimen list/search replaced with a single aggregating LEFT JOIN. Subculture history list endpoint now uses the `PaginatedResponse` pattern. Scales to 10k+ specimens and 50k+ subcultures (v1.2.7).
 
@@ -116,7 +117,8 @@ All scan events are stored in the `qr_scans` SQLite table with raw data, accessi
 | Security  | Tauri CSP: `script-src 'self'`; no remote scripts; `data:`/`blob:` image/worker sources scoped explicitly |
 | Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile        |
 | QR Codes  | qrcode 1.5.4 (generation), html5-qrcode 2.3.8 (scanning) |
-| Excel     | xlsx 0.18.5 (SheetJS — multi-sheet workbook export)      |
+| Excel     | xlsx 0.18.5 (SheetJS — multi-sheet workbook export and import) |
+| Crypto    | sha2 0.10 (Rust — SHA-256 for per-lineage audit hash chain) |
 
 ---
 
@@ -131,7 +133,9 @@ npm test          # run once (CI mode)
 npm run test:watch  # watch mode (development)
 ```
 
-Tests live in `src/**/*.test.ts`. The current suite (`src/lib/utils.test.ts`) covers 30 assertions across the core utility functions used by all print reports and form validation:
+Tests live in `src/**/*.test.ts`. The current suite covers 50 assertions across two test files:
+
+**`src/lib/utils.test.ts`** — core utility functions:
 
 | Area | Coverage |
 |---|---|
@@ -141,6 +145,15 @@ Tests live in `src/**/*.test.ts`. The current suite (`src/lib/utils.test.ts`) co
 | `composeLocation` | full 4-part, partial, empty |
 | `formatAccessionNumber` | zero-padding, 3-digit sequences |
 | `computeStockAdjustment` | positive/negative deltas, exact-zero, below-zero guard |
+| `datestamp` | formatted date output |
+
+**`src/lib/printUtils.test.ts`** — print utility functions (v1.4.1):
+
+| Area | Coverage |
+|---|---|
+| `ageDays` | age calculation from initiation date |
+| `fmtAge` | day/month formatting, edge cases |
+| `healthNum` | numeric health value extraction |
 
 ### Rust tests
 
@@ -152,7 +165,7 @@ Requires Linux GTK system libraries (installed automatically in CI):
 
 | Module | Tests |
 |---|---|
-| `db::queries` | Accession number format, first/second/different-species/different-date sequences, zero-padding, pagination offset/limit calculations |
+| `db::queries` | Accession number format, first/second/different-species/different-date sequences, zero-padding, pagination offset/limit calculations; **hash-chain invariants** — per-lineage `chain_seq` increments, child chains start at seq 1 with parent's `entry_hash` as `prev_hash`, split siblings share the same `prev_hash`, `compute_entry_hash` is deterministic (v1.6.0) |
 | `commands::inventory` | `apply_stock_adjustment` — positive delta, negative delta, to-zero, below-zero error; `is_low_stock` — at/below/above minimum |
 | `commands::compliance` | Expired permit detected/not-detected; quarantine-no-release detected/not-detected; positive-not-quarantined detected/not-detected; HLB missing/recent; archived specimens excluded from all flags |
 
@@ -337,11 +350,13 @@ android {
     defaultConfig {
         targetSdk = 35
         minSdk = 24
-        versionCode = 26
-        versionName = "1.2.6"
+        versionCode = 24        // committed baseline; patched to the release value by CI at build time
+        versionName = "1.1.0"  // committed baseline; patched to the release value by CI at build time
     }
 }
 ```
+
+> **Note:** `versionCode` and `versionName` in the committed file are a stable baseline. The release CI workflow patches both fields to the correct release values before building the signed APK, so the committed values are intentionally behind the current release version.
 
 ### Default Login
 
@@ -362,21 +377,25 @@ SteloPTC/
 │   ├── main.ts                       # Entry point — mounts app, restores session
 │   └── lib/
 │       ├── api.ts                    # Typed Tauri command bindings
+│       ├── printUtils.ts             # Shared print delivery (popup + in-page DOM fallback), age/health helpers
+│       ├── styles/
+│       │   └── tokens.css            # Central CSS custom properties — colors, spacing, type, radii, shadows, z-index
 │       ├── components/
 │       │   ├── Login.svelte
 │       │   ├── Dashboard.svelte      # Stats, schedule, contamination, reminders
 │       │   ├── Sidebar.svelte        # Navigation with hamburger drawer on mobile
 │       │   ├── SpecimenList.svelte   # Search, filter, QR scan entry point
-│       │   ├── SpecimenDetail.svelte # Passage timeline, lineage, QR, record passage
+│       │   ├── SpecimenDetail.svelte # Passage timeline, lineage (parent/children/siblings), QR, record passage
 │       │   ├── SpecimenForm.svelte   # New/edit specimen form
 │       │   ├── MediaList.svelte      # Media batch CRUD
 │       │   ├── ReminderList.svelte   # Reminder management
 │       │   ├── ComplianceView.svelte # Compliance records and auto-flagging
 │       │   ├── SpeciesManager.svelte # Species registry
 │       │   ├── UserManager.svelte    # User accounts and roles
-│       │   ├── AuditLog.svelte       # Immutable audit trail viewer
+│       │   ├── AuditLog.svelte       # Audit trail with hash-chain columns, Row/Chain verify buttons
 │       │   ├── ErrorLog.svelte       # Error tracking with payload capture
 │       │   ├── InventoryManager.svelte # Supply inventory CRUD
+│       │   ├── ImportManager.svelte  # Excel import with dry-run preview
 │       │   ├── QrModal.svelte        # QR generation, print label, download
 │       │   ├── QrScanner.svelte      # Camera-based QR scanning
 │       │   ├── ExportManager.svelte  # Excel/CSV/JSON export hub
@@ -401,7 +420,7 @@ SteloPTC/
 │       ├── auth/mod.rs               # bcrypt + session management
 │       ├── db/
 │       │   ├── mod.rs                # Connection pool, init
-│       │   ├── migrations.rs         # 5 schema migrations
+│       │   ├── migrations.rs         # 10 schema migrations
 │       │   └── queries.rs            # SQL helpers
 │       ├── models/                   # Rust data structures
 │       │   ├── user.rs, specimen.rs, media.rs
@@ -411,18 +430,21 @@ SteloPTC/
 │       │   └── mod.rs
 │       └── commands/                 # Tauri command handlers
 │           ├── auth.rs, specimens.rs, media.rs
-│           ├── subcultures.rs        # Passages, contamination stats, schedule
+│           ├── subcultures.rs        # Passages, contamination stats, schedule; split_specimen atomic command
 │           ├── reminders.rs, compliance.rs
-│           ├── species.rs, audit.rs
+│           ├── species.rs, audit.rs  # audit.rs: log_audit, verify_audit_entry, verify_audit_lineage
 │           ├── error_logs.rs, export.rs
+│           ├── import.rs             # Excel import with dry-run + atomic commit
 │           ├── inventory.rs, backup.rs
 │           ├── qr_scans.rs, admin.rs
-│           ├── attachments.rs            # Photo attach/fetch/delete
+│           ├── work_queue.rs         # get_work_queue — prioritized overdue-specimen list
+│           ├── attachments.rs        # Photo attach/fetch/delete
 │           └── mod.rs
 │
 ├── .github/workflows/
 │   ├── build-windows.yml             # MSI + exe on push and release
-│   └── build-android.yml             # APK on push and release
+│   ├── build-android.yml             # APK on push and release
+│   └── test.yml                      # Vitest + cargo test on every push; blocks merges on failure
 │
 ├── scripts/
 │   └── setup-android.sh              # Android build prerequisite installer
@@ -450,7 +472,7 @@ SQLite, stored at:
 | `sessions`           | Auth session tokens                                       |
 | `species`            | Master species registry with codes and subculture intervals |
 | `projects`           | Project/experiment groupings                              |
-| `specimens`          | Core specimen records with accession numbers              |
+| `specimens`          | Core specimen records with accession numbers; `generation`, `lineage_passage_offset`, `root_specimen_id` for genealogy tracking (v1.7.0) |
 | `tags`               | Hierarchical tag definitions                              |
 | `specimen_tags`      | Tag assignments to specimens                              |
 | `media_batches`      | Media preparation log with batch IDs                      |
@@ -461,7 +483,7 @@ SQLite, stored at:
 | `reminders`          | Scheduled reminders and rules                             |
 | `compliance_records` | Regulatory tests, permits, inspections                    |
 | `inventory_items`    | Supply inventory with reorder alerts                      |
-| `audit_log`          | Immutable audit trail                                     |
+| `audit_log`          | Append-only audit trail; `chain_seq`, `prev_hash`, `entry_hash` for SHA-256 per-lineage hash chain; `lineage_id` for per-entity chain isolation (v1.5.0, v1.6.0) |
 | `error_logs`         | Persistent error tracking with form payloads              |
 | `qr_scans`           | QR scan events with timestamp and user                    |
 
@@ -475,6 +497,10 @@ SQLite, stored at:
 | 004 | v0.1.14 | Added qr_scans table |
 | 005 | v0.1.15 | Added contamination_flag and contamination_notes to subcultures |
 | 006 | v0.1.20 | Added must_change_password to users; seeded admin row with flag set |
+| 007 | v1.2.7 | Six composite/covering indexes on specimens and subcultures for query performance |
+| 008 | v1.5.0 | Added chain_seq, prev_hash, entry_hash columns to audit_log (hash-chain tamper evidence) |
+| 009 | v1.6.0 | Added lineage_id column to audit_log; composite index on (lineage_id, chain_seq); per-lineage back-fill |
+| 010 | v1.7.0 | Added generation, lineage_passage_offset, root_specimen_id columns to specimens |
 
 ### Backup
 
@@ -531,7 +557,7 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] Excel workbook export — six-sheet `.xlsx` file (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance) via SheetJS; dedicated Export Data page in sidebar (v0.1.18)
 - [x] Photo attachments — upload images per specimen via OS file picker or Android rear camera; gallery grid with lightbox viewer, delete, and in-memory cache; stored on disk under appDataDir (v0.1.19)
 
-### v1.0.0-x — v1.2.x — Completed
+### v1.0.0-x — v1.2.6 — Completed
 
 - [x] First signed GitHub Release; Windows MSI and Android APK attached to release assets (v1.0.0-1)
 - [x] **Crash-proofing & data-integrity pass** — all `.unwrap()` calls in command handlers converted to returned errors; `create_subculture` and `create_media_batch` wrapped in SQLite transactions; WAL checkpoint verified before backup copy (v1.0.0-2)
@@ -542,28 +568,48 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] **Skeleton loaders & empty states** — animated shimmer skeleton for loading; friendly icon-led empty states with CTAs across all list views (v1.2.1)
 - [x] **Design Token System** — all colors, spacing, typography, radii, shadows, and z-index values defined as CSS custom properties in `tokens.css`; automatic light/dark switching via `data-theme` attribute (v1.2.2)
 - [x] **Unified data states** — `DataState.svelte` provides skeleton loading, inline error-with-retry, and descriptive empty states across all list views; dark mode text visibility fixed (v1.2.3)
+- [x] **Professional print / PDF output** — consistent header/footer, A4 + US Letter support, page-break hygiene, typography polish (v1.2.4)
+- [x] **First test harness** — Vitest + Rust unit tests; CI workflow blocks merges on failure (v1.2.4)
+- [x] **Tauri-reliable print invocation** — popup + in-page DOM fallback for all three print functions; no silent failures in WebView2 (v1.2.5)
 - [x] **Accessibility pass (WCAG 2.1 AA target)** — visible keyboard focus indicators, skip-to-content link, ARIA landmarks, `aria-current` navigation, focus traps in QR modal and photo lightbox, `aria-label` on all icon-only buttons, health slider ARIA attributes (v1.2.6)
 
-### Upcoming Patches
+### v1.2.7 — v1.7.0 — Completed
 
-- [ ] **Excel import** — parse `.xlsx` workbooks to create or update specimens and subculture records
+- [x] **Query performance & indexing** — six composite indexes on specimens and subcultures (migration 007); N+1 contamination subquery eliminated; subculture list paginated (v1.2.7)
+- [x] **Backup restore** — admin-only restore from any listed backup with two-step confirmation; app restarts automatically on success (v1.3.0)
+- [x] **Excel import** — dry-run preview with per-sheet counts and row-level errors; atomic commit on confirm; round-trip restore verified (v1.3.0)
+- [x] **Print reliability & refactor** — `printUtils.ts` extraction; all three print functions audited; no silent `if (!win) return` failures remain (v1.3.1)
+- [x] **Professional Specimen Inventory Report** — three grouping modes (by stage / by health+urgency / flat); executive summary with stat boxes, stage and health distribution chips; per-group sub-headers with contamination/quarantine counts (v1.4.0)
+- [x] **CSP print-dialog fix** — `win.print()` called from parent WebView context instead of inline script, which Tauri's CSP blocks; test coverage for print utils expanded to 50 assertions (v1.4.1)
+- [x] **Hash-chain tamper-evident audit log** — every audit entry carries SHA-256 `entry_hash = SHA256(canonical_bytes ∥ prev_hash)`; migration 008 adds `chain_seq`, `prev_hash`, `entry_hash` to `audit_log` (v1.5.0)
+- [x] **Audit Log UI for hash chain** — chain columns visible with truncated display and full-hash tooltips; 🔒 badge on chained rows; click to copy full hash (v1.5.1)
+- [x] **Per-lineage hash chain** — chain becomes per-entity (`lineage_id`) rather than global; split/fork specimens inherit parent's last `entry_hash` as `prev_hash`, making fork points cryptographically visible; `verify_audit_entry` and `verify_audit_lineage` Tauri commands; Row + Chain verify buttons in Audit Log UI; migration 009 (v1.6.0)
+- [x] **Hash-chain hardening** — fork lineage verification fix; nullable column types for pre-chain rows; atomic specimen INSERT + audit; `reset_database` available in release builds with admin guard; species creation anchors chain at seq 0; root specimens seeded from species hash; `load_demo_data` generates fully chained records with a cryptographic split demonstration (v1.6.1–v1.6.4)
+- [x] **Generational depth & genealogy tracking** — `generation` badge in specimen detail header; `lineage_passage_offset` for cumulative passage count from root; `root_specimen_id` for efficient family-tree queries; `get_specimen_family` command; sibling display in lineage banner; migration 010 (v1.7.0)
+
+### Planned
+
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
 
-### v0.2.x — Multi-User & Network
+### v2.0+ — Multi-Vertical & Network
 
+- [ ] **Phase C — profile-ready engine** — convert hardcoded vocabularies (stage CHECK constraints, hormone types, compliance rules) into profile-scoped lookup tables; one codebase serves multiple lab types (v1.8.0 target)
+- [ ] **SteloCC (Cell Culture)** — cell line registry, passage number / PDL tracking, cryopreservation & LN2 inventory, mycoplasma compliance rules (v2.0.0 target)
+- [ ] **SteloMyco (Mycology)** — strain registry, colonization % tracking, fruiting conditions & yield, substrate composition (v2.1.0 target)
 - [ ] **PostgreSQL backend** — drop-in replacement for the SQLite connection for LAN/server deployments with concurrent multi-user writes
 - [ ] **Network sync** — real-time specimen and inventory updates across multiple desktop and Android clients on the same LAN
 - [ ] **Email / push notifications** — reminder delivery and overdue subculture alerts via SMTP or push service
-- [ ] **Environmental monitoring integration** — link temperature/humidity sensor readings directly to passage records
 - [ ] **iOS support** — Tauri 2 iOS target with the same responsive UI as Android
+- [ ] **Environmental monitoring integration** — link temperature/humidity sensor readings directly to passage records
 - [ ] **Role-based field-level permissions** — hide or lock sensitive fields (IP flags, provenance) by role
 
-### v0.3.x and Beyond
+### Beyond v2.x
 
+- [ ] **Merkle proof export & standalone verifier** — export one record's full audit proof to portable JSON; documented standalone Python/Node verifier (WP-21)
+- [ ] **On-chain anchoring** — publish checkpoint Merkle roots to Dogecoin via `OP_RETURN` for third-party tamper-evidence (WP-65+)
 - [ ] **Species-level analytics** — growth curves, passage success rates, and media comparison charts across experiments
 - [ ] **Local AI analysis** — NLP summaries of observation notes; image-based contamination detection from passage photos
 - [ ] **Offline-first with sync** — full local operation with background sync when a server is available
-- [ ] **Web deployment** — optional web frontend for read-only dashboards and report sharing
 - [ ] **Protocol templates and SOPs** — attach standard operating procedure documents to species and media recipes
 
 ---

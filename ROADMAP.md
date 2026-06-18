@@ -1,10 +1,10 @@
 # SteloPTC → Stelo Lab Suite — Engineering Roadmap
 
-**Status as of June 2026:** **v1.1.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Phase A shipped — first signed GitHub Releases published**
-**Schema:** **6 migrations** total, latest is `migration_006_force_password_change` (added by WP-01); `migration_005_contamination_schedule` precedes it. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
+**Status as of June 2026:** **v1.7.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Phase B Trust Layer shipped — per-lineage hash chain + generational depth tracking live**
+**Schema:** **10 migrations** total; latest is **migration 010** (generational depth columns added in v1.7.0). Migration 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
-**Recent:** Photos/attachments landed in v0.1.19; Phase A (security hardening, signed releases, crash-proofing, onboarding) shipped across v0.1.20 → v1.1.0.
-**In progress (Phase B):** a **Trust(less) and Audit Layer** — a cryptographically tamper-evident audit history (hash-chain + Merkle checkpoints now; optional Dogecoin anchoring later).
+**Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0.
+**In progress (Phase B → C):** Phase B Trust Layer (WP-18–21) is substantially complete; next focus is Phase C de-hardening (WP-22–27) to make one shared engine serve multiple lab verticals.
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -455,10 +455,17 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | **v1.2.0** | WP-08 Specimen Work Queue / Daily Task View | ✅ shipped |
 | v1.2.1–v1.2.4 | WP-10–14 design tokens, states, a11y, print polish, first test harness | ✅ shipped |
 | **v1.2.5** | WP-09 Tauri-reliable print invocation (popup + in-page DOM fallback) | ✅ shipped |
-| v1.2.x | WP-15–17 perf/indexing, backup restore, Excel import | planned |
-| **v1.3.0** | **Trust(less) & Audit Layer — Phase 1** (hash-chain + Merkle checkpoints + proof export, WP-18–21) | planned |
-| v1.3.x | *Buffer for Phase B overflow, additional patch releases, or Trust Layer follow-up work.* | planned |
-| **v1.4.0** | Phase C — profile-ready engine (PTC behavior unchanged, WP-22–27) | planned |
+| v1.2.7 | WP-15 query performance & indexing (migration 007) | ✅ shipped |
+| **v1.3.0** | WP-16 Backup Restore + WP-17 Excel Import | ✅ shipped |
+| v1.3.1 | Print reliability audit & confirmation; `printUtils.ts` extraction | ✅ shipped |
+| **v1.4.0** | WP-19 Professional Specimen Inventory Report (grouped print, executive summary) | ✅ shipped |
+| v1.4.1 | CSP/print-dialog fix — `win.print()` from parent context, not inline script | ✅ shipped |
+| **v1.5.0** | WP-18 Hash-chain tamper-evident audit log (migration 008) | ✅ shipped |
+| v1.5.1 | Audit Log UI — chain columns, hash tooltips, verify buttons | ✅ shipped |
+| **v1.6.0** | Per-lineage hash chain; split/fork cryptography; `verify_audit_lineage` (migration 009) | ✅ shipped |
+| v1.6.1–v1.6.4 | Hash-chain bug fixes; demo data chaining; species-seeded chain anchoring; atomic specimen + audit | ✅ shipped |
+| **v1.7.0** | Generational depth, lineage passage offsets, `root_specimen_id`, sibling display (migration 010) | ✅ shipped |
+| **v1.8.0** *(Phase C)* | Phase C — profile-ready engine (PTC behavior unchanged, WP-22–27) | planned |
 | v2.0.0 | First multi-app release: SteloPTC + **SteloCC** | planned |
 | v2.1.0 | **SteloMyco** | planned |
 | v2.x+ | Phase F cross-cutting features; Trust Layer **Phase 2** (Dogecoin anchoring, WP-65+) when external proof is needed | future |
@@ -467,4 +474,4 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 
 ---
 
-*This roadmap is grounded in the live repository at **v1.1.0** (Phase A shipped): 6 migrations with `migration_006_force_password_change` latest, stage CHECK-constraint rebuilds in migrations 002/003 at `db/migrations.rs`, the now-active CSP in `tauri.conf.json`, compliance rules in `commands/compliance.rs`, and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
+*This roadmap is grounded in the live repository at **v1.7.0**: 10 migrations with generational-depth columns (migration 010) latest; per-lineage hash chain in migration 009; performance indexes in migration 007; stage CHECK-constraint rebuilds in migrations 002/003 at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; compliance rules in `commands/compliance.rs`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
