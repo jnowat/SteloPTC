@@ -7,9 +7,8 @@ use tauri::State;
 #[tauri::command]
 pub fn login(state: State<AppState>, username: String, password: String) -> Result<LoginResponse, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let user = auth_service::authenticate(&db, &username, &password).map_err(|e| {
-        queries::log_audit(&db.conn, None, "login_failed", "user", None, None, Some(&username), Some(&e)).ok();
-        e
+    let user = auth_service::authenticate(&db, &username, &password).inspect_err(|e| {
+        queries::log_audit(&db.conn, None, "login_failed", "user", None, None, Some(&username), Some(e.as_str())).ok();
     })?;
     let token = auth_service::create_session(&db, &user.id)?;
 

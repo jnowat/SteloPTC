@@ -9,6 +9,9 @@ use crate::AppState;
 use rusqlite::params;
 use tauri::State;
 
+// Tuple returned by the parent-specimen query in split_specimen.
+type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>);
+
 #[tauri::command]
 pub fn list_specimens(
     state: State<AppState>,
@@ -290,7 +293,7 @@ pub fn update_specimen(
         return Err("No fields to update".to_string());
     }
 
-    updates.push(format!("updated_at = datetime('now')"));
+    updates.push("updated_at = datetime('now')".to_string());
     let sql = format!(
         "UPDATE specimens SET {} WHERE id = ?{}",
         updates.join(", "),
@@ -619,10 +622,7 @@ pub fn split_specimen(
     let (parent_species_id, parent_species_code, parent_stage,
          parent_provenance, parent_source_plant, parent_location,
          parent_generation, parent_passage_offset, parent_subculture_count,
-         parent_root_id): (
-        String, String, String, Option<String>, Option<String>, Option<String>,
-        i32, i32, i32, Option<String>,
-    ) = db.conn.query_row(
+         parent_root_id): ParentInfo = db.conn.query_row(
         "SELECT s.species_id, sp.species_code, s.stage,
                 s.provenance, s.source_plant, s.location,
                 s.generation, s.lineage_passage_offset, s.subculture_count, s.root_specimen_id
@@ -664,7 +664,7 @@ pub fn split_specimen(
     //    This becomes the parent's last entry_hash, which ALL children
     //    will inherit as their shared prev_hash (the cryptographic fork point).
     queries::log_audit(
-        &*tx, Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
+        &tx,Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
         None, None,
         Some(&format!(
             "Specimen split into {} children on {}",
@@ -678,7 +678,7 @@ pub fn split_specimen(
     for (i, child) in request.children.iter().enumerate() {
         let child_id = uuid::Uuid::new_v4().to_string();
         let accession = queries::generate_accession_number(
-            &*tx, &parent_species_code, &request.date,
+            &tx,&parent_species_code, &request.date,
         ).map_err(|e| format!("Failed to generate accession for child {}: {}", i + 1, e))?;
         let qr_data = format!("STELO:{}", accession);
 
@@ -711,7 +711,7 @@ pub fn split_specimen(
         // Fork the audit chain from the parent (all children inherit the same
         // parent prev_hash — the split event logged above — making the fork visible)
         queries::log_audit_for_child(
-            &*tx, Some(&user.id), "create", "specimen", Some(&child_id),
+            &tx,Some(&user.id), "create", "specimen", Some(&child_id),
             None, Some(accession.as_str()),
             Some(&format!(
                 "Split from {} — container {} of {}",
@@ -750,7 +750,7 @@ pub fn split_specimen(
 
         // Log passage 1 on the child's own chain (seq=2, after the "create" entry at seq=1)
         queries::log_audit(
-            &*tx, Some(&user.id), "subcultured", "specimen", Some(&child_id),
+            &tx,Some(&user.id), "subcultured", "specimen", Some(&child_id),
             None, None,
             Some(&format!("Passage 1 — split from {}", request.parent_specimen_id)),
         ).map_err(|e| format!("Failed to audit first passage for child {}: {}", i + 1, e))?;

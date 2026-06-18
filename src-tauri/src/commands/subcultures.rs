@@ -155,7 +155,7 @@ pub fn create_subculture(
 
     // Audit passage on the SPECIMEN's chain so chain_seq increments for the specimen
     queries::log_audit(
-        &*tx, Some(&user.id), "subcultured", "specimen", Some(&request.specimen_id),
+        &tx,Some(&user.id), "subcultured", "specimen", Some(&request.specimen_id),
         None, None, Some(&format!("Passage #{} recorded", passage_number)),
     ).map_err(|e| format!("Failed to write passage audit: {}", e))?;
 

@@ -63,7 +63,7 @@ fn bool_from_str(s: &str) -> bool {
     matches!(s.trim().to_lowercase().as_str(), "yes" | "true" | "1")
 }
 
-fn col<'a>(row: &'a [String], idx: usize) -> &'a str {
+fn col(row: &[String], idx: usize) -> &str {
     row.get(idx).map(|s| s.as_str()).unwrap_or("")
 }
 

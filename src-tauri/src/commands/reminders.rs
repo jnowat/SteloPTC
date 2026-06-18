@@ -222,7 +222,7 @@ pub fn dismiss_reminder(state: State<AppState>, token: String, id: String, snooz
     let user = auth_service::validate_session(&db, &token)?;
 
     if snooze {
-        let days = snooze_days.unwrap_or(1).max(1).min(365);
+        let days = snooze_days.unwrap_or(1).clamp(1, 365);
         db.conn.execute(
             &format!(
                 "UPDATE reminders SET status = 'snoozed', snooze_count = snooze_count + 1,

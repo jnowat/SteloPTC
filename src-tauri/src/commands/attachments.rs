@@ -76,6 +76,7 @@ pub fn list_attachments(
     Ok(items)
 }
 
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn upload_attachment(
     state: State<AppState>,

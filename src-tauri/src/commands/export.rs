@@ -102,9 +102,8 @@ Notes,Employee ID,Created By,Created At,Updated At\n";
 
     let rows = stmt.query_map([], map_export_row).map_err(|e| e.to_string())?;
 
-    for row in rows {
-        if let Ok(s) = row {
-            csv.push_str(&format!(
+    for s in rows.flatten() {
+        csv.push_str(&format!(
                 "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}\n",
                 escape_csv(&s.accession_number),
                 escape_csv(&s.species_code),
@@ -135,7 +134,6 @@ Notes,Employee ID,Created By,Created At,Updated At\n";
                 escape_csv(&s.created_at),
                 escape_csv(&s.updated_at),
             ));
-        }
     }
 
     Ok(csv)

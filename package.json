@@ -11,6 +11,7 @@
     "android:dev": "cargo tauri android dev",
     "android:build": "cargo tauri android build --release",
     "android:build-debug": "cargo tauri android build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest"
   },

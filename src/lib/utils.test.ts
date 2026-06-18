@@ -7,6 +7,7 @@ import {
   formatAccessionNumber,
   computeStockAdjustment,
   datestamp,
+  effectiveHealth,
 } from './utils';
 import { ageDays, fmtAge, healthNum } from './printUtils';
 
@@ -170,6 +171,21 @@ describe('computeStockAdjustment', () => {
   it('handles zero current stock with positive adjustment', () => {
     const r = computeStockAdjustment(0.0, 100.0);
     expect(r).toEqual({ ok: true, value: 100.0 });
+  });
+});
+
+// ── effectiveHealth ───────────────────────────────────────────────────────────
+
+describe('effectiveHealth', () => {
+  it('returns "-1" when unknown is true regardless of value', () => {
+    expect(effectiveHealth(4, true)).toBe('-1');
+    expect(effectiveHealth(0, true)).toBe('-1');
+  });
+
+  it('returns the stringified value when unknown is false', () => {
+    expect(effectiveHealth(4, false)).toBe('4');
+    expect(effectiveHealth(0, false)).toBe('0');
+    expect(effectiveHealth(2, false)).toBe('2');
   });
 });
 

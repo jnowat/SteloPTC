@@ -2,6 +2,7 @@
   import * as XLSX from 'xlsx';
   import { importXlsx } from '../api';
   import { addNotification } from '../stores/app';
+  import { findMissingSheets } from '../importUtils';
 
   // ── State ─────────────────────────────────────────────────────────────────
 
@@ -30,15 +31,6 @@
 
   // ── Sheet parsing ─────────────────────────────────────────────────────────
 
-  const SHEET_NAMES = [
-    'Specimens',
-    'Subcultures',
-    'Media Batches',
-    'Prepared Solutions',
-    'Inventory',
-    'Compliance',
-  ] as const;
-
   function sheetToRows(ws: XLSX.WorkSheet): string[][] {
     const aoa: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
     // Skip the header row; stringify every cell
@@ -49,7 +41,7 @@
     const buf = await file.arrayBuffer();
     const wb  = XLSX.read(buf, { type: 'array', cellDates: false });
 
-    const missing = SHEET_NAMES.filter(n => !wb.SheetNames.includes(n));
+    const missing = findMissingSheets(wb.SheetNames);
     if (missing.length > 0) {
       parseError = `Missing sheet(s): ${missing.join(', ')}. Make sure this file was exported by SteloPTC.`;
       return null;

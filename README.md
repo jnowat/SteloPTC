@@ -162,6 +162,78 @@ The `test.yml` GitHub Actions workflow runs both test suites on every push and p
 
 ---
 
+## Building from Source
+
+### Prerequisites
+
+| Tool | Version | Install |
+|------|---------|---------|
+| Rust | 1.75+ | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| Node.js | 18+ | [nodejs.org](https://nodejs.org) or `nvm install 20` |
+| Tauri CLI | latest | `cargo install tauri-cli` |
+
+**Linux additionally requires:**
+
+```bash
+sudo apt install libgtk-3-dev libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev librsvg2-dev libssl-dev
+```
+
+### 1. Clone and install dependencies
+
+```bash
+git clone https://github.com/jnowat/steloptc.git
+cd steloptc
+npm install --legacy-peer-deps
+```
+
+### 2. Run in development mode
+
+```bash
+cargo tauri dev
+```
+
+Opens a Tauri window with Vite hot-reload. The first build downloads Rust dependencies and may take a few minutes.
+
+### 3. Run the test suites
+
+**Frontend (Vitest):**
+
+```bash
+npm test               # single run
+npm run test:watch     # watch mode
+```
+
+**Backend (Rust):**
+
+```bash
+cd src-tauri && cargo test --lib
+```
+
+### 4. Type-check the frontend
+
+```bash
+npm run check          # svelte-check + TypeScript
+```
+
+### 5. Build a release binary
+
+```bash
+# Windows MSI + exe
+cargo tauri build --bundles msi
+
+# Linux .deb / .AppImage
+cargo tauri build
+```
+
+Output lands in `src-tauri/target/release/bundle/`.
+
+### Default login
+
+On a fresh database the only account is `admin` / `admin`. The app immediately forces a password change before any other action is possible.
+
+---
+
 ## Requirements
 
 ### Build Requirements
