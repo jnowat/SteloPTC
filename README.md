@@ -46,15 +46,15 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 
 - **Specimen Tracking** — Unique accession numbers (YYYY-MM-DD-SPECIESCODE-SEQ), provenance, lineage trees (split culture parent/child), health/disease status (0–4 color-coded slider with "Unknown/Awaiting" option), quarantine flags, and IP protection markers. Stages: explant, callus, shoot, shoot meristem, apical meristem, root, root meristem, embryogenic, plantlet. Each specimen tracks its **generation depth** (Gen N badge in the detail header) and **cumulative passage count from root** (`lineage_passage_offset + subculture_count`), enabling precise genealogical history across any number of splits. A `root_specimen_id` column links every derived specimen back to its absolute ancestor for efficient family-tree queries (v1.7.0).
 - **Structured Location Entry** — Room / Rack / Shelf / Tray dropdowns auto-populated with last-used values for fast data entry.
-- **Subculture History & Timeline** — Full passage log displayed as a vertical timeline (newest first). Each card shows media batch, vessel, location, and environment; click to expand. **Splitting** is handled by an atomic `split_specimen` backend command: the parent is archived, a "split" event is appended to its chain, and all children are created with their first passage in a single SQLite transaction — no partial state is possible. Each child can be assigned a different media batch, vessel, location, and notes per-child. The lineage banner shows parent, children, and **siblings** (other specimens split from the same parent) as clickable chips. A **"Gen N" badge** in the detail header shows the generational depth of any derived specimen (v1.6.4, v1.7.0).
+- **Subculture History & Timeline** — Full passage log displayed as a vertical timeline (newest first). Each card shows media batch, vessel, location, and environment; click to expand. **Splitting** is handled by an atomic `split_specimen` backend command: the parent is archived, a "split" event is appended to its chain, and all children are created with their first passage in a single SQLite transaction — no partial state is possible. Each child can be assigned a different media batch, vessel, location, and notes per-child. The lineage banner shows parent, children, and **siblings** (other specimens split from the same parent) as clickable chips. A **"Gen N" badge** in the detail header shows the generational depth of any derived specimen. Each **passage event** extends the specimen's own cryptographic lineage chain (`chain_seq` increments within the specimen's lineage), so the audit history of a specimen and its passage history are a single continuous, verifiable sequence (v1.6.4, v1.7.0).
 - **Contamination Tracking** — Per-passage contamination flag and notes. Dashboard **Contamination Overview** panel shows lab-wide rate (%), affected specimens, vessel-type breakdown, and the 10 most recent events (v0.1.15).
 - **Subculture Scheduling** — Dashboard **Subculture Schedule** widget lists overdue and due-within-7-days specimens by species interval with day counts and direct links (v0.1.15).
 - **Work Queue** — Daily task view listing every specimen that needs immediate attention. Detects five conditions: subculture due/overdue (per species interval), media batch expired, contamination flag on most recent passage, no passages recorded, and unresolved quarantine. Items are sorted by urgency (Critical → High → Normal) then by days overdue. The sidebar shows an amber count badge when items are pending. Read-only in v1.2.0 — click any row to open the specimen and take action.
-- **Consistent Loading & Empty States** — All main list views (Specimens, Media, Inventory, Reminders) display an animated shimmer skeleton while data loads and a friendly, icon-led empty state with a contextual call-to-action when there is no data to show (v1.2.1).
+- **Consistent Loading & Empty States** — All list views (Specimens, Media, Inventory, Reminders, Compliance, Audit Log, Error Log) display an animated shimmer skeleton while data loads and a friendly, icon-led empty state with a contextual call-to-action when there is no data to show (v1.2.1, v1.2.3).
 - **Media Logs** — Batch database supporting MS and related formulations (MS, 1/2 MS, WPM, B5, N6, LS, White's, DKW). Tracks basal salts (auto-calculated g/L from weight + volume), hormones (auxins/cytokinins/gibberellins) with concentrations, pH, sterilization, vessel count, QC notes, and expiration. Stock reagent traceability with lot numbers and auto-depletion from inventory on batch creation.
 - **Inventory Management** — Full supply tracking with category organization (media ingredients, vessels, hormones, chemicals, consumables, equipment). Stock levels, reorder thresholds, physical state (solid/liquid with concentration units), stock adjustments with audit trail, low-stock dashboard alerts, and expiration tracking.
 - **Prepared Stock Solutions** — Track stock solutions made from solid reagents: source item, concentration, volume prepared/remaining, prep date, preparer, and inline volume updates.
-- **QR Codes** — Per-specimen QR code generation (256×256, Error Correction M), 2×3-inch print labels for lab label printers, camera-based scanning (rear camera on Android, webcam on desktop), and scan event logging in SQLite (v0.1.14+).
+- **QR Codes** — Per-specimen QR code generation (256×256, Error Correction M), 2×3-inch print labels for lab label printers, camera-based scanning (rear camera on Android, webcam on desktop), and scan event logging in SQLite. The scanner validates the payload: non-SteloPTC codes (URLs, plain text, vCards) show a distinct warning and suppress the "Open Specimen" action while still recording the scan event for audit (v0.1.14+, v1.1.1).
 - **Compliance** — Auto-flagging rules for expired permits, citrus HLB testing, quarantine without release date, and positive tests without quarantine. Agency tracking: USDA APHIS, TX Ag, FL FDACS.
 - **Reminders** — User-configurable rules and calendar reminders with urgency levels (low/normal/high/critical), snooze with auto-escalation after 2 snoozes, recurring support, and a 7-day upcoming dashboard widget.
 - **Error Log** — Persistent, searchable error tracking (all roles). Every error captured with severity badge, module, username, form payload JSON, and stack trace. Sidebar badge shows live unread count; toasts are clickable and navigate directly to the log (v0.1.10+).
@@ -350,11 +350,13 @@ android {
     defaultConfig {
         targetSdk = 35
         minSdk = 24
-        versionCode = 26
-        versionName = "1.7.0"
+        versionCode = 24        // committed baseline; patched to the release value by CI at build time
+        versionName = "1.1.0"  // committed baseline; patched to the release value by CI at build time
     }
 }
 ```
+
+> **Note:** `versionCode` and `versionName` in the committed file are a stable baseline. The release CI workflow patches both fields to the correct release values before building the signed APK, so the committed values are intentionally behind the current release version.
 
 ### Default Login
 
@@ -376,6 +378,8 @@ SteloPTC/
 │   └── lib/
 │       ├── api.ts                    # Typed Tauri command bindings
 │       ├── printUtils.ts             # Shared print delivery (popup + in-page DOM fallback), age/health helpers
+│       ├── styles/
+│       │   └── tokens.css            # Central CSS custom properties — colors, spacing, type, radii, shadows, z-index
 │       ├── components/
 │       │   ├── Login.svelte
 │       │   ├── Dashboard.svelte      # Stats, schedule, contamination, reminders
