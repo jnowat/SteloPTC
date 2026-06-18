@@ -15,6 +15,7 @@ It combines traditional lab record-keeping with an immutable, hash-chained audit
    - Specimens
    - Species
    - Passage vs. Split
+   - Quick Reference: Passage vs. Split
    - Lineage & Hash Chain
    - Genealogy & Provenance
 3. Getting Started
@@ -89,6 +90,20 @@ These are the two primary ways you advance cultures in SteloPTC. Understanding t
 
 > **Important:** Before confirming a split, you will always see a verification warning reminding you to physically check that your labels match the software-generated accessions.
 
+### Quick Reference: Passage vs. Split
+
+| Aspect                    | Passage (Subculture)                  | Split                                      |
+|---------------------------|---------------------------------------|--------------------------------------------|
+| Parent record             | Continues                             | Archived                                   |
+| New specimens created     | No                                    | Yes (one or more children)                 |
+| Accession number          | Unchanged                             | New suffixed numbers (001A, 001B, etc.)    |
+| Lineage chain             | Continues on same specimen            | Each child starts fresh (chain resets)     |
+| Per-child configuration   | N/A                                   | Yes (health, stage, media, reminders, etc.)|
+| Typical use case          | Routine maintenance & growth          | Dividing into independent lines            |
+| Physical labeling         | Same label                            | New labels required for each child         |
+
+Use **Passage** for normal upkeep. Use **Split** when you intentionally want to create multiple separate cultures from one.
+
 ### Lineage & Hash Chain
 
 Every significant action is recorded in the Audit Log as part of a SHA-256 hash chain. Each entry contains:
@@ -123,6 +138,13 @@ When you open SteloPTC on a fresh database, you will see the First-Run guidance 
 2. Accession your first specimen
 
 You can also load demo data (a small set of realistic specimens with passage history) to explore the interface before entering your own work.
+
+### UI Navigation Tips
+
+- **Sidebar**: Primary navigation between Dashboard, Specimens, Species, Media, Vessels, Reminders, Audit Log, and Admin tools.
+- **Specimen list**: Click any row to open the detail view. Use filters and search at the top.
+- **Specimen detail**: Tabs and sections for status, history, siblings, reminders, and audit entries.
+- **Keyboard**: Many actions support standard shortcuts (check tooltips). Tab navigation works throughout forms.
 
 ### Creating Your First Species
 
@@ -217,25 +239,23 @@ When you split a specimen:
 - The parent’s complete passage history remains visible and linked.
 - A contamination flag, if set during the split, applies to the parent.
 
-### Performing a Split
+### Performing a Split — Step by Step Example
 
-1. Open the specimen you want to split.
-2. Click **Passage / Split**.
-3. Check the box **“Split culture into multiple child specimens”**.
-4. Choose the number of children.
-5. For each child, configure:
-   - **Accession number** (generated but editable — changes are allowed before confirmation)
-   - **Stage** (pre-filled from parent, editable per child)
-   - **Health** slider (independent per child)
-   - **Location** (Room / Rack / Shelf / Tray)
-   - **Media** (select existing or **Add new** — creates a draft/placeholder)
-   - **Vessel** (select or enter custom type)
-   - **Notes** (optional, per child)
-   - **Reminder** (toggle + days until follow-up)
-6. Review the **live summary** at the bottom of the form.
+**Scenario:** You have specimen `2026-06-18-CAN-SAT-001` (Gen 0) and want to split it into two children.
+
+1. Open `2026-06-18-CAN-SAT-001` and click **Passage / Split**.
+2. Check **“Split culture into multiple child specimens”** and select **2 children**.
+3. The system suggests `2026-06-18-CAN-SAT-001A` and `2026-06-18-CAN-SAT-001B`. You can edit either if needed (e.g., to match existing physical labels).
+4. For Child A: Set health to “Excellent”, choose a media batch, set a 7-day reminder.
+5. For Child B: Set health to “Good”, choose a different media batch, set a 10-day reminder.
+6. Review the live summary box at the bottom (shows what will be archived and what will be created).
 7. Click **Confirm Split**.
-
-Before the split is committed, you will see a **verification warning** reminding you to physically confirm that your labels match the software-generated accessions and that the physical specimens are in the expected order.
+8. A verification warning appears — physically check your labels and specimens before proceeding.
+9. After confirmation:
+   - Parent `...001` is archived.
+   - Two new active specimens `...001A` and `...001B` (both Gen 1, siblings) are created.
+   - Each has its own fresh lineage chain.
+   - Reminders are scheduled for each child.
 
 ### Accession Numbers After Splitting
 
@@ -248,16 +268,24 @@ Further splits continue the pattern recursively (splitting `001B` later produces
 
 You can **manually edit** the generated accession numbers during the split if needed (for example, to match existing physical labels).
 
-### “Add New” Media and Vessel
+### “Add New” Media and Vessel (Draft Records)
 
-When you choose **Add new** for media or vessel during a split, SteloPTC creates a placeholder (draft) record. These are clearly marked as incomplete. You must later go to the Media or Vessel management area to fill in the real details. Some actions may be restricted until the placeholder is completed.
+When you choose **Add new** for media or vessel during a split or passage, SteloPTC creates a **draft/placeholder** record marked as incomplete (`is_draft = true`).
+
+- Draft records appear in lists but are clearly flagged.
+- You cannot use an incomplete draft for certain downstream actions until it is completed.
+- Go to the **Media** or **Vessel** management area later to fill in the missing details (name, composition, lot number, etc.).
+- Once completed, the draft flag is removed and the record becomes fully usable.
+
+This allows you to keep working during a split without stopping to fully define new media batches.
 
 ### Best Practices for Splitting
 
 - Use the per-child health, notes, and reminder fields when some splits look stronger or weaker than others.
-- Take advantage of per-child configuration — this information becomes very valuable weeks or months later.
+- Take advantage of per-child configuration — this information becomes very valuable weeks or months later when reviewing performance.
 - Always double-check physical labeling before confirming the split. The verification warning exists for this reason.
 - Set different reminder intervals for children that will need attention on different schedules.
+- After splitting, immediately check the sibling list and root lineage in the new children’s detail views to confirm relationships are correctly recorded.
 
 ---
 
@@ -423,7 +451,7 @@ This usually means one or more audit entries were altered outside the applicatio
 Make sure reminders have a future due date. Reminders set for “today” may not appear until the next day depending on system time. Check the specimen detail page as well.
 
 **“Add New” media or vessel isn’t working as expected**
-“Add new” during split or passage creates a draft/placeholder record marked as incomplete. You must complete the real details later in the Media or Vessel management area before certain actions are allowed.
+“Add new” during split or passage creates a draft/placeholder record marked as incomplete. You must complete the real details later in the Media or Vessel management area before certain actions are allowed on that record.
 
 **Split form looks stretched or messy**
 Try collapsing the Notes fields or temporarily reducing the number of visible children. A layout improvement is planned.
@@ -452,6 +480,9 @@ Even if you’re not concerned about tampering, occasional review helps catch mi
 
 **Use reminders actively**
 Set reminders during splits and passages for cultures that need follow-up attention.
+
+**Check lineage after splitting**
+After a split, open one of the new children and verify the sibling list and root lineage are correct. This confirms the provenance relationships were recorded properly.
 
 ---
 
