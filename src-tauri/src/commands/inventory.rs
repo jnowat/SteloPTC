@@ -40,7 +40,7 @@ pub fn list_inventory(state: State<AppState>, token: String) -> Result<Vec<Inven
         .map_err(|e| e.to_string())?;
 
     let items = stmt
-        .query_map([], |row| row_to_item(row))
+        .query_map([], row_to_item)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -89,7 +89,7 @@ pub fn create_inventory_item(
     ).ok();
 
     db.conn
-        .query_row("SELECT * FROM inventory_items WHERE id = ?1", params![id], |row| row_to_item(row))
+        .query_row("SELECT * FROM inventory_items WHERE id = ?1", params![id], row_to_item)
         .map_err(|e| format!("Failed to retrieve created item: {}", e))
 }
 
@@ -165,7 +165,7 @@ pub fn update_inventory_item(
     ).ok();
 
     db.conn
-        .query_row("SELECT * FROM inventory_items WHERE id = ?1", params![request.id], |row| row_to_item(row))
+        .query_row("SELECT * FROM inventory_items WHERE id = ?1", params![request.id], row_to_item)
         .map_err(|e| format!("Failed to retrieve updated item: {}", e))
 }
 
@@ -243,7 +243,7 @@ pub fn adjust_stock(
     ).ok();
 
     db.conn
-        .query_row("SELECT * FROM inventory_items WHERE id = ?1", params![id], |row| row_to_item(row))
+        .query_row("SELECT * FROM inventory_items WHERE id = ?1", params![id], row_to_item)
         .map_err(|e| format!("Failed to retrieve item: {}", e))
 }
 

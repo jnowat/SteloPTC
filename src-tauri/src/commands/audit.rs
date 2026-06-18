@@ -5,6 +5,12 @@ use crate::db::queries::{self, audit_canonical_bytes, compute_entry_hash};
 use crate::AppState;
 use tauri::State;
 
+// Fields returned by the single-entry audit verification query.
+type AuditEntryRow = (
+    Option<String>, Option<String>, String, String, Option<String>,
+    String, Option<String>, Option<i64>, Option<String>, Option<String>,
+);
+
 #[tauri::command]
 pub fn get_audit_log(
     state: State<AppState>,
@@ -133,18 +139,9 @@ pub fn verify_audit_entry(
     // Use Option<> for every nullable column so rusqlite never errors on NULL.
     // chain_seq, prev_hash, entry_hash, and lineage_id are all nullable for
     // legacy (pre-v1.5.0) rows.
-    let row: Option<(
-        Option<String>,  // lineage_id
-        Option<String>,  // user_id
-        String,          // entity_type  (NOT NULL in schema)
-        String,          // action       (NOT NULL in schema)
-        Option<String>,  // entity_id
-        String,          // created_at   (NOT NULL in schema)
-        Option<String>,  // details
-        Option<i64>,     // chain_seq    (nullable)
-        Option<String>,  // prev_hash    (nullable)
-        Option<String>,  // entry_hash   (nullable)
-    )> = db.conn.query_row(
+    // columns: lineage_id, user_id, entity_type, action, entity_id,
+    //          created_at, details, chain_seq, prev_hash, entry_hash
+    let row: Option<AuditEntryRow> = db.conn.query_row(
         "SELECT lineage_id, user_id, entity_type, action, entity_id, created_at, details, \
                 chain_seq, prev_hash, entry_hash \
          FROM audit_log WHERE id = ?1",

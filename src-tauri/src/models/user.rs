@@ -34,16 +34,6 @@ impl UserRole {
         }
     }
 
-    pub fn from_str(s: &str) -> Self {
-        match s {
-            "admin" => UserRole::Admin,
-            "supervisor" => UserRole::Supervisor,
-            "tech" => UserRole::Tech,
-            "guest" => UserRole::Guest,
-            _ => UserRole::Guest,
-        }
-    }
-
     pub fn can_write(&self) -> bool {
         matches!(self, UserRole::Admin | UserRole::Supervisor | UserRole::Tech)
     }
@@ -54,6 +44,20 @@ impl UserRole {
 
     pub fn is_admin(&self) -> bool {
         matches!(self, UserRole::Admin)
+    }
+}
+
+impl std::str::FromStr for UserRole {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "admin" => Ok(UserRole::Admin),
+            "supervisor" => Ok(UserRole::Supervisor),
+            "tech" => Ok(UserRole::Tech),
+            "guest" => Ok(UserRole::Guest),
+            _ => Err(()),
+        }
     }
 }
 

@@ -7,6 +7,19 @@ use super::DbResult;
 pub const ZERO_HASH: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
+/// Audit fields shared across all `log_audit*` public wrappers.
+/// Passed as a single argument to `log_audit_impl` to stay within Clippy's
+/// `too_many_arguments` limit without changing the public-facing API.
+struct AuditEntry<'a> {
+    user_id: Option<&'a str>,
+    action: &'a str,
+    entity_type: &'a str,
+    entity_id: Option<&'a str>,
+    old_value: Option<&'a str>,
+    new_value: Option<&'a str>,
+    details: Option<&'a str>,
+}
+
 /// Canonical serialization for an audit entry used in hash computation.
 ///
 /// Format — pipe-separated UTF-8, no trailing newline, fixed field order:
@@ -15,6 +28,7 @@ pub const ZERO_HASH: &str =
 /// NULL optional fields serialize as empty string ("").
 /// Never reorder fields; append new fields at the end only so that existing
 /// stored hashes remain verifiable.
+#[allow(clippy::too_many_arguments)]
 pub fn audit_canonical_bytes(
     lineage_id: &str,
     chain_seq: i64,
@@ -55,6 +69,7 @@ pub fn generate_accession_number(conn: &Connection, species_code: &str, date: &s
 /// Log an audit entry that continues the entity's own lineage chain.
 /// The lineage_id is entity_id (or "system" when entity_id is None).
 /// All existing call sites use this function without change.
+#[allow(clippy::too_many_arguments)]
 pub fn log_audit(
     conn: &Connection,
     user_id: Option<&str>,
@@ -65,7 +80,7 @@ pub fn log_audit(
     new_value: Option<&str>,
     details: Option<&str>,
 ) -> DbResult<()> {
-    log_audit_impl(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, None)
+    log_audit_impl(conn, AuditEntry { user_id, action, entity_type, entity_id, old_value, new_value, details }, None)
 }
 
 /// Log an audit entry for a new entity that was split or derived from parent_lineage_id.
@@ -74,6 +89,7 @@ pub fn log_audit(
 /// from the parent lineage's last entry, creating a cryptographically visible fork.
 /// Both siblings of a split share the same prev_hash, which is the intended behaviour:
 /// it records "these two chains both originate from the same parent state."
+#[allow(clippy::too_many_arguments)]
 pub fn log_audit_for_child(
     conn: &Connection,
     user_id: Option<&str>,
@@ -85,7 +101,7 @@ pub fn log_audit_for_child(
     details: Option<&str>,
     parent_lineage_id: &str,
 ) -> DbResult<()> {
-    log_audit_impl(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, Some(parent_lineage_id))
+    log_audit_impl(conn, AuditEntry { user_id, action, entity_type, entity_id, old_value, new_value, details }, Some(parent_lineage_id))
 }
 
 /// Log an audit entry at chain_seq = 0 with prev_hash = ZERO_HASH.
@@ -93,6 +109,7 @@ pub fn log_audit_for_child(
 /// Used exclusively for species creation. seq=0 marks the "birth" of the
 /// species lineage and its entry_hash serves as the cryptographic seed that
 /// new specimens inherit via log_audit_seeded_by_species.
+#[allow(clippy::too_many_arguments)]
 pub fn log_audit_at_seq_zero(
     conn: &Connection,
     user_id: Option<&str>,
@@ -133,6 +150,7 @@ pub fn log_audit_at_seq_zero(
 ///
 /// Falls back to ZERO_HASH if the species has no audit entries (e.g. seeded
 /// species written before the hash chain was introduced in v1.5.0).
+#[allow(clippy::too_many_arguments)]
 pub fn log_audit_seeded_by_species(
     conn: &Connection,
     user_id: Option<&str>,
@@ -144,22 +162,16 @@ pub fn log_audit_seeded_by_species(
     details: Option<&str>,
     species_id: &str,
 ) -> DbResult<()> {
-    log_audit_impl(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, Some(species_id))
+    log_audit_impl(conn, AuditEntry { user_id, action, entity_type, entity_id, old_value, new_value, details }, Some(species_id))
 }
 
 fn log_audit_impl(
     conn: &Connection,
-    user_id: Option<&str>,
-    action: &str,
-    entity_type: &str,
-    entity_id: Option<&str>,
-    old_value: Option<&str>,
-    new_value: Option<&str>,
-    details: Option<&str>,
+    entry: AuditEntry<'_>,
     parent_lineage_id: Option<&str>,
 ) -> DbResult<()> {
     let id = uuid::Uuid::new_v4().to_string();
-    let lineage_id = entity_id.unwrap_or("system").to_string();
+    let lineage_id = entry.entity_id.unwrap_or("system").to_string();
     let timestamp = chrono::Utc::now()
         .format("%Y-%m-%dT%H:%M:%S%.3fZ")
         .to_string();
@@ -205,11 +217,11 @@ fn log_audit_impl(
         &lineage_id,
         next_seq,
         &timestamp,
-        user_id.unwrap_or(""),
-        entity_type,
-        entity_id.unwrap_or(""),
-        action,
-        details.unwrap_or(""),
+        entry.user_id.unwrap_or(""),
+        entry.entity_type,
+        entry.entity_id.unwrap_or(""),
+        entry.action,
+        entry.details.unwrap_or(""),
     );
     let entry_hash = compute_entry_hash(&canonical, &prev_hash);
 
@@ -219,8 +231,8 @@ fn log_audit_impl(
           lineage_id, chain_seq, prev_hash, entry_hash) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
-            id, user_id, action, entity_type, entity_id,
-            old_value, new_value, details, timestamp,
+            id, entry.user_id, entry.action, entry.entity_type, entry.entity_id,
+            entry.old_value, entry.new_value, entry.details, timestamp,
             lineage_id, next_seq, prev_hash, entry_hash
         ],
     )?;

@@ -2,9 +2,9 @@ use crate::db::Database;
 use crate::models::user::{User, UserRole};
 use rusqlite::params;
 
-/// Simple token-based session management for local desktop app.
-/// For a local-only app, we use a lightweight approach: generate a random
-/// token on login, store in sessions table, validate on each request.
+// Simple token-based session management for local desktop app.
+// For a local-only app, we use a lightweight approach: generate a random
+// token on login, store in sessions table, validate on each request.
 
 pub fn authenticate(db: &Database, username: &str, password: &str) -> Result<User, String> {
     let user = db.conn.query_row(
@@ -18,7 +18,7 @@ pub fn authenticate(db: &Database, username: &str, password: &str) -> Result<Use
                 password_hash: row.get(2)?,
                 display_name: row.get(3)?,
                 email: row.get(4)?,
-                role: UserRole::from_str(&row.get::<_, String>(5)?),
+                role: row.get::<_, String>(5)?.parse().unwrap_or(UserRole::Guest),
                 is_active: row.get::<_, i32>(6)? != 0,
                 must_change_password: row.get::<_, i32>(7)? != 0,
                 created_at: row.get(8)?,
@@ -39,7 +39,7 @@ pub fn create_session(db: &Database, user_id: &str) -> Result<String, String> {
     let id = uuid::Uuid::new_v4().to_string();
     let expires = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(24))
-        .unwrap_or_else(|| chrono::DateTime::<chrono::Utc>::MAX_UTC)
+        .unwrap_or(chrono::DateTime::<chrono::Utc>::MAX_UTC)
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
 
@@ -64,7 +64,7 @@ pub fn validate_session(db: &Database, token: &str) -> Result<User, String> {
                 password_hash: row.get(2)?,
                 display_name: row.get(3)?,
                 email: row.get(4)?,
-                role: UserRole::from_str(&row.get::<_, String>(5)?),
+                role: row.get::<_, String>(5)?.parse().unwrap_or(UserRole::Guest),
                 is_active: row.get::<_, i32>(6)? != 0,
                 must_change_password: row.get::<_, i32>(7)? != 0,
                 created_at: row.get(8)?,

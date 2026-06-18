@@ -1,7 +1,6 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::AppState;
-use std::io::Read;
 use tauri::State;
 
 #[tauri::command]
