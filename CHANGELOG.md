@@ -5,6 +5,48 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-06-19
+
+### Added
+
+- **Letter-suffix accessions on split**
+  - Splitting a specimen now appends a letter suffix to the parent's accession number rather than generating new sequential accessions. A split of `001` produces `001A`, `001B`, etc. Recursive splits chain the letter: `001A` → `001AA`, `001AB`, and so on. All 26 letters per level are supported; the backend returns a clear error if all are exhausted.
+  - New `preview_split_accessions` Tauri command lets the frontend display the proposed child accessions before the user confirms, with instant refresh as the child count changes.
+  - New `generate_split_accession_numbers` helper in `db/queries.rs` skips any letters already taken by sibling specimens.
+
+- **Per-child controls in the split workflow**
+  - Each child in the split form now has its own configuration card: individual health slider, stage selector, location dropdowns (pre-filled from parent), media batch picker, vessel type (with custom free-text input), and notes.
+  - An optional **check-in reminder** can be set per child (default: 7 days). Reminders are created atomically inside the split transaction — no reminder can be orphaned if the split fails.
+
+- **Draft media batches**
+  - Migration 011 adds `is_draft INTEGER NOT NULL DEFAULT 0` to `media_batches`. Draft batches are placeholder records created during the split workflow when no existing batch is ready.
+  - New `create_draft_media_batch` Tauri command creates the placeholder; the batch can be completed later in the Media Management page.
+  - Index `idx_media_batches_draft` added for efficient filtering.
+
+- **Split safety confirmation dialog**
+  - Clicking "Review Split" opens a modal listing all proposed children with their accessions and any reminder badges before the split executes. The user must confirm before the irreversible archive-and-split operation runs.
+
+- **Synthetic split events in the passage timeline**
+  - `SpecimenDetail.svelte` now builds synthetic timeline entries for split events: a "Split into N children" card at the top of an archived parent's timeline, and a "Split from [parent accession]" card at the bottom of each child's timeline.
+  - `SpecimenPassageTimeline.svelte` renders these entries with a distinct purple dashed card style so they are visually distinct from real passages.
+
+- **Lineage banner shows all children including archived**
+  - The lineage bar on specimen detail now displays all direct split children and siblings — including archived ones — with strikethrough styling and an "archived" label for complete provenance display.
+
+- **Navigation history stack on specimen detail**
+  - A local history stack tracks navigation within specimen detail. Clicking a lineage chip (child, sibling, parent) pushes the current accession onto the stack; pressing Back pops it and returns to the prior specimen instead of jumping to the specimens list.
+
+### Changed
+
+- `split_specimen` backend command no longer auto-creates a Passage 1 subculture entry for each child. The split event itself is the passage transition point (parent at P3 → children start at P4). `child_passage_offset` adds +1 so the first real subculture on a child is numbered correctly in the lineage.
+- The "Passages" field on a fresh split child now shows "P{N} from root (no passages yet)" when `subculture_count = 0`.
+- `SpecimenPassageTimeline.svelte` timeline layout and card rendering significantly expanded to support synthetic split events alongside real passage entries.
+
+### Fixed
+
+- Passage numbering on split children was off by one; the root passage offset calculation is now accurate throughout the lineage.
+- `verify_audit_lineage` and `verify_audit_entry` correctly handle the updated chain state after split passage offset changes.
+
 ## [1.7.0] - 2026-06-17
 
 ### Added
