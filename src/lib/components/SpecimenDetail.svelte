@@ -631,7 +631,13 @@ ${complianceSection}
         {#if specimen.generation > 0}
           <span class="badge badge-purple" title="Generation {specimen.generation} — this specimen was derived from {specimen.generation} successive split{specimen.generation > 1 ? 's' : ''}">Gen {specimen.generation}</span>
         {/if}
-        {#if specimen.quarantine_flag}
+        {#if specimen.is_archived}
+          {#if childSpecimens.length > 0}
+            <span class="badge badge-gray" title="This specimen was split into children and is now inactive — no further passages can be recorded">Split / Inactive</span>
+          {:else}
+            <span class="badge badge-gray" title="This specimen has been archived — no further passages can be recorded">Archived</span>
+          {/if}
+        {:else if specimen.quarantine_flag}
           <span class="badge badge-red" title="This specimen is under quarantine — movement restricted">Quarantined</span>
         {:else}
           <span class="badge badge-green" title="This specimen is active and not under quarantine">Active</span>
@@ -789,9 +795,15 @@ ${complianceSection}
         <!-- Record Passage header -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:{showPassageForm ? 16 : 0}px;">
           <h3 style="font-size:15px;">Passage History</h3>
-          <button class="btn btn-primary btn-sm" onclick={() => showPassageForm = !showPassageForm}>
+          <button
+            class="btn btn-primary btn-sm"
+            onclick={() => { if (!specimen.is_archived) showPassageForm = !showPassageForm; }}
+            disabled={specimen.is_archived}
+            title={specimen.is_archived
+              ? (childSpecimens.length > 0 ? 'This specimen was split and archived — passages cannot be recorded on inactive specimens' : 'This specimen is archived — passages cannot be recorded')
+              : (showPassageForm ? 'Cancel passage recording' : 'Log a new subculture or transfer event for this specimen — records date, media batch, vessel, health, location, and observations')}
+          >
             {showPassageForm ? '✕ Cancel' : '+ Record Passage'}
-            {#if !showPassageForm}<Tooltip text="Log a new subculture or transfer event for this specimen — records date, media batch, vessel, health, location, and observations" position="bottom" />{/if}
           </button>
         </div>
 
@@ -805,79 +817,83 @@ ${complianceSection}
                 <label>Date <Tooltip text="Date on which this passage/subculture was performed" /></label>
                 <input type="date" title="Date on which this passage/subculture was performed" bind:value={subcultureForm.date} required />
               </div>
-              <div class="form-group" style="flex:2;">
-                <label>Media Batch <Tooltip text="Select the nutrient media batch used for this transfer — must be a batch prepared on or before the passage date" /></label>
-                <select title="Select the media batch used for this transfer" bind:value={subcultureForm.media_batch_id}>
-                  <option value="">No media / not recorded</option>
-                  {#each mediaBatches.slice(0, 20) as mb}
-                    <option value={mb.id}>{mb.batch_id} — {mb.name}</option>
-                  {/each}
-                </select>
-                {#if mediaDateWarning}
-                  <div style="color:#dc2626;font-size:12px;margin-top:4px;">
-                    ⚠ Warning: this media batch was prepared AFTER the passage date — please verify.
-                  </div>
-                {/if}
-              </div>
+              {#if !isSplitting}
+                <div class="form-group" style="flex:2;">
+                  <label>Media Batch <Tooltip text="Select the nutrient media batch used for this transfer — must be a batch prepared on or before the passage date" /></label>
+                  <select title="Select the media batch used for this transfer" bind:value={subcultureForm.media_batch_id}>
+                    <option value="">No media / not recorded</option>
+                    {#each mediaBatches.slice(0, 20) as mb}
+                      <option value={mb.id}>{mb.batch_id} — {mb.name}</option>
+                    {/each}
+                  </select>
+                  {#if mediaDateWarning}
+                    <div style="color:#dc2626;font-size:12px;margin-top:4px;">
+                      ⚠ Warning: this media batch was prepared AFTER the passage date — please verify.
+                    </div>
+                  {/if}
+                </div>
+              {/if}
             </div>
 
-            <!-- Vessel + Env -->
-            <div class="form-row">
-              <div class="form-group" style="flex:2;">
-                <label for="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)">Vessel Type</label>
-                <select id="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)" bind:value={subcultureForm.vessel_type}>
-                  <option value="">Select vessel…</option>
-                  {#each vesselTypes as v}
-                    <option value={v}>{v}</option>
-                  {/each}
-                </select>
+            {#if !isSplitting}
+              <!-- Vessel + Env -->
+              <div class="form-row">
+                <div class="form-group" style="flex:2;">
+                  <label for="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)">Vessel Type</label>
+                  <select id="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)" bind:value={subcultureForm.vessel_type}>
+                    <option value="">Select vessel…</option>
+                    {#each vesselTypes as v}
+                      <option value={v}>{v}</option>
+                    {/each}
+                  </select>
+                </div>
+                <div class="form-group env-field">
+                  <label for="sc-temp" title="Incubation/growth room temperature in degrees Celsius">Temp (°C)</label>
+                  <input id="sc-temp" type="number" step="0.1" title="Incubation/growth room temperature in degrees Celsius" bind:value={subcultureForm.temperature_c} placeholder="25" />
+                </div>
+                <div class="form-group env-field">
+                  <label for="sc-ph" title="pH of the culture media used for this passage">pH</label>
+                  <input id="sc-ph" type="number" step="0.01" title="pH of the culture media used for this passage" bind:value={subcultureForm.ph} placeholder="5.7" />
+                </div>
+                <div class="form-group env-field-wide">
+                  <label for="sc-light-cycle" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)">Light Cycle (hrs on/hrs off)</label>
+                  <input id="sc-light-cycle" type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
+                </div>
               </div>
-              <div class="form-group env-field">
-                <label for="sc-temp" title="Incubation/growth room temperature in degrees Celsius">Temp (°C)</label>
-                <input id="sc-temp" type="number" step="0.1" title="Incubation/growth room temperature in degrees Celsius" bind:value={subcultureForm.temperature_c} placeholder="25" />
-              </div>
-              <div class="form-group env-field">
-                <label for="sc-ph" title="pH of the culture media used for this passage">pH</label>
-                <input id="sc-ph" type="number" step="0.01" title="pH of the culture media used for this passage" bind:value={subcultureForm.ph} placeholder="5.7" />
-              </div>
-              <div class="form-group env-field-wide">
-                <label for="sc-light-cycle" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)">Light Cycle (hrs on/hrs off)</label>
-                <input id="sc-light-cycle" type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
-              </div>
-            </div>
 
-            <!-- Transfer To Location -->
-            <div class="section-header">Transfer To Location</div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="sc-loc-room" title="Growth room where this specimen will be placed after transfer">Room</label>
-                <select id="sc-loc-room" title="Growth room where this specimen will be placed after transfer" bind:value={locToRoom}>
-                  <option value="">—</option>
-                  {#each rooms as r}<option value={r}>{r}</option>{/each}
-                </select>
+              <!-- Transfer To Location -->
+              <div class="section-header">Transfer To Location</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="sc-loc-room" title="Growth room where this specimen will be placed after transfer">Room</label>
+                  <select id="sc-loc-room" title="Growth room where this specimen will be placed after transfer" bind:value={locToRoom}>
+                    <option value="">—</option>
+                    {#each rooms as r}<option value={r}>{r}</option>{/each}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sc-loc-rack" title="Storage rack within the room where this specimen will be placed">Rack</label>
+                  <select id="sc-loc-rack" title="Storage rack within the room where this specimen will be placed" bind:value={locToRack}>
+                    <option value="">—</option>
+                    {#each racks as r}<option value={r}>{r}</option>{/each}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed">Shelf</label>
+                  <select id="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed" bind:value={locToShelf}>
+                    <option value="">—</option>
+                    {#each shelves as s}<option value={s}>{s}</option>{/each}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed">Tray</label>
+                  <select id="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed" bind:value={locToTray}>
+                    <option value="">—</option>
+                    {#each trays as t}<option value={t}>{t}</option>{/each}
+                  </select>
+                </div>
               </div>
-              <div class="form-group">
-                <label for="sc-loc-rack" title="Storage rack within the room where this specimen will be placed">Rack</label>
-                <select id="sc-loc-rack" title="Storage rack within the room where this specimen will be placed" bind:value={locToRack}>
-                  <option value="">—</option>
-                  {#each racks as r}<option value={r}>{r}</option>{/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed">Shelf</label>
-                <select id="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed" bind:value={locToShelf}>
-                  <option value="">—</option>
-                  {#each shelves as s}<option value={s}>{s}</option>{/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed">Tray</label>
-                <select id="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed" bind:value={locToTray}>
-                  <option value="">—</option>
-                  {#each trays as t}<option value={t}>{t}</option>{/each}
-                </select>
-              </div>
-            </div>
+            {/if}
 
             <!-- Health Status -->
             <div class="form-group">
