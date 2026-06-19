@@ -4,7 +4,7 @@
 **Schema:** **10 migrations** total; latest is **migration 010** (generational depth columns added in v1.7.0). Migration 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0.
-**In progress (Phase B → C):** Phase B Trust Layer (WP-18–21) is substantially complete; next focus is Phase C de-hardening (WP-22–27) to make one shared engine serve multiple lab verticals.
+**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) is substantially complete (WP-20/21 — Merkle checkpoints + proof export — remain pending). Current focus: Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Trust Layer work (WP-20/21). Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. Phase TX-1 (WP-28–29) targets v1.9.0 alongside or immediately after Phase C.
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -33,8 +33,9 @@ You want two things that pull against each other: **ship soon** and **three vert
 
 1. **Phase A — Ship PTC v1.0 (Section 2). ✅ DONE.** Security + a real signed release + crash-proofing. Shipped across v0.1.20 → v1.1.0.
 2. **Phase B — Polish, stability & trust (Section 3).** "Looking great / working great." Design tokens, empty/loading states, a11y, the first tests — **plus the Trust(less) and Audit Layer** (cryptographically tamper-evident history). Ships as v1.1–v1.2.
-3. **Phase C — De-harden the domain (Section 4).** Convert the baked-in vocabulary (CHECK constraints, enums, labels) into data. This is the keystone. It's invisible to users but it's what makes one codebase serve three labs. Ships as v1.4 (still PTC-only behaviorally).
-4. **Phase D — Cell Culture vertical (Section 5)** and **Phase E — Mycology vertical (Section 6)**, built as *profiles* on the shared engine.
+3. **Phase C — De-harden the domain (Section 4).** Convert the baked-in vocabulary (CHECK constraints, enums, labels) into data. This is the keystone. It's invisible to users but it's what makes one codebase serve three labs. Ships as v1.8 (still PTC-only behaviorally).
+3.5. **Phase TX — Taxonomic & Provenance Module (Section 5).** Equal priority to Phase C and the remaining Trust Layer. Transforms the species registry into a true biological taxonomy: Strain/Cultivar as first-class entities, cryptographic version binding, pedigree tracking, hybridization support, and a powerful hierarchical navigator. Spans three TX sub-phases across v1.9 → v2.x → v3.x.
+4. **Phase D — Cell Culture vertical (Section 6)** and **Phase E — Mycology vertical (Section 7)**, built as *profiles* on the shared engine. Phase TX makes this cleaner: the generic taxonomy engine is already in place before Cell Culture or Mycology verticals need their own strain/cultivar concepts.
 
 > **Why de-harden before building verticals?** Your schema encodes plant vocabulary as SQL `CHECK` constraints — e.g. `stage CHECK(stage IN ('explant','callus','shoot_meristem',...))` at `migrations.rs:391`. The stage constraint was already **expanded in migration 002 and defensively rebuilt in migration 003** — that's two migrations whose job was to widen one constraint via a full table rebuild. WP-23 will run this table-rebuild pattern **one final time** to drop the constraint entirely. Cell lines don't have an "explant" stage; mushroom cultures don't "acclimatize." If you fork now, every vocabulary change is three migrations and three CHECK-constraint rebuilds forever. Lookup tables make vocabulary *data*, and data is cheap to vary per profile.
 
@@ -87,9 +88,9 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 
 ## 3. PHASE B — "Looking great / working great"
 
-### Immediate fixes
+### Immediate fixes ✅ Complete (v1.1.1–v1.2.0)
 
-### WP-06 — Bug/polish backlog clearance
+### WP-06 — Bug/polish backlog clearance — ✅ Delivered in **v1.1.1**
 - **Goal:** Fix the known silent-failure bugs from Phase A so Phase B polish work (WP-13) is building on a working foundation.
 - **Files:** `src/lib/components/SpecimenList.svelte` (Print Summary fix). The QR scanner button-text fix (`QrScanner.svelte:221`, HTML entity `&#8594;` → Unicode `→`) was already applied as a standalone patch and does not need re-implementing.
 - **Steps:**
@@ -101,7 +102,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** The `printSummaryReport` HTML output format and column layout; the `printLabel` QR label format.
 - **Bump:** patch.
 
-### WP-07 — QR scanner: reject non-SteloPTC codes gracefully
+### WP-07 — QR scanner: reject non-SteloPTC codes gracefully — ✅ Delivered in **v1.1.2**
 - **Goal:** Scanning an arbitrary QR code (a URL, vCard, plain text) shows a clear "not a SteloPTC code" message instead of treating the payload as an accession number.
 - **Files:** `src/lib/components/QrScanner.svelte`.
 - **Steps:**
@@ -114,7 +115,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** JSON payload parsing, `onscan` callback, scan storage, camera lifecycle.
 - **Bump:** patch.
 
-### WP-08 — Specimen Work Queue / Daily Task View
+### WP-08 — Specimen Work Queue / Daily Task View — ✅ Delivered in **v1.2.0**
 - **Goal:** Give lab technicians a single view showing which specimens need attention today — removing the need to scan the full list looking for overdue actions.
 - **Files:** new `src/lib/components/WorkQueue.svelte`, `src-tauri/src/commands/specimens.rs` (new `get_work_queue` command), `src/lib/api.ts`, `src/lib/components/Sidebar.svelte` (add nav entry).
 - **Steps:**
@@ -146,9 +147,9 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Popup path for browser/non-Tauri builds; WP-13 print CSS and layout exactly; `afterprint` cleanup so the injected frame never leaks into the live UI.
 - **Bump:** patch → **v1.2.5**.
 
-### Looking great — design system & polish
+### Looking great — design system & polish ✅ Complete (v1.2.1–v1.2.5)
 
-### WP-10 — Extract a central design-token system
+### WP-10 — Extract a central design-token system — ✅ Delivered in **v1.2.1**
 - **Goal:** One source of truth for color, spacing, type, radius, shadow — instead of 15 component `<style>` blocks + a 282-line block in `App.svelte`.
 - **Files:** new `src/lib/styles/tokens.css` (imported once in `App.svelte`), then incremental refactors per component.
 - **Steps:**
@@ -159,7 +160,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Current visual appearance — this is a refactor, not a redesign. Pixel-diff before/after on the dashboard.
 - **Bump:** patch each.
 
-### WP-11 — Loading, empty, and error states everywhere
+### WP-11 — Loading, empty, and error states everywhere — ✅ Delivered in **v1.2.2**
 - **Goal:** Every list/detail view has a skeleton-loading state, a friendly empty state, and an inline error state.
 - **Files:** all list components (`SpecimenList`, `MediaList`, `InventoryManager`, `ReminderList`, `ComplianceView`, `AuditLog`, `ErrorLog`).
 - **Steps:** Add a tiny shared `<DataState>` wrapper (loading / empty / error / ready). Replace bare table renders.
@@ -167,7 +168,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Existing data fetching.
 - **Bump:** patch.
 
-### WP-12 — Accessibility & keyboard pass (WCAG 2.1 AA target)
+### WP-12 — Accessibility & keyboard pass (WCAG 2.1 AA target) — ✅ Delivered in **v1.2.3**
 - **Goal:** Usable by keyboard and screen reader; contrast verified.
 - **Files:** global + per-component.
 - **Steps:** Audit focus order, visible focus rings, `aria-label`s on icon-only buttons (the sidebar uses emoji icons), color-contrast on the health-status slider, modal focus trapping (QR modal, lightbox), and that the existing Ctrl+1–5 shortcuts are documented in-app.
@@ -175,7 +176,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** The 48px touch targets already added for mobile (WCAG 2.5.5).
 - **Bump:** patch.
 
-### WP-13 — Print / PDF polish
+### WP-13 — Print / PDF polish — ✅ Delivered in **v1.2.4**
 - **Goal:** The Culture Certificate and Specimens Summary look like lab documents, not browser printouts.
 - **Depends on:** WP-06 (Print Summary must be working before polishing its output).
 - **Files:** `src/lib/components/SpecimenList.svelte`, `src/lib/components/SpecimenDetail.svelte`, `src/lib/components/QrModal.svelte`.
@@ -184,9 +185,9 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Existing print-API approach; do not change the HTML structure in ways that break the fix from WP-06.
 - **Bump:** patch.
 
-### Working great — stability, performance, tests
+### Working great — stability, performance, tests ✅ Complete (v1.2.4–v1.3.0)
 
-### WP-14 — First test harness (the highest-leverage packet here)
+### WP-14 — First test harness (the highest-leverage packet here) — ✅ Delivered in **v1.2.4**
 - **Goal:** Stop shipping blind. There are currently **zero tests**.
 - **Depends on:** Nothing — but WP-18 (hash-chain audit log) must not be implemented before this packet is complete. Tests are the gate on the Trust layer: cryptographic invariants must be encoded as assertions before being shipped.
 - **Files:** `src-tauri` (Rust `#[cfg(test)]` modules + an integration test dir), `package.json` (add Vitest), `vitest.config.ts`.
@@ -198,7 +199,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** All existing behavior (tests should encode current correct behavior).
 - **Bump:** patch.
 
-### WP-15 — Query performance & indexing audit
+### WP-15 — Query performance & indexing audit — ✅ Delivered in **v1.2.7**
 - **Goal:** Stays fast at 10k+ specimens.
 - **Files:** `src-tauri/src/db/migrations.rs` (indexes), `commands/specimens.rs`, `commands/subcultures.rs`.
 - **Steps:** Verify indexes exist on every column used in `WHERE`/`JOIN`/`ORDER BY` (species_id, stage, project_id, parent_specimen_id, subculture.specimen_id, created_at). Confirm list endpoints paginate (the `PaginatedResponse` type exists — make sure every list uses it, including the dashboard panels). Replace any N+1 patterns (the changelog already shows you fixed one with `list_all_subcultures` — audit for others).
@@ -206,7 +207,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Existing pagination contract.
 - **Bump:** patch.
 
-### WP-16 — Backup → Restore (close the loop)
+### WP-16 — Backup → Restore (close the loop) — ✅ Delivered in **v1.3.0**
 - **Goal:** Backups are only half a feature without restore.
 - **Files:** `src-tauri/src/commands/backup.rs`, Dashboard.
 - **Steps:** Add a "Restore from backup" action (admin only) that validates the file, checkpoints/closes the live DB, swaps it, and reloads. Confirm-twice UX given destructiveness.
@@ -214,7 +215,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** WAL-checkpoint-before-copy logic.
 - **Bump:** minor.
 
-### WP-17 — Excel import (already on your list)
+### WP-17 — Excel import (already on your list) — ✅ Delivered in **v1.3.0**
 - **Goal:** Round-trip the export — parse `.xlsx` to create/update specimens + subcultures.
 - **Files:** new `ImportManager.svelte`, `commands/` import handler.
 - **Steps:** Reuse SheetJS to read the six-sheet workbook; validate rows; show a dry-run diff (create/update/skip counts + per-row errors) before committing inside a transaction.
@@ -362,7 +363,221 @@ This is the work that turns one product into a platform. It is **behavior-preser
 
 ---
 
-## 5. PHASE D — Cell Culture vertical (SteloCC)
+## 5. PHASE TX — Taxonomic & Provenance Module
+
+The Taxonomic & Provenance Module is a **major new workstream** with equal priority to the Trust Layer (WP-20/21) and the Phase C de-hardening refactor. It transforms the species registry from a flat lookup into a true biological taxonomy with Strain/Cultivar support, cryptographic version binding, pedigree tracking, hybridization tools, and a powerful hierarchical navigator. The workstream spans three sub-phases and is designed generically — SteloPTC (plants), SteloCC (animals), SteloMyco (fungi), and future verticals all share the same engine.
+
+**Design principles:**
+- Hash chains propagate **downward**: Species → Strain → Specimen. Each level's genesis audit entry is seeded from its parent's current `entry_hash`, creating an unbroken cryptographic path. Phase TX-3 extends this upward to Genus, Family, and Kingdom.
+- Specimens are **version-bound**: a specimen records not just which strain it was created from, but the exact `chain_seq` of that strain at creation time. The binding is recoverable from the audit log — you can prove which exact version of a strain definition was in effect when any culture was initiated.
+- The system is **domain-generic**: strain types, confirmation methods, and hybridization rules are profile-scoped lookup data (benefiting from Phase C de-hardening), but the core tables, hash chain machinery, and audit log are identical across all verticals.
+- **Start narrow, go deep**: Phase TX-1 focuses on Strain/Cultivar at the Species level — the highest-ROI subset that solves the immediate provenance problem. Full hierarchical depth is TX-2 and TX-3, deferred until the foundation is proven in production.
+- The Species/Strain module is intended to become **one of the most sophisticated parts of the system** — a first-class "badass taxonomy navigator" that researchers will rely on for strain lineage, selection history, and hybridization records.
+
+> **Dependency note:** Phase TX-1 (WP-28, WP-29) can begin after WP-22 (lab_profile concept). The two workstreams Phase C and Phase TX-1 can run in parallel with care on the lookup-table patterns introduced in WP-23/24.
+
+---
+
+#### Phase TX-1 — Foundation · WP-28–29 · Target: v1.9.0
+
+### WP-28 — Strain/Cultivar data model & backend
+
+- **Goal:** Introduce strains as first-class entities sitting between Species and Specimens in both the taxonomic and cryptographic hierarchy. The hash chain for strain records seeds from the species level — making Strain the third tier (after Species) in SteloPTC's cryptographic provenance chain. Taxa above Species (Genus → Kingdom) are classification records only and carry no hash chain lineages.
+- **Files:** new migration (011), new `src-tauri/src/models/strain.rs`, new `src-tauri/src/commands/strains.rs`, `src-tauri/src/db/queries.rs` (new `log_audit_seeded_by_strain` helper), `src/lib/api.ts`.
+- **Accession number design decision — final, non-revisitable:** Strain information is **never** encoded in the accession number format (`YYYY-MM-DD-SPECIESCODE-SEQ`). Three decisive reasons: (1) Accession is immutable; strain classification is not. Strain corrections, reclassifications, and status upgrades happen routinely. An accession that encodes strain becomes a lying label the moment the strain assignment changes. (2) Strain is often unknown at specimen creation time. Many cultures are created before their strain is identified. The accession must be valid from the moment of creation, before any strain is assigned. (3) A culture can be reclassified to a different strain. If genomic work reveals a misidentification, the culture lineage is unchanged — only the strain assignment changes. The accession must not encode information that can be wrong. Strain appears as supplemental metadata in QR payloads, the specimen detail strain pill, and all reports. Labs wanting human-readable combined labels may use the strain code and accession together in their own context — SteloPTC's accession format is culture-lineage-only and does not change for any strain-related reason.
+- **Steps:**
+  1. **Migration 011:** Create three new tables.
+     - `strains`: `id TEXT PRIMARY KEY`, `species_id TEXT NOT NULL REFERENCES species(id)`, `name TEXT NOT NULL`, `code TEXT NOT NULL` (short lab identifier, unique per species, used in UI badges), `strain_type TEXT NOT NULL DEFAULT 'cultivar'` (values: `cultivar | landrace | hybrid | clone | inbred_line | variety | selection | unknown`; will become a profile-scoped lookup table in Phase C/TX-2), `status TEXT NOT NULL DEFAULT 'unverified'` (four values forming a three-tier model: `unverified` [no identity assertion made — default] | `claimed` [user explicitly asserts identity without independent proof] | `confirmed_manual` [manual professional assessment, with friction] | `confirmed_genomic` [genomic fingerprint data present — gold standard]), `claimed_by TEXT`, `claimed_at TEXT`, `confirmation_basis TEXT` (required non-empty when `status = confirmed_manual`; describes the specific physical/observational basis for the identification — the backend rejects `confirmed_manual` transitions if this field is absent or whitespace-only), `status_notes TEXT`, `status_confirmed_by TEXT`, `status_confirmed_at TEXT`, `genomic_fingerprint TEXT` (JSON blob for marker data, ITS sequences, SNP profiles; required for `confirmed_genomic` status), `origin_description TEXT`, `description TEXT`, `is_hybrid BOOLEAN NOT NULL DEFAULT 0`, `created_at TEXT NOT NULL`, `updated_at TEXT NOT NULL`, `created_by TEXT NOT NULL`, `is_archived BOOLEAN NOT NULL DEFAULT 0`.
+     - `strain_parents`: `id TEXT PRIMARY KEY`, `strain_id TEXT NOT NULL REFERENCES strains(id)`, `parent_strain_id TEXT NOT NULL REFERENCES strains(id)`, `parent_role TEXT NOT NULL DEFAULT 'parent'` (values: `parent | maternal | paternal | donor | recipient`), `generation_offset INTEGER NOT NULL DEFAULT 1`, `created_at TEXT NOT NULL`. Supports multi-parent (>2) hybrid pedigrees from the start.
+     - `hybridization_events`: `id TEXT PRIMARY KEY`, `result_strain_id TEXT NOT NULL REFERENCES strains(id)`, `species_id TEXT NOT NULL REFERENCES species(id)`, `parent_strain_a_id TEXT NOT NULL REFERENCES strains(id)`, `parent_strain_b_id TEXT NOT NULL REFERENCES strains(id)`, `parent_strain_a_chain_seq INTEGER NOT NULL` (the chain_seq of parent A at the moment of crossing — immutable provenance record), `parent_strain_b_chain_seq INTEGER NOT NULL` (same for parent B), `parent_specimen_a_id TEXT REFERENCES specimens(id)` (nullable — the specific specimen used as parent A if known), `parent_specimen_b_id TEXT REFERENCES specimens(id)` (nullable — same for parent B), `cross_date TEXT NOT NULL`, `cross_method TEXT`, `generation_label TEXT` (e.g. `F1`, `F2`, `BC1F2`), `notes TEXT`, `performed_by TEXT NOT NULL`, `created_at TEXT NOT NULL`, `created_by TEXT NOT NULL`. Hybridization is a **distinct taxonomic event** — not modeled as a passage or split. Every hybrid strain must have exactly one `hybridization_events` record.
+     - Add to `specimens`: `strain_id TEXT REFERENCES strains(id)` (nullable — existing and new specimens without a strain assignment are fully unaffected), `strain_chain_seq INTEGER` (the strain's `chain_seq` at the moment this specimen was bound to it — immutable "strain version" binding).
+     - Indexes: `idx_strains_species ON strains(species_id)`, `idx_strain_parents_strain ON strain_parents(strain_id)`, `idx_specimens_strain ON specimens(strain_id)`, `idx_hybridization_events_result ON hybridization_events(result_strain_id)`.
+  2. **Hash chain integration:** The hash chain for strain records seeds from the species level. When a strain is created, write a genesis audit entry: `lineage_id = strain_id`, `chain_seq = 0`, `prev_hash = species' current entry_hash`. Hash chains do **not** extend above Species — `taxa` records (Genus → Kingdom) are classification/navigation data only and carry no audit lineages. Add `log_audit_seeded_by_strain()` helper to `queries.rs`. When a specimen is created **with** a `strain_id`, seed its genesis entry from the strain's current `entry_hash`; store the strain's current `chain_seq` in `specimens.strain_chain_seq`. When created **without** a strain, seed from species exactly as today — zero behavior change.
+  3. **Strain commands:** `create_strain`, `update_strain`, `archive_strain`, `get_strain`, `list_strains_by_species` (includes `specimen_count` via COUNT JOIN), `update_strain_status`, `get_strain_pedigree` (Phase TX-1: depth-1 parent list; Phase TX-2: full recursive tree).
+  4. **`create_hybridization_event` command:** Atomically (in one transaction) writes **six records**: the hybrid strain row, both `strain_parents` rows, the `hybridization_events` row (capturing both parent `chain_seq` values at call time), and **four audit chain entries**: (a) hybrid strain genesis entry — `lineage_id = hybrid_strain_id`, `chain_seq = 0`, `prev_hash = species entry_hash`, `action = "genesis"`, details reference the hybridization_event id; (b) hybrid strain hybridize entry — `chain_seq = 1`, `action = "hybridize"`, details include `parent_a_id`, `parent_a_chain_seq`, `parent_b_id`, `parent_b_chain_seq`, `event_id`; (c) `used_as_parent` entry appended to **parent A's** audit chain — records `result_strain_id`, `event_id`, and parent A's `chain_seq` at the moment of crossing; (d) same `used_as_parent` entry appended to **parent B's** audit chain. All six records commit or none do. This creates a **bidirectional verifiable record**: from the hybrid strain you can prove its lineage; from each parent strain's audit log you can see every hybridization event in which it participated and at exactly what version. Validates: both parent strains belong to the same `species_id` — rejects with a clear error otherwise (cross-species is reserved for Phase TX-3/WP-48). Cycle detection runs before persisting. Returns the new strain ID.
+  5. **Status validation — all transitions explicitly defined:**
+     - `any → unverified`: not a valid forward transition (unverified is the initial default only; use archive if a strain record needs to be retired).
+     - `any → claimed`: **low friction** — no required fields, no modal. Records `claimed_by` and `claimed_at`. This is an explicit identity assertion: "I believe this is the named strain." One click, immediately persisted.
+     - `any → confirmed_manual`: **high friction** — `confirmation_basis` must be non-empty (backend enforced with a clear rejection error); on success returns `{ ok: true, warning: "ConfirmedManualWarning" }` typed enum (not a free string); UI must show blocking acknowledgment modal (WP-29). Cannot be transitioned to `confirmed_manual` from `confirmed_genomic` — downgrade is rejected.
+     - `any → confirmed_genomic`: **fingerprint required** — `genomic_fingerprint` must be non-null and non-empty; backend rejects with a clear error otherwise. No modal required (this is the intended gold-standard path, not a risky shortcut). Can upgrade from any status including `confirmed_manual`.
+     - **Downgrade rejections (hard rules):** `confirmed_genomic → confirmed_manual`, `confirmed_genomic → claimed`, `confirmed_genomic → unverified` — all rejected. `confirmed_manual → claimed`, `confirmed_manual → unverified` — rejected. Genomic and manual confirmations are permanent designations. Archive the strain and create a new record if an identity needs to be disputed or retracted.
+  6. **Unit tests:** strain genesis `prev_hash` equals species' current `entry_hash`; strain's `entry_hash` becomes specimen's `prev_hash` when `strain_id` is set; `strain_chain_seq` matches at creation; `any → claimed` succeeds with no extra fields; `confirmed_manual → claimed` is rejected; `confirmed_genomic → confirmed_manual` is rejected; `any → confirmed_manual` rejects missing `confirmation_basis`; `any → confirmed_genomic` rejects null fingerprint; `confirmed_manual → confirmed_genomic` succeeds (upgrade path); `create_hybridization_event` rejects cross-species parents; `create_hybridization_event` writes `used_as_parent` entries on both parent strain chains; parent A's audit chain after hybridization has chain_seq N+1 with `action = "used_as_parent"`; split siblings with a strain still share the same `prev_hash` (fork invariant preserved, `queries.rs` test extended).
+- **Acceptance:** Creating a strain writes a genesis audit entry with `prev_hash = species' last entry_hash`. Creating a specimen bound to that strain seeds its genesis from the strain's current `entry_hash`. `strain_chain_seq` on the specimen matches the strain's audit chain_seq at creation. `create_hybridization_event` atomically creates hybrid strain + parent records + hybridization_events row. `confirmed_manual` is rejected without `confirmation_basis`. All existing `create_specimen` behavior when `strain_id = NULL` is unchanged and all existing tests remain green.
+- **Preserve:** `log_audit_seeded_by_species` path is untouched; no hash chains on `taxa` records; no behavior change for specimens without a strain.
+- **Bump:** minor.
+
+---
+
+### WP-29 — Strain management UI, hybrid wizard & basic taxonomy navigator
+
+- **Goal:** A strain management interface with hybrid creation wizard, a two-column taxonomy navigator, and strict UI enforcement of the `confirmed_manual` status guardrails.
+- **Files:** new `src/lib/components/StrainManager.svelte`, new `src/lib/components/HybridWizard.svelte`, updates to `src/lib/components/SpecimenForm.svelte` and `src/lib/components/SpecimenDetail.svelte`, new `src/lib/components/TaxonomyNavigator.svelte`, `src/lib/components/Sidebar.svelte`.
+- **Steps:**
+  1. **StrainManager.svelte:** Accessible from the Species detail/management page. Per-species strain list: name, code, type, status badge, specimen count, created date. **Status badges — strict rules, no deviation:**
+     - `unverified` → grey `Unverified` badge. Default state; no assertion has been made.
+     - `claimed` → blue `Claimed` badge. User has explicitly asserted identity without independent proof.
+     - `confirmed_manual` → **always** amber `⚠ Manual ID` badge. The word "Confirmed" must NOT appear without the `⚠` symbol and "Manual" qualifier in any badge, label, or tooltip. This designation is permanent — the badge never upgrades to a clean indicator.
+     - `confirmed_genomic` → green `✓ Genomic` badge.
+     Actions: create, edit, archive, update status. The status update control must enforce downgrade rejections in the UI (grey out or hide `confirmed_manual → claimed`, `confirmed_genomic → any lower` options).
+     **Nudge behavior — `unverified` → `claimed`:** In the strain list row for any `unverified` strain, show a subtle "Mark as Claimed" inline button (text-link style, not a prominent CTA) so lab staff can complete the one-click assertion without navigating into the detail view. No modal, no confirmation — it fires immediately and shows a brief success toast. For strains that have remained `unverified` for more than 30 days, add a soft amber dot indicator on the row (a small pulse, not a badge) and update the tooltip on the Unverified badge to: *"Still unverified after 30 days — consider asserting an identity."* No nudge is shown for `claimed` strains; they have made their assertion.
+  2. **`confirmed_manual` blocking modal (non-negotiable):** When the backend returns `{ ok: true, warning: "ConfirmedManualWarning" }`, the UI **must** immediately show a blocking acknowledgment modal. The modal is not dismissable by clicking outside or pressing Escape. It must contain:
+     - Title: "Manual Identification Confirmed"
+     - Body: *"This strain has been marked as Confirmed — Manual. Manual confirmation is based on professional judgment, not genomic verification. It must NOT be cited as equivalent to genomic confirmation in regulatory submissions, IP claims, or research publications without explicit disclosure. The basis for this confirmation has been recorded in the audit log."*
+     - Single button: **"I Acknowledge"** (no Cancel, no close-X).
+     A toast notification alone is insufficient and must not be used as a substitute.
+  3. **HybridWizard.svelte:** Multi-step wizard for creating a hybrid strain. Accessible via "+ New Hybrid Strain" in StrainManager. Steps: (1) select species, (2) select Parent A and its role (`maternal`/`paternal`/`parent`), (3) select Parent B filtered to same species — cross-species selection is blocked with an inline error, (4) enter name / code / strain_type, (5) optionally record specific parent specimens used in the cross, (6) enter cross date and method, (7) pedigree preview showing the new strain connected to both parents, (8) confirm. On confirm, calls `create_hybridization_event`. The wizard captures parent `chain_seq` values from the current audit chain state at submission time, which are recorded in `hybridization_events`.
+  4. **SpecimenForm.svelte update:** After species selector, add optional strain selector (lazy-loads strains for the selected species with status badges). Default = "No strain assigned" — preserves all existing behavior. If a strain is selected, show its status badge and origin description as read-only context. **`unverified` vs `claimed` behavior in this form:**
+     - If an `unverified` strain is selected, show a soft inline hint beneath the selector: *"This strain's identity has not been asserted yet. Consider updating its status to Claimed if you believe this is the correct strain."* Render as a grey info row (not a warning, not a blocking prompt). The user can proceed to save without acting on it.
+     - If a `claimed` strain is selected: no extra message. The assertion is sufficient for normal form flow.
+     - If `confirmed_manual` or `confirmed_genomic`: no extra message.
+  5. **SpecimenDetail.svelte update:** When `strain_id` is present, show a **Strain** pill in the header: `[CODE · v{strain_chain_seq} · STATUS]`. The version number makes the binding explicit and traceable. Clicking the pill navigates to the strain's detail. Status badge in the pill must follow the same strict rules as step 1. **Pill tooltips — explicit per status:**
+     - `unverified` pill: grey background. Tooltip: *"No identity assertion has been made for this strain. Use the Strain Manager to mark it as Claimed if you believe the assignment is correct."* Pill also shows a subtle inline "Mark as Claimed →" text-link that opens the strain's status update view directly.
+     - `claimed` pill: blue background. Tooltip: *"Identity asserted by lab staff but not independently verified."* No additional prompt.
+     - `confirmed_manual` pill: amber background, `⚠` prefix. Tooltip: *"Manually confirmed. Not equivalent to genomic verification — see audit log for the documented basis."*
+     - `confirmed_genomic` pill: green background, `✓` prefix. Tooltip: *"Genomic verification confirmed. Fingerprint data on record."*
+  6. **TaxonomyNavigator.svelte (Phase TX-1 version):** Two-column panel. Left: species list with strain-count chips and a search bar. Right: on clicking a species, shows its strains with status badges and specimen counts. Clicking a strain shows a mini panel with all bound specimens (accession, stage, health, quick-navigate). Add as sidebar nav entry "Taxonomy." The Phase TX-1 version is the foundation TX-2 expands into a full multi-rank column browser (WP-39). **Filter options for strain status (TX-1):** the right column must include a status filter with exactly these options: `All` (default) | `Unverified` | `Claimed` | `Confirmed (Manual)` | `Confirmed (Genomic)` | `Confirmed (Any)`. `Unverified` and `Claimed` are separate filter values — a filter for `Claimed` must not show `Unverified` strains and vice versa.
+  7. **Print / report footnotes:** Footnote rules per status, in all print views, PDF exports, and reports regardless of filter settings:
+     - `confirmed_manual` → mandatory footnote `†`: *"† Strain identification based on manual assessment only, not genomic verification. See audit log for confirmation basis."*
+     - `unverified` → soft footnote `‡`: *"‡ Strain identity not yet asserted by lab staff."*
+     - `claimed` → no footnote in standard reports. In compliance/regulatory report mode (if a profile setting is configured), add: *"§ Strain identity asserted by lab staff; no independent verification performed."*
+     - `confirmed_genomic` → no footnote.
+     These rules apply to all basic print outputs in WP-29 and must be carried forward to all future report features.
+  8. Add `specimen_count` to `list_strains_by_species` response (COUNT JOIN on `specimens WHERE strain_id = strains.id AND is_archived = false`).
+- **Acceptance:** Can create a strain; assign it to a new specimen; specimen detail shows version-pinned strain pill with correct status badge; hybrid wizard calls `create_hybridization_event` and renders pedigree preview correctly; `confirmed_manual` status change triggers blocking modal with the exact text above (a toast alone fails this check); Taxonomy Navigator shows Species → Strains → Specimens tree and is text-searchable; print views include the `confirmed_manual` footnote.
+- **Preserve:** SpeciesManager.svelte structural behavior unchanged. All existing specimen creation without a strain continues to work identically.
+- **Bump:** minor → **v1.9.0** — Phase TX-1 complete.
+
+---
+
+#### Phase TX-2 — Expansion · WP-35–39 · Target: v2.2.x–v2.5.x
+
+**Goal:** Deeper taxonomy (Genus → Kingdom), NCBI Taxonomy import with sync and conflict resolution, multi-generational pedigree visualization, intraspecific hybridization, and a powerful full-featured taxonomy navigator.
+
+**Depends on:** Phase TX-1 complete; Phase C complete (profile-scoped lookup tables power the `strain_type` and `strain_status` vocabularies; domain-specific terminology driven by UI manifest from WP-25).
+
+---
+
+### WP-35 — Expanded taxonomy backbone (Genus → Kingdom)
+
+- **Goal:** Model the ranks above Species as first-class classification records enabling hierarchical navigation, descendant-count queries, and NCBI sync in WP-36.
+- **Files:** new migration, new `src-tauri/src/models/taxon.rs`, new `src-tauri/src/commands/taxa.rs`.
+- **Steps:**
+  1. Create `taxa` table: `id TEXT PRIMARY KEY`, `rank TEXT NOT NULL` (values: `kingdom | phylum | class | order | family | genus`), `name TEXT NOT NULL`, `parent_id TEXT REFERENCES taxa(id)`, `ncbi_taxon_id INTEGER NULL`, `ncbi_updated_at TEXT NULL`, `local_override BOOLEAN NOT NULL DEFAULT 0` (true = local edits take priority over NCBI sync), `created_at TEXT NOT NULL`, `updated_at TEXT NOT NULL`. Add `taxon_path TEXT` (JSON array of taxon IDs from kingdom to genus) and `ncbi_taxon_id INTEGER` to the existing `species` table.
+  2. **Classification data only — no hash chain lineages:** `taxa` records are navigation and classification records. They do **not** receive audit lineages or hash chain entries. Taxonomic reclassifications (common at higher ranks) would otherwise break chains in ways that cannot be corrected without invalidating downstream strain and specimen records. Hash chain cryptographic integrity in SteloPTC is scoped to: Species → Strain → Specimen. Full-taxonomy hash chains extending above Species are a future optional consideration (see WP-45), not a current design goal.
+  3. Commands: `create_taxon`, `get_taxon`, `update_taxon`, `list_taxa_by_rank`, `get_taxon_descendants` (returns all taxa, species, strains, and specimen counts below a given node — the backbone of the advanced navigator in WP-39).
+  4. Data migration: auto-create genus taxa from existing `species.genus` text values; back-fill `species.taxon_path`; resolve duplicates by grouping identical genus names under a shared taxon record.
+- **Acceptance:** Full taxonomy from kingdom to genus is representable; `get_taxon_descendants` returns correct counts at every rank; species back-fill completes without data loss; no audit log entries are written for taxa records.
+- **Preserve:** All existing species CRUD; `species.genus` text field retained for backward compatibility.
+- **Bump:** minor.
+
+---
+
+### WP-36 — NCBI Taxonomy import & ongoing sync
+
+- **Goal:** Seed and maintain the `taxa` table from NCBI Taxonomy with admin-controlled conflict resolution.
+- **Files:** new `src-tauri/src/commands/ncbi.rs`, new migration for `ncbi_sync_log`, Admin UI panel.
+- **Steps:**
+  1. Create `ncbi_sync_log` table: `id TEXT PK`, `sync_type TEXT NOT NULL` (`import | update | conflict`), `taxon_id TEXT`, `ncbi_taxon_id INTEGER`, `conflict_details TEXT` (JSON: local vs. NCBI name/rank diff), `resolved_at TEXT`, `resolved_by TEXT`, `resolution TEXT` (`kept_local | accepted_ncbi | merged`), `created_at TEXT NOT NULL`.
+  2. `import_ncbi_taxonomy` command (admin-only): accepts a set of NCBI taxon IDs or a rank range. Dry-run preview before any writes. Skips rows with `local_override = true`. Writes all name/rank conflicts to `ncbi_sync_log`.
+  3. `resolve_ncbi_conflict` command: takes a `sync_log_id` and a `resolution` choice; applies the resolution and updates the taxon record.
+  4. `sync_ncbi_taxon(ncbi_taxon_id)`: re-downloads a single taxon's data and updates if no conflict; records result in `ncbi_sync_log`.
+  5. Admin UI panel: lists pending conflicts, shows local vs. NCBI values side-by-side, enables resolution and manual sync trigger.
+- **Acceptance:** Import populates `taxa` for at least two plant families from NCBI; conflicts detected and logged; resolution via UI correctly updates the taxon record.
+- **Bump:** minor.
+
+---
+
+### WP-37 — Multi-generational pedigree tools
+
+- **Goal:** Visualize and export the full multi-generational pedigree of any strain, tracing both ancestor and descendant lines through all hybrid generations.
+- **Files:** `src-tauri/src/commands/strains.rs` (extend and add pedigree commands), new `src/lib/components/PedigreeChart.svelte`.
+
+**Conceptual distinction — strain pedigree vs. specimen chain:**
+These are two independent but complementary lineage systems. The **strain pedigree** (hybridization lineage) walks `strain_parents` — it answers how a strain came to exist through successive crossings. The **specimen chain** (culture lineage) walks `specimens.parent_id` — it answers how a particular physical culture was propagated through passages and splits. A complete provenance view of any specimen shows both: "This specimen is culture lineage #003B → #003 (original split), bound to strain SKY-OG v3 at creation, where SKY-OG is an F1 hybrid of BLUE-DRM × CHEM-DOG." WP-37 addresses the strain pedigree side; specimen chains are already implemented.
+
+- **Steps:**
+  1. **`get_strain_ancestry(strain_id, max_depth)`:** walk `strain_parents` upward (toward founders). Returns a DAG JSON structure with node metadata per strain: name, code, status badge, species, hybridization_event details for each joining edge (cross date, method, generation label, which chain_seqs were used). Detects and rejects circular references. Default depth: 5. Used for "Where did this strain come from?"
+  2. **`get_strain_descendants(strain_id, max_depth)`:** walk `strain_parents` downward (toward derived hybrids). Returns all hybrid strains for which the target strain is a direct or indirect ancestor. Same JSON shape as ancestry for interoperability. Used for "What has been bred from this strain?" and "Is this founder still being used in active crosses?"
+  3. **`get_strain_specimen_tree(strain_id, include_descendants: bool)`:** returns all specimens ever bound to this strain. When `include_descendants = true`, first calls `get_strain_descendants` to collect all descendant hybrid strain IDs, then returns all specimens bound to any of them. Groups results by strain with specimen metadata (accession, stage, health, archived). Used for: "Show every active culture in my collection that descends from this founder strain, across all crosses and all splits." This is the most powerful provenance query in the system.
+  4. **`PedigreeChart.svelte`:** renders ancestor and descendant views as a DAG (switchable with a toggle button). Each node: strain name, status badge, generation depth, specimen count chip. Clicking a node navigates to that strain's detail. Collapse/expand per branch. A "Specimen Tree" button on any node triggers `get_strain_specimen_tree` for that strain and opens the results in a slide-in panel.
+  5. **"Export Pedigree" button:** produces portable JSON including all ancestor and descendant strain records, their hybridization_event records, and their audit chain positions at the time of each crossing. Suitable for research citation, regulatory documentation, and external pedigree analysis tools.
+- **Acceptance:** A strain with 3 ancestor generations shows all ancestors correctly; `get_strain_descendants` finds all known descendant hybrids; `get_strain_specimen_tree(id, true)` returns specimens across all descendant strains; circular references are rejected with a clear error; export round-trips without data loss.
+- **Bump:** minor.
+
+---
+
+### WP-38 — Advanced hybridization tools (generation labeling, backcross notation, cross-species guard hardening)
+
+- **Goal:** Extend the Phase TX-1 hybrid model with generation naming, backcross notation, and hardened cross-species guardrails. The core hybridization model (`hybridization_events` table, `create_hybridization_event` command, and basic wizard) was delivered in WP-28 and WP-29; this packet builds on it.
+- **Files:** `src-tauri/src/commands/strains.rs` (extend `create_hybridization_event`), `src/lib/components/HybridWizard.svelte` (expand), `src/lib/components/StrainDetail.svelte`.
+- **Steps:**
+  1. **Generation labeling:** Add first-class generation label support to the hybrid wizard. Supported labels: `F1`, `F2`, `F3`, `BC1F1`, `BC1F2`, and custom free-text. `generation_label` is stored on `hybridization_events.generation_label`. Auto-suggest the generation label based on parent generation labels when both parents have known labels.
+  2. **Backcross notation:** When one parent is a known ancestor of the other (detected via a `strain_parents` walk), display a backcross indicator and suggest appropriate BC notation. Record backcross ancestry depth in `hybridization_events.notes` until a dedicated field is warranted.
+  3. **Cross-species guard hardening:** Add an explicit admin-only override path for cross-species hybridization (reserved for full support in Phase TX-3/WP-48). In TX-2, the override: requires a separate admin "unlock" that writes a permanent, unremovable warning to the audit log; is not accessible from the normal wizard flow; displays a red permanent warning banner on the resulting strain's detail view. The normal wizard continues to block cross-species selection with a clear error.
+  4. **Generational stats on strain detail:** Show per-generation specimen counts and health summaries for all F-generations derived from a founder strain.
+- **Acceptance:** Hybrid wizard auto-suggests generation labels; backcross notation generated correctly for a 3-generation pedigree; cross-species attempt via normal wizard path is blocked with a clear error; admin unlock path writes an unremovable audit warning.
+- **Bump:** minor.
+
+---
+
+### WP-39 — Advanced taxonomy navigator
+
+- **Goal:** Upgrade the Phase TX-1 two-column navigator into a full multi-rank column browser with powerful filtering, descendant counts, and keyboard navigation.
+- **Files:** `src/lib/components/TaxonomyNavigator.svelte` (major expansion of Phase TX-1 version).
+- **Steps:**
+  1. **Column browser:** Kingdom → Phylum → Class → Order → Family → Genus → Species → Strain → Specimens. Each column is a scrollable list with descendant counts. Selecting a node populates the next column. Columns collapse on mobile (accordion). Breadcrumb trail shows the current path.
+  2. **Filter panel:** filter by rank, domain/kingdom, strain status (`claimed only | confirmed only | all`), minimum specimen health, specimen stage, quarantine flag (`any | clean | flagged`), active/archived.
+  3. **Descendant count bubble-up:** each node shows `(N strains · M specimens)` aggregated from all descendants — not just direct children. Powered by `get_taxon_descendants` from WP-35.
+  4. **Global search:** searches across taxonomy names, strain names, codes, and accession numbers simultaneously. Results grouped by rank.
+  5. **Quick action panel:** clicking a strain node shows a slide-in panel listing all bound specimens with a quick-navigate button per row.
+  6. **Keyboard navigation:** arrow keys between columns; Enter to drill down; Escape to go back; `/` to focus search.
+  7. **State persistence:** selected path stored in the app route state so position is restored on next visit.
+- **Acceptance:** Full navigation from Kingdom to individual specimens in one flow; all filters work correctly; descendant counts match actual data; keyboard navigation complete; mobile layout usable.
+- **Bump:** minor → Phase TX-2 complete.
+
+---
+
+#### Phase TX-3 — Advanced · WP-45–49 · Target: v3.x
+
+*These packets are specified at the design level. They will be fully broken into concrete steps when Phase TX-2 is complete.*
+
+---
+
+### WP-45 — Full taxonomic hash chain (Kingdom → Strain → Specimen) — *Optional / Not Scheduled*
+
+> **Status: Deprioritized.** This packet is a design placeholder and is explicitly not part of the committed TX-3 plan. Retained here for future consideration only.
+
+If future demand warrants it: extend hash chain seeding to all taxonomy ranks so each `taxa` record's genesis is seeded from its parent taxon's current `entry_hash`. The full cryptographic path Kingdom → Phylum → Class → Order → Family → Genus → Species → Strain → Specimen would be continuously verifiable end-to-end. Highest value for IP-priority disputes requiring a dated, unbroken provenance chain from classification to culture.
+
+**Fundamental tension that must be resolved before scheduling:** Taxonomic reclassifications (common at family, order, and class level) would break the chain at the reclassified rank and invalidate every strain and specimen record below it. No satisfactory mitigation is known at the time WP-45 was written. Until this is resolved, hash chain integrity remains intentionally scoped to Species → Strain → Specimen.
+
+---
+
+### WP-46 — Cross-domain taxonomy support
+
+Define `domain` as a per-profile configuration. SteloPTC defaults to `Plantae`; SteloCC uses `Animalia`; SteloMyco uses `Fungi`; future SteloBio uses `Bacteria/Archaea`. Domain controls: default ranks shown in the Navigator, strain type vocabulary (`cultivar/variety` for plants, `breed/ecotype` for animals, `strain/isolate` for fungi/bacteria), confirmation method vocabulary (`morphological/genomic/phenotypic` per domain). The underlying tables, audit log, and all cryptographic machinery are identical across all domains — only the UI manifest and lookup table data vary.
+
+---
+
+### WP-47 — Breeding programs & multi-generational selection tracking
+
+Introduce a `breeding_programs` table (name, goal, start date, target traits, founder strains). Each hybrid strain can be linked to a program. A `breeding_records` table tracks selection notes, fitness scores, and generation number per strain per program. A breeding program dashboard compares all generations produced, selection milestones met, and performance trends across generations. Enables structured crop improvement, strain stabilization, and documented selection histories for any vertical.
+
+---
+
+### WP-48 — Advanced hybridization (cross-species, F1/F2, backcross)
+
+Lift the same-species constraint from WP-38 with an explicit admin override that writes a permanent warning to the audit log. Support F1/F2/F3 generation naming, backcross notation (`BC1F2`), and introgression lines. Add `hybrid_generation_code` field to strains. Optional hybrid vigor scoring (user-defined numeric metric). Full cross-species pedigree chart.
+
+---
+
+### WP-49 — Custom taxa & Darwin Core export
+
+Allow labs to define provisional taxa not yet in NCBI (undescribed species, working names, lab-internal groupings). Custom taxa get `status = provisional`. A mapping table links provisional names to accepted NCBI taxa once published. Export the full taxonomy tree (or any subtree) as Darwin Core XML/JSON for community sharing, regulatory submission, or integration with herbarium and museum databases.
+
+---
+
+## 6. PHASE D — Cell Culture vertical (SteloCC)
 
 Built entirely as profile data + a handful of cell-specific features on the shared engine. Mammalian/insect/cell-line work, not plants.
 
@@ -388,7 +603,7 @@ Built entirely as profile data + a handful of cell-specific features on the shar
 
 ---
 
-## 6. PHASE E — Mycology vertical (SteloMyco)
+## 7. PHASE E — Mycology vertical (SteloMyco)
 
 Contamination is even more central here than in PTC — the engine's contamination tracking is a real advantage. Built as profile data + a few mycology-specific features.
 
@@ -413,7 +628,7 @@ Contamination is even more central here than in PTC — the engine's contaminati
 
 ---
 
-## 7. PHASE F — Cross-cutting & beyond (post-vertical)
+## 8. PHASE F — Cross-cutting & beyond (post-vertical)
 
 These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platform exists so they benefit all three verticals at once:
 
@@ -428,7 +643,7 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 
 ---
 
-## 8. Risk register & guardrails
+## 9. Risk register & guardrails
 
 | Risk | Mitigation |
 |---|---|
@@ -438,10 +653,17 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | Migration mistakes on table rebuilds | Every rebuild migration ships with WP-14 coverage that loads a pre-migration fixture DB and asserts row counts + values survive. |
 | Default-credential / CSP issues reach users | WP-01 and WP-02 are gates on v1.0 — non-negotiable. |
 | Cryptographic invariants broken by future audit writes | WP-14 tests must encode the canonical serialization and chain-continuity invariants from WP-18 before they are shipped. The chain must be verified by the CI test suite on every push. |
+| Strain data model adopted prematurely before Phase C lookup tables exist | WP-28 introduces `strain_type` as a plain TEXT column (not FK'd to a lookup table) and documents it as a pre-lookup placeholder. WP-35+ migrates it to a profile-scoped lookup table after Phase C. The four `status` values (`unverified`, `claimed`, `confirmed_manual`, `confirmed_genomic`) are fixed application constants, not lookup-table rows — they encode structural semantics with distinct backend behavior and must not be user-configurable. |
+| Specimens bound to a strain version that is later updated → confusing "which version?" | The `strain_chain_seq` on the specimen is immutable after creation. The strain's audit lineage preserves every version. The Strain detail page must show a history of all chain versions with dates so the binding is interpretable. |
+| Strain "Confirmed — Manual" used in regulatory submissions as equivalent to genomic confirmation | `confirmed_manual` requires a non-empty `confirmation_basis` (backend enforced). The status transition returns a typed `ConfirmedManualWarning` enum that mandates a blocking acknowledgment modal in the UI — a toast is insufficient. The `⚠ Manual ID` badge must appear permanently; the word "Confirmed" must not appear without the `⚠` qualifier. All print views must footnote `confirmed_manual` strains regardless of filter settings. These are non-negotiable UI rules, not suggestions. |
+| NCBI Taxonomy sync overwrites locally-curated names | The `local_override` flag on `taxa` records is the explicit guard. All sync operations must check this flag before writing. UI must make it easy to set `local_override = true` for any taxon the lab has curated. |
+| Pedigree tracking creates circular references in `strain_parents` | `get_strain_pedigree` and `create_hybridization_event` must run cycle-detection before persisting. DB-level prevention via a trigger or CHECK is not straightforward with recursive self-joins; rely on application-level validation and unit tests covering the cycle case. |
+| Hybridization event ambiguity — hybrid strain created via passage/split workaround instead of `hybridization_events` | Enforce in code review: hybrid strain creation must only happen via `create_hybridization_event`. The `is_hybrid` flag on `strains` should always have a corresponding `hybridization_events` record; add a DB CHECK or application-level assertion for this invariant. Document clearly in onboarding that hybridization is a distinct event, not a passage. |
+| Phase TX scope creep delays Phase C or Phase D | Phase TX-1 (WP-28, WP-29) includes the hybridization model and basic wizard — no deeper taxonomy, no pedigree charts, no NCBI sync. All TX-2 and TX-3 features are gated behind Phase TX-2 starting after Phase C complete. The hybrid wizard in WP-29 is scoped to intraspecific crossing only; cross-species and generation labeling are TX-2 (WP-38). |
 
 ---
 
-## 9. Versioning plan
+## 10. Versioning plan
 
 | Version | Contains | Status |
 |---|---|---|
@@ -466,8 +688,11 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | v1.6.1–v1.6.4 | Hash-chain bug fixes; demo data chaining; species-seeded chain anchoring; atomic specimen + audit | ✅ shipped |
 | **v1.7.0** | Generational depth, lineage passage offsets, `root_specimen_id`, sibling display (migration 010) | ✅ shipped |
 | **v1.8.0** *(Phase C)* | Phase C — profile-ready engine (PTC behavior unchanged, WP-22–27) | planned |
-| v2.0.0 | First multi-app release: SteloPTC + **SteloCC** | planned |
+| **v1.9.0** *(Phase TX-1)* | **Phase TX-1 — Strain/Cultivar foundation:** WP-28 (strain data model + hash chain seeding + backend), WP-29 (Strain Manager UI + basic Taxonomy Navigator). New migration 011. | planned |
+| v2.0.0 | WP-20 Merkle checkpoints + WP-21 Merkle proof export (Trust Layer Phase 1 complete); first multi-app release: SteloPTC + **SteloCC** | planned |
+| v2.x *(Phase TX-2)* | **Phase TX-2 — Taxonomy expansion:** WP-35 expanded taxonomy backbone (Genus→Kingdom), WP-36 NCBI import/sync, WP-37 multi-generational pedigree tools, WP-38 intraspecific hybridization, WP-39 advanced taxonomy navigator | planned |
 | v2.1.0 | **SteloMyco** | planned |
+| v3.x *(Phase TX-3)* | **Phase TX-3 — Advanced taxonomy:** WP-45 full taxonomic hash chain, WP-46 cross-domain support, WP-47 breeding programs, WP-48 advanced hybridization, WP-49 custom taxa & Darwin Core export | future |
 | v2.x+ | Phase F cross-cutting features; Trust Layer **Phase 2** (Dogecoin anchoring, WP-65+) when external proof is needed | future |
 
 > **On the version history:** the jump from `0.1.19` to the `1.0.0-x` line was intentional — the `0.1.x` series was a feature-complete-but-unreleased prototype, and `1.0.0-x` marks the first **production-grade, security-hardened, signed** release with a real GitHub Release. Note the pre-release label shipped as numeric **`1.0.0-1`** (not `rc.1`): the WiX MSI bundler rejects non-numeric pre-release identifiers. Phase A then settled at **v1.1.0** once onboarding (WP-05) landed.

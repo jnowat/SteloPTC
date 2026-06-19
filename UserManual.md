@@ -14,24 +14,30 @@ It combines traditional lab record-keeping with an immutable, hash-chained audit
 2. Core Concepts
    - Specimens
    - Species
+   - Strains & Cultivars
    - Passage vs. Split
    - Quick Reference: Passage vs. Split
    - Lineage & Hash Chain
    - Genealogy & Provenance
 3. Getting Started
 4. Managing Species
-5. Working with Specimens
-6. Splitting Cultures (Detailed)
-7. Recording Passages / Subcultures
-8. The Audit Log & Cryptographic Hash Chain
-9. Provenance & Genealogy Tracking
-10. Reminders & Follow-ups
-11. Importing & Exporting Data
-12. Printing Reports
-13. Understanding the Hash Chain & Data Integrity (Advanced)
-14. Troubleshooting & Common Issues
-15. Best Practices for Tissue Culture Tracking
-16. Future Features
+5. Managing Strains & Cultivars
+   - Creating Strains
+   - Strain Status: Claimed vs. Confirmed
+   - Hybridization & Pedigree
+6. Taxonomy Navigator
+7. Working with Specimens
+8. Splitting Cultures (Detailed)
+9. Recording Passages / Subcultures
+10. The Audit Log & Cryptographic Hash Chain
+11. Provenance & Genealogy Tracking
+12. Reminders & Follow-ups
+13. Importing & Exporting Data
+14. Printing Reports
+15. Understanding the Hash Chain & Data Integrity (Advanced)
+16. Troubleshooting & Common Issues
+17. Best Practices for Tissue Culture Tracking
+18. Future Features & Roadmap
 
 ---
 
@@ -64,9 +70,28 @@ A specimen is an individual culture in your lab. Each specimen has:
 
 ### Species
 
-Species are the foundation of the system. When you create a new species, it starts its own hash chain. Every specimen created from that species inherits the species hash as its starting point. This creates a permanent cryptographic link between the species definition and every culture derived from it.
+Species are the foundation of the system. When you create a new species, it starts its own hash chain. Every specimen or strain created from that species inherits the species hash as its starting point. This creates a permanent cryptographic link between the species definition and every culture derived from it.
 
-Because of this role, species become **very protected** once they have been used to create any specimens.
+Because of this role, species become **very protected** once they have been used to create any specimens or strains.
+
+### Strains & Cultivars
+
+A **strain** (also called a cultivar, variety, clone, or breed depending on your domain) is a named genetic variant of a species. Strains sit one level below species in the taxonomic hierarchy and one level above individual specimens in the provenance chain.
+
+Every strain in SteloPTC has:
+- A unique **name and code** (e.g. "Skywalker OG" / `SKY-OG`)
+- A **type** (`cultivar`, `landrace`, `hybrid`, `clone`, `inbred_line`, etc.)
+- A **status** indicating how well its identity has been verified (see Section 5)
+- Optional **pedigree parents** (for hybrids — recorded via a `hybridization_events` record)
+- Optional **genomic fingerprint** data (marker profiles, ITS sequences, SNP data)
+
+**Strains and accession numbers are permanently separate.** A specimen's accession number (e.g. `2025-01-15-CAN-SAT-001`) identifies the culture lineage — it never encodes the strain. This is a deliberate, final design decision: strain classifications change (corrections, reclassifications, status upgrades), but accession numbers must remain stable and unambiguous for the life of the culture. Strain identity appears as supplemental metadata in QR payloads, the specimen detail strain pill, and all reports — not in the accession itself.
+
+**Why strains matter for provenance:**
+
+When you create a specimen and assign it to a strain, SteloPTC records not just which strain it came from, but the exact *version* of that strain's definition at the time of creation. This is the `strain_chain_seq` — the strain's audit chain position at binding time. If the strain definition is later updated (new name, new genomic data, status change), older specimens remain permanently linked to the earlier version. You can always look at a specimen and know exactly what the strain record said when that culture was initiated.
+
+The cryptographic chain for a strain-bound specimen flows: **Species hash → Strain genesis hash → Specimen genesis hash**. This three-level chain is verifiable end-to-end.
 
 ### Passage vs. Split
 
@@ -200,7 +225,212 @@ Every specimen inherits its species’ hash at creation time. This hash becomes 
 
 ---
 
-## 5. Working with Specimens
+## 5. Managing Strains & Cultivars
+
+Strains and cultivars give you a precise layer of identity between species and individual specimens. This section covers how to create and manage them in SteloPTC.
+
+> **Note:** Strain management is part of Phase TX-1 (v1.9.0 target). If your installation does not yet show strain features in the Species page, this functionality is not yet available in your version.
+
+### What is a Strain?
+
+A strain (or cultivar, variety, clone, breed — the terminology varies by domain) is a named genetic variant of a species. Examples:
+- Plant tissue culture: "Cavendish Giant Dwarf" banana cultivar, "Blue Dream" cannabis variety
+- Mycology: "Tasmanian" oyster mushroom strain, an isolated high-yield Ganoderma clone
+- Cell culture: a specific cell line variant derived from a parent line
+
+Strains allow you to track not just *what species* a specimen is, but *which specific genotype* — which matters enormously for research consistency, IP protection, and regulatory documentation.
+
+### Creating Strains
+
+Strains are created from within the Species management area.
+
+1. Go to **Species** in the sidebar.
+2. Click on a species to open its detail view.
+3. Click **Strains** → **+ New Strain**.
+4. Fill in:
+   - **Name** — the human-readable name (e.g. "Skywalker OG" or "Cavendish Giant Dwarf")
+   - **Code** — a short lab code used in badges and quick reference (e.g. `SKY-OG`)
+   - **Type** — `cultivar`, `landrace`, `hybrid`, `clone`, `inbred_line`, `variety`, `selection`, or `unknown`
+   - **Status** — see below; defaults to `Unverified`
+   - **Origin Description** — optional notes on where this strain came from (source lab, purchase record, isolation history)
+   - **Description** — any additional notes
+5. Click **Create Strain**.
+
+The strain's genesis is cryptographically anchored: SteloPTC writes a genesis audit entry seeded from the parent species' current hash, creating a permanent link between the strain and the species definition that was in effect at the moment the strain was registered.
+
+### Assigning a Strain to a Specimen
+
+When creating a new specimen, the specimen form shows an optional **Strain** selector after the species selector. Select the strain if you know which one this culture represents. You can also leave it unassigned and add it later.
+
+When a strain is selected, the specimen's genesis hash is seeded from the strain's current hash — not the species hash. This creates the three-level chain: **Species → Strain → Specimen**.
+
+The specimen detail view shows a **Strain pill** in the header: `[CODE · v{version} · STATUS]`. The version number is the strain's audit chain sequence number at the time this specimen was created.
+
+---
+
+### Strain Status Levels
+
+SteloPTC uses a **four-value, three-tier status model** for strain identity. The tiers move from "no assertion" through "asserted" to "verified."
+
+| Status | Badge | Meaning |
+|--------|-------|---------|
+| `Unverified` | Grey `Unverified` | Default. A strain record exists, but no one has made an explicit identity assertion for this culture. Appropriate when a strain is assigned at creation time but the source hasn't been documented. |
+| `Claimed` | Blue `Claimed` | A user has explicitly stated "I believe this is the named strain." Low friction — one click, no proof required. Suitable for working collections where source documentation or purchase records support the identity but no independent verification has been performed. |
+| `Confirmed — Manual` | Amber `⚠ Manual ID` | A lab professional has manually assessed the identity — based on morphological characteristics, documented provenance, or expert evaluation. **High friction** — requires a documented basis and a mandatory acknowledgment. The `⚠` qualifier is permanent and appears in all views, reports, and exports. This is NOT equivalent to genomic confirmation. |
+| `Confirmed — Genomic` | Green `✓ Genomic` | Genomic verification has been performed and fingerprint data (marker profiles, ITS sequences, SNP profiles, etc.) is stored in the strain record. This is the gold standard for strain identity. |
+
+**Unverified vs. Claimed — what's the practical difference?**
+
+- **Unverified**: you've registered the strain and assigned it to a specimen, but you haven't made a formal claim. Might mean "we received this from a supplier labeled as X, and we haven't even looked at it yet."
+- **Claimed**: you've actively asserted "I believe this is strain X." This might be based on the supplier label, purchase records, or simple morphological familiarity. It's a recorded assertion, not a verification — but it's a step above silence.
+
+Both `Unverified` and `Claimed` reflect that identity is **not independently verified**. The distinction is whether someone has made a positive assertion. The table below summarizes how each state behaves across the UI:
+
+#### Unverified vs. Claimed — Behavior Across the UI
+
+| Context | `Unverified` | `Claimed` |
+|---|---|---|
+| **Strain selector** (specimen creation) | Soft inline hint: *"Identity not yet asserted — consider marking as Claimed."* Grey info row; does not block save. | No extra message. The assertion is sufficient for normal form flow. |
+| **Specimen detail pill** | Grey pill. Tooltip: *"No identity assertion has been made. Use the Strain Manager to mark as Claimed."* Pill shows a "Mark as Claimed →" text-link. | Blue pill. Tooltip: *"Identity asserted by lab staff, not independently verified."* No additional prompt. |
+| **Strain list** (StrainManager) | Grey `Unverified` badge. "Mark as Claimed" text-link inline in the row (one-click, immediate, no modal). If still `Unverified` after 30 days: soft amber pulse dot + updated tooltip nudge. | Blue `Claimed` badge. No nudge; the assertion has been made. |
+| **Filters** (Taxonomy Navigator, specimen list) | `Unverified` is its own filter option — selecting it shows only unverified strains, not claimed ones. | `Claimed` is a separate filter option. Neither bleeds into the other. |
+| **Print / reports** | Soft footnote `‡`: *"‡ Strain identity not yet asserted by lab staff."* | No footnote in standard reports. Compliance/regulatory report mode adds a `§` footnote if configured. |
+| **Status update friction** | One-click → `Claimed` (no fields, no modal). Can also go directly to Confirmed with appropriate friction. | One-click → `Confirmed — Manual` (requires `confirmation_basis` + blocking modal) or → `Confirmed — Genomic` (requires fingerprint data). No friction to stay at Claimed. |
+
+**The nudge is gentle, not alarming.** Neither `Unverified` nor `Claimed` triggers warnings comparable to `⚠ Manual ID`. The system gently encourages completing the assertion (`Unverified → Claimed`) but never blocks work or raises alarm-level UI for these two states.
+
+#### Updating Strain Status
+
+Open the strain's detail view (from the Species page or the Taxonomy Navigator) and click **Update Status**.
+
+**Tier 1 → Claimed** — Low friction:
+- Select `Claimed` and confirm. No additional fields required.
+- The claim is recorded: who made it and when.
+- Reversible: a `Claimed` strain can be archived if the claim turns out to be wrong.
+
+**Any → Confirmed — Manual** — High friction:
+- Fill in the **Confirmation Basis** field. Describe specifically: which morphological characteristics you examined, which documents support the identity, or who the expert assessor was. The system will reject the request if this field is empty or contains only whitespace.
+- After saving, a mandatory **acknowledgment dialog** appears. You must click **"I Acknowledge"** before proceeding. The dialog cannot be dismissed by clicking outside or pressing Escape.
+- Dialog text: *"This strain has been marked as Confirmed — Manual. Manual confirmation is based on professional judgment, not genomic verification. It must NOT be cited as equivalent to genomic confirmation in regulatory submissions, IP claims, or research publications without explicit disclosure. The basis for this confirmation has been recorded in the audit log."*
+
+**Any → Confirmed — Genomic** — No modal, but data required:
+- Genomic fingerprint data must be entered in the strain record **before** changing the status. The system will reject the update if no fingerprint data is present.
+- This is the intended upgrade path — no additional friction is placed on reaching the gold standard.
+- `Confirmed — Manual` can be upgraded to `Confirmed — Genomic` when genomic work is completed.
+
+**Downgrade is not permitted.** Once a strain is `Confirmed — Manual` or `Confirmed — Genomic`, its status cannot be lowered. If an identity turns out to be wrong, archive the strain and create a new record with the corrected identity. This preserves the audit trail.
+
+> **`⚠ Manual ID` — permanent rules:**
+> - The `⚠` symbol and "Manual" qualifier always appear together in every badge, pill, label, and tooltip. The word "Confirmed" alone is never used for a `confirmed_manual` strain.
+> - All printed reports and PDF exports automatically append a footnote for every `⚠ Manual ID` strain: *"† Strain identification based on manual assessment only, not genomic verification."* This footnote cannot be suppressed by filter settings.
+> - The specimen's strain pill shows the status at **specimen creation time**. If a strain is later upgraded (e.g., from Manual to Genomic), existing specimens retain the badge they had at creation. This records what was known when each culture was initiated.
+
+---
+
+### Hybridization & Pedigree
+
+SteloPTC models hybridization as a **distinct taxonomic event** — not a passage or a split. Every hybrid strain has a single `hybridization_events` record that captures both parent strains and their exact audit chain versions at the moment of crossing.
+
+#### Two Lineage Systems — How They Relate
+
+SteloPTC maintains two independent but complementary lineage systems. Understanding the difference is important for provenance work:
+
+| | Strain Pedigree | Specimen Chain |
+|---|---|---|
+| **What it tracks** | How a strain came to exist through crossings | How a physical culture was propagated through passages and splits |
+| **Data source** | `strain_parents` + `hybridization_events` | `specimens.parent_id` + passage audit entries |
+| **Question answered** | "Where did this strain come from? What was bred from it?" | "Where did this culture come from? What was subcultured from it?" |
+| **Phase TX support** | TX-1: depth-1 parents. TX-2: full multi-generation tree | Fully implemented today |
+
+A complete provenance statement for any specimen combines both: *"Specimen #003B is a split from #003, which was the original accession. It is bound to strain SKY-OG v3 — an F1 hybrid of BLUE-DRM × CHEM-DOG, both status `✓ Genomic`."*
+
+#### Creating a Hybrid Strain (Phase TX-1 — v1.9.0)
+
+Click **"+ New Hybrid Strain"** in the StrainManager. A multi-step wizard guides you through the process:
+
+1. **Select species** — both parents must belong to this species (cross-species hybridization is not supported in TX-1).
+2. **Select Parent A** and assign its role (maternal / paternal / parent).
+3. **Select Parent B** from the same species. Cross-species selection is blocked with an inline error.
+4. **Name the hybrid** — enter name, code, and strain type.
+5. **Optionally record parent specimens** — if you know exactly which physical specimens were used in the cross, record them here. This links specimen-level provenance to the hybridization event.
+6. **Enter cross date and method** — the date and crossing technique used.
+7. **Preview the pedigree** — see the new hybrid connected to both parents before committing.
+8. **Confirm** — the system atomically creates the hybrid strain, records both parent strains and their current chain versions, and writes four audit chain entries: a genesis entry for the new strain, a hybridize entry on the new strain's chain, and a `used_as_parent` entry on each parent strain's chain.
+
+Hybrid strains show a `⊕ Hybrid` badge in the strain list and detail view. Parent chips appear with navigation links so you can move directly between the hybrid and its ancestors.
+
+> **Why hybridization participates in the hash chain:** The hybridization event writes `used_as_parent` audit entries on both parent strain chains. This means: from each parent's audit log, you can see every hybridization event in which it has participated, and at exactly what chain version it was when the cross occurred. From the hybrid, you can verify the crossing event and trace back to the exact state of each parent's identity at the time. This is a bidirectional verifiable record — not just a database relationship.
+
+#### Pedigree Queries — What You Can Ask (Phase TX-2 — v2.x)
+
+Phase TX-2 introduces three pedigree query commands and a visual chart:
+
+**Ancestry query** — *"Where did this strain come from?"*
+Walks `strain_parents` upward through all hybridization generations. Returns every ancestor strain with the hybridization event details for each joining edge: cross date, method, generation label, and the chain versions of both parents at the time of crossing.
+
+**Descendants query** — *"What has been bred from this strain?"*
+Walks `strain_parents` downward. Returns every hybrid strain that lists the target strain as a direct or indirect ancestor. Useful for understanding how widely a founder strain has been used across your program.
+
+**Specimen tree query** — *"Show every culture in my collection that descends from this founder strain."*
+Combines the descendants query with a specimen lookup per descendant strain. Returns all specimens ever bound to the target strain or any of its hybrid descendants, grouped by strain. This is the most powerful provenance query in the system — it spans both the strain pedigree and the specimen chains to give a complete picture of a founder's impact on your collection.
+
+Phase TX-2 also introduces generation labeling (F1, F2, BC1F2) and backcross notation auto-suggestions. A pedigree export produces a JSON document suitable for research citation and regulatory documentation.
+
+---
+
+## 6. Taxonomy Navigator
+
+The Taxonomy Navigator is a hierarchical browser that lets you explore your entire collection organized by taxonomy, from broad categories down to individual specimens.
+
+> **Note:** The Phase TX-1 version (v1.9.0) is a two-column navigator (Species → Strains → Specimens). The full multi-rank column browser (Kingdom → Phylum → Class → Order → Family → Genus → Species → Strain → Specimens) arrives in Phase TX-2 (v2.x).
+
+### Accessing the Navigator
+
+Click **Taxonomy** in the sidebar. The navigator opens as a panel (or full-page view on desktop).
+
+### Phase TX-1 Navigator
+
+**Left column:** List of all species with:
+- Species name and code
+- Strain count chip (e.g. `3 strains`)
+- A search bar that filters across species names and codes
+
+**Right column:** When you click a species, the right column shows:
+- All strains for that species with status badges and specimen counts
+- Clicking a strain opens a mini panel showing all specimens bound to that strain (accession number, stage, health status, and a quick-navigate button)
+
+**Search:** The search bar at the top filters across species names, strain names, and codes simultaneously.
+
+### Phase TX-2 Navigator (v2.x)
+
+The Phase TX-2 navigator expands into a full column browser:
+
+**Columns:** Kingdom → Phylum → Class → Order → Family → Genus → Species → Strain → Specimens
+
+**Filter panel:**
+- Filter by taxonomic rank
+- Filter by strain status (claimed only / confirmed only / all)
+- Filter by specimen health (minimum health level)
+- Filter by specimen stage
+- Filter by quarantine flag
+- Show active / archived / both
+
+**Descendant counts:** Every node in the tree shows `(N strains · M specimens)` aggregated from all descendants — not just its direct children. This lets you quickly see how many active cultures you have across an entire genus or family.
+
+**Keyboard navigation:** Arrow keys move between columns; Enter drills down or navigates to detail; Escape goes back; `/` focuses the search bar.
+
+### Why the Taxonomy Navigator Matters
+
+As your collection grows, the flat specimen list becomes harder to use for high-level questions like:
+- "How many cultures do we have of confirmed genomic strains?"
+- "Which genera do we have active specimens of?"
+- "Are there any specimens bound to unverified strains?"
+
+The Taxonomy Navigator answers all of these at a glance. It is designed to become the primary entry point for experienced users who know what they're looking for taxonomically rather than by accession number.
+
+---
+
+## 7. Working with Specimens
 
 ### Creating a New Specimen
 
@@ -223,7 +453,7 @@ You can update location, health, stage, and other fields at any time. All change
 
 ---
 
-## 6. Splitting Cultures (Detailed)
+## 8. Splitting Cultures (Detailed)
 
 Splitting is one of the most important and carefully designed workflows in SteloPTC. It allows you to divide a culture into multiple independent lines while preserving full traceability.
 
@@ -289,7 +519,7 @@ This allows you to keep working during a split without stopping to fully define 
 
 ---
 
-## 7. Recording Passages / Subcultures
+## 9. Recording Passages / Subcultures
 
 A passage (subculture) is the routine transfer of part of a culture into new media to continue its growth.
 
@@ -324,7 +554,7 @@ The system automatically increments the passage count and adds the event to the 
 
 ---
 
-## 8. The Audit Log & Cryptographic Hash Chain
+## 10. The Audit Log & Cryptographic Hash Chain
 
 The Audit Log is one of SteloPTC’s most important features. It records nearly every meaningful action and protects that history using cryptography.
 
@@ -357,7 +587,7 @@ The hash chain gives you strong assurance that culture histories have not been t
 
 ---
 
-## 9. Provenance & Genealogy Tracking
+## 11. Provenance & Genealogy Tracking
 
 SteloPTC actively tracks family relationships between cultures so you can understand lineage at a glance.
 
@@ -373,7 +603,7 @@ Example: You split `001` into `001A` and `001B` (both Gen 1, siblings of each ot
 
 ---
 
-## 10. Reminders & Follow-ups
+## 12. Reminders & Follow-ups
 
 SteloPTC includes a built-in reminder system to help you stay on top of cultures that need attention.
 
@@ -398,7 +628,7 @@ Go to **Reminders** in the sidebar to see active, overdue, and completed reminde
 
 ---
 
-## 11. Importing & Exporting Data
+## 13. Importing & Exporting Data
 
 ### Exporting
 
@@ -412,7 +642,7 @@ Imported records that affect the audit log or hash chain are clearly marked.
 
 ---
 
-## 12. Printing Reports
+## 14. Printing Reports
 
 SteloPTC generates professional print/PDF output for lab notebooks, audits, and sharing.
 
@@ -424,7 +654,7 @@ Use the Print Summary button on the Specimens list. Choose grouping (Stage, Heal
 
 ---
 
-## 13. Understanding the Hash Chain & Data Integrity (Advanced)
+## 15. Understanding the Hash Chain & Data Integrity (Advanced)
 
 Traditional lab software allows records to be edited or deleted without a clear trace. SteloPTC uses a cryptographic hash chain so that any change to historical records becomes detectable.
 
@@ -436,7 +666,7 @@ The hash chain protects against *undetected* changes. It does not prevent author
 
 ---
 
-## 14. Troubleshooting & Common Issues
+## 16. Troubleshooting & Common Issues
 
 **“I can’t delete a species”**
 Species can only be hard-deleted if they have never been used to create specimens. If a species has been used, archive it instead. Archived species remain visible in historical views.
@@ -456,9 +686,21 @@ Make sure reminders have a future due date. Reminders set for “today” may no
 **Split form looks stretched or messy**
 Try collapsing the Notes fields or temporarily reducing the number of visible children. A layout improvement is planned.
 
+**"I can't upgrade a strain to Confirmed — Genomic"**
+The `Confirmed — Genomic` status requires genomic fingerprint data to be stored in the strain record. Open the strain detail and add your marker data, ITS sequence, SNP profile, or other fingerprint information in the Genomic Fingerprint field, then retry the status update.
+
+**"The strain version badge on my specimen shows v0"**
+`v0` means the specimen was created from the strain at the strain's genesis — its very first state (`chain_seq = 0`). This is correct if no updates to the strain had been made before the specimen was created. It is not an error.
+
+**"I want to assign a strain to a specimen that already exists"**
+Strain assignment at creation time is how the cryptographic version binding works. You can update the `strain_id` field on an existing specimen through the specimen edit form, but this will NOT retroactively reseed the specimen's genesis hash. The version badge will reflect the strain's current state at the time of the edit, not a historical binding. For complete cryptographic provenance, create new specimens with the strain assigned from the start.
+
+**"The Taxonomy Navigator doesn't show Kingdom/Phylum/Class levels"**
+The full multi-rank column browser (Kingdom → Strain) arrives in Phase TX-2 (v2.x). The Phase TX-1 navigator (v1.9.0) shows Species → Strains → Specimens only.
+
 ---
 
-## 15. Best Practices for Tissue Culture Tracking
+## 17. Best Practices for Tissue Culture Tracking
 
 **Be consistent with accession numbers**
 Follow a consistent suffix convention for splits. This makes relationships between cultures much easier to understand later.
@@ -486,19 +728,43 @@ After a split, open one of the new children and verify the sibling list and root
 
 ---
 
-## 16. Future Features (Planned)
+## 18. Future Features & Roadmap
 
-SteloPTC is under active development. Planned or under consideration:
+SteloPTC is under active development. The Taxonomic & Provenance Module is now a **major priority workstream** alongside the Trust Layer and Phase C de-hardening. Here is what is planned:
 
-- Improved species versioning and history timeline
-- Interactive lineage tree visualization
-- Hybridization / merging support
-- Better experimental metadata and custom fields
-- Mobile companion app (read-only)
-- Enhanced reporting and analytics
-- Multi-vertical support (Cell Culture and Mycology profiles on the shared engine)
+### Phase TX-1 (v1.9.0 target) — Foundation
+- Strain/Cultivar Registry under each species (Section 5 of this manual)
+- Strain hash chain seeded from species hash; hash chains stop at Species (taxa above Species are navigation-only)
+- Specimen version-binding to specific strain state (`strain_chain_seq`)
+- Four-value status model: `Unverified` (default) → `Claimed` (one click, no friction) → `⚠ Manual ID` (blocking acknowledgment + documented basis required) → `✓ Genomic` (fingerprint data required); downgrade permanently rejected
+- **Hybridization as a distinct event** — dedicated creation wizard; `hybridization_events` record captures both parent strains and their chain versions at time of crossing; writes bidirectional `used_as_parent` audit entries on both parent chains; intraspecific only
+- Basic Taxonomy Navigator: Species → Strains → Specimens (Section 6 of this manual)
 
-If you need specific features not listed here, please request them.
+### Phase TX-2 (v2.x target) — Expansion
+- Full Genus → Kingdom taxonomy backbone (`taxa` table — classification/navigation only, no hash chains above Species)
+- NCBI Taxonomy import and ongoing sync with conflict resolution
+- Multi-generational pedigree chart: ancestry walk, descendants walk, and specimen tree query (see Section 5 — Pedigree Queries)
+- Generation labeling (F1, F2, BC1F2) and backcross notation for hybrid strains
+- Advanced Taxonomy Navigator: full column browser, filtering by health/stage/status/quarantine, descendant counts, keyboard navigation
+
+### Phase TX-3 (v3.x target) — Advanced
+- Cross-domain profile support (Plantae / Animalia / Fungi / Bacteria vocabularies via profile-scoped lookup tables)
+- Breeding programs and structured multi-generational selection tracking
+- Cross-species hybridization with explicit admin override and permanent audit warning
+- Custom provisional taxa and Darwin Core export
+- Full Kingdom → Strain → Specimen cryptographic chain (optional — not yet scheduled; pending resolution of the taxonomic reclassification problem)
+
+### Other Planned Features
+- **Merkle proof export & standalone verifier** — portable JSON proof of any specimen's audit history; documented standalone verifier (WP-20/21)
+- **Interactive lab map** — floor-plan overlay with specimen location heat-map
+- **Cell Culture vertical (SteloCC)** — cell line registry, PDL tracking, cryopreservation, mycoplasma compliance
+- **Mycology vertical (SteloMyco)** — strain/isolate registry, colonization tracking, fruiting conditions, yield logging
+- **On-chain anchoring** — publish Merkle checkpoint roots to Dogecoin for third-party tamper-evidence
+- **Local AI analysis** — NLP summaries of observation notes; image-based contamination detection
+- **Environmental monitoring integration** — link sensor data directly to passage records
+- **iOS support** — Tauri 2 iOS target
+
+If you need a specific feature not listed, please request it through the project issue tracker.
 
 ---
 
