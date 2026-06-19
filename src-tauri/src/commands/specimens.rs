@@ -624,7 +624,7 @@ pub fn split_specimen(
     }
 
     // Fetch parent info — fail if archived
-    let (parent_species_id, parent_species_code, parent_stage,
+    let (parent_species_id, _parent_species_code, parent_stage,
          parent_provenance, parent_source_plant, parent_location,
          parent_generation, parent_passage_offset, parent_subculture_count,
          parent_root_id, parent_accession): ParentInfo = db.conn.query_row(
