@@ -4,7 +4,7 @@
 **Schema:** **10 migrations** total; latest is **migration 010** (generational depth columns added in v1.7.0). Migration 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0.
-**In progress (Phase B → C → TX):** Phase B Trust Layer (WP-18–21) is substantially complete; next focus is Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Trust Layer work (WP-20/21 — Merkle checkpoints and proof export). Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. Phase TX-1 (WP-28–29) targets v1.9.0 alongside or immediately after Phase C.
+**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) is substantially complete (WP-20/21 — Merkle checkpoints + proof export — remain pending). Current focus: Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Trust Layer work (WP-20/21). Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. Phase TX-1 (WP-28–29) targets v1.9.0 alongside or immediately after Phase C.
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -88,9 +88,9 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 
 ## 3. PHASE B — "Looking great / working great"
 
-### Immediate fixes
+### Immediate fixes ✅ Complete (v1.1.1–v1.2.0)
 
-### WP-06 — Bug/polish backlog clearance
+### WP-06 — Bug/polish backlog clearance — ✅ Delivered in **v1.1.1**
 - **Goal:** Fix the known silent-failure bugs from Phase A so Phase B polish work (WP-13) is building on a working foundation.
 - **Files:** `src/lib/components/SpecimenList.svelte` (Print Summary fix). The QR scanner button-text fix (`QrScanner.svelte:221`, HTML entity `&#8594;` → Unicode `→`) was already applied as a standalone patch and does not need re-implementing.
 - **Steps:**
@@ -102,7 +102,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** The `printSummaryReport` HTML output format and column layout; the `printLabel` QR label format.
 - **Bump:** patch.
 
-### WP-07 — QR scanner: reject non-SteloPTC codes gracefully
+### WP-07 — QR scanner: reject non-SteloPTC codes gracefully — ✅ Delivered in **v1.1.2**
 - **Goal:** Scanning an arbitrary QR code (a URL, vCard, plain text) shows a clear "not a SteloPTC code" message instead of treating the payload as an accession number.
 - **Files:** `src/lib/components/QrScanner.svelte`.
 - **Steps:**
@@ -115,7 +115,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** JSON payload parsing, `onscan` callback, scan storage, camera lifecycle.
 - **Bump:** patch.
 
-### WP-08 — Specimen Work Queue / Daily Task View
+### WP-08 — Specimen Work Queue / Daily Task View — ✅ Delivered in **v1.2.0**
 - **Goal:** Give lab technicians a single view showing which specimens need attention today — removing the need to scan the full list looking for overdue actions.
 - **Files:** new `src/lib/components/WorkQueue.svelte`, `src-tauri/src/commands/specimens.rs` (new `get_work_queue` command), `src/lib/api.ts`, `src/lib/components/Sidebar.svelte` (add nav entry).
 - **Steps:**
@@ -147,9 +147,9 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Popup path for browser/non-Tauri builds; WP-13 print CSS and layout exactly; `afterprint` cleanup so the injected frame never leaks into the live UI.
 - **Bump:** patch → **v1.2.5**.
 
-### Looking great — design system & polish
+### Looking great — design system & polish ✅ Complete (v1.2.1–v1.2.5)
 
-### WP-10 — Extract a central design-token system
+### WP-10 — Extract a central design-token system — ✅ Delivered in **v1.2.1**
 - **Goal:** One source of truth for color, spacing, type, radius, shadow — instead of 15 component `<style>` blocks + a 282-line block in `App.svelte`.
 - **Files:** new `src/lib/styles/tokens.css` (imported once in `App.svelte`), then incremental refactors per component.
 - **Steps:**
@@ -160,7 +160,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Current visual appearance — this is a refactor, not a redesign. Pixel-diff before/after on the dashboard.
 - **Bump:** patch each.
 
-### WP-11 — Loading, empty, and error states everywhere
+### WP-11 — Loading, empty, and error states everywhere — ✅ Delivered in **v1.2.2**
 - **Goal:** Every list/detail view has a skeleton-loading state, a friendly empty state, and an inline error state.
 - **Files:** all list components (`SpecimenList`, `MediaList`, `InventoryManager`, `ReminderList`, `ComplianceView`, `AuditLog`, `ErrorLog`).
 - **Steps:** Add a tiny shared `<DataState>` wrapper (loading / empty / error / ready). Replace bare table renders.
@@ -168,7 +168,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Existing data fetching.
 - **Bump:** patch.
 
-### WP-12 — Accessibility & keyboard pass (WCAG 2.1 AA target)
+### WP-12 — Accessibility & keyboard pass (WCAG 2.1 AA target) — ✅ Delivered in **v1.2.3**
 - **Goal:** Usable by keyboard and screen reader; contrast verified.
 - **Files:** global + per-component.
 - **Steps:** Audit focus order, visible focus rings, `aria-label`s on icon-only buttons (the sidebar uses emoji icons), color-contrast on the health-status slider, modal focus trapping (QR modal, lightbox), and that the existing Ctrl+1–5 shortcuts are documented in-app.
@@ -176,7 +176,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** The 48px touch targets already added for mobile (WCAG 2.5.5).
 - **Bump:** patch.
 
-### WP-13 — Print / PDF polish
+### WP-13 — Print / PDF polish — ✅ Delivered in **v1.2.4**
 - **Goal:** The Culture Certificate and Specimens Summary look like lab documents, not browser printouts.
 - **Depends on:** WP-06 (Print Summary must be working before polishing its output).
 - **Files:** `src/lib/components/SpecimenList.svelte`, `src/lib/components/SpecimenDetail.svelte`, `src/lib/components/QrModal.svelte`.
@@ -185,9 +185,9 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Existing print-API approach; do not change the HTML structure in ways that break the fix from WP-06.
 - **Bump:** patch.
 
-### Working great — stability, performance, tests
+### Working great — stability, performance, tests ✅ Complete (v1.2.4–v1.3.0)
 
-### WP-14 — First test harness (the highest-leverage packet here)
+### WP-14 — First test harness (the highest-leverage packet here) — ✅ Delivered in **v1.2.4**
 - **Goal:** Stop shipping blind. There are currently **zero tests**.
 - **Depends on:** Nothing — but WP-18 (hash-chain audit log) must not be implemented before this packet is complete. Tests are the gate on the Trust layer: cryptographic invariants must be encoded as assertions before being shipped.
 - **Files:** `src-tauri` (Rust `#[cfg(test)]` modules + an integration test dir), `package.json` (add Vitest), `vitest.config.ts`.
@@ -199,7 +199,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** All existing behavior (tests should encode current correct behavior).
 - **Bump:** patch.
 
-### WP-15 — Query performance & indexing audit
+### WP-15 — Query performance & indexing audit — ✅ Delivered in **v1.2.7**
 - **Goal:** Stays fast at 10k+ specimens.
 - **Files:** `src-tauri/src/db/migrations.rs` (indexes), `commands/specimens.rs`, `commands/subcultures.rs`.
 - **Steps:** Verify indexes exist on every column used in `WHERE`/`JOIN`/`ORDER BY` (species_id, stage, project_id, parent_specimen_id, subculture.specimen_id, created_at). Confirm list endpoints paginate (the `PaginatedResponse` type exists — make sure every list uses it, including the dashboard panels). Replace any N+1 patterns (the changelog already shows you fixed one with `list_all_subcultures` — audit for others).
@@ -207,7 +207,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** Existing pagination contract.
 - **Bump:** patch.
 
-### WP-16 — Backup → Restore (close the loop)
+### WP-16 — Backup → Restore (close the loop) — ✅ Delivered in **v1.3.0**
 - **Goal:** Backups are only half a feature without restore.
 - **Files:** `src-tauri/src/commands/backup.rs`, Dashboard.
 - **Steps:** Add a "Restore from backup" action (admin only) that validates the file, checkpoints/closes the live DB, swaps it, and reloads. Confirm-twice UX given destructiveness.
@@ -215,7 +215,7 @@ These are the genuine blockers to shipping. Nothing here is a feature; it's the 
 - **Preserve:** WAL-checkpoint-before-copy logic.
 - **Bump:** minor.
 
-### WP-17 — Excel import (already on your list)
+### WP-17 — Excel import (already on your list) — ✅ Delivered in **v1.3.0**
 - **Goal:** Round-trip the export — parse `.xlsx` to create/update specimens + subcultures.
 - **Files:** new `ImportManager.svelte`, `commands/` import handler.
 - **Steps:** Reuse SheetJS to read the six-sheet workbook; validate rows; show a dry-run diff (create/update/skip counts + per-row errors) before committing inside a transaction.
@@ -419,16 +419,29 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
      - `confirmed_manual` → **always** amber `⚠ Manual ID` badge. The word "Confirmed" must NOT appear without the `⚠` symbol and "Manual" qualifier in any badge, label, or tooltip. This designation is permanent — the badge never upgrades to a clean indicator.
      - `confirmed_genomic` → green `✓ Genomic` badge.
      Actions: create, edit, archive, update status. The status update control must enforce downgrade rejections in the UI (grey out or hide `confirmed_manual → claimed`, `confirmed_genomic → any lower` options).
+     **Nudge behavior — `unverified` → `claimed`:** In the strain list row for any `unverified` strain, show a subtle "Mark as Claimed" inline button (text-link style, not a prominent CTA) so lab staff can complete the one-click assertion without navigating into the detail view. No modal, no confirmation — it fires immediately and shows a brief success toast. For strains that have remained `unverified` for more than 30 days, add a soft amber dot indicator on the row (a small pulse, not a badge) and update the tooltip on the Unverified badge to: *"Still unverified after 30 days — consider asserting an identity."* No nudge is shown for `claimed` strains; they have made their assertion.
   2. **`confirmed_manual` blocking modal (non-negotiable):** When the backend returns `{ ok: true, warning: "ConfirmedManualWarning" }`, the UI **must** immediately show a blocking acknowledgment modal. The modal is not dismissable by clicking outside or pressing Escape. It must contain:
      - Title: "Manual Identification Confirmed"
      - Body: *"This strain has been marked as Confirmed — Manual. Manual confirmation is based on professional judgment, not genomic verification. It must NOT be cited as equivalent to genomic confirmation in regulatory submissions, IP claims, or research publications without explicit disclosure. The basis for this confirmation has been recorded in the audit log."*
      - Single button: **"I Acknowledge"** (no Cancel, no close-X).
      A toast notification alone is insufficient and must not be used as a substitute.
   3. **HybridWizard.svelte:** Multi-step wizard for creating a hybrid strain. Accessible via "+ New Hybrid Strain" in StrainManager. Steps: (1) select species, (2) select Parent A and its role (`maternal`/`paternal`/`parent`), (3) select Parent B filtered to same species — cross-species selection is blocked with an inline error, (4) enter name / code / strain_type, (5) optionally record specific parent specimens used in the cross, (6) enter cross date and method, (7) pedigree preview showing the new strain connected to both parents, (8) confirm. On confirm, calls `create_hybridization_event`. The wizard captures parent `chain_seq` values from the current audit chain state at submission time, which are recorded in `hybridization_events`.
-  4. **SpecimenForm.svelte update:** After species selector, add optional strain selector (lazy-loads strains for the selected species with status badges). Default = "No strain assigned" — preserves all existing behavior. If a strain is selected, show its status badge and origin description as read-only context.
-  5. **SpecimenDetail.svelte update:** When `strain_id` is present, show a **Strain** pill in the header: `[CODE · v{strain_chain_seq} · STATUS]` (e.g. `[SKY-OG · v3 · ⚠ Manual ID]`). The version number makes the binding explicit and traceable. Clicking the pill navigates to the strain's detail. Status badge in the pill must follow the same strict rules as step 1.
-  6. **TaxonomyNavigator.svelte (Phase TX-1 version):** Two-column panel. Left: species list with strain-count chips and a search bar. Right: on clicking a species, shows its strains with status badges and specimen counts. Clicking a strain shows a mini panel with all bound specimens (accession, stage, health, quick-navigate). Add as sidebar nav entry "Taxonomy." The Phase TX-1 version is the foundation TX-2 expands into a full multi-rank column browser (WP-39).
-  7. **Print / report footnotes:** Any print view, PDF export, or report that displays strain information must append a footnote for every `confirmed_manual` strain that appears, regardless of user filter settings: *"† Strain identification based on manual assessment only, not genomic verification. See audit log for confirmation basis."* This rule applies to all basic print outputs in WP-29 and must be carried forward to all future report features.
+  4. **SpecimenForm.svelte update:** After species selector, add optional strain selector (lazy-loads strains for the selected species with status badges). Default = "No strain assigned" — preserves all existing behavior. If a strain is selected, show its status badge and origin description as read-only context. **`unverified` vs `claimed` behavior in this form:**
+     - If an `unverified` strain is selected, show a soft inline hint beneath the selector: *"This strain's identity has not been asserted yet. Consider updating its status to Claimed if you believe this is the correct strain."* Render as a grey info row (not a warning, not a blocking prompt). The user can proceed to save without acting on it.
+     - If a `claimed` strain is selected: no extra message. The assertion is sufficient for normal form flow.
+     - If `confirmed_manual` or `confirmed_genomic`: no extra message.
+  5. **SpecimenDetail.svelte update:** When `strain_id` is present, show a **Strain** pill in the header: `[CODE · v{strain_chain_seq} · STATUS]`. The version number makes the binding explicit and traceable. Clicking the pill navigates to the strain's detail. Status badge in the pill must follow the same strict rules as step 1. **Pill tooltips — explicit per status:**
+     - `unverified` pill: grey background. Tooltip: *"No identity assertion has been made for this strain. Use the Strain Manager to mark it as Claimed if you believe the assignment is correct."* Pill also shows a subtle inline "Mark as Claimed →" text-link that opens the strain's status update view directly.
+     - `claimed` pill: blue background. Tooltip: *"Identity asserted by lab staff but not independently verified."* No additional prompt.
+     - `confirmed_manual` pill: amber background, `⚠` prefix. Tooltip: *"Manually confirmed. Not equivalent to genomic verification — see audit log for the documented basis."*
+     - `confirmed_genomic` pill: green background, `✓` prefix. Tooltip: *"Genomic verification confirmed. Fingerprint data on record."*
+  6. **TaxonomyNavigator.svelte (Phase TX-1 version):** Two-column panel. Left: species list with strain-count chips and a search bar. Right: on clicking a species, shows its strains with status badges and specimen counts. Clicking a strain shows a mini panel with all bound specimens (accession, stage, health, quick-navigate). Add as sidebar nav entry "Taxonomy." The Phase TX-1 version is the foundation TX-2 expands into a full multi-rank column browser (WP-39). **Filter options for strain status (TX-1):** the right column must include a status filter with exactly these options: `All` (default) | `Unverified` | `Claimed` | `Confirmed (Manual)` | `Confirmed (Genomic)` | `Confirmed (Any)`. `Unverified` and `Claimed` are separate filter values — a filter for `Claimed` must not show `Unverified` strains and vice versa.
+  7. **Print / report footnotes:** Footnote rules per status, in all print views, PDF exports, and reports regardless of filter settings:
+     - `confirmed_manual` → mandatory footnote `†`: *"† Strain identification based on manual assessment only, not genomic verification. See audit log for confirmation basis."*
+     - `unverified` → soft footnote `‡`: *"‡ Strain identity not yet asserted by lab staff."*
+     - `claimed` → no footnote in standard reports. In compliance/regulatory report mode (if a profile setting is configured), add: *"§ Strain identity asserted by lab staff; no independent verification performed."*
+     - `confirmed_genomic` → no footnote.
+     These rules apply to all basic print outputs in WP-29 and must be carried forward to all future report features.
   8. Add `specimen_count` to `list_strains_by_species` response (COUNT JOIN on `specimens WHERE strain_id = strains.id AND is_archived = false`).
 - **Acceptance:** Can create a strain; assign it to a new specimen; specimen detail shows version-pinned strain pill with correct status badge; hybrid wizard calls `create_hybridization_event` and renders pedigree preview correctly; `confirmed_manual` status change triggers blocking modal with the exact text above (a toast alone fails this check); Taxonomy Navigator shows Species → Strains → Specimens tree and is text-searchable; print views include the `confirmed_manual` footnote.
 - **Preserve:** SpeciesManager.svelte structural behavior unchanged. All existing specimen creation without a strain continues to work identically.

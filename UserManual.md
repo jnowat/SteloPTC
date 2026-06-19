@@ -284,7 +284,20 @@ SteloPTC uses a **four-value, three-tier status model** for strain identity. The
 - **Unverified**: you've registered the strain and assigned it to a specimen, but you haven't made a formal claim. Might mean "we received this from a supplier labeled as X, and we haven't even looked at it yet."
 - **Claimed**: you've actively asserted "I believe this is strain X." This might be based on the supplier label, purchase records, or simple morphological familiarity. It's a recorded assertion, not a verification — but it's a step above silence.
 
-Both `Unverified` and `Claimed` reflect that identity is **unverified**. The distinction is whether someone has made a positive assertion.
+Both `Unverified` and `Claimed` reflect that identity is **not independently verified**. The distinction is whether someone has made a positive assertion. The table below summarizes how each state behaves across the UI:
+
+#### Unverified vs. Claimed — Behavior Across the UI
+
+| Context | `Unverified` | `Claimed` |
+|---|---|---|
+| **Strain selector** (specimen creation) | Soft inline hint: *"Identity not yet asserted — consider marking as Claimed."* Grey info row; does not block save. | No extra message. The assertion is sufficient for normal form flow. |
+| **Specimen detail pill** | Grey pill. Tooltip: *"No identity assertion has been made. Use the Strain Manager to mark as Claimed."* Pill shows a "Mark as Claimed →" text-link. | Blue pill. Tooltip: *"Identity asserted by lab staff, not independently verified."* No additional prompt. |
+| **Strain list** (StrainManager) | Grey `Unverified` badge. "Mark as Claimed" text-link inline in the row (one-click, immediate, no modal). If still `Unverified` after 30 days: soft amber pulse dot + updated tooltip nudge. | Blue `Claimed` badge. No nudge; the assertion has been made. |
+| **Filters** (Taxonomy Navigator, specimen list) | `Unverified` is its own filter option — selecting it shows only unverified strains, not claimed ones. | `Claimed` is a separate filter option. Neither bleeds into the other. |
+| **Print / reports** | Soft footnote `‡`: *"‡ Strain identity not yet asserted by lab staff."* | No footnote in standard reports. Compliance/regulatory report mode adds a `§` footnote if configured. |
+| **Status update friction** | One-click → `Claimed` (no fields, no modal). Can also go directly to Confirmed with appropriate friction. | One-click → `Confirmed — Manual` (requires `confirmation_basis` + blocking modal) or → `Confirmed — Genomic` (requires fingerprint data). No friction to stay at Claimed. |
+
+**The nudge is gentle, not alarming.** Neither `Unverified` nor `Claimed` triggers warnings comparable to `⚠ Manual ID`. The system gently encourages completing the assertion (`Unverified → Claimed`) but never blocks work or raises alarm-level UI for these two states.
 
 #### Updating Strain Status
 
