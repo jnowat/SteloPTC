@@ -91,181 +91,222 @@
 {:else}
   <div class="timeline">
     {#each subcultures as sc, i}
-      {@const color = dotColor(sc.passage_number)}
-      {@const isExpanded = expandedPassages.has(sc.id)}
-      <div class="timeline-item">
-        <div class="timeline-left">
-          <div class="tl-dot" style="background:{color};box-shadow:0 0 0 3px {color}30;"></div>
-          {#if i < subcultures.length - 1}
-            <div class="tl-line"></div>
-          {/if}
-        </div>
-        <div class="tl-card" class:expanded={isExpanded}>
-          <!-- svelte-ignore a11y_click_events_have_key_events -->
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="tl-card-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
-            <div class="tl-card-left">
-              <span class="tl-passage-num" title="Passage number — number of times this specimen has been subcultured (P{sc.passage_number})" style="color:{color};">P{sc.passage_number}</span>
-              <div class="tl-card-summary">
-                <span class="tl-date">{sc.date}</span>
-                {#if sc.contamination_flag}
-                  <span class="tl-pill contam-pill" title="Contamination was detected during this passage">⚠ Contaminated</span>
-                {/if}
-                {#if sc.media_batch_name}
-                  <span class="tl-pill media-pill" title="Media batch used for this passage: {sc.media_batch_name}">{sc.media_batch_name}</span>
-                {/if}
-                {#if sc.vessel_type}
-                  <span class="tl-pill vessel-pill" title="Vessel type used for this passage: {sc.vessel_type}">{sc.vessel_type}</span>
-                {/if}
-                {#if sc.location_to}
-                  <span class="tl-pill loc-pill" title="Destination location for this passage: {sc.location_to}">→ {sc.location_to}</span>
-                {/if}
-              </div>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;">
-              {#if $devMode && isExpanded}
-                <button
-                  type="button"
-                  class="btn btn-sm"
-                  title={editingPassageId === sc.id ? 'Discard changes and exit inline edit mode for this passage' : 'Edit the notes, vessel, location, and observations for this passage record (dev mode)'}
-                  style="background:#dc2626; color:white;"
-                  onclick={(e) => { e.stopPropagation(); if (editingPassageId === sc.id) { cancelEditPassage(); } else { startEditPassage(sc); } }}
-                >
-                  {editingPassageId === sc.id ? 'Cancel Edit' : 'Edit'}
-                </button>
-              {/if}
-              <span class="tl-chevron">{isExpanded ? '▴' : '▾'}</span>
-            </div>
+      {#if sc.isSplitEvent}
+        <!-- ── Split event card ── -->
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="tl-dot tl-dot-split" title={sc.splitRole === 'child' ? 'Origin: split from parent' : 'End: specimen was split into children'}></div>
+            {#if i < subcultures.length - 1}
+              <div class="tl-line"></div>
+            {/if}
           </div>
-          {#if isExpanded}
-            <div class="tl-card-body">
-              {#if $devMode && editingPassageId === sc.id}
-                <form onsubmit={(e) => handleEditPassage(e, sc.id)} style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
-                  <div class="form-row">
-                    <div class="form-group" style="flex:2;">
-                      <label title="Edit the vessel type used for this passage">Vessel Type</label>
-                      <select title="Edit the vessel type used for this passage" bind:value={passageEditForm.vessel_type}>
-                        <option value="">Select vessel…</option>
-                        {#each vesselTypes as v}
-                          <option value={v}>{v}</option>
-                        {/each}
-                      </select>
-                    </div>
-                    <div class="form-group" style="flex:2;">
-                      <label title="Edit the destination location recorded for this passage">Location To</label>
-                      <input type="text" title="Edit the destination location recorded for this passage" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
-                    </div>
+          <div class="tl-card tl-card-split">
+            {#if sc.splitRole === 'child'}
+              <div class="tl-split-header">
+                <span class="tl-split-icon">⑃</span>
+                <div class="tl-card-left">
+                  <span class="tl-passage-num tl-split-label" title="This specimen was created by splitting from a parent at P{sc.passage_number}">P{sc.passage_number} · Split</span>
+                  <div class="tl-card-summary">
+                    <span class="tl-date">{sc.date}</span>
+                    <span class="tl-pill split-pill" title="This specimen was created by splitting from {sc.relatedAccession}">Split from {sc.relatedAccession}</span>
                   </div>
-                  <div class="form-row">
-                    <div class="form-group" style="flex:1;">
-                      <label title="Edit the visual or qualitative observations recorded for this passage">Observations</label>
-                      <textarea title="Edit the visual or qualitative observations recorded for this passage" bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
-                    </div>
-                    <div class="form-group" style="flex:1;">
-                      <label title="Edit the procedural notes recorded for this passage">Notes</label>
-                      <textarea title="Edit the procedural notes recorded for this passage" bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
-                    </div>
+                </div>
+              </div>
+            {:else}
+              <div class="tl-split-header">
+                <span class="tl-split-icon">⑂</span>
+                <div class="tl-card-left">
+                  <span class="tl-passage-num tl-split-label" title="This specimen was split into {sc.childCount} child specimen{sc.childCount > 1 ? 's' : ''} at P{sc.passage_number - 1}">Split</span>
+                  <div class="tl-card-summary">
+                    <span class="tl-date">{sc.date}</span>
+                    <span class="tl-pill split-pill">Split into {sc.childCount} child{sc.childCount > 1 ? 'ren' : ''}</span>
+                    {#each sc.childAccessions as acc}
+                      <span class="tl-pill split-child-pill" title="Child specimen {acc}">{acc}</span>
+                    {/each}
                   </div>
-                  <div style="text-align:right;">
-                    <button type="button" class="btn btn-sm" title="Discard changes and exit inline edit mode" onclick={cancelEditPassage} style="margin-right:6px;">Cancel</button>
-                    <button type="submit" class="btn btn-primary btn-sm" title="Save the edited fields for this passage record">Save Changes</button>
-                  </div>
-                </form>
-              {:else}
-                <div class="tl-detail-grid">
+                </div>
+              </div>
+            {/if}
+          </div>
+        </div>
+      {:else}
+        <!-- ── Normal passage card ── -->
+        {@const color = dotColor(sc.passage_number)}
+        {@const isExpanded = expandedPassages.has(sc.id)}
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="tl-dot" style="background:{color};box-shadow:0 0 0 3px {color}30;"></div>
+            {#if i < subcultures.length - 1}
+              <div class="tl-line"></div>
+            {/if}
+          </div>
+          <div class="tl-card" class:expanded={isExpanded}>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="tl-card-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
+              <div class="tl-card-left">
+                <span class="tl-passage-num" title="Passage number — number of times this specimen has been subcultured (P{sc.passage_number})" style="color:{color};">P{sc.passage_number}</span>
+                <div class="tl-card-summary">
+                  <span class="tl-date">{sc.date}</span>
+                  {#if sc.contamination_flag}
+                    <span class="tl-pill contam-pill" title="Contamination was detected during this passage">⚠ Contaminated</span>
+                  {/if}
                   {#if sc.media_batch_name}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">Media Batch</span>
-                      <span class="tl-detail-value">{sc.media_batch_name}</span>
-                    </div>
+                    <span class="tl-pill media-pill" title="Media batch used for this passage: {sc.media_batch_name}">{sc.media_batch_name}</span>
                   {/if}
                   {#if sc.vessel_type}
-                    <div class="tl-detail-item span2">
-                      <span class="tl-detail-label">Vessel</span>
-                      <span class="tl-detail-value">{sc.vessel_type}</span>
-                    </div>
-                  {/if}
-                  {#if sc.temperature_c}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">Temperature</span>
-                      <span class="tl-detail-value">{sc.temperature_c} °C</span>
-                    </div>
-                  {/if}
-                  {#if sc.ph}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">pH</span>
-                      <span class="tl-detail-value">{sc.ph}</span>
-                    </div>
-                  {/if}
-                  {#if sc.light_cycle}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">Light Cycle</span>
-                      <span class="tl-detail-value">{sc.light_cycle} hrs on/off</span>
-                    </div>
-                  {/if}
-                  {#if sc.location_from}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">From Location</span>
-                      <span class="tl-detail-value">{sc.location_from}</span>
-                    </div>
+                    <span class="tl-pill vessel-pill" title="Vessel type used for this passage: {sc.vessel_type}">{sc.vessel_type}</span>
                   {/if}
                   {#if sc.location_to}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">To Location</span>
-                      <span class="tl-detail-value">{sc.location_to}</span>
-                    </div>
-                  {/if}
-                  {#if sc.performer_name}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">Performed By</span>
-                      <span class="tl-detail-value">{sc.performer_name}</span>
-                    </div>
-                  {/if}
-                  {#if sc.employee_id}
-                    <div class="tl-detail-item">
-                      <span class="tl-detail-label">Employee ID</span>
-                      <span class="tl-detail-value">{sc.employee_id}</span>
-                    </div>
-                  {/if}
-                  {#if sc.health_status !== null && sc.health_status !== '' && !isNaN(Number(sc.health_status))}
-                    {@const hb = healthInfo(sc.health_status)}
-                    {#if hb}
-                      <div class="tl-detail-item">
-                        <span class="tl-detail-label">Health</span>
-                        <span class="tl-detail-value">
-                          <span title="Health score at time of this passage (0=Dead, 1=Poor, 2=Fair, 3=Good, 4=Healthy)" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">
-                            {hb.label}
-                          </span>
-                        </span>
-                      </div>
-                    {/if}
+                    <span class="tl-pill loc-pill" title="Destination location for this passage: {sc.location_to}">→ {sc.location_to}</span>
                   {/if}
                 </div>
-                {#if sc.contamination_flag}
-                  <div class="tl-detail-text contam-detail">
-                    <span class="tl-detail-label">Contamination</span>
-                    <p class="tl-detail-p">
-                      {sc.contamination_notes || 'Contamination flagged — no notes recorded.'}
-                    </p>
-                  </div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                {#if $devMode && isExpanded}
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    title={editingPassageId === sc.id ? 'Discard changes and exit inline edit mode for this passage' : 'Edit the notes, vessel, location, and observations for this passage record (dev mode)'}
+                    style="background:#dc2626; color:white;"
+                    onclick={(e) => { e.stopPropagation(); if (editingPassageId === sc.id) { cancelEditPassage(); } else { startEditPassage(sc); } }}
+                  >
+                    {editingPassageId === sc.id ? 'Cancel Edit' : 'Edit'}
+                  </button>
                 {/if}
-                {#if sc.observations}
-                  <div class="tl-detail-text">
-                    <span class="tl-detail-label">Observations</span>
-                    <p class="tl-detail-p">{sc.observations}</p>
-                  </div>
-                {/if}
-                {#if sc.notes}
-                  <div class="tl-detail-text">
-                    <span class="tl-detail-label">Notes</span>
-                    <p class="tl-detail-p">{sc.notes}</p>
-                  </div>
-                {/if}
-              {/if}
+                <span class="tl-chevron">{isExpanded ? '▴' : '▾'}</span>
+              </div>
             </div>
-          {/if}
+            {#if isExpanded}
+              <div class="tl-card-body">
+                {#if $devMode && editingPassageId === sc.id}
+                  <form onsubmit={(e) => handleEditPassage(e, sc.id)} style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
+                    <div class="form-row">
+                      <div class="form-group" style="flex:2;">
+                        <label for="tl-vessel-{sc.id}" title="Edit the vessel type used for this passage">Vessel Type</label>
+                        <select id="tl-vessel-{sc.id}" title="Edit the vessel type used for this passage" bind:value={passageEditForm.vessel_type}>
+                          <option value="">Select vessel…</option>
+                          {#each vesselTypes as v}
+                            <option value={v}>{v}</option>
+                          {/each}
+                        </select>
+                      </div>
+                      <div class="form-group" style="flex:2;">
+                        <label for="tl-loc-{sc.id}" title="Edit the destination location recorded for this passage">Location To</label>
+                        <input id="tl-loc-{sc.id}" type="text" title="Edit the destination location recorded for this passage" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group" style="flex:1;">
+                        <label for="tl-obs-{sc.id}" title="Edit the visual or qualitative observations recorded for this passage">Observations</label>
+                        <textarea id="tl-obs-{sc.id}" title="Edit the visual or qualitative observations recorded for this passage" bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
+                      </div>
+                      <div class="form-group" style="flex:1;">
+                        <label for="tl-notes-{sc.id}" title="Edit the procedural notes recorded for this passage">Notes</label>
+                        <textarea id="tl-notes-{sc.id}" title="Edit the procedural notes recorded for this passage" bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
+                      </div>
+                    </div>
+                    <div style="text-align:right;">
+                      <button type="button" class="btn btn-sm" title="Discard changes and exit inline edit mode" onclick={cancelEditPassage} style="margin-right:6px;">Cancel</button>
+                      <button type="submit" class="btn btn-primary btn-sm" title="Save the edited fields for this passage record">Save Changes</button>
+                    </div>
+                  </form>
+                {:else}
+                  <div class="tl-detail-grid">
+                    {#if sc.media_batch_name}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Media Batch</span>
+                        <span class="tl-detail-value">{sc.media_batch_name}</span>
+                      </div>
+                    {/if}
+                    {#if sc.vessel_type}
+                      <div class="tl-detail-item span2">
+                        <span class="tl-detail-label">Vessel</span>
+                        <span class="tl-detail-value">{sc.vessel_type}</span>
+                      </div>
+                    {/if}
+                    {#if sc.temperature_c}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Temperature</span>
+                        <span class="tl-detail-value">{sc.temperature_c} °C</span>
+                      </div>
+                    {/if}
+                    {#if sc.ph}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">pH</span>
+                        <span class="tl-detail-value">{sc.ph}</span>
+                      </div>
+                    {/if}
+                    {#if sc.light_cycle}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Light Cycle</span>
+                        <span class="tl-detail-value">{sc.light_cycle} hrs on/off</span>
+                      </div>
+                    {/if}
+                    {#if sc.location_from}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">From Location</span>
+                        <span class="tl-detail-value">{sc.location_from}</span>
+                      </div>
+                    {/if}
+                    {#if sc.location_to}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">To Location</span>
+                        <span class="tl-detail-value">{sc.location_to}</span>
+                      </div>
+                    {/if}
+                    {#if sc.performer_name}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Performed By</span>
+                        <span class="tl-detail-value">{sc.performer_name}</span>
+                      </div>
+                    {/if}
+                    {#if sc.employee_id}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Employee ID</span>
+                        <span class="tl-detail-value">{sc.employee_id}</span>
+                      </div>
+                    {/if}
+                    {#if sc.health_status !== null && sc.health_status !== '' && !isNaN(Number(sc.health_status))}
+                      {@const hb = healthInfo(sc.health_status)}
+                      {#if hb}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label">Health</span>
+                          <span class="tl-detail-value">
+                            <span title="Health score at time of this passage (0=Dead, 1=Poor, 2=Fair, 3=Good, 4=Healthy)" style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">
+                              {hb.label}
+                            </span>
+                          </span>
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
+                  {#if sc.contamination_flag}
+                    <div class="tl-detail-text contam-detail">
+                      <span class="tl-detail-label">Contamination</span>
+                      <p class="tl-detail-p">
+                        {sc.contamination_notes || 'Contamination flagged — no notes recorded.'}
+                      </p>
+                    </div>
+                  {/if}
+                  {#if sc.observations}
+                    <div class="tl-detail-text">
+                      <span class="tl-detail-label">Observations</span>
+                      <p class="tl-detail-p">{sc.observations}</p>
+                    </div>
+                  {/if}
+                  {#if sc.notes}
+                    <div class="tl-detail-text">
+                      <span class="tl-detail-label">Notes</span>
+                      <p class="tl-detail-p">{sc.notes}</p>
+                    </div>
+                  {/if}
+                {/if}
+              </div>
+            {/if}
+          </div>
         </div>
-      </div>
+      {/if}
     {/each}
   </div>
 {/if}
@@ -345,4 +386,34 @@
   :global(.dark) .contam-detail .tl-detail-label { color: #f87171; }
   .contam-detail .tl-detail-p { color: #7f1d1d; }
   :global(.dark) .contam-detail .tl-detail-p { color: #fca5a5; }
+
+  /* Split event cards */
+  .tl-dot-split {
+    width: 14px; height: 14px; border-radius: 4px;
+    background: #7c3aed;
+    box-shadow: 0 0 0 3px #7c3aed30;
+    flex-shrink: 0; z-index: 1; position: relative;
+  }
+  .tl-card-split {
+    flex: 1; margin: 8px 0 8px 8px;
+    border: 1px dashed #c4b5fd; border-radius: 8px;
+    background: #faf5ff;
+    overflow: hidden;
+  }
+  :global(.dark) .tl-card-split { background: #2e1065; border-color: #4c1d95; }
+  .tl-split-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+  }
+  .tl-split-icon {
+    font-size: 18px; color: #7c3aed; flex-shrink: 0;
+    line-height: 1;
+  }
+  .tl-split-label {
+    color: #7c3aed !important;
+  }
+  .split-pill { background: #ede9fe; color: #5b21b6; }
+  .split-child-pill { background: #f3e8ff; color: #7c3aed; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
+  :global(.dark) .split-pill { background: #3b0764; color: #c4b5fd; }
+  :global(.dark) .split-child-pill { background: #4c1d95; color: #e9d5ff; }
 </style>
