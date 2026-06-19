@@ -712,23 +712,52 @@ pub fn split_specimen(
         .unchecked_transaction()
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
-    // 1. Archive the parent
+    // Compose the parent's final notes: merge form notes + contamination annotation.
+    let contam_annotation: Option<String> = match (
+        request.contamination_flag,
+        request.contamination_notes.as_deref(),
+    ) {
+        (Some(true), Some(cn)) if !cn.is_empty() => {
+            Some(format!("[Contamination at split: {}]", cn))
+        }
+        (Some(true), _) => Some("[Contamination detected at time of split]".to_string()),
+        _ => None,
+    };
+    let final_notes: Option<String> = match (request.notes.as_deref(), contam_annotation.as_deref()) {
+        (Some(n), Some(c)) => Some(format!("{}\n{}", n, c)),
+        (None, Some(c)) => Some(c.to_string()),
+        (Some(n), None) => Some(n.to_string()),
+        _ => None,
+    };
+
+    // 1. Archive the parent, recording its health and notes as of the split.
+    //    These values power the expanded "Split into N children" card on the parent's timeline.
     tx.execute(
         "UPDATE specimens SET is_archived = 1, archived_at = datetime('now'), \
-         updated_at = datetime('now') WHERE id = ?1",
-        params![request.parent_specimen_id],
+         updated_at = datetime('now'), \
+         health_status = CASE WHEN ?2 IS NOT NULL THEN ?2 ELSE health_status END, \
+         notes = CASE WHEN ?3 IS NOT NULL THEN ?3 ELSE notes END \
+         WHERE id = ?1",
+        params![request.parent_specimen_id, request.health_status, final_notes],
     ).map_err(|e| format!("Failed to archive parent: {}", e))?;
 
     // 2. Log the split event on the parent's chain.
     //    This becomes the parent's last entry_hash, which ALL children
     //    will inherit as their shared prev_hash (the cryptographic fork point).
-    queries::log_audit(
-        &tx, Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
-        None, None,
-        Some(&format!(
+    let audit_detail = if request.contamination_flag.unwrap_or(false) {
+        format!(
+            "Specimen split into {} children on {} [contamination flagged]",
+            request.children.len(), request.date
+        )
+    } else {
+        format!(
             "Specimen split into {} children on {}",
             request.children.len(), request.date
-        )),
+        )
+    };
+    queries::log_audit(
+        &tx, Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
+        None, None, Some(&audit_detail),
     ).map_err(|e| format!("Failed to log split event on parent: {}", e))?;
 
     let mut child_results: Vec<SplitChildResult> = Vec::new();

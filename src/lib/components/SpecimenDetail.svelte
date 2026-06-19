@@ -715,6 +715,21 @@ ${complianceSection}
       </div>
     {/if}
 
+    <!-- ── Archived Banner ── -->
+    {#if specimen.is_archived}
+      <div class="archived-banner">
+        <span class="archived-banner-icon">⊘</span>
+        <div>
+          <strong>{childSpecimens.length > 0 ? 'Split / Inactive' : 'Archived'}</strong>
+          {#if childSpecimens.length > 0}
+            — This specimen was split into {childSpecimens.length} child{childSpecimens.length > 1 ? 'ren' : ''}. Passage history is read-only.
+          {:else}
+            — This specimen has been archived. No further passages can be recorded.
+          {/if}
+        </div>
+      </div>
+    {/if}
+
     <!-- ── Specimen Info Card ── -->
     <div class="card info-card">
       <h3 style="margin-bottom:14px;font-size:15px;">Specimen Information</h3>
@@ -1356,6 +1371,15 @@ ${complianceSection}
   .health-badge { display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; }
 
   /* ── Lineage Banner ── */
+  .archived-banner {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 16px; margin-bottom: 16px;
+    background: #fefce8; border: 1px solid #fde68a; border-radius: 8px;
+    font-size: 13px; color: #78350f;
+  }
+  :global(.dark) .archived-banner { background: #1c1a00; border-color: #713f12; color: #fcd34d; }
+  .archived-banner-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; opacity: 0.8; }
+
   .lineage-banner {
     background: linear-gradient(135deg, #eff6ff, #f0fdf4);
     border: 1px solid #bfdbfe;
