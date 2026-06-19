@@ -83,8 +83,6 @@
   }
 </script>
 
-{@const realSubcultures = subcultures.filter((sc: any) => !sc.isSplitEvent)}
-
 {#if subcultures.length === 0}
   <div class="empty-state" style="padding:40px 0;">
     No passages recorded yet.<br/>
@@ -185,8 +183,8 @@
                   <form onsubmit={(e) => handleEditPassage(e, sc.id)} style="margin-top:12px;display:flex;flex-direction:column;gap:10px;">
                     <div class="form-row">
                       <div class="form-group" style="flex:2;">
-                        <label title="Edit the vessel type used for this passage">Vessel Type</label>
-                        <select title="Edit the vessel type used for this passage" bind:value={passageEditForm.vessel_type}>
+                        <label for="tl-vessel-{sc.id}" title="Edit the vessel type used for this passage">Vessel Type</label>
+                        <select id="tl-vessel-{sc.id}" title="Edit the vessel type used for this passage" bind:value={passageEditForm.vessel_type}>
                           <option value="">Select vessel…</option>
                           {#each vesselTypes as v}
                             <option value={v}>{v}</option>
@@ -194,18 +192,18 @@
                         </select>
                       </div>
                       <div class="form-group" style="flex:2;">
-                        <label title="Edit the destination location recorded for this passage">Location To</label>
-                        <input type="text" title="Edit the destination location recorded for this passage" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
+                        <label for="tl-loc-{sc.id}" title="Edit the destination location recorded for this passage">Location To</label>
+                        <input id="tl-loc-{sc.id}" type="text" title="Edit the destination location recorded for this passage" bind:value={passageEditForm.location_to} placeholder="e.g., Room 1 / Rack A / Shelf 2" />
                       </div>
                     </div>
                     <div class="form-row">
                       <div class="form-group" style="flex:1;">
-                        <label title="Edit the visual or qualitative observations recorded for this passage">Observations</label>
-                        <textarea title="Edit the visual or qualitative observations recorded for this passage" bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
+                        <label for="tl-obs-{sc.id}" title="Edit the visual or qualitative observations recorded for this passage">Observations</label>
+                        <textarea id="tl-obs-{sc.id}" title="Edit the visual or qualitative observations recorded for this passage" bind:value={passageEditForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
                       </div>
                       <div class="form-group" style="flex:1;">
-                        <label title="Edit the procedural notes recorded for this passage">Notes</label>
-                        <textarea title="Edit the procedural notes recorded for this passage" bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
+                        <label for="tl-notes-{sc.id}" title="Edit the procedural notes recorded for this passage">Notes</label>
+                        <textarea id="tl-notes-{sc.id}" title="Edit the procedural notes recorded for this passage" bind:value={passageEditForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
                       </div>
                     </div>
                     <div style="text-align:right;">

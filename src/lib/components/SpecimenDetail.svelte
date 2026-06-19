@@ -24,6 +24,9 @@
   let familyMembers = $state<any[]>([]);
   let loading = $state(true);
 
+  // Real passage count (excludes synthetic split events injected for the timeline)
+  let realPassageCount = $derived(subcultures.filter((sc: any) => !sc.isSplitEvent).length);
+
   // Navigation history stack for in-detail lineage navigation (back button support)
   let navHistory = $state<string[]>([]);
   // Flag to distinguish internal (lineage) navigation from external (list) navigation
@@ -709,8 +712,7 @@ ${complianceSection}
     <!-- ── Tabs ── -->
     <div class="tabs">
       <button class="tab" title="View the chronological subculture/transfer history for this specimen" class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>
-        {@const realCount = subcultures.filter((sc: any) => !sc.isSplitEvent).length}
-        Passage Timeline {#if realCount > 0}<span class="tab-count">{realCount}</span>{/if}
+        Passage Timeline {#if realPassageCount > 0}<span class="tab-count">{realPassageCount}</span>{/if}
       </button>
       <button class="tab" title="View regulatory compliance and phytosanitary test records for this specimen" class:active={activeTab === 'compliance'} onclick={() => activeTab = 'compliance'}>
         Compliance {#if complianceRecords.length > 0}<span class="tab-count">{complianceRecords.length}</span>{/if}
@@ -762,8 +764,8 @@ ${complianceSection}
             <!-- Vessel + Env -->
             <div class="form-row">
               <div class="form-group" style="flex:2;">
-                <label title="Type of container used for this passage (jar, flask, Petri dish, etc.)">Vessel Type</label>
-                <select title="Type of container used for this passage (jar, flask, Petri dish, etc.)" bind:value={subcultureForm.vessel_type}>
+                <label for="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)">Vessel Type</label>
+                <select id="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)" bind:value={subcultureForm.vessel_type}>
                   <option value="">Select vessel…</option>
                   {#each vesselTypes as v}
                     <option value={v}>{v}</option>
@@ -771,16 +773,16 @@ ${complianceSection}
                 </select>
               </div>
               <div class="form-group env-field">
-                <label title="Incubation/growth room temperature in degrees Celsius">Temp (°C)</label>
-                <input type="number" step="0.1" title="Incubation/growth room temperature in degrees Celsius" bind:value={subcultureForm.temperature_c} placeholder="25" />
+                <label for="sc-temp" title="Incubation/growth room temperature in degrees Celsius">Temp (°C)</label>
+                <input id="sc-temp" type="number" step="0.1" title="Incubation/growth room temperature in degrees Celsius" bind:value={subcultureForm.temperature_c} placeholder="25" />
               </div>
               <div class="form-group env-field">
-                <label title="pH of the culture media used for this passage">pH</label>
-                <input type="number" step="0.01" title="pH of the culture media used for this passage" bind:value={subcultureForm.ph} placeholder="5.7" />
+                <label for="sc-ph" title="pH of the culture media used for this passage">pH</label>
+                <input id="sc-ph" type="number" step="0.01" title="pH of the culture media used for this passage" bind:value={subcultureForm.ph} placeholder="5.7" />
               </div>
               <div class="form-group env-field-wide">
-                <label title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)">Light Cycle (hrs on/hrs off)</label>
-                <input type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
+                <label for="sc-light-cycle" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)">Light Cycle (hrs on/hrs off)</label>
+                <input id="sc-light-cycle" type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
               </div>
             </div>
 
@@ -788,29 +790,29 @@ ${complianceSection}
             <div class="section-header">Transfer To Location</div>
             <div class="form-row">
               <div class="form-group">
-                <label title="Growth room where this specimen will be placed after transfer">Room</label>
-                <select title="Growth room where this specimen will be placed after transfer" bind:value={locToRoom}>
+                <label for="sc-loc-room" title="Growth room where this specimen will be placed after transfer">Room</label>
+                <select id="sc-loc-room" title="Growth room where this specimen will be placed after transfer" bind:value={locToRoom}>
                   <option value="">—</option>
                   {#each rooms as r}<option value={r}>{r}</option>{/each}
                 </select>
               </div>
               <div class="form-group">
-                <label title="Storage rack within the room where this specimen will be placed">Rack</label>
-                <select title="Storage rack within the room where this specimen will be placed" bind:value={locToRack}>
+                <label for="sc-loc-rack" title="Storage rack within the room where this specimen will be placed">Rack</label>
+                <select id="sc-loc-rack" title="Storage rack within the room where this specimen will be placed" bind:value={locToRack}>
                   <option value="">—</option>
                   {#each racks as r}<option value={r}>{r}</option>{/each}
                 </select>
               </div>
               <div class="form-group">
-                <label title="Shelf level on the rack where this specimen will be placed">Shelf</label>
-                <select title="Shelf level on the rack where this specimen will be placed" bind:value={locToShelf}>
+                <label for="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed">Shelf</label>
+                <select id="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed" bind:value={locToShelf}>
                   <option value="">—</option>
                   {#each shelves as s}<option value={s}>{s}</option>{/each}
                 </select>
               </div>
               <div class="form-group">
-                <label title="Tray position on the shelf where this specimen will be placed">Tray</label>
-                <select title="Tray position on the shelf where this specimen will be placed" bind:value={locToTray}>
+                <label for="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed">Tray</label>
+                <select id="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed" bind:value={locToTray}>
                   <option value="">—</option>
                   {#each trays as t}<option value={t}>{t}</option>{/each}
                 </select>
@@ -819,7 +821,7 @@ ${complianceSection}
 
             <!-- Health Status -->
             <div class="form-group">
-              <label title="Observed health condition of this specimen at the time of this passage">Health Status</label>
+              <label for="sc-health-slider" title="Observed health condition of this specimen at the time of this passage">Health Status</label>
               <div class="health-slider-wrap">
                 <label class="unknown-toggle" title="Check this if health cannot be assessed yet — records health as unknown/awaiting">
                   <input type="checkbox" title="Mark health as unknown or awaiting assessment" bind:checked={subcultureForm.health_unknown} style="width:auto;" />
@@ -829,6 +831,7 @@ ${complianceSection}
                   <div class="health-display" style="color:#7c3aed;">? – Unknown / Awaiting Assessment</div>
                 {:else}
                   <input
+                    id="sc-health-slider"
                     type="range"
                     min="0"
                     max="4"
@@ -859,8 +862,8 @@ ${complianceSection}
 
             <!-- Employee ID -->
             <div class="form-group">
-              <label title="ID or badge number of the technician who performed this passage (for traceability)">Employee ID / Badge #</label>
-              <input type="text" title="ID or badge number of the technician who performed this passage (for traceability)" bind:value={subcultureForm.employee_id} placeholder="e.g., EMP-042" />
+              <label for="sc-employee-id" title="ID or badge number of the technician who performed this passage (for traceability)">Employee ID / Badge #</label>
+              <input id="sc-employee-id" type="text" title="ID or badge number of the technician who performed this passage (for traceability)" bind:value={subcultureForm.employee_id} placeholder="e.g., EMP-042" />
             </div>
 
             <!-- Contamination -->
@@ -871,8 +874,9 @@ ${complianceSection}
               </label>
               {#if subcultureForm.contamination_flag}
                 <div class="form-group" style="margin-top:8px;">
-                  <label title="Describe the contamination observed — type (bacterial, fungal, yeast), extent, and corrective action taken">Contamination Notes</label>
+                  <label for="sc-contam-notes" title="Describe the contamination observed — type (bacterial, fungal, yeast), extent, and corrective action taken">Contamination Notes</label>
                   <textarea
+                    id="sc-contam-notes"
                     title="Describe the contamination observed — type (bacterial, fungal, yeast), extent, and corrective action taken"
                     bind:value={subcultureForm.contamination_notes}
                     rows="2"
@@ -885,12 +889,12 @@ ${complianceSection}
             <!-- Observations + Notes -->
             <div class="form-row">
               <div class="form-group" style="flex:1;">
-                <label title="Visual or qualitative observations made at time of passage (growth, morphology, colour, etc.)">Observations</label>
-                <textarea title="Visual or qualitative observations made at time of passage (growth, morphology, colour, etc.)" bind:value={subcultureForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
+                <label for="sc-observations" title="Visual or qualitative observations made at time of passage (growth, morphology, colour, etc.)">Observations</label>
+                <textarea id="sc-observations" title="Visual or qualitative observations made at time of passage (growth, morphology, colour, etc.)" bind:value={subcultureForm.observations} rows="2" placeholder="Growth observations, morphology…"></textarea>
               </div>
               <div class="form-group" style="flex:1;">
-                <label title="Procedural notes for this passage — protocol deviations, reagent lot numbers, special conditions, etc.">Notes</label>
-                <textarea title="Procedural notes for this passage — protocol deviations, reagent lot numbers, special conditions, etc." bind:value={subcultureForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
+                <label for="sc-notes" title="Procedural notes for this passage — protocol deviations, reagent lot numbers, special conditions, etc.">Notes</label>
+                <textarea id="sc-notes" title="Procedural notes for this passage — protocol deviations, reagent lot numbers, special conditions, etc." bind:value={subcultureForm.notes} rows="2" placeholder="Protocol notes, reagent lots…"></textarea>
               </div>
             </div>
 
@@ -918,8 +922,9 @@ ${complianceSection}
                     <div class="split-card-header">
                       <span class="split-letter-badge">{letter}</span>
                       <div class="form-group" style="flex:1;margin-bottom:0;">
-                        <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Accession Number</label>
+                        <label for="split-{i}-accession" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Accession Number</label>
                         <input
+                          id="split-{i}-accession"
                           type="text"
                           class="split-accession-input"
                           bind:value={child.accessionNumber}
@@ -928,8 +933,8 @@ ${complianceSection}
                         />
                       </div>
                       <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
-                        <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Stage</label>
-                        <select bind:value={child.stage} title="Stage for child {letter}">
+                        <label for="split-{i}-stage" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Stage</label>
+                        <select id="split-{i}-stage" bind:value={child.stage} title="Stage for child {letter}">
                           {#each stageOptions as opt}
                             <option value={opt.value}>{opt.label}</option>
                           {/each}
@@ -939,7 +944,7 @@ ${complianceSection}
 
                     <!-- Health -->
                     <div class="form-group" style="margin-bottom:8px;">
-                      <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Health Status</label>
+                      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;margin-bottom:4px;">Health Status</div>
                       <div class="split-health-row">
                         <label class="unknown-toggle" title="Mark health as unknown">
                           <input type="checkbox" bind:checked={child.health_unknown} style="width:auto;" />
@@ -994,8 +999,8 @@ ${complianceSection}
                     <!-- Media + Vessel -->
                     <div class="form-row" style="margin-bottom:8px;">
                       <div class="form-group" style="flex:2;">
-                        <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Media Batch</label>
-                        <select bind:value={child.media_batch_id} title="Media batch for child {letter}">
+                        <label for="split-{i}-media" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Media Batch</label>
+                        <select id="split-{i}-media" bind:value={child.media_batch_id} title="Media batch for child {letter}">
                           <option value="">No media / not recorded</option>
                           {#each mediaBatches as mb}
                             <option value={mb.id}>{mb.is_draft ? '⚠ ' : ''}{mb.batch_id} — {mb.name}</option>
@@ -1012,7 +1017,7 @@ ${complianceSection}
                         {/if}
                       </div>
                       <div class="form-group" style="flex:2;">
-                        <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Vessel Type</label>
+                        <label for="split-{i}-vessel" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Vessel Type</label>
                         {#if child.custom_vessel}
                           <div style="display:flex;gap:4px;">
                             <input type="text" bind:value={child.vessel_input} placeholder="Custom vessel name…" style="flex:1;" />
@@ -1020,6 +1025,7 @@ ${complianceSection}
                           </div>
                         {:else}
                           <select
+                            id="split-{i}-vessel"
                             value={child.vessel_type}
                             onchange={(e) => {
                               const val = (e.target as HTMLSelectElement).value;
@@ -1039,11 +1045,11 @@ ${complianceSection}
                     <!-- Notes + Reminder -->
                     <div class="form-row" style="margin-bottom:0;">
                       <div class="form-group" style="flex:2;">
-                        <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Notes (optional)</label>
-                        <input type="text" bind:value={child.notes} placeholder="Per-container notes…" title="Notes for child {letter}" />
+                        <label for="split-{i}-notes" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Notes (optional)</label>
+                        <input id="split-{i}-notes" type="text" bind:value={child.notes} placeholder="Per-container notes…" title="Notes for child {letter}" />
                       </div>
                       <div class="form-group split-reminder-group">
-                        <label style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Check-in Reminder</label>
+                        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;margin-bottom:4px;">Check-in Reminder</div>
                         <div class="split-reminder-row">
                           <label class="unknown-toggle">
                             <input type="checkbox" bind:checked={child.reminder_enabled} style="width:auto;" />
@@ -1129,8 +1135,8 @@ ${complianceSection}
 
 <!-- Split Confirmation Dialog -->
 {#if showSplitConfirm}
-  <div class="modal-overlay" onclick={() => showSplitConfirm = false} role="dialog" aria-modal="true" aria-label="Confirm split">
-    <div class="modal-box confirm-dialog" onclick={(e) => e.stopPropagation()}>
+  <div class="modal-overlay" onclick={() => showSplitConfirm = false} onkeydown={(e) => e.key === 'Escape' && (showSplitConfirm = false)} role="presentation">
+    <div class="modal-box confirm-dialog" role="dialog" aria-modal="true" aria-label="Confirm split" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
       <div class="confirm-header">
         <span class="confirm-icon">&#9888;</span>
         <h3 class="confirm-title">Confirm Specimen Split</h3>
@@ -1170,13 +1176,13 @@ ${complianceSection}
 
 <!-- Draft Media Batch Dialog -->
 {#if showDraftMediaDialog}
-  <div class="modal-overlay" onclick={() => { showDraftMediaDialog = false; }} role="dialog" aria-modal="true" aria-label="Create draft media batch">
-    <div class="modal-box" onclick={(e) => e.stopPropagation()}>
+  <div class="modal-overlay" onclick={() => { showDraftMediaDialog = false; }} onkeydown={(e) => e.key === 'Escape' && (showDraftMediaDialog = false)} role="presentation">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-label="Create draft media batch" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
       <h3 class="modal-title">Create Draft Media Batch</h3>
       <p class="modal-desc">Enter a working name for this draft. You can complete the preparation details later in Media Management.</p>
       <div class="form-group" style="margin-bottom:16px;">
-        <label>Batch Name</label>
-        <input type="text" bind:value={draftMediaName} placeholder="e.g., MS Half-Strength (in prep)" />
+        <label for="draft-media-name">Batch Name</label>
+        <input id="draft-media-name" type="text" bind:value={draftMediaName} placeholder="e.g., MS Half-Strength (in prep)" />
       </div>
       <div class="modal-actions">
         <button class="btn" onclick={() => { showDraftMediaDialog = false; draftMediaName = ''; }} disabled={draftMediaSubmitting}>Cancel</button>
@@ -1398,8 +1404,6 @@ ${complianceSection}
   .split-count-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
   .split-desc { font-size: 13px; color: #374151; }
   :global(.dark) .split-desc { color: #94a3b8; }
-  .split-count-input { width: 70px; padding: 4px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 14px; text-align: center; }
-  :global(.dark) .split-count-input { background: #1e293b; color: #f1f5f9; border-color: #475569; }
   .split-hint { font-size: 11px; color: #6b7280; }
   .split-count-btn {
     width: 28px; height: 28px; border-radius: 6px; border: 1px solid #d1d5db;
@@ -1412,45 +1416,6 @@ ${complianceSection}
     min-width: 28px; text-align: center; font-size: 16px; font-weight: 700; color: #111827;
   }
   :global(.dark) .split-count-display { color: #f1f5f9; }
-
-  .split-children-header {
-    display: grid;
-    grid-template-columns: 28px 1fr 1fr 1fr 1fr;
-    gap: 6px;
-    margin-top: 12px;
-    font-size: 10px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.5px; color: #9ca3af; padding: 0 2px;
-  }
-  .split-child-row {
-    display: grid;
-    grid-template-columns: 28px 1fr 1fr 1fr 1fr;
-    gap: 6px;
-    align-items: center;
-    margin-top: 6px;
-    padding: 6px 4px;
-    border: 1px solid #e2e8f0;
-    border-radius: 6px;
-    background: #fff;
-  }
-  :global(.dark) .split-child-row { background: #0f172a; border-color: #334155; }
-  .split-child-num {
-    font-size: 12px; font-weight: 700; color: #6b7280; text-align: center;
-  }
-  .split-child-location {
-    display: flex; gap: 4px; flex-wrap: wrap;
-  }
-  .split-child-location select {
-    flex: 1; min-width: 80px; padding: 4px 6px; font-size: 11px;
-  }
-  .split-child-select {
-    padding: 4px 6px; font-size: 11px; border: 1px solid #d1d5db; border-radius: 4px;
-  }
-  :global(.dark) .split-child-select { background: #1e293b; color: #f1f5f9; border-color: #475569; }
-  .split-child-notes {
-    padding: 4px 6px; font-size: 11px; border: 1px solid #d1d5db; border-radius: 4px;
-    width: 100%;
-  }
-  :global(.dark) .split-child-notes { background: #1e293b; color: #f1f5f9; border-color: #475569; }
 
   /* ── Split child cards ── */
   .split-child-card {
