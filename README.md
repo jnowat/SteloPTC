@@ -59,7 +59,9 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Reminders** — User-configurable rules and calendar reminders with urgency levels (low/normal/high/critical), snooze with auto-escalation after 2 snoozes, recurring support, and a 7-day upcoming dashboard widget.
 - **Error Log** — Persistent, searchable error tracking (all roles). Every error captured with severity badge, module, username, form payload JSON, and stack trace. Sidebar badge shows live unread count; toasts are clickable and navigate directly to the log (v0.1.10+).
 - **User Management & Audit** — Roles: Admin, Supervisor, Tech, Guest. bcrypt password hashing. Append-only audit trail for all create/update/delete/archive/login actions, filterable by entity, action, user, and date range. Every audit entry is **cryptographically hash-chained** (see Cryptographic Audit Chain below).
-- **Cryptographic Audit Chain** — Every audit entry carries a SHA-256 `entry_hash` computed over its canonical content plus the previous entry's hash, forming a **per-lineage append-only chain** (v1.5.0–v1.6.0). Species creation anchors a chain at seq 0; each new root specimen seeds its chain from its species' last hash; split children inherit the parent's last `entry_hash` as `prev_hash`, making fork points cryptographically unambiguous. The Audit Log UI shows chain columns (`#`, Prev Hash, Entry Hash) with truncated display and full-hash tooltips; each chained row has **Row** and **Chain** verify buttons that re-compute hashes on demand and report the first broken link. A chain-integrity banner shows chained vs. legacy entry counts at a glance (v1.5.1, v1.6.0).
+- **Cryptographic Audit Chain** — Every audit entry carries a SHA-256 `entry_hash` computed over its canonical content plus the previous entry's hash, forming a **per-lineage append-only chain** (v1.5.0–v1.6.0). Species creation anchors a chain at seq 0; each new root specimen seeds its chain from its species' last hash; split children inherit the parent's last `entry_hash` as `prev_hash`, making fork points cryptographically unambiguous. The Audit Log UI shows chain columns (`#`, Prev Hash, Entry Hash) with truncated display and full-hash tooltips; each chained row has **Row** and **Chain** verify buttons that re-compute hashes on demand and report the first broken link. A chain-integrity banner shows chained vs. legacy entry counts at a glance (v1.5.1, v1.6.0). **Phase TX extends this chain downward:** strain creation is seeded from the species hash; strain-bound specimen creation is seeded from the strain hash, creating an unbroken cryptographic path Species → Strain → Specimen (v1.9.0 target).
+- **Strain & Cultivar Registry** *(Phase TX-1 · v1.9.0 target)* — Named Strains or Cultivars under each species, each with its own hash chain seeded from the parent species hash. Status workflow: `Unverified/Claimed` → `Confirmed — Manual` (with warning) → `Confirmed — Genomic` (requires genomic fingerprint). Origin notes, pedigree parents, and hybrid flag supported. Specimens can be cryptographically version-bound to a specific strain state at creation time (`strain_chain_seq`). Strain Manager accessible from the Species page; status badge shown prominently in specimen detail header.
+- **Taxonomy Navigator** *(Phase TX-1 · v1.9.0 target)* — Hierarchical two-column browser: Species → Strains → Specimens. Text search across all levels. Strain status badges and specimen counts. Phase TX-2 expands to full Kingdom → Strain column browser with filtering by health, stage, strain status, and quarantine flag, plus descendant count bubble-up at every rank.
 - **Photo Attachments** — Attach images directly to specimen records. Upload via OS file picker (desktop) or rear camera (Android). Responsive gallery grid with lightbox viewer and in-memory thumbnail cache. Images stored on disk under `<appDataDir>/attachments/`.
 - **Export & Backup** — Dedicated Export Data page with Excel (`.xlsx`) multi-sheet workbook (Specimens, Subcultures, Media Batches, Prepared Solutions, Inventory, Compliance), plus CSV and JSON. On-demand database backup from the dashboard (supervisor/admin) with WAL checkpointing. Admins can restore from any listed backup via a two-step confirmation flow; the app restarts automatically after a successful restore.
 - **Excel Import** — Dedicated Import Data page that accepts any `.xlsx` file produced by SteloPTC's export. SheetJS parses the workbook in-browser; a dry-run preview shows per-sheet create/update/skip counts and row-level errors before any data is written. Confirmed imports run in a single atomic transaction. Upserts specimens (by accession number), media batches (by batch code), prepared solutions and inventory (by name), and subcultures (by specimen + passage); compliance records are appended. Missing species are auto-created. Round-trip tested: export → wipe → import restores the lab (v1.3.0).
@@ -76,7 +78,9 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 
 ### Species Registry
 
-Pre-configured for asparagus, nandina, and citrus varieties. Any species can be added through the admin species manager.
+Pre-configured for asparagus, nandina, and citrus varieties. Any species can be added through the admin species manager. Species act as the cryptographic root for all derived specimens — every specimen's provenance chain traces back to its species genesis hash.
+
+**Strain & Cultivar Registry (Phase TX-1 · v1.9.0 target):** Each species will support any number of named Strains or Cultivars as first-class entities. Each strain carries its own hash chain (seeded from its parent species' hash), a status (`Unverified/Claimed`, `Confirmed — Manual`, `Confirmed — Genomic`), origin notes, and optional genomic fingerprint data. Specimens can be cryptographically bound to a specific strain version at creation time — the `strain_chain_seq` on the specimen records the exact state of the strain definition when the culture was initiated. A Taxonomy Navigator provides hierarchical browsing from Species → Strains → Specimens with filtering and descendant counts.
 
 ---
 
@@ -590,12 +594,23 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 ### Planned
 
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
+- [ ] **Merkle checkpoints & proof export** — roll audit entry batches into Merkle trees; export portable proof JSON + standalone verifier (WP-20/21)
 
-### v2.0+ — Multi-Vertical & Network
+### v1.9.0 — Taxonomic & Provenance Module Phase 1
+
+- [ ] **Strain/Cultivar Registry** — Strains as first-class entities under each species with their own SHA-256 hash chains seeded from the parent species hash (WP-28)
+- [ ] **Strain version binding** — specimens cryptographically bound to a specific strain version (`strain_chain_seq`) at creation time; strain version badge in specimen detail header (WP-28)
+- [ ] **Strain status workflow** — `Unverified/Claimed` → `Confirmed — Manual` (warning required) → `Confirmed — Genomic` (requires genomic fingerprint data); full audit trail per status change (WP-28, WP-29)
+- [ ] **Strain management UI** — per-species strain list with status badges, specimen counts, origin notes, and hybrid flags; accessible from Species page (WP-29)
+- [ ] **Basic Taxonomy Navigator** — two-column panel (Species → Strains → Specimens) with text search and quick-navigate (WP-29)
+- [ ] **Hybrid pedigree foundation** — `strain_parents` table supporting multi-parent pedigree from day one (WP-28)
+
+### v2.0+ — Multi-Vertical & Taxonomy Expansion
 
 - [ ] **Phase C — profile-ready engine** — convert hardcoded vocabularies (stage CHECK constraints, hormone types, compliance rules) into profile-scoped lookup tables; one codebase serves multiple lab types (v1.8.0 target)
-- [ ] **SteloCC (Cell Culture)** — cell line registry, passage number / PDL tracking, cryopreservation & LN2 inventory, mycoplasma compliance rules (v2.0.0 target)
-- [ ] **SteloMyco (Mycology)** — strain registry, colonization % tracking, fruiting conditions & yield, substrate composition (v2.1.0 target)
+- [ ] **Phase TX-2 — Taxonomy expansion** — Genus → Kingdom hierarchy (`taxa` table with hash chains), NCBI Taxonomy import + ongoing sync with conflict resolution, multi-generational pedigree visualization, intraspecific hybridization workflow, advanced full-rank Taxonomy Navigator with filtering and descendant counts (WP-35–39)
+- [ ] **SteloCC (Cell Culture)** — cell line registry, passage number / PDL tracking, cryopreservation & LN2 inventory, mycoplasma compliance rules (v2.0.0 target); benefits from Phase TX generic taxonomy engine
+- [ ] **SteloMyco (Mycology)** — strain/isolate registry, colonization % tracking, fruiting conditions & yield, substrate composition (v2.1.0 target); Phase TX strain model maps directly to mycology strain concepts
 - [ ] **PostgreSQL backend** — drop-in replacement for the SQLite connection for LAN/server deployments with concurrent multi-user writes
 - [ ] **Network sync** — real-time specimen and inventory updates across multiple desktop and Android clients on the same LAN
 - [ ] **Email / push notifications** — reminder delivery and overdue subculture alerts via SMTP or push service
@@ -605,9 +620,9 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 
 ### Beyond v2.x
 
-- [ ] **Merkle proof export & standalone verifier** — export one record's full audit proof to portable JSON; documented standalone Python/Node verifier (WP-21)
+- [ ] **Phase TX-3 — Advanced taxonomy** — full Kingdom → Strain hash chain verification, cross-domain support (Plantae/Animalia/Fungi/Bacteria), breeding programs & multi-generational selection tracking, cross-species hybridization, custom taxa & Darwin Core export (WP-45–49)
 - [ ] **On-chain anchoring** — publish checkpoint Merkle roots to Dogecoin via `OP_RETURN` for third-party tamper-evidence (WP-65+)
-- [ ] **Species-level analytics** — growth curves, passage success rates, and media comparison charts across experiments
+- [ ] **Species-level analytics** — growth curves, passage success rates, and media comparison charts across experiments; strain-level analytics comparing performance across cultivars
 - [ ] **Local AI analysis** — NLP summaries of observation notes; image-based contamination detection from passage photos
 - [ ] **Offline-first with sync** — full local operation with background sync when a server is available
 - [ ] **Protocol templates and SOPs** — attach standard operating procedure documents to species and media recipes
