@@ -266,10 +266,15 @@
       // Include ALL direct children (including archived) for complete provenance display
       childSpecimens = family.filter((m: any) => m.parent_specimen_id === id);
 
-      // Build the timeline: real passages (newest first) + synthetic split events
-      const timelineItems: any[] = [...sc].reverse(); // newest first
+      // Build the timeline: API returns passages newest-first (ORDER BY passage_number DESC).
+      // Adjust each passage_number to be lineage-wide by adding the specimen's offset,
+      // so a child with offset=4 shows its P1 as P5, P2 as P6, etc.
+      const timelineItems: any[] = sc.map((entry: any) => ({
+        ...entry,
+        passage_number: entry.passage_number + s.lineage_passage_offset,
+      }));
 
-      // If this specimen was created by a split, add the split origin at the bottom (oldest event)
+      // Append split-origin at the END (bottom = oldest) for specimens created by a split.
       if (s.parent_specimen_id) {
         timelineItems.push({
           id: `split-origin-${s.id}`,
@@ -278,12 +283,11 @@
           date: s.initiation_date,
           relatedAccession: parentSpecimen?.accession_number || s.parent_specimen_id,
           relatedId: s.parent_specimen_id,
-          // passage_number represents which passage in the lineage this split was
           passage_number: s.lineage_passage_offset,
         });
       }
 
-      // If this specimen was split into children, add the split-out event at the top (most recent)
+      // Prepend split-into at the START (top = newest) for archived specimens split into children.
       const myChildren = family.filter((m: any) => m.parent_specimen_id === id);
       if (myChildren.length > 0) {
         const splitDate = myChildren[0].initiation_date || s.archived_at || s.updated_at;
@@ -1288,8 +1292,7 @@ ${complianceSection}
   :global(.dark) .child-chip { background: #14532d; color: #86efac; }
   :global(.dark) .sibling-chip { background: #4c1d95; color: #c4b5fd; }
   .lineage-chip-sub { font-size: 10px; font-weight: 400; opacity: 0.7; }
-  .archived-chip { opacity: 0.65; text-decoration: line-through; text-decoration-color: currentColor; text-decoration-thickness: 1px; }
-  .archived-chip .lineage-chip-sub { text-decoration: none; }
+  .archived-chip { opacity: 0.65; }
 
   /* ── Tabs ── */
   .tabs {
