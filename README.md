@@ -80,7 +80,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 
 Pre-configured for asparagus, nandina, and citrus varieties. Any species can be added through the admin species manager. Species act as the cryptographic root for all derived specimens — every specimen's provenance chain traces back to its species genesis hash.
 
-**Strain & Cultivar Registry (Phase TX-1 · v1.9.0 target):** Each species will support any number of named Strains or Cultivars as first-class entities. Each strain carries its own hash chain (seeded from its parent species' hash), a status (`Unverified/Claimed`, `Confirmed — Manual`, `Confirmed — Genomic`), origin notes, and optional genomic fingerprint data. Specimens can be cryptographically bound to a specific strain version at creation time — the `strain_chain_seq` on the specimen records the exact state of the strain definition when the culture was initiated. A Taxonomy Navigator provides hierarchical browsing from Species → Strains → Specimens with filtering and descendant counts.
+**Strain & Cultivar Registry (Phase TX-1 · v1.9.0 target):** Each species will support any number of named Strains or Cultivars as first-class entities. Each strain carries its own hash chain (seeded from its parent species' hash), a three-tier status (`Unverified/Claimed` → `Confirmed — Manual` → `Confirmed — Genomic`), origin notes, and optional genomic fingerprint data. `Confirmed — Manual` status requires a documented basis and triggers a blocking acknowledgment modal — it can never be displayed without the `⚠` qualifier. `Confirmed — Genomic` requires genomic fingerprint data. Specimens are cryptographically bound to a specific strain version at creation time (`strain_chain_seq`). **Accession numbers never encode strain** — the accession identifies the culture lineage, while strain appears as supplemental metadata in QR payloads and reports. Hybrid strains are created via a dedicated hybrid wizard that records a `hybridization_events` entry capturing both parent strains and their exact chain versions at the time of crossing. A Taxonomy Navigator provides hierarchical browsing from Species → Strains → Specimens with text search and quick-navigate.
 
 ---
 
@@ -598,17 +598,18 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 
 ### v1.9.0 — Taxonomic & Provenance Module Phase 1
 
-- [ ] **Strain/Cultivar Registry** — Strains as first-class entities under each species with their own SHA-256 hash chains seeded from the parent species hash (WP-28)
+- [ ] **Strain/Cultivar Registry** — Strains as first-class entities under each species with their own SHA-256 hash chains seeded from the parent species hash (WP-28). Accession numbers never encode strain.
 - [ ] **Strain version binding** — specimens cryptographically bound to a specific strain version (`strain_chain_seq`) at creation time; strain version badge in specimen detail header (WP-28)
-- [ ] **Strain status workflow** — `Unverified/Claimed` → `Confirmed — Manual` (warning required) → `Confirmed — Genomic` (requires genomic fingerprint data); full audit trail per status change (WP-28, WP-29)
+- [ ] **Strain status workflow** — `Unverified/Claimed` → `Confirmed — Manual` (requires documented basis + blocking acknowledgment modal; `⚠ Manual ID` badge permanent) → `Confirmed — Genomic` (requires genomic fingerprint data); full audit trail per status change (WP-28, WP-29)
 - [ ] **Strain management UI** — per-species strain list with status badges, specimen counts, origin notes, and hybrid flags; accessible from Species page (WP-29)
+- [ ] **Hybrid creation wizard** — `hybridization_events` model records both parent strains and their exact chain versions at time of crossing; intraspecific-only in TX-1 (WP-28, WP-29)
 - [ ] **Basic Taxonomy Navigator** — two-column panel (Species → Strains → Specimens) with text search and quick-navigate (WP-29)
 - [ ] **Hybrid pedigree foundation** — `strain_parents` table supporting multi-parent pedigree from day one (WP-28)
 
 ### v2.0+ — Multi-Vertical & Taxonomy Expansion
 
 - [ ] **Phase C — profile-ready engine** — convert hardcoded vocabularies (stage CHECK constraints, hormone types, compliance rules) into profile-scoped lookup tables; one codebase serves multiple lab types (v1.8.0 target)
-- [ ] **Phase TX-2 — Taxonomy expansion** — Genus → Kingdom hierarchy (`taxa` table with hash chains), NCBI Taxonomy import + ongoing sync with conflict resolution, multi-generational pedigree visualization, intraspecific hybridization workflow, advanced full-rank Taxonomy Navigator with filtering and descendant counts (WP-35–39)
+- [ ] **Phase TX-2 — Taxonomy expansion** — Genus → Kingdom hierarchy (`taxa` table — classification/navigation only, no hash chains above Species), NCBI Taxonomy import + ongoing sync with conflict resolution, multi-generational pedigree visualization, advanced generation labeling + backcross notation, advanced full-rank Taxonomy Navigator with filtering and descendant counts (WP-35–39)
 - [ ] **SteloCC (Cell Culture)** — cell line registry, passage number / PDL tracking, cryopreservation & LN2 inventory, mycoplasma compliance rules (v2.0.0 target); benefits from Phase TX generic taxonomy engine
 - [ ] **SteloMyco (Mycology)** — strain/isolate registry, colonization % tracking, fruiting conditions & yield, substrate composition (v2.1.0 target); Phase TX strain model maps directly to mycology strain concepts
 - [ ] **PostgreSQL backend** — drop-in replacement for the SQLite connection for LAN/server deployments with concurrent multi-user writes
@@ -620,7 +621,7 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 
 ### Beyond v2.x
 
-- [ ] **Phase TX-3 — Advanced taxonomy** — full Kingdom → Strain hash chain verification, cross-domain support (Plantae/Animalia/Fungi/Bacteria), breeding programs & multi-generational selection tracking, cross-species hybridization, custom taxa & Darwin Core export (WP-45–49)
+- [ ] **Phase TX-3 — Advanced taxonomy** — cross-domain support (Plantae/Animalia/Fungi/Bacteria profile vocabularies), breeding programs & multi-generational selection tracking, cross-species hybridization with admin override, custom taxa & Darwin Core export (WP-46–49); full Kingdom → Strain hash chain extension (WP-45) is optional/not scheduled pending resolution of the reclassification problem
 - [ ] **On-chain anchoring** — publish checkpoint Merkle roots to Dogecoin via `OP_RETURN` for third-party tamper-evidence (WP-65+)
 - [ ] **Species-level analytics** — growth curves, passage success rates, and media comparison charts across experiments; strain-level analytics comparing performance across cultivars
 - [ ] **Local AI analysis** — NLP summaries of observation notes; image-based contamination detection from passage photos
