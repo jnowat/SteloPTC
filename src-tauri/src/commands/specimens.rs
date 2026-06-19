@@ -700,15 +700,13 @@ pub fn split_specimen(
 
     // Compute genealogy values for children:
     //   generation             = parent + 1
-    //   lineage_passage_offset = parent's offset + parent's own passage count
+    //   lineage_passage_offset = parent's total passage count + 1 (split itself is the next passage)
     //   root_specimen_id       = parent's root (if set) else the parent itself
     let child_generation = parent_generation + 1;
-    let child_passage_offset = parent_passage_offset + parent_subculture_count;
+    let child_passage_offset = parent_passage_offset + parent_subculture_count + 1;
     let child_root_id: &str = parent_root_id
         .as_deref()
         .unwrap_or(&request.parent_specimen_id);
-
-    let contamination_flag = request.contamination_flag.unwrap_or(false) as i32;
 
     let tx = db.conn
         .unchecked_transaction()
@@ -786,40 +784,9 @@ pub fn split_specimen(
             &request.parent_specimen_id,
         ).map_err(|e| format!("Failed to audit child specimen {}: {}", i + 1, e))?;
 
-        // Create passage 1 for this child
-        let sc_id = uuid::Uuid::new_v4().to_string();
-        tx.execute(
-            "INSERT INTO subcultures \
-             (id, specimen_id, passage_number, date, media_batch_id, \
-              vessel_type, location_from, location_to, health_status, \
-              contamination_flag, contamination_notes, observations, notes, \
-              performed_by, employee_id, temperature_c, ph, light_cycle) \
-             VALUES (?1, ?2, 1, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
-            params![
-                sc_id, child_id, request.date,
-                child.media_batch_id, child.vessel_type,
-                child_location, child_location,
-                child_health,
-                contamination_flag,
-                request.contamination_notes,
-                request.observations,
-                child_notes,
-                user.id, request.employee_id,
-                request.temperature_c, request.ph, request.light_cycle,
-            ],
-        ).map_err(|e| format!("Failed to create subculture for child {}: {}", i + 1, e))?;
-
-        tx.execute(
-            "UPDATE specimens SET subculture_count = 1 WHERE id = ?1",
-            params![child_id],
-        ).map_err(|e| e.to_string())?;
-
-        // Log passage 1 on the child's own chain (seq=2, after the "create" entry at seq=1)
-        queries::log_audit(
-            &tx, Some(&user.id), "subcultured", "specimen", Some(&child_id),
-            None, None,
-            Some(&format!("Passage 1 — split from {}", request.parent_specimen_id)),
-        ).map_err(|e| format!("Failed to audit first passage for child {}: {}", i + 1, e))?;
+        // No auto-created Passage 1: the split event itself counts as the next passage.
+        // The child's lineage_passage_offset already reflects parent_total + 1, so the
+        // first real subculture recorded on the child will be correctly numbered P(offset+1).
 
         // Create a check-in reminder if requested for this child
         if let Some(days) = child.reminder_days.filter(|&d| d > 0) {

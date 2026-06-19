@@ -23,6 +23,11 @@
   let childSpecimens = $state<any[]>([]);
   let familyMembers = $state<any[]>([]);
   let loading = $state(true);
+
+  // Navigation history stack for in-detail lineage navigation (back button support)
+  let navHistory = $state<string[]>([]);
+  // Flag to distinguish internal (lineage) navigation from external (list) navigation
+  let _internalNav = false;
   let showPassageForm = $state(false);
   let activeTab = $state<'history' | 'compliance' | 'photos'>('history');
   let photos = $state<any[]>([]);
@@ -212,7 +217,14 @@
   }
 
   $effect(() => {
-    if ($selectedSpecimenId) untrack(() => loadAll($selectedSpecimenId));
+    if ($selectedSpecimenId) {
+      if (!_internalNav) {
+        // External navigation (from list or elsewhere) — clear lineage back-stack
+        navHistory = [];
+      }
+      _internalNav = false;
+      untrack(() => loadAll($selectedSpecimenId));
+    }
   });
 
   async function loadPhotos(id: string) {
@@ -234,7 +246,6 @@
         listAttachments('specimen', id).catch(() => []),
       ]);
       specimen = s;
-      subcultures = [...sc].reverse(); // newest first
       complianceRecords = cr;
       mediaBatches = mb;
       photos = ph as any[];
@@ -246,10 +257,46 @@
         parentSpecimen = null;
       }
 
-      // Family tree: all specimens sharing the same root
+      // Family tree: all specimens sharing the same root (includes archived)
       const family = await getSpecimenFamily(id).catch(() => []);
       familyMembers = family;
-      childSpecimens = family.filter((m: any) => m.parent_specimen_id === id && !m.is_archived);
+      // Include ALL direct children (including archived) for complete provenance display
+      childSpecimens = family.filter((m: any) => m.parent_specimen_id === id);
+
+      // Build the timeline: real passages (newest first) + synthetic split events
+      const timelineItems: any[] = [...sc].reverse(); // newest first
+
+      // If this specimen was created by a split, add the split origin at the bottom (oldest event)
+      if (s.parent_specimen_id) {
+        timelineItems.push({
+          id: `split-origin-${s.id}`,
+          isSplitEvent: true,
+          splitRole: 'child',
+          date: s.initiation_date,
+          relatedAccession: parentSpecimen?.accession_number || s.parent_specimen_id,
+          relatedId: s.parent_specimen_id,
+          // passage_number represents which passage in the lineage this split was
+          passage_number: s.lineage_passage_offset,
+        });
+      }
+
+      // If this specimen was split into children, add the split-out event at the top (most recent)
+      const myChildren = family.filter((m: any) => m.parent_specimen_id === id);
+      if (myChildren.length > 0) {
+        const splitDate = myChildren[0].initiation_date || s.archived_at || s.updated_at;
+        timelineItems.unshift({
+          id: `split-into-${s.id}`,
+          isSplitEvent: true,
+          splitRole: 'parent',
+          date: splitDate,
+          childCount: myChildren.length,
+          childAccessions: myChildren.map((c: any) => c.accession_number),
+          childIds: myChildren.map((c: any) => c.id),
+          passage_number: s.lineage_passage_offset + s.subculture_count + 1,
+        });
+      }
+
+      subcultures = timelineItems;
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -360,7 +407,21 @@
   }
 
   function navigateToSpecimen(id: string) {
+    const cur = $selectedSpecimenId;
+    if (cur) navHistory = [...navHistory, cur];
+    _internalNav = true;
     selectedSpecimenId.set(id);
+  }
+
+  function handleBack() {
+    if (navHistory.length > 0) {
+      const prev = navHistory[navHistory.length - 1];
+      navHistory = navHistory.slice(0, -1);
+      _internalNav = true;
+      selectedSpecimenId.set(prev);
+    } else {
+      navigateTo('specimens');
+    }
   }
 
   function printCultureReport() {
@@ -372,8 +433,8 @@
     // Shorter aliases for use inside the HTML template string.
     const esc = escHtml;
 
-    // Passages oldest→newest for the report
-    const passageRows = [...subcultures].reverse().map((sc: any) => {
+    // Passages oldest→newest for the report (real passages only, not synthetic split events)
+    const passageRows = [...subcultures].reverse().filter((sc: any) => !sc.isSplitEvent).map((sc: any) => {
       const batch = mediaBatches.find((m: any) => m.id === sc.media_batch_id);
       const batchName = batch ? esc(batch.batch_name || batch.id) : '—';
       const contam = sc.contamination_flag
@@ -430,7 +491,8 @@
       `<span class="il">${label}</span><span class="iv">${value}</span>`
     ).join('');
 
-    const passageTable = subcultures.length === 0
+    const realPassages = subcultures.filter((sc: any) => !sc.isSplitEvent);
+    const passageTable = realPassages.length === 0
       ? '<p style="color:#64748b;font-size:9.5px;margin-top:4px;">No passages recorded yet.</p>'
       : `<table><thead><tr>
            <th>#</th><th>Date</th><th>Media Batch</th><th>Vessel</th>
@@ -464,7 +526,7 @@
 
 ${lineage}
 
-<h2>Passage History (${subcultures.length} passage${subcultures.length !== 1 ? 's' : ''})</h2>
+<h2>Passage History (${realPassages.length} passage${realPassages.length !== 1 ? 's' : ''})</h2>
 ${passageTable}
 
 ${complianceSection}
@@ -489,7 +551,7 @@ ${complianceSection}
 <div class="specimen-detail">
   <div class="page-header">
     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-      <button class="btn btn-sm" title="Return to specimen list" onclick={() => navigateTo('specimens')}>&larr; Back</button>
+      <button class="btn btn-sm" title={navHistory.length > 0 ? 'Return to previous specimen' : 'Return to specimen list'} onclick={handleBack}>&larr; Back</button>
       <div>
         <h1 style="margin-bottom:3px;">{specimen?.accession_number || 'Loading...'}</h1>
         {#if specimen}
@@ -534,15 +596,15 @@ ${complianceSection}
 
     <!-- ── Lineage Banner ── -->
     {#if parentSpecimen || childSpecimens.length > 0}
-      {@const siblings = familyMembers.filter((m: any) => m.parent_specimen_id === specimen.parent_specimen_id && m.id !== specimen.id && !m.is_archived && specimen.parent_specimen_id)}
+      {@const siblings = familyMembers.filter((m: any) => m.parent_specimen_id === specimen.parent_specimen_id && m.id !== specimen.id && specimen.parent_specimen_id)}
       <div class="lineage-banner">
         {#if parentSpecimen}
           <div class="lineage-row">
             <span class="lineage-icon">↑</span>
             <span class="lineage-label">Split from</span>
-            <button class="lineage-chip parent-chip" title="Navigate to parent specimen — this specimen was split from {parentSpecimen.accession_number}" onclick={() => navigateToSpecimen(parentSpecimen.id)}>
+            <button class="lineage-chip parent-chip" class:archived-chip={parentSpecimen.is_archived} title="Navigate to parent specimen — this specimen was split from {parentSpecimen.accession_number}{parentSpecimen.is_archived ? ' (archived)' : ''}" onclick={() => navigateToSpecimen(parentSpecimen.id)}>
               {parentSpecimen.accession_number}
-              <span class="lineage-chip-sub">{parentSpecimen.species_code}</span>
+              <span class="lineage-chip-sub">{parentSpecimen.species_code}{parentSpecimen.is_archived ? ' · archived' : ''}</span>
             </button>
           </div>
         {/if}
@@ -552,21 +614,30 @@ ${complianceSection}
             <span class="lineage-label">Sibling{siblings.length > 1 ? 's' : ''}</span>
             <div class="lineage-children">
               {#each siblings as sib}
-                <button class="lineage-chip sibling-chip" title="Navigate to sibling specimen {sib.accession_number} — split from the same parent" onclick={() => navigateToSpecimen(sib.id)}>
+                <button class="lineage-chip sibling-chip" class:archived-chip={sib.is_archived} title="Navigate to sibling specimen {sib.accession_number} — split from the same parent{sib.is_archived ? ' (archived)' : ''}" onclick={() => navigateToSpecimen(sib.id)}>
                   {sib.accession_number}
+                  {#if sib.is_archived}<span class="lineage-chip-sub">archived</span>{/if}
                 </button>
               {/each}
             </div>
           </div>
         {/if}
         {#if childSpecimens.length > 0}
+          {@const activeChildren = childSpecimens.filter((c: any) => !c.is_archived)}
+          {@const archivedChildren = childSpecimens.filter((c: any) => c.is_archived)}
           <div class="lineage-row">
             <span class="lineage-icon">↓</span>
             <span class="lineage-label">Split into {childSpecimens.length} container{childSpecimens.length > 1 ? 's' : ''}</span>
             <div class="lineage-children">
-              {#each childSpecimens as child}
+              {#each activeChildren as child}
                 <button class="lineage-chip child-chip" title="Navigate to child specimen {child.accession_number} — created by splitting this specimen" onclick={() => navigateToSpecimen(child.id)}>
                   {child.accession_number}
+                </button>
+              {/each}
+              {#each archivedChildren as child}
+                <button class="lineage-chip child-chip archived-chip" title="Navigate to child specimen {child.accession_number} (archived) — created by splitting this specimen" onclick={() => navigateToSpecimen(child.id)}>
+                  {child.accession_number}
+                  <span class="lineage-chip-sub">archived</span>
                 </button>
               {/each}
             </div>
@@ -603,7 +674,11 @@ ${complianceSection}
           <span class="info-label" title="Passages recorded for this specimen (P-total = cumulative passages from the root ancestor across all splits)">Passages</span>
           {#if specimen.generation > 0}
             {@const totalFromRoot = specimen.lineage_passage_offset + specimen.subculture_count}
-            <span class="info-value">{specimen.subculture_count} <span style="color:#6b7280;font-size:12px;" title="P{totalFromRoot} = {specimen.lineage_passage_offset} ancestor passages + {specimen.subculture_count} own passages">(P{totalFromRoot} from root)</span></span>
+            {#if specimen.subculture_count === 0}
+              <span class="info-value"><span style="color:#6b7280;font-size:12px;" title="P{specimen.lineage_passage_offset} = split event counted as this passage — no further passages recorded yet">P{specimen.lineage_passage_offset} from root (no passages yet)</span></span>
+            {:else}
+              <span class="info-value">{specimen.subculture_count} <span style="color:#6b7280;font-size:12px;" title="P{totalFromRoot} = {specimen.lineage_passage_offset} passages before this specimen + {specimen.subculture_count} own passages">(P{totalFromRoot} from root)</span></span>
+            {/if}
           {:else}
             <span class="info-value">{specimen.subculture_count}</span>
           {/if}
@@ -634,7 +709,8 @@ ${complianceSection}
     <!-- ── Tabs ── -->
     <div class="tabs">
       <button class="tab" title="View the chronological subculture/transfer history for this specimen" class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>
-        Passage Timeline {#if subcultures.length > 0}<span class="tab-count">{subcultures.length}</span>{/if}
+        {@const realCount = subcultures.filter((sc: any) => !sc.isSplitEvent).length}
+        Passage Timeline {#if realCount > 0}<span class="tab-count">{realCount}</span>{/if}
       </button>
       <button class="tab" title="View regulatory compliance and phytosanitary test records for this specimen" class:active={activeTab === 'compliance'} onclick={() => activeTab = 'compliance'}>
         Compliance {#if complianceRecords.length > 0}<span class="tab-count">{complianceRecords.length}</span>{/if}
@@ -831,7 +907,7 @@ ${complianceSection}
                   <button type="button" class="split-count-btn" onclick={() => { if (splitCount > 2) splitCount--; }} title="Remove one child">−</button>
                   <span class="split-count-display">{splitCount}</span>
                   <button type="button" class="split-count-btn" onclick={() => { if (splitCount < 26) splitCount++; }} title="Add one child">+</button>
-                  <span class="split-hint">Parent will be <strong>archived</strong>. Each child starts its own chain at passage 1.</span>
+                  <span class="split-hint">Parent will be <strong>archived</strong>. Each child inherits the current passage count + 1 (the split itself is the next passage).</span>
                 </div>
 
                 <!-- Per-child cards -->
@@ -1206,6 +1282,8 @@ ${complianceSection}
   :global(.dark) .child-chip { background: #14532d; color: #86efac; }
   :global(.dark) .sibling-chip { background: #4c1d95; color: #c4b5fd; }
   .lineage-chip-sub { font-size: 10px; font-weight: 400; opacity: 0.7; }
+  .archived-chip { opacity: 0.65; text-decoration: line-through; text-decoration-color: currentColor; text-decoration-thickness: 1px; }
+  .archived-chip .lineage-chip-sub { text-decoration: none; }
 
   /* ── Tabs ── */
   .tabs {
