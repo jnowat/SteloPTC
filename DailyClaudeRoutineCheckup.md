@@ -1,9 +1,9 @@
 # SteloPTC — Daily Claude Routine Checkup
 
-**Date:** 2026-06-18
-**Branch reviewed:** `master` (HEAD: `9c7f2e3`)
+**Date:** 2026-06-19
+**Branch reviewed:** `claude/eloquent-pascal-aos61n` (HEAD: `71a5a78`)
 **Reviewed by:** Claude (automated routine)
-**Current version:** `v1.7.0`
+**Current version:** `v1.8.0` (bumped from 1.7.0 in this session — see § 2)
 
 ---
 
@@ -11,18 +11,19 @@
 
 | Area | Status | Notes |
 |---|---|---|
-| Version alignment | ✅ Clean | All three manifests at `1.7.0` — no drift |
+| Version alignment | ✅ Clean | All three manifests bumped to `1.8.0` in this session |
 | CI / test pipeline | ✅ Passing | test.yml (3 jobs), build-windows.yml, build-android.yml all green |
-| Lint CI job | ✅ Now present | `svelte-check` + `cargo clippy -D warnings` added to test.yml (was a gap in prior report) |
-| Clippy warnings | ✅ All cleared | 18 Clippy lints resolved in today's commit — zero `-D warnings` failures |
-| Test suite | ⚠️ Growing but thin | ~116 total assertions across 5 test files; no component or integration tests |
-| Stale branches | ✅ Resolved | Only `master` remains — 23 stale branches pruned since last report |
-| Large-component debt | ⚠️ Improving | `SpecimenDetail` reduced 81 KB → 54 KB via sub-component extraction; 3 files ≥40 KB remain |
-| ROADMAP.md freshness | ⚠️ Stale header | Status block still reads `v1.1.0` — project is at `v1.7.0` |
-| Dependency health | ✅ Good | No CVEs; all packages current; `--legacy-peer-deps` still in use |
-| Roadmap progress | ✅ Ahead of schedule | Phase A + Phase B WP-01→WP-19 + full audit hash-chain shipped; genealogy tracking landed |
+| Lint CI job | ✅ Present | `svelte-check` + `cargo clippy -D warnings` — lint warnings from PR #63 fixed in PR #66 (commit `ca95161`) |
+| Test suite | ⚠️ Growing but thin | ~116 assertions; no component or integration tests |
+| Stale branches | ✅ None | `master` only (remote); `claude/eloquent-pascal-aos61n` is the active dev branch |
+| CHANGELOG freshness | ✅ Resolved this session | v1.8.0 entry written; was missing since v1.7.0 |
+| ROADMAP freshness | ✅ Resolved this session | Header updated to v1.8.0, 11 migrations; release table corrected |
+| README freshness | ✅ Resolved this session | Migration 011 row added, split workflow updated, v1.8.0 changelog entry added |
+| Large-component debt | ⚠️ Regressed | `SpecimenDetail` back to 78 KB (was 54 KB after extraction; PR #63 added extensive split dialog UI) |
+| Dependency health | ✅ Good | No CVEs; `rand 0.8` still one major behind (0.9), non-urgent |
+| Roadmap progress | ✅ Ahead of schedule | Phase A + Phase B WP-01→WP-19 + full audit hash-chain + genealogy + split overhaul shipped |
 
-**Overall health: EXCELLENT.** Production-ready, security-hardened, high-velocity. All top gaps from the prior report (stale branches, lint CI, SpecimenDetail size, new tests) were addressed within one session. Remaining work is non-blocking incremental debt.
+**Overall health: EXCELLENT.** The major documentation gap this session was the absence of any CHANGELOG entry, version bump, ROADMAP/README updates for the v1.8.0 split workflow changes (PRs #63, #66). All corrected in this session. Codebase is production-ready and executing at high velocity.
 
 ---
 
@@ -30,41 +31,40 @@
 
 | File | Version | Status |
 |---|---|---|
-| `package.json` | `1.7.0` | ✅ |
-| `src-tauri/Cargo.toml` | `1.7.0` | ✅ |
-| `src-tauri/tauri.conf.json` | `1.7.0` | ✅ |
-| Android `versionCode` | `24` | ✅ (matches last signed release) |
+| `package.json` | `1.8.0` | ✅ (bumped this session) |
+| `src-tauri/Cargo.toml` | `1.8.0` | ✅ (bumped this session) |
+| `src-tauri/tauri.conf.json` | `1.8.0` | ✅ (bumped this session) |
 
-**No drift detected.** All canonical version sources are in sync.
+**Pre-session state:** All three manifests were at `1.7.0` despite migration 011 (`is_draft` on `media_batches`) shipping in PR #63 on 2026-06-18. The version should have been bumped at that time. Fixed here.
 
 ---
 
-## 3. Recent Commits — 20 Most Recent on master
+## 3. Recent Commits — 20 Most Recent on `claude/eloquent-pascal-aos61n`
 
 | SHA | Date | Message |
 |---|---|---|
-| `9c7f2e3` | 2026-06-18 | Merge PR #60 — feat(audit): generation & provenance tracking, improve splits, fix Clippy lints (v1.7.0) |
-| `dbfc0c2` | 2026-06-18 | Update generated Tauri capabilities schema (auto-generated, no manual changes) |
-| `5734f6f` | 2026-06-18 | Fix all Clippy -D warnings: too_many_arguments, should_implement_trait, and 16 others |
-| `727c080` | 2026-06-18 | Implement recs 2–5: lint CI job, SpecimenDetail sub-component extraction, new Vitest tests, dev guide |
-| `178ac22` | 2026-06-17 | docs: update DailyClaudeRoutineCheckup.md for v1.7.0 |
-| `204c6a8` | 2026-06-17 | Merge PR #59 — feat(audit): generation + provenance tracking, fix lineage continuity (v1.7.0) |
-| `ff65e8c` | 2026-06-17 | chore: update Cargo.lock |
-| `0dd7345` | 2026-06-17 | fix: add missing genealogy fields to get_specimen row mapping; drop unused SplitChild import |
-| `416b7c4` | 2026-06-17 | feat: v1.7.0 — generational provenance tracking for split lineages (migration 010) |
-| `1909137` | 2026-06-17 | Merge PR #58 — feat(audit): species-seeded provenance, atomic splits, lineage-continuous passages (v1.6.3) |
-| `dd331a7` | 2026-06-17 | feat(audit+specimens): species seeding, atomic split, passage health update — v1.6.4 |
-| `727c9f6` | 2026-06-17 | Merge PR #57 — feat(audit): Per-lineage hash chain with verification |
-| `4ea498b` | 2026-06-17 | chore: update Cargo.lock for v1.6.3 |
-| `011f7f0` | 2026-06-17 | feat(demo): fully hash-chained demo data with split demonstration — v1.6.3 |
-| `28e86b8` | 2026-06-17 | Merge PR #56 — fix(audit): Improve split handling, reset_database available, harden hash chain (v1.6.2) |
-| `d2a0a04` | 2026-06-17 | fix(audit+admin): reset_database in release builds; txn atomicity for specimen create — v1.6.2 |
-| `d15daee` | 2026-06-17 | Merge PR #55 — feat(audit): Per-lineage hash chain with verification (v1.6.1) |
-| `53536af` | 2026-06-17 | fix(audit): fix verify_audit_lineage for fork lineages; fix nullable column types — v1.6.1 |
-| `95ee560` | 2026-06-16 | chore: update lockfiles after npm install and sha2 crate addition |
-| `252c999` | 2026-06-16 | fix(audit): remove orphaned $derived.by() block causing Svelte build failure |
+| `71a5a78` | 2026-06-19 | Merge PR #66 — fix specimen split: passage numbering, lineage bar, timeline, back nav + lint fixes |
+| `ca95161` | 2026-06-19 | fix: resolve all lint warnings introduced by split/passage changes |
+| `25f4b56` | 2026-06-19 | docs: thorough fourth pass on UserManual.md |
+| `bff1efb` | 2026-06-19 | Fix specimen split: passage numbering, lineage bar, timeline, back nav |
+| `e52ad2c` | 2026-06-19 | Merge PR #65 — ROADMAP Phase TX refinements |
+| `6c9988a` | 2026-06-19 | mark WP-01–17 complete; define unverified vs claimed UI behavior |
+| `1e223f9` | 2026-06-19 | refine TX module: 4-value status model, pedigree queries, accession finality |
+| `250a490` | 2026-06-19 | refine Phase TX taxonomic module design based on second-round feedback |
+| `86f973c` | 2026-06-19 | docs: add Taxonomic & Provenance Module (Phase TX) to roadmap and docs |
+| `03d1d56` | 2026-06-19 | Merge PR #64 — lint fix |
+| `b9851c7` | 2026-06-19 | fix(lint): prefix unused variable to satisfy -D warnings |
+| `4899beb` | 2026-06-19 | docs: second improvement pass on UserManual.md |
+| `7bb67f0` | 2026-06-19 | docs: complete first polished draft of UserManual.md |
+| `e6e3c2e` | 2026-06-19 | Merge PR #63 — feat(split): overhaul split/passage workflow |
+| `f352879` | 2026-06-18 | feat(split): overhaul split/passage workflow with letter-suffix accessions and per-child controls |
+| `2a0942a` | 2026-06-18 | Create User Manual for SteloPTC |
+| `a7400be` | 2026-06-19 | Merge PR #62 — docs README final v1.7.0 congruence pass |
+| `5e48de5` | 2026-06-19 | docs(README): final v1.7.0 congruence pass |
+| `298d8ec` | 2026-06-19 | docs(README): deep alignment pass to v1.7.0 |
+| `203e10e` | 2026-06-19 | docs: align ROADMAP and README to v1.7.0 with 10 migrations |
 
-**Assessment:** Extremely high velocity — two active days produced 8 releases (v1.5.0 → v1.7.0), a complete cryptographic audit chain, generational genealogy tracking, component refactoring, and CI hardening. Commit messages are atomic and descriptive. All feature commits go through PRs with CI gates.
+**Assessment:** High activity day — 4 PRs merged covering the split workflow overhaul (PR #63 + fix PR #66), ROADMAP Phase TX refinements (PR #65), and doc passes (PR #62, #64). The split overhaul is the most significant change: new accession scheme, per-child UX, draft media batches (schema change), and a split timeline visualization.
 
 ---
 
@@ -74,50 +74,43 @@
 /SteloPTC
 ├── .github/
 │   ├── workflows/
-│   │   ├── test.yml               ← 3 jobs: frontend-tests + rust-tests + lint (lint is NEW)
+│   │   ├── test.yml               ← 3 jobs: frontend-tests + rust-tests + lint
 │   │   ├── build-windows.yml      ← Signed .msi on GitHub Release
 │   │   └── build-android.yml      ← Debug APK on push; signed APK on release
 │   └── SIGNING.md                 ← Keystore generation guide
 ├── src/                           ← Svelte 5 + TypeScript frontend
-│   ├── App.svelte                 ← 14 KB — root layout, router
+│   ├── App.svelte                 ← ~14 KB — root layout, router
 │   └── lib/
-│       ├── components/            ← 28 .svelte files (3 NEW sub-components since last report)
-│       │   ├── SpecimenDetail.svelte          ← 54 KB (↓ from 81 KB — sub-components extracted)
-│       │   ├── SpecimenPassageTimeline.svelte ← 17 KB (NEW — extracted)
-│       │   ├── SpecimenPhotoGallery.svelte    ← 7 KB  (NEW — extracted)
-│       │   ├── SpecimenComplianceTable.svelte ← 2 KB  (NEW — extracted)
-│       │   ├── MediaList.svelte               ← 44 KB (still large)
-│       │   ├── SpecimenList.svelte            ← 43 KB (still large)
+│       ├── components/            ← 29 .svelte files
+│       │   ├── SpecimenDetail.svelte          ← 78 KB (⚠️ regressed from 54 KB — split dialog UI added in PR #63)
+│       │   ├── SpecimenPassageTimeline.svelte ← expanded (synthetic split event rendering added in PR #66)
+│       │   ├── SpecimenPhotoGallery.svelte    ← 7 KB
+│       │   ├── SpecimenComplianceTable.svelte ← 2 KB
+│       │   ├── MediaList.svelte               ← 45 KB (still large)
+│       │   ├── SpecimenList.svelte            ← 44 KB (still large)
 │       │   ├── InventoryManager.svelte        ← 40 KB (still large)
-│       │   ├── Dashboard.svelte               ← 29 KB
-│       │   └── [20 other components]
-│       ├── api.ts                 ← Tauri IPC layer (10.5 KB)
-│       ├── utils.ts               ← Pure utility functions (2.5 KB)
-│       ├── utils.test.ts          ← 50 assertions
-│       ├── exportUtils.ts         ← Export row builders (3.6 KB, NEW)
-│       ├── exportUtils.test.ts    ← 27 assertions (NEW)
-│       ├── importUtils.ts         ← Import helpers (0.5 KB, NEW)
-│       ├── importUtils.test.ts    ← 8 assertions (NEW)
-│       ├── printUtils.ts          ← Shared print delivery (5.5 KB)
-│       └── styles/tokens.css      ← Design token system
+│       │   ├── Dashboard.svelte               ← ~29 KB
+│       │   └── [21 other components]
+│       ├── api.ts                 ← Tauri IPC layer
+│       ├── utils.ts               ← Pure utility functions
+│       ├── exportUtils.ts         ← Export row builders
+│       ├── importUtils.ts         ← Import helpers
+│       └── printUtils.ts          ← Shared print delivery
 ├── src-tauri/                     ← Tauri 2 + Rust backend
 │   └── src/
 │       ├── lib.rs                 ← Entry point, command registration
-│       ├── commands/              ← 18 Rust modules
-│       │   ├── specimens.rs       ← 36 KB — largest backend file
-│       │   ├── import.rs          ← 24 KB
-│       │   ├── compliance.rs      ← 22 KB
-│       │   ├── inventory.rs       ← 19 KB
-│       │   ├── audit.rs           ← 12 KB (hash-chain verify commands)
-│       │   └── [13 other modules]
+│       ├── commands/              ← 18+ Rust modules
+│       │   ├── specimens.rs       ← Largest backend file; `split_specimen`, `preview_split_accessions`
+│       │   └── [other modules]
 │       ├── db/
-│       │   ├── migrations.rs      ← 10 migrations
-│       │   └── queries.rs         ← Hash-chain helpers + unit tests
-│       ├── models/                ← Serializable types
-│       └── auth/                  ← Session + role management
-├── ROADMAP.md                     ← 52 KB — Phases A–F, WP-01→WP-57 (⚠️ header says v1.1.0)
-├── CHANGELOG.md                   ← 45 KB — v0.1.20 → v1.7.0
-├── README.md                      ← 32 KB — feature tour + building from source (newly added)
+│       │   ├── migrations.rs      ← 11 migrations (migration 011 added in v1.8.0)
+│       │   └── queries.rs         ← `generate_split_accession_numbers`, hash-chain helpers
+│       ├── models/
+│       └── auth/
+├── ROADMAP.md                     ← Updated this session: v1.8.0, 11 migrations
+├── CHANGELOG.md                   ← v1.8.0 entry written this session
+├── README.md                      ← Migration 011 row added; split description updated
+├── UserManual.md                  ← Four improvement passes today; good current state
 └── DailyClaudeRoutineCheckup.md   ← This file
 ```
 
@@ -125,20 +118,21 @@
 
 ## 5. Database Schema
 
-**10 migrations deployed — none pending:**
+**11 migrations deployed — none pending:**
 
 | Migration | Description |
 |---|---|
 | `001_initial` | Core tables: species, specimens, users, sessions, media_batches, subcultures, etc. |
 | `002_v019` | Expanded stage CHECK constraint |
 | `003_v0110` | Full table rebuild for new constraint |
-| `004_v0114` | Additional schema updates |
+| `004_v0114` | Additional schema updates (qr_scans) |
 | `005_contamination_schedule` | Contamination event tracking |
 | `006_force_password_change` | `must_change_password` flag on users (WP-01) |
 | `007_perf_indexes` | 6 covering + composite indexes; N+1 elimination (WP-15) |
 | `008_audit_hash_chain` | Tamper-evident columns: `chain_seq`, `prev_hash`, `entry_hash` (WP-18) |
 | `009_audit_lineage` | Per-entity lineage chains: `lineage_id`, composite index `(lineage_id, chain_seq)` |
 | `010_specimen_genealogy` | `generation`, `lineage_passage_offset`, `root_specimen_id` (v1.7.0) |
+| `011_media_draft` | `is_draft INTEGER NOT NULL DEFAULT 0` on `media_batches`; `idx_media_batches_draft` index (v1.8.0) |
 
 **19 core tables.** No orphaned or dead-code tables detected.
 
@@ -148,16 +142,11 @@
 
 | Pipeline | Jobs | Trigger | Status |
 |---|---|---|---|
-| `test.yml` | `frontend-tests`, `rust-tests`, `lint` (NEW) | Every push + PR to master / claude/* | ✅ Passing — blocks merge on failure |
+| `test.yml` | `frontend-tests`, `rust-tests`, `lint` | Every push + PR to master / claude/* | ✅ Passing — blocks merge on failure |
 | `build-windows.yml` | Tauri build → signed .msi | GitHub Release publication | ✅ Passing |
 | `build-android.yml` | Debug APK (push); signed APK (release) | Push to master/claude/* and Release | ✅ Passing |
 
-**`lint` job (newly added in commit `727c080`):**
-- Runs `npm run check` (`svelte-check --tsconfig`) for TypeScript/Svelte type safety
-- Runs `cargo clippy -- -D warnings` to enforce zero lint warnings
-- This was Recommendation #2 from the 2026-06-17 checkup — now shipped
-
-**Previous gap resolved:** The 2026-06-17 report flagged "No lint job" as a gap. That gap is now closed.
+**Lint gap from PR #63 resolved:** PR #63 introduced lint warnings (unused variable); PR #64 (`b9851c7`) and the PR #66 commit `ca95161` resolved them. Lint job currently passes.
 
 ---
 
@@ -168,8 +157,8 @@
 | File | Assertions | What is covered |
 |---|---|---|
 | `utils.test.ts` | 50 | `escHtml`, `healthLabel`, `stageFmt`, `composeLocation`, `formatAccessionNumber`, `computeStockAdjustment`, `datestamp`, `ageDays`, `fmtAge`, `healthNum`, `effectiveHealth` |
-| `exportUtils.test.ts` | 27 (NEW) | `specimenRows`, `subcultureRows`, `mediaRows`, `inventoryRows`, `complianceRows`, `prepSolutionRows` |
-| `importUtils.test.ts` | 8 (NEW) | `REQUIRED_SHEET_NAMES`, `findMissingSheets` |
+| `exportUtils.test.ts` | 27 | `specimenRows`, `subcultureRows`, `mediaRows`, `inventoryRows`, `complianceRows`, `prepSolutionRows` |
+| `importUtils.test.ts` | 8 | `REQUIRED_SHEET_NAMES`, `findMissingSheets` |
 
 ### Rust — ~31+ assertions across 4 modules
 
@@ -180,12 +169,13 @@
 | `compliance.rs` | 10 | Expired permit, quarantine enforcement, positive-test, citrus HLB, archive exemption |
 | `auth.rs` | ~3 | `UserRole::from_str` via `FromStr` impl |
 
-**Total: ~116 assertions (up from 76 in the prior report).** All gated by CI on every push.
+**Total: ~116 assertions.** No new tests were added for the split workflow in PR #63/#66 — this is a coverage gap (see Rec #3 below).
 
 ### Remaining Gaps
 - Zero Svelte component tests (form validation, state management, reactive derived values)
-- No end-to-end integration tests (create → audit → export → import round-trip)
-- `specimens.rs` (36 KB) has no direct Rust unit tests beyond its inline doc comments
+- No end-to-end integration tests (create → split → audit → export → import round-trip)
+- `specimens.rs` (split workflow) has no direct Rust unit tests for `generate_split_accession_numbers` edge cases (letter exhaustion, taken-letter skipping, recursive suffix)
+- `preview_split_accessions` command untested
 
 ---
 
@@ -193,12 +183,10 @@
 
 | Branch | Status |
 |---|---|
-| `master` | ✅ Active — HEAD at `9c7f2e3` (2026-06-18) |
-| All others | ✅ None — all stale branches pruned |
+| `claude/eloquent-pascal-aos61n` | ✅ Active — HEAD at `71a5a78` (2026-06-19) |
+| `master` (remote) | Behind — at `03cf8da`; does not yet contain v1.1.x+ work |
 
-**Previous gap resolved:** The 2026-06-17 report flagged 23 stale merged branches. Now only `master` exists on the remote.
-
-**Remaining action:** Enable "Auto-delete head branches" in GitHub Settings → General to prevent future accumulation. Free, permanent fix.
+**Note:** `master` on the remote is significantly behind this dev branch. All production work is on `claude/eloquent-pascal-aos61n` and has been merged through PRs on GitHub. Enabling "Auto-delete head branches" in GitHub → Settings → General would prevent future stale-branch accumulation.
 
 ---
 
@@ -234,7 +222,7 @@
 | `rand` | `0.8` | ⚠️ `0.9` released; non-urgent |
 | `base64` | `0.22` | ✅ Current |
 
-**No CVEs detected.** `rand 0.8 → 0.9` is the only minor version staleness; API migration is small and non-urgent.
+**No CVEs detected.** `rand 0.8 → 0.9` is the only minor version staleness; non-urgent.
 
 ---
 
@@ -245,125 +233,110 @@
 | CSP | ✅ Locked | `script-src 'self'`; no `unsafe-eval`; `worker-src blob:` for QR camera only |
 | Authentication | ✅ Strong | bcrypt, session tokens, RBAC (Admin/Supervisor/Tech/Guest), forced first-login password change |
 | Audit trail | ✅ Immutable + Verifiable | SHA-256 hash-chain; per-lineage `chain_seq`/`prev_hash`/`entry_hash`; inline verify buttons |
-| Genealogy chain | ✅ Cryptographically linked | Split children inherit parent's last `entry_hash` as `prev_hash`; fork is unambiguous |
 | SQL injection | ✅ Prevented | `rusqlite` parameterized bindings throughout; no string-interpolated SQL |
-| File attachments | ✅ Gated | Sandboxed under `<appDataDir>/attachments/`; Tauri FS plugin enforced |
-| Backup / restore | ✅ Guarded | Admin-only; two confirmations; WAL checkpoint validation prevents incomplete snapshots |
-| Export / import | ✅ Guarded | Admin/Supervisor only; dry-run before commit; malformed rows reported precisely |
-| reset_database | ✅ Available + Guarded | Available in release builds; requires admin role + `"RESET DATABASE"` phrase |
+| Draft media batches | ✅ Guarded | `create_draft_media_batch` restricted; drafts clearly flagged in UI |
+| Split operation | ✅ Atomic | All split children, reminders, and audit entries created or rolled back together |
+| Backup / restore | ✅ Guarded | Admin-only; two confirmations; WAL checkpoint validation |
+| reset_database | ✅ Available + Guarded | Admin role + `"RESET DATABASE"` phrase required |
 
 ---
 
-## 11. Performance Characteristics
+## 11. Roadmap Progress
 
-| Operation | Mechanism | Expected Latency |
-|---|---|---|
-| Specimen list (10k rows) | 6 indexes, LEFT JOIN aggregation, 50/page | < 200 ms |
-| Specimen detail | `root_specimen_id` FK for family — no recursive CTE | < 100 ms |
-| Audit log query | `(lineage_id, chain_seq)` composite index | < 150 ms |
-| Hash-chain verify | Single chain walk per lineage | < 50 ms |
-| Excel export | In-memory SheetJS multi-sheet | < 5 s (10k specimens) |
-| Excel import dry-run | Backend transaction + per-row validation, rolled back | < 10 s (10k rows) |
+### What Shipped Since Last Checkup (2026-06-18 → 2026-06-19)
 
-**No N+1 queries.** Genealogy family queries use `root_specimen_id` FK — no recursive CTEs needed.
-
----
-
-## 12. Roadmap Progress
-
-### What Shipped Since Last Checkup (2026-06-17 → 2026-06-18)
-
-| Version | Feature |
+| Version / PR | Feature |
 |---|---|
-| v1.7.0 (migration 010) | `generation`, `lineage_passage_offset`, `root_specimen_id` on specimens |
-| v1.7.0 | `split_specimen` sets genealogy fields atomically; `get_specimen_family` command |
-| v1.7.0 | "Gen N" badge and "P{total} from root" in SpecimenDetail; sibling display in lineage banner |
-| Post-1.7.0 | Lint CI job (`svelte-check` + `cargo clippy -D warnings`) |
-| Post-1.7.0 | SpecimenDetail refactored: SpecimenPassageTimeline, SpecimenPhotoGallery, SpecimenComplianceTable extracted |
-| Post-1.7.0 | exportUtils.ts + importUtils.ts extracted and tested (27 + 8 new assertions) |
-| Post-1.7.0 | "Building from Source" section added to README.md |
-| Post-1.7.0 | All 18 Clippy warnings resolved across 11 Rust files |
+| v1.8.0 / PR #63 | `feat(split)`: letter-suffix accessions (001A/001B…), per-child configuration cards, draft media batches (migration 011), safety confirmation dialog, atomic reminders in split transaction |
+| PR #63 | `preview_split_accessions` and `generate_split_accession_numbers` backend commands |
+| PR #64 | `fix(lint)`: unused variable prefix fix |
+| PR #65 | `docs`: Phase TX refinements — 4-value status model, pedigree queries, accession finality clarified in ROADMAP |
+| PR #65 | UserManual.md 2nd and 3rd improvement passes |
+| PR #66 | `fix(split)`: passage numbering fix; lineage bar shows archived children; synthetic split timeline events; navigation history stack on Back button |
+| PR #66 | `fix(lint)`: all warnings from PR #63 resolved |
+| PR #66 | UserManual.md 4th improvement pass |
+| This session | Version bumped 1.7.0 → 1.8.0 in all three manifests; CHANGELOG v1.8.0 entry written; ROADMAP/README updated for 11 migrations and split workflow |
 
-### Phase B Remaining / Phase C Horizon
+### Phase C / TX Horizon
 
 | Phase | Scope |
 |---|---|
-| WP-20+ Trust Layer Phase 2 | Merkle checkpoints over audit batches |
-| Phase C (v1.x) | Domain de-hardening: `lab_profile`, CHECK constraints → lookup tables, per-vertical identity |
-| Phase D SteloCC (v2.0) | Cell Culture vertical |
-| Phase E SteloMyco (v2.1) | Mycology vertical |
-| Phase F | PostgreSQL, LAN sync, email, iOS, sensors, field-level permissions |
+| Phase C (v1.9.0) | Domain de-hardening: `lab_profile`, CHECK constraints → lookup tables, per-vertical identity |
+| Phase TX-1 (v2.0.0) | Strain/Cultivar as first-class entities, cryptographic version binding, Taxonomy Navigator |
+| Phase TX-2 (v2.x) | Expanded taxonomy backbone, NCBI sync, pedigree visualization, advanced navigator |
+| Phase D SteloCC (v2.1.0) | Cell Culture vertical |
+| Phase E SteloMyco (v2.2.0) | Mycology vertical |
 
 ---
 
-## 13. Technical Debt Register
+## 12. Technical Debt Register
 
 | Category | Issue | Severity | Delta vs. Prior Report |
 |---|---|---|---|
-| **ROADMAP.md header stale** | Status block reads `v1.1.0` / "6 migrations" — actual is `v1.7.0` / 10 migrations | Medium | 🆕 NEW |
-| **Large Svelte files** | `MediaList` (44 KB), `SpecimenList` (43 KB), `InventoryManager` (40 KB) still ≥40 KB | Medium | ↑ SpecimenDetail improved (81→54 KB) |
+| **SpecimenDetail.svelte size** | Regressed: 54 KB → 78 KB. PR #63 added split confirmation dialog, per-child card rows, draft-media modal — all large HTML blocks | Medium | ↓ Regressed from prior improvement |
+| **No tests for split workflow** | `generate_split_accession_numbers` edge cases (letter exhaustion, taken-letter skip), `preview_split_accessions`, per-child reminder atomicity — all untested | Medium | 🆕 NEW |
 | **Component tests missing** | Zero Vitest tests for Svelte components | Medium | Unchanged |
-| **Integration tests missing** | No end-to-end tests for specimen create → audit → export → import | Medium | Unchanged |
+| **Integration tests missing** | No end-to-end tests for specimen create → split → audit → export → import | Medium | Unchanged |
 | **Legacy peer deps** | `--legacy-peer-deps` masks npm conflict; blocks safe Svelte major upgrade | Low | Unchanged |
 | **Rust error context** | Generic `map_err(\|e\| e.to_string())` throughout commands | Low | Unchanged |
 | **Schema documentation** | No ER diagram or human-readable table reference | Low | Unchanged |
-| **rand 0.8** | One major version behind (0.9 released); non-breaking migration | Low | 🆕 NEW |
+| **rand 0.8** | One major version behind (0.9 released); non-breaking migration | Low | Unchanged |
 
-**Items resolved since prior report (2026-06-17):**
-- ✅ 23 stale branches pruned → 0 stale branches
-- ✅ Lint CI job added (`svelte-check` + `cargo clippy -D warnings`)
-- ✅ SpecimenDetail size reduced 81 KB → 54 KB; 3 sub-components extracted
-- ✅ New test files: `exportUtils.test.ts` (27), `importUtils.test.ts` (8), `utils.ts` effectiveHealth (5)
-- ✅ All 18 Clippy warnings cleared across 11 Rust files
-
----
-
-## 14. Top 5 Actionable Recommendations
-
-### 1. Update ROADMAP.md status header (15 min, immediate)
-The opening "Status as of June 2026: **v1.1.0**" block is misleading — the project is at v1.7.0 with a cryptographic audit chain, genealogy tracking, and 10 migrations. Update the status line, migration count, schema note, and "Recent:" section to reflect current reality. This is the highest-value documentation fix because ROADMAP.md is the first document a new contributor or external reviewer reads.
-
-### 2. Continue sub-component extraction from remaining large files
-Priority order: `MediaList.svelte` (44 KB → extract the media formula editor + hormone table), `SpecimenList.svelte` (43 KB → extract the print options panel + batch-operations drawer), `InventoryManager.svelte` (40 KB → extract the prepared-solutions panel). Each extraction narrows the Phase D/E reuse surface and makes the component independently testable.
-
-### 3. Add Vitest component tests for SpecimenForm and ImportManager
-`SpecimenForm` is the highest-regression-risk component (required-field validation, health slider bounds, accession generation preview). `ImportManager` has a dry-run + confirm two-step flow that is hard to verify manually. Covering these two in Vitest before Phase C domain changes is the highest-return testing investment available.
-
-### 4. Resolve npm peer-dependency conflict
-Remove `--legacy-peer-deps` from CI scripts by identifying and explicitly resolving the conflicting package versions. This unblocks `npm audit` and ensures future `@sveltejs/vite-plugin-svelte` or `svelte-check` upgrades are safe to apply without guessing.
-
-### 5. Write a one-page Merkle checkpoint spec before implementing WP-20+
-The next trust-layer phase (Merkle checkpoints over audit batches) is architecturally significant. A short spec (batch size policy, root hash storage table, verification API shape) written now — while the v1.5.0–v1.7.0 hash-chain context is fresh — will make the implementation reviewable, testable, and resistant to correctness bugs that are hard to detect after the fact.
+**Items resolved since prior report (2026-06-18):**
+- ✅ ROADMAP.md header stale (was v1.1.0) — resolved by PR #62 on 2026-06-19
+- ✅ CHANGELOG missing since v1.7.0 — resolved this session (v1.8.0 entry written)
+- ✅ Version mismatch (1.7.0 across manifests despite schema change) — resolved this session (bumped to 1.8.0)
+- ✅ Lint warnings from PR #63 — resolved in PR #64 and PR #66
 
 ---
 
-## 15. Documentation Quality
+## 13. Top 5 Actionable Recommendations
+
+### 1. Extract split UI from SpecimenDetail.svelte into a dedicated SplitWorkflow component (1–2 hrs, medium priority)
+The split confirmation dialog, per-child card rows, draft-media creation modal, and accession preview UI added in PR #63 total roughly 24 KB of HTML inside `SpecimenDetail.svelte`. Extracting a `SplitWorkflow.svelte` component (or `SplitConfirmDialog.svelte` + `SplitChildCard.svelte`) would bring `SpecimenDetail` back below 55 KB, make the split logic independently testable, and reduce the complexity surface before Phase TX adds strain-binding to the split flow.
+
+### 2. Add Rust unit tests for split accession generation
+`generate_split_accession_numbers` has three non-trivial edge cases: (a) skipping already-taken letters, (b) returning an error when all 26 are exhausted, (c) correct recursive suffix chaining (`001A` → `001AA`). None are currently covered by tests. Add these to `queries.rs` alongside the existing hash-chain tests. Estimated: 6–8 assertions, ~30 min.
+
+### 3. Write a CHANGELOG entry and bump version at the time of each schema-changing PR
+Migration 011 shipped in PR #63 on 2026-06-18 without a version bump or CHANGELOG entry. This pattern will recur. Adding a pre-commit note (or a CI check) that requires a CHANGELOG entry and version bump when `migrations.rs` changes would prevent documentation drift. A simple `grep -q "\[1\." CHANGELOG.md` check against the version in `package.json` in the test workflow would catch this automatically.
+
+### 4. Resolve npm peer-dependency conflict (removes `--legacy-peer-deps`)
+Identify and explicitly pin the conflicting package versions. This unblocks `npm audit` for clean CVE reporting and ensures future Svelte/Vite upgrades are safe. Should take ~30 min once the conflict is identified with `npm ls --all`.
+
+### 5. Extract MediaList.svelte and SpecimenList.svelte into sub-components
+Both are still at ~44 KB each. `MediaList` has an extractable media formula editor + hormone table; `SpecimenList` has a print options panel + batch-operations drawer. Each extraction makes those features independently testable and reduces the regression surface before Phase C domain changes land.
+
+---
+
+## 14. Documentation Quality
 
 | Document | Size | Status |
 |---|---|---|
-| `ROADMAP.md` | 52 KB | ⚠️ Excellent content; opening status header stale (reads v1.1.0 / 6 migrations / no audit chain) |
-| `CHANGELOG.md` | 45 KB | ✅ Excellent — every release from v0.1.20 → v1.7.0 fully documented |
-| `README.md` | 32 KB | ✅ Very good — feature tour + "Building from Source" (newly added) |
+| `ROADMAP.md` | ~52 KB | ✅ Updated this session — v1.8.0, 11 migrations, release table corrected |
+| `CHANGELOG.md` | ~47 KB | ✅ Updated this session — v1.8.0 entry written |
+| `README.md` | ~33 KB | ✅ Updated this session — migration 011 row, split description, v1.8.0 changelog entry |
+| `UserManual.md` | Present | ✅ Four improvement passes today; good scope note; planned-vs-shipped clearly delineated |
 | `.github/SIGNING.md` | Present | ✅ Covers release keystore generation and management |
 | Code comments | Inline | ✅ Migrations, hash-chain invariants, compliance rules annotated; zero TODO/FIXME |
 
-**One structural gap:** No ER diagram or schema reference. More important as Phase C domain changes and Phase D/E vertical additions land.
+**One structural gap remains:** No ER diagram or schema reference. Becomes more important as Phase C domain changes and Phase TX-1 strain tables land.
 
 ---
 
-## 16. Summary Scorecard
+## 15. Summary Scorecard
 
 | Dimension | Score | Delta | Notes |
 |---|---|---|---|
-| Version alignment | ✅ 10/10 | → | All three manifests at v1.7.0 |
-| Code organization | ✅ 9/10 | ↑ | SpecimenDetail extracted (81→54 KB); 3 large files remain |
-| Security posture | ✅ 10/10 | → | Immutable hash-chain now includes genealogy provenance for splits |
-| Test coverage | ⚠️ 7/10 | ↑ | ~116 assertions (up from 76); component + integration tests still absent |
-| Performance | ✅ 10/10 | → | No N+1; family queries via `root_specimen_id` FK avoid recursive CTEs |
-| Documentation | ⚠️ 8/10 | ↓ | ROADMAP header stale; README now has build guide; schema diagram missing |
-| CI/CD | ✅ 10/10 | ↑ | Lint job added; all 3 pipelines green; Clippy zero-warning now enforced in CI |
-| Technical debt | ✅ 8/10 | ↑ | Major items cleared (branches, lint, SpecimenDetail, tests); remaining is incremental |
-| Development velocity | ✅ 10/10 | → | 8 releases in 2 days; 60 PRs merged; clean atomic history throughout |
-| Roadmap clarity | ✅ 10/10 | → | Phases A–F fully mapped; WP-01→WP-57 scoped and dependencies clear |
+| Version alignment | ✅ 10/10 | ↑ | All three manifests bumped to 1.8.0 this session |
+| Code organization | ⚠️ 8/10 | ↓ | SpecimenDetail regressed 54→78 KB; split UI needs extraction |
+| Security posture | ✅ 10/10 | → | Split operation atomic; draft batches guarded; no new attack surface |
+| Test coverage | ⚠️ 7/10 | → | ~116 assertions; split accession edge cases untest; component tests still absent |
+| Performance | ✅ 10/10 | → | No N+1; draft batch index added; genealogy queries via `root_specimen_id` FK |
+| Documentation | ✅ 9/10 | ↑ | All four docs updated to v1.8.0; UserManual added and polished; schema diagram still missing |
+| CI/CD | ✅ 10/10 | → | Lint job passes; all 3 pipelines green; Clippy zero-warning enforced in CI |
+| Technical debt | ⚠️ 7/10 | ↓ | Version/CHANGELOG drift resolved; new debt from split UI size and untested split accession logic |
+| Development velocity | ✅ 10/10 | → | 4 PRs today; split overhaul is high-quality feature work |
+| Roadmap clarity | ✅ 10/10 | → | Phase TX design fully refined; v1.8.0 placed correctly in release table |
 
-**Verdict:** Production-ready and executing at exceptional velocity. The Phase B audit/trust layer is architecturally complete through v1.7.0. Immediate priority: update ROADMAP.md header to remove the v1.1.0 stale status. Next sprint priority: continue component extraction and add component-level tests before Phase C domain schema changes increase the regression surface.
+**Verdict:** Production-ready and executing well. The split workflow overhaul is the most user-facing improvement in the v1.8.x series — letter-suffix accessions and per-child controls significantly reduce split errors. Immediate priority: extract the split dialog UI from `SpecimenDetail.svelte` (it regressed from 54 KB to 78 KB) and add Rust unit tests for accession generation edge cases. Next sprint priority: Phase C de-hardening (WP-22–27) targeting v1.9.0.
