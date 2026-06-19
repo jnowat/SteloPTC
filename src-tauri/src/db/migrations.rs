@@ -68,6 +68,22 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (11)", [])?;
     }
 
+    if current < 12 {
+        migration_012_specimen_contamination(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (12)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_012_specimen_contamination(conn: &Connection) -> DbResult<()> {
+    // Add structured contamination columns to specimens.
+    // These capture the final contamination state of a specimen when it is archived
+    // (typically via a split), keeping the data separate from free-text notes.
+    conn.execute_batch("
+        ALTER TABLE specimens ADD COLUMN contamination_flag  INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE specimens ADD COLUMN contamination_notes TEXT;
+    ")?;
     Ok(())
 }
 

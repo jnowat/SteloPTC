@@ -330,6 +330,8 @@
           parentHealth: s.health_status,
           parentStage: s.stage,
           parentNotes: s.notes,
+          parentContaminationFlag: s.contamination_flag,
+          parentContaminationNotes: s.contamination_notes,
         });
       }
 
@@ -786,6 +788,17 @@ ${complianceSection}
         <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;">
           <span class="info-label" title="General notes recorded for this specimen">Notes</span>
           <p style="margin-top:4px;font-size:13px;white-space:pre-wrap;color:#374151;">{specimen.notes}</p>
+        </div>
+      {/if}
+      {#if specimen.contamination_flag}
+        <div class="contam-info-block">
+          <span class="contam-info-icon">⚠</span>
+          <div>
+            <span class="contam-info-label">Contamination detected at time of archival</span>
+            {#if specimen.contamination_notes}
+              <p class="contam-info-notes">{specimen.contamination_notes}</p>
+            {/if}
+          </div>
         </div>
       {/if}
     </div>
@@ -1379,6 +1392,20 @@ ${complianceSection}
   }
   :global(.dark) .archived-banner { background: #1c1a00; border-color: #713f12; color: #fcd34d; }
   .archived-banner-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; opacity: 0.8; }
+
+  /* Contamination block inside specimen info card (archived specimens) */
+  .contam-info-block {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-top: 14px; padding: 10px 12px;
+    background: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px;
+  }
+  :global(.dark) .contam-info-block { background: #450a0a; border-color: #7f1d1d; }
+  .contam-info-icon { font-size: 16px; color: #dc2626; flex-shrink: 0; margin-top: 1px; }
+  :global(.dark) .contam-info-icon { color: #f87171; }
+  .contam-info-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #b91c1c; }
+  :global(.dark) .contam-info-label { color: #fca5a5; }
+  .contam-info-notes { margin: 4px 0 0; font-size: 13px; color: #7f1d1d; white-space: pre-wrap; line-height: 1.5; }
+  :global(.dark) .contam-info-notes { color: #fca5a5; }
 
   .lineage-banner {
     background: linear-gradient(135deg, #eff6ff, #f0fdf4);

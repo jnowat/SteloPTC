@@ -37,6 +37,10 @@ pub struct Specimen {
     pub employee_id: Option<String>,
     pub is_archived: bool,
     pub archived_at: Option<String>,
+    /// Contamination flag set at archive time (e.g. during a split).
+    /// Distinct from `has_contamination`, which aggregates across subculture records.
+    pub contamination_flag: bool,
+    pub contamination_notes: Option<String>,
     pub created_by: Option<String>,
     pub created_at: String,
     pub updated_at: String,

@@ -230,6 +230,14 @@
                       <p class="tl-detail-p">{sc.parentNotes}</p>
                     </div>
                   {/if}
+                  {#if sc.parentContaminationFlag}
+                    <div class="tl-contam-block">
+                      <span>⚠ <strong>Contamination detected at time of split</strong></span>
+                      {#if sc.parentContaminationNotes}
+                        <p class="tl-detail-p" style="margin-top:4px;">{sc.parentContaminationNotes}</p>
+                      {/if}
+                    </div>
+                  {/if}
                   <div>
                     <div class="tl-detail-label" style="margin-bottom:5px;">Children Created (P{sc.passage_number + 1}+)</div>
                     <div style="display:flex;flex-wrap:wrap;gap:5px;">
@@ -574,4 +582,12 @@
   .tl-card.ancestral { background: #f8fafc; border-color: #e2e8f0; opacity: 0.85; }
   :global(.dark) .tl-card.ancestral { background: #0f172a; border-color: #1e293b; }
   .tl-card.ancestral:hover { opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+  /* Contamination block inside expanded parent split card */
+  .tl-contam-block {
+    padding: 8px 10px; border-radius: 6px; margin-bottom: 10px;
+    background: #fff1f2; border: 1px solid #fecdd3;
+    font-size: 12px; color: #b91c1c;
+  }
+  :global(.dark) .tl-contam-block { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
 </style>

@@ -84,6 +84,8 @@ pub fn list_specimens(
             employee_id: row.get("employee_id")?,
             is_archived: row.get::<_, i32>("is_archived")? != 0,
             archived_at: row.get("archived_at")?,
+            contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
+            contamination_notes: row.get("contamination_notes")?,
             created_by: row.get("created_by")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
@@ -467,6 +469,8 @@ pub fn search_specimens(
             employee_id: row.get("employee_id")?,
             is_archived: row.get::<_, i32>("is_archived")? != 0,
             archived_at: row.get("archived_at")?,
+            contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
+            contamination_notes: row.get("contamination_notes")?,
             created_by: row.get("created_by")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
@@ -712,33 +716,26 @@ pub fn split_specimen(
         .unchecked_transaction()
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
-    // Compose the parent's final notes: merge form notes + contamination annotation.
-    let contam_annotation: Option<String> = match (
-        request.contamination_flag,
-        request.contamination_notes.as_deref(),
-    ) {
-        (Some(true), Some(cn)) if !cn.is_empty() => {
-            Some(format!("[Contamination at split: {}]", cn))
-        }
-        (Some(true), _) => Some("[Contamination detected at time of split]".to_string()),
-        _ => None,
-    };
-    let final_notes: Option<String> = match (request.notes.as_deref(), contam_annotation.as_deref()) {
-        (Some(n), Some(c)) => Some(format!("{}\n{}", n, c)),
-        (None, Some(c)) => Some(c.to_string()),
-        (Some(n), None) => Some(n.to_string()),
-        _ => None,
-    };
+    let contam_flag_i32 = request.contamination_flag.unwrap_or(false) as i32;
 
-    // 1. Archive the parent, recording its health and notes as of the split.
+    // 1. Archive the parent, recording its health/notes/contamination as of the split.
+    //    Contamination is stored in dedicated columns (not appended to notes).
     //    These values power the expanded "Split into N children" card on the parent's timeline.
     tx.execute(
-        "UPDATE specimens SET is_archived = 1, archived_at = datetime('now'), \
-         updated_at = datetime('now'), \
+        "UPDATE specimens SET \
+         is_archived = 1, archived_at = datetime('now'), updated_at = datetime('now'), \
          health_status = CASE WHEN ?2 IS NOT NULL THEN ?2 ELSE health_status END, \
-         notes = CASE WHEN ?3 IS NOT NULL THEN ?3 ELSE notes END \
+         notes = CASE WHEN ?3 IS NOT NULL THEN ?3 ELSE notes END, \
+         contamination_flag  = ?4, \
+         contamination_notes = CASE WHEN ?4 = 1 THEN ?5 ELSE contamination_notes END \
          WHERE id = ?1",
-        params![request.parent_specimen_id, request.health_status, final_notes],
+        params![
+            request.parent_specimen_id,
+            request.health_status,
+            request.notes,
+            contam_flag_i32,
+            request.contamination_notes,
+        ],
     ).map_err(|e| format!("Failed to archive parent: {}", e))?;
 
     // 2. Log the split event on the parent's chain.
