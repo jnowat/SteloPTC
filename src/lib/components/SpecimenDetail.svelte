@@ -31,6 +31,20 @@
   let navHistory = $state<string[]>([]);
   // Flag to distinguish internal (lineage) navigation from external (list) navigation
   let _internalNav = false;
+  let showAncestralHistory = $state(false);
+  let ancestralSubcultures = $state<any[]>([]);
+  let ancestralLoading = $state(false);
+
+  // Combined timeline: current specimen entries + optional ancestral section from parent
+  let displayTimeline = $derived(
+    showAncestralHistory && ancestralSubcultures.length > 0
+      ? [
+          ...subcultures,
+          { id: 'ancestral-divider', isAncestralDivider: true, ancestorAccession: parentSpecimen?.accession_number },
+          ...ancestralSubcultures,
+        ]
+      : subcultures
+  );
   let showPassageForm = $state(false);
   let activeTab = $state<'history' | 'compliance' | 'photos'>('history');
   let photos = $state<any[]>([]);
@@ -240,6 +254,9 @@
 
   async function loadAll(id: string) {
     loading = true;
+    // Clear ancestral history whenever we switch specimens
+    showAncestralHistory = false;
+    ancestralSubcultures = [];
     try {
       const [s, sc, cr, mb, ph] = await Promise.all([
         getSpecimen(id),
@@ -276,6 +293,9 @@
 
       // Append split-origin at the END (bottom = oldest) for specimens created by a split.
       if (s.parent_specimen_id) {
+        const siblings = family.filter((m: any) =>
+          s.parent_specimen_id && m.parent_specimen_id === s.parent_specimen_id && m.id !== s.id
+        );
         timelineItems.push({
           id: `split-origin-${s.id}`,
           isSplitEvent: true,
@@ -284,6 +304,11 @@
           relatedAccession: parentSpecimen?.accession_number || s.parent_specimen_id,
           relatedId: s.parent_specimen_id,
           passage_number: s.lineage_passage_offset,
+          // Extra context shown when expanded
+          selfStage: s.stage,
+          selfHealth: s.health_status,
+          selfLocation: s.location,
+          siblings: siblings.map((m: any) => ({ accession_number: m.accession_number, id: m.id, is_archived: m.is_archived })),
         });
       }
 
@@ -300,6 +325,11 @@
           childAccessions: myChildren.map((c: any) => c.accession_number),
           childIds: myChildren.map((c: any) => c.id),
           passage_number: s.lineage_passage_offset + s.subculture_count + 1,
+          // Extra context shown when expanded (parent's state at time of split)
+          parentLocation: s.location,
+          parentHealth: s.health_status,
+          parentStage: s.stage,
+          parentNotes: s.notes,
         });
       }
 
@@ -428,6 +458,32 @@
       selectedSpecimenId.set(prev);
     } else {
       navigateTo('specimens');
+    }
+  }
+
+  async function loadAncestralHistory() {
+    if (!specimen?.parent_specimen_id || !parentSpecimen) return;
+    ancestralLoading = true;
+    try {
+      const parentPassages = await listSubcultures(specimen.parent_specimen_id);
+      const parentOffset = (parentSpecimen.lineage_passage_offset as number) ?? 0;
+      ancestralSubcultures = parentPassages.map((p: any) => ({
+        ...p,
+        passage_number: p.passage_number + parentOffset,
+        isAncestral: true,
+        ancestorAccession: parentSpecimen.accession_number,
+      }));
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      ancestralLoading = false;
+    }
+  }
+
+  async function toggleAncestralHistory() {
+    showAncestralHistory = !showAncestralHistory;
+    if (showAncestralHistory && ancestralSubcultures.length === 0) {
+      await loadAncestralHistory();
     }
   }
 
@@ -1108,11 +1164,34 @@ ${complianceSection}
           </form>
         {/if}
 
+        <!-- ── Ancestral history toggle (child specimens only) ── -->
+        {#if specimen?.parent_specimen_id}
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <button
+              class="btn btn-sm"
+              onclick={toggleAncestralHistory}
+              disabled={ancestralLoading}
+              title={showAncestralHistory ? 'Hide parent lineage passages from the timeline' : 'Show all ancestral passages from the parent specimen in the timeline'}
+              style="font-size:12px;"
+            >
+              {#if ancestralLoading}Loading…{:else if showAncestralHistory}▴ Hide ancestral history{:else}▾ Show full lineage history{/if}
+            </button>
+            {#if showAncestralHistory && !ancestralLoading && parentSpecimen}
+              {#if ancestralSubcultures.length > 0}
+                <span style="font-size:12px;color:#6b7280;">Showing passages from {parentSpecimen.accession_number}</span>
+              {:else}
+                <span style="font-size:12px;color:#9ca3af;">{parentSpecimen.accession_number} has no recorded passages</span>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+
         <!-- ── Timeline ── -->
         <SpecimenPassageTimeline
-          subcultures={subcultures}
+          subcultures={displayTimeline}
           specimenId={$selectedSpecimenId!}
           onreload={() => loadAll($selectedSpecimenId!)}
+          onnavigate={navigateToSpecimen}
         />
       </div>
 
