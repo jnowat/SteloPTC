@@ -116,7 +116,7 @@
               <div class="tl-split-header">
                 <span class="tl-split-icon">⑂</span>
                 <div class="tl-card-left">
-                  <span class="tl-passage-num tl-split-label" title="This specimen was split into {sc.childCount} child specimen{sc.childCount > 1 ? 's' : ''} at P{sc.passage_number - 1}">Split</span>
+                  <span class="tl-passage-num tl-split-label" title="P{sc.passage_number} — this specimen was split into {sc.childCount} child specimen{sc.childCount > 1 ? 's' : ''}; children continue from P{sc.passage_number + 1}">P{sc.passage_number} · Split</span>
                   <div class="tl-card-summary">
                     <span class="tl-date">{sc.date}</span>
                     <span class="tl-pill split-pill">Split into {sc.childCount} child{sc.childCount > 1 ? 'ren' : ''}</span>
