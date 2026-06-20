@@ -365,7 +365,6 @@ pub fn create_audit_checkpoint(
             rusqlite::params![&lineage_id],
             |r| r.get::<_, Option<i64>>(0),
         ).map_err(|e| e.to_string())?
-        .flatten()
         .ok_or_else(|| format!("No chained entries found in lineage '{}'.", lineage_id))?
     };
 
@@ -377,7 +376,6 @@ pub fn create_audit_checkpoint(
             rusqlite::params![&lineage_id],
             |r| r.get::<_, Option<i64>>(0),
         ).map_err(|e| e.to_string())?
-        .flatten()
         .ok_or_else(|| format!("No chained entries found in lineage '{}'.", lineage_id))?
     };
 
@@ -617,30 +615,32 @@ pub fn list_audit_checkpoints(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     auth_service::validate_session(&db, &token)?;
 
-    let rows = if let Some(ref lid) = lineage_id {
+    let rows: Vec<AuditCheckpoint> = if let Some(ref lid) = lineage_id {
         let mut stmt = db.conn.prepare(
             "SELECT id, lineage_id, start_seq, end_seq, entry_count, merkle_root, created_at, created_by, anchored_txid \
              FROM audit_checkpoints WHERE lineage_id = ?1 ORDER BY created_at DESC",
         ).map_err(|e| e.to_string())?;
-        stmt.query_map(rusqlite::params![lid], |r| Ok(AuditCheckpoint {
+        let collected: Vec<AuditCheckpoint> = stmt.query_map(rusqlite::params![lid], |r| Ok(AuditCheckpoint {
             id: r.get(0)?, lineage_id: r.get(1)?, start_seq: r.get(2)?,
             end_seq: r.get(3)?, entry_count: r.get(4)?, merkle_root: r.get(5)?,
             created_at: r.get(6)?, created_by: r.get(7)?, anchored_txid: r.get(8)?,
         })).map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .collect()
+        .collect();
+        collected
     } else {
         let mut stmt = db.conn.prepare(
             "SELECT id, lineage_id, start_seq, end_seq, entry_count, merkle_root, created_at, created_by, anchored_txid \
              FROM audit_checkpoints ORDER BY created_at DESC LIMIT 100",
         ).map_err(|e| e.to_string())?;
-        stmt.query_map([], |r| Ok(AuditCheckpoint {
+        let collected: Vec<AuditCheckpoint> = stmt.query_map([], |r| Ok(AuditCheckpoint {
             id: r.get(0)?, lineage_id: r.get(1)?, start_seq: r.get(2)?,
             end_seq: r.get(3)?, entry_count: r.get(4)?, merkle_root: r.get(5)?,
             created_at: r.get(6)?, created_by: r.get(7)?, anchored_txid: r.get(8)?,
         })).map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
-        .collect()
+        .collect();
+        collected
     };
 
     Ok(rows)
