@@ -5,6 +5,38 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-06-20
+
+### Added — WP-19: Trust Layer Polish
+
+- **Contamination inheritance on split**
+  - When `split_specimen` is called and the parent specimen has `contamination_flag = true`, all child specimens are now automatically created with `contamination_flag = true` and inherit the parent's `contamination_notes`. The split request can also introduce new contamination (observed during the split event itself) even if the parent was previously clean; in that case the request's notes are used, falling back to any existing parent notes.
+  - The audit entry written for each child notes when contamination was inherited: *"Split from … [contamination inherited]"*, making the provenance visible in the tamper-evident chain.
+  - The split form now shows a red warning banner when the current specimen is already contaminated, informing the user that all children will inherit the flag before they confirm the split.
+
+- **Child split card — inherited contamination display**
+  - The expanded "Split from [parent]" card on a child specimen's passage timeline now shows a contamination block when either:
+    - The child itself has `contamination_flag = true` (inherited) — shown as *"⚠ Contamination inherited from split parent"* with notes.
+    - The parent was contaminated but the child wasn't flagged (edge case for pre-v1.9.0 data) — shown as *"ℹ Parent was contaminated at time of split"* in amber.
+
+- **Audit Log: Verify All Lineages**
+  - The chain integrity banner now includes a **Verify All Lineages** button that walks the full hash chain for every unique lineage visible on the current page in one click. A summary badge (`✓ All N lineages intact` or `✗ N of M lineages failed`) appears inline after the run, and individual rows are annotated with their per-lineage results.
+  - The batch verification result is dismissed automatically when navigating to another page or resetting filters.
+
+### Changed
+
+- **Audit Log: cleaner verification messages**
+  - `verifyLineage` no longer produces redundant *"Chain break at seq N: Chain broken at seq N — …"* output. The backend message already contains the sequence number and failure reason; the frontend now uses it directly.
+  - Success message updated to *"All N entries verified — chain is intact."* for consistency with the new batch summary style.
+
+- **`split_specimen` backend command**
+  - Parent query now fetches `contamination_flag` and `contamination_notes` from the database so that pre-existing contamination (recorded before the split) is correctly inherited even when the split request omits the flag.
+  - Child INSERT now writes `contamination_flag` and `contamination_notes` explicitly, ensuring the inherited status is persisted from the moment of creation.
+
+### Fixed
+
+- Splitting a contaminated specimen previously created child specimens with `contamination_flag = 0` (clean), silently losing the contamination provenance. Children are now born contaminated if their parent was.
+
 ## [1.8.0] - 2026-06-19
 
 ### Added
