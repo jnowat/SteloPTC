@@ -31,6 +31,20 @@
   let navHistory = $state<string[]>([]);
   // Flag to distinguish internal (lineage) navigation from external (list) navigation
   let _internalNav = false;
+  let showAncestralHistory = $state(false);
+  let ancestralSubcultures = $state<any[]>([]);
+  let ancestralLoading = $state(false);
+
+  // Combined timeline: current specimen entries + optional ancestral section from parent
+  let displayTimeline = $derived(
+    showAncestralHistory && ancestralSubcultures.length > 0
+      ? [
+          ...subcultures,
+          { id: 'ancestral-divider', isAncestralDivider: true, ancestorAccession: parentSpecimen?.accession_number },
+          ...ancestralSubcultures,
+        ]
+      : subcultures
+  );
   let showPassageForm = $state(false);
   let activeTab = $state<'history' | 'compliance' | 'photos'>('history');
   let photos = $state<any[]>([]);
@@ -240,6 +254,9 @@
 
   async function loadAll(id: string) {
     loading = true;
+    // Clear ancestral history whenever we switch specimens
+    showAncestralHistory = false;
+    ancestralSubcultures = [];
     try {
       const [s, sc, cr, mb, ph] = await Promise.all([
         getSpecimen(id),
@@ -276,6 +293,9 @@
 
       // Append split-origin at the END (bottom = oldest) for specimens created by a split.
       if (s.parent_specimen_id) {
+        const siblings = family.filter((m: any) =>
+          s.parent_specimen_id && m.parent_specimen_id === s.parent_specimen_id && m.id !== s.id
+        );
         timelineItems.push({
           id: `split-origin-${s.id}`,
           isSplitEvent: true,
@@ -284,6 +304,11 @@
           relatedAccession: parentSpecimen?.accession_number || s.parent_specimen_id,
           relatedId: s.parent_specimen_id,
           passage_number: s.lineage_passage_offset,
+          // Extra context shown when expanded
+          selfStage: s.stage,
+          selfHealth: s.health_status,
+          selfLocation: s.location,
+          siblings: siblings.map((m: any) => ({ accession_number: m.accession_number, id: m.id, is_archived: m.is_archived })),
         });
       }
 
@@ -300,6 +325,13 @@
           childAccessions: myChildren.map((c: any) => c.accession_number),
           childIds: myChildren.map((c: any) => c.id),
           passage_number: s.lineage_passage_offset + s.subculture_count + 1,
+          // Extra context shown when expanded (parent's state at time of split)
+          parentLocation: s.location,
+          parentHealth: s.health_status,
+          parentStage: s.stage,
+          parentNotes: s.notes,
+          parentContaminationFlag: s.contamination_flag,
+          parentContaminationNotes: s.contamination_notes,
         });
       }
 
@@ -428,6 +460,32 @@
       selectedSpecimenId.set(prev);
     } else {
       navigateTo('specimens');
+    }
+  }
+
+  async function loadAncestralHistory() {
+    if (!specimen?.parent_specimen_id || !parentSpecimen) return;
+    ancestralLoading = true;
+    try {
+      const parentPassages = await listSubcultures(specimen.parent_specimen_id);
+      const parentOffset = (parentSpecimen.lineage_passage_offset as number) ?? 0;
+      ancestralSubcultures = parentPassages.map((p: any) => ({
+        ...p,
+        passage_number: p.passage_number + parentOffset,
+        isAncestral: true,
+        ancestorAccession: parentSpecimen.accession_number,
+      }));
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      ancestralLoading = false;
+    }
+  }
+
+  async function toggleAncestralHistory() {
+    showAncestralHistory = !showAncestralHistory;
+    if (showAncestralHistory && ancestralSubcultures.length === 0) {
+      await loadAncestralHistory();
     }
   }
 
@@ -575,7 +633,13 @@ ${complianceSection}
         {#if specimen.generation > 0}
           <span class="badge badge-purple" title="Generation {specimen.generation} — this specimen was derived from {specimen.generation} successive split{specimen.generation > 1 ? 's' : ''}">Gen {specimen.generation}</span>
         {/if}
-        {#if specimen.quarantine_flag}
+        {#if specimen.is_archived}
+          {#if childSpecimens.length > 0}
+            <span class="badge badge-gray" title="This specimen was split into children and is now inactive — no further passages can be recorded">Split / Inactive</span>
+          {:else}
+            <span class="badge badge-gray" title="This specimen has been archived — no further passages can be recorded">Archived</span>
+          {/if}
+        {:else if specimen.quarantine_flag}
           <span class="badge badge-red" title="This specimen is under quarantine — movement restricted">Quarantined</span>
         {:else}
           <span class="badge badge-green" title="This specimen is active and not under quarantine">Active</span>
@@ -653,6 +717,21 @@ ${complianceSection}
       </div>
     {/if}
 
+    <!-- ── Archived Banner ── -->
+    {#if specimen.is_archived}
+      <div class="archived-banner">
+        <span class="archived-banner-icon">⊘</span>
+        <div>
+          <strong>{childSpecimens.length > 0 ? 'Split / Inactive' : 'Archived'}</strong>
+          {#if childSpecimens.length > 0}
+            — This specimen was split into {childSpecimens.length} child{childSpecimens.length > 1 ? 'ren' : ''}. Passage history is read-only.
+          {:else}
+            — This specimen has been archived. No further passages can be recorded.
+          {/if}
+        </div>
+      </div>
+    {/if}
+
     <!-- ── Specimen Info Card ── -->
     <div class="card info-card">
       <h3 style="margin-bottom:14px;font-size:15px;">Specimen Information</h3>
@@ -711,6 +790,17 @@ ${complianceSection}
           <p style="margin-top:4px;font-size:13px;white-space:pre-wrap;color:#374151;">{specimen.notes}</p>
         </div>
       {/if}
+      {#if specimen.contamination_flag}
+        <div class="contam-info-block">
+          <span class="contam-info-icon">⚠</span>
+          <div>
+            <span class="contam-info-label">Contamination detected at time of archival</span>
+            {#if specimen.contamination_notes}
+              <p class="contam-info-notes">{specimen.contamination_notes}</p>
+            {/if}
+          </div>
+        </div>
+      {/if}
     </div>
 
     <!-- ── Tabs ── -->
@@ -733,9 +823,15 @@ ${complianceSection}
         <!-- Record Passage header -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:{showPassageForm ? 16 : 0}px;">
           <h3 style="font-size:15px;">Passage History</h3>
-          <button class="btn btn-primary btn-sm" onclick={() => showPassageForm = !showPassageForm}>
+          <button
+            class="btn btn-primary btn-sm"
+            onclick={() => { if (!specimen.is_archived) showPassageForm = !showPassageForm; }}
+            disabled={specimen.is_archived}
+            title={specimen.is_archived
+              ? (childSpecimens.length > 0 ? 'This specimen was split and archived — passages cannot be recorded on inactive specimens' : 'This specimen is archived — passages cannot be recorded')
+              : (showPassageForm ? 'Cancel passage recording' : 'Log a new subculture or transfer event for this specimen — records date, media batch, vessel, health, location, and observations')}
+          >
             {showPassageForm ? '✕ Cancel' : '+ Record Passage'}
-            {#if !showPassageForm}<Tooltip text="Log a new subculture or transfer event for this specimen — records date, media batch, vessel, health, location, and observations" position="bottom" />{/if}
           </button>
         </div>
 
@@ -749,79 +845,83 @@ ${complianceSection}
                 <label>Date <Tooltip text="Date on which this passage/subculture was performed" /></label>
                 <input type="date" title="Date on which this passage/subculture was performed" bind:value={subcultureForm.date} required />
               </div>
-              <div class="form-group" style="flex:2;">
-                <label>Media Batch <Tooltip text="Select the nutrient media batch used for this transfer — must be a batch prepared on or before the passage date" /></label>
-                <select title="Select the media batch used for this transfer" bind:value={subcultureForm.media_batch_id}>
-                  <option value="">No media / not recorded</option>
-                  {#each mediaBatches.slice(0, 20) as mb}
-                    <option value={mb.id}>{mb.batch_id} — {mb.name}</option>
-                  {/each}
-                </select>
-                {#if mediaDateWarning}
-                  <div style="color:#dc2626;font-size:12px;margin-top:4px;">
-                    ⚠ Warning: this media batch was prepared AFTER the passage date — please verify.
-                  </div>
-                {/if}
-              </div>
+              {#if !isSplitting}
+                <div class="form-group" style="flex:2;">
+                  <label>Media Batch <Tooltip text="Select the nutrient media batch used for this transfer — must be a batch prepared on or before the passage date" /></label>
+                  <select title="Select the media batch used for this transfer" bind:value={subcultureForm.media_batch_id}>
+                    <option value="">No media / not recorded</option>
+                    {#each mediaBatches.slice(0, 20) as mb}
+                      <option value={mb.id}>{mb.batch_id} — {mb.name}</option>
+                    {/each}
+                  </select>
+                  {#if mediaDateWarning}
+                    <div style="color:#dc2626;font-size:12px;margin-top:4px;">
+                      ⚠ Warning: this media batch was prepared AFTER the passage date — please verify.
+                    </div>
+                  {/if}
+                </div>
+              {/if}
             </div>
 
-            <!-- Vessel + Env -->
-            <div class="form-row">
-              <div class="form-group" style="flex:2;">
-                <label for="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)">Vessel Type</label>
-                <select id="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)" bind:value={subcultureForm.vessel_type}>
-                  <option value="">Select vessel…</option>
-                  {#each vesselTypes as v}
-                    <option value={v}>{v}</option>
-                  {/each}
-                </select>
+            {#if !isSplitting}
+              <!-- Vessel + Env -->
+              <div class="form-row">
+                <div class="form-group" style="flex:2;">
+                  <label for="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)">Vessel Type</label>
+                  <select id="sc-vessel-type" title="Type of container used for this passage (jar, flask, Petri dish, etc.)" bind:value={subcultureForm.vessel_type}>
+                    <option value="">Select vessel…</option>
+                    {#each vesselTypes as v}
+                      <option value={v}>{v}</option>
+                    {/each}
+                  </select>
+                </div>
+                <div class="form-group env-field">
+                  <label for="sc-temp" title="Incubation/growth room temperature in degrees Celsius">Temp (°C)</label>
+                  <input id="sc-temp" type="number" step="0.1" title="Incubation/growth room temperature in degrees Celsius" bind:value={subcultureForm.temperature_c} placeholder="25" />
+                </div>
+                <div class="form-group env-field">
+                  <label for="sc-ph" title="pH of the culture media used for this passage">pH</label>
+                  <input id="sc-ph" type="number" step="0.01" title="pH of the culture media used for this passage" bind:value={subcultureForm.ph} placeholder="5.7" />
+                </div>
+                <div class="form-group env-field-wide">
+                  <label for="sc-light-cycle" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)">Light Cycle (hrs on/hrs off)</label>
+                  <input id="sc-light-cycle" type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
+                </div>
               </div>
-              <div class="form-group env-field">
-                <label for="sc-temp" title="Incubation/growth room temperature in degrees Celsius">Temp (°C)</label>
-                <input id="sc-temp" type="number" step="0.1" title="Incubation/growth room temperature in degrees Celsius" bind:value={subcultureForm.temperature_c} placeholder="25" />
-              </div>
-              <div class="form-group env-field">
-                <label for="sc-ph" title="pH of the culture media used for this passage">pH</label>
-                <input id="sc-ph" type="number" step="0.01" title="pH of the culture media used for this passage" bind:value={subcultureForm.ph} placeholder="5.7" />
-              </div>
-              <div class="form-group env-field-wide">
-                <label for="sc-light-cycle" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)">Light Cycle (hrs on/hrs off)</label>
-                <input id="sc-light-cycle" type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
-              </div>
-            </div>
 
-            <!-- Transfer To Location -->
-            <div class="section-header">Transfer To Location</div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="sc-loc-room" title="Growth room where this specimen will be placed after transfer">Room</label>
-                <select id="sc-loc-room" title="Growth room where this specimen will be placed after transfer" bind:value={locToRoom}>
-                  <option value="">—</option>
-                  {#each rooms as r}<option value={r}>{r}</option>{/each}
-                </select>
+              <!-- Transfer To Location -->
+              <div class="section-header">Transfer To Location</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="sc-loc-room" title="Growth room where this specimen will be placed after transfer">Room</label>
+                  <select id="sc-loc-room" title="Growth room where this specimen will be placed after transfer" bind:value={locToRoom}>
+                    <option value="">—</option>
+                    {#each rooms as r}<option value={r}>{r}</option>{/each}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sc-loc-rack" title="Storage rack within the room where this specimen will be placed">Rack</label>
+                  <select id="sc-loc-rack" title="Storage rack within the room where this specimen will be placed" bind:value={locToRack}>
+                    <option value="">—</option>
+                    {#each racks as r}<option value={r}>{r}</option>{/each}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed">Shelf</label>
+                  <select id="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed" bind:value={locToShelf}>
+                    <option value="">—</option>
+                    {#each shelves as s}<option value={s}>{s}</option>{/each}
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed">Tray</label>
+                  <select id="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed" bind:value={locToTray}>
+                    <option value="">—</option>
+                    {#each trays as t}<option value={t}>{t}</option>{/each}
+                  </select>
+                </div>
               </div>
-              <div class="form-group">
-                <label for="sc-loc-rack" title="Storage rack within the room where this specimen will be placed">Rack</label>
-                <select id="sc-loc-rack" title="Storage rack within the room where this specimen will be placed" bind:value={locToRack}>
-                  <option value="">—</option>
-                  {#each racks as r}<option value={r}>{r}</option>{/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed">Shelf</label>
-                <select id="sc-loc-shelf" title="Shelf level on the rack where this specimen will be placed" bind:value={locToShelf}>
-                  <option value="">—</option>
-                  {#each shelves as s}<option value={s}>{s}</option>{/each}
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed">Tray</label>
-                <select id="sc-loc-tray" title="Tray position on the shelf where this specimen will be placed" bind:value={locToTray}>
-                  <option value="">—</option>
-                  {#each trays as t}<option value={t}>{t}</option>{/each}
-                </select>
-              </div>
-            </div>
+            {/if}
 
             <!-- Health Status -->
             <div class="form-group">
@@ -1108,11 +1208,34 @@ ${complianceSection}
           </form>
         {/if}
 
+        <!-- ── Ancestral history toggle (child specimens only) ── -->
+        {#if specimen?.parent_specimen_id}
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+            <button
+              class="btn btn-sm"
+              onclick={toggleAncestralHistory}
+              disabled={ancestralLoading}
+              title={showAncestralHistory ? 'Hide parent lineage passages from the timeline' : 'Show all ancestral passages from the parent specimen in the timeline'}
+              style="font-size:12px;"
+            >
+              {#if ancestralLoading}Loading…{:else if showAncestralHistory}▴ Hide ancestral history{:else}▾ Show full lineage history{/if}
+            </button>
+            {#if showAncestralHistory && !ancestralLoading && parentSpecimen}
+              {#if ancestralSubcultures.length > 0}
+                <span style="font-size:12px;color:#6b7280;">Showing passages from {parentSpecimen.accession_number}</span>
+              {:else}
+                <span style="font-size:12px;color:#9ca3af;">{parentSpecimen.accession_number} has no recorded passages</span>
+              {/if}
+            {/if}
+          </div>
+        {/if}
+
         <!-- ── Timeline ── -->
         <SpecimenPassageTimeline
-          subcultures={subcultures}
+          subcultures={displayTimeline}
           specimenId={$selectedSpecimenId!}
           onreload={() => loadAll($selectedSpecimenId!)}
+          onnavigate={navigateToSpecimen}
         />
       </div>
 
@@ -1261,6 +1384,29 @@ ${complianceSection}
   .health-badge { display: inline-block; padding: 3px 12px; border-radius: 12px; font-size: 12px; font-weight: 700; }
 
   /* ── Lineage Banner ── */
+  .archived-banner {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 12px 16px; margin-bottom: 16px;
+    background: #fefce8; border: 1px solid #fde68a; border-radius: 8px;
+    font-size: 13px; color: #78350f;
+  }
+  :global(.dark) .archived-banner { background: #1c1a00; border-color: #713f12; color: #fcd34d; }
+  .archived-banner-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; opacity: 0.8; }
+
+  /* Contamination block inside specimen info card (archived specimens) */
+  .contam-info-block {
+    display: flex; align-items: flex-start; gap: 10px;
+    margin-top: 14px; padding: 10px 12px;
+    background: #fff1f2; border: 1px solid #fecdd3; border-radius: 6px;
+  }
+  :global(.dark) .contam-info-block { background: #450a0a; border-color: #7f1d1d; }
+  .contam-info-icon { font-size: 16px; color: #dc2626; flex-shrink: 0; margin-top: 1px; }
+  :global(.dark) .contam-info-icon { color: #f87171; }
+  .contam-info-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; color: #b91c1c; }
+  :global(.dark) .contam-info-label { color: #fca5a5; }
+  .contam-info-notes { margin: 4px 0 0; font-size: 13px; color: #7f1d1d; white-space: pre-wrap; line-height: 1.5; }
+  :global(.dark) .contam-info-notes { color: #fca5a5; }
+
   .lineage-banner {
     background: linear-gradient(135deg, #eff6ff, #f0fdf4);
     border: 1px solid #bfdbfe;

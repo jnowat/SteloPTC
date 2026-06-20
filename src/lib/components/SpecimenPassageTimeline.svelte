@@ -6,10 +6,12 @@
     subcultures,
     specimenId,
     onreload,
+    onnavigate = undefined,
   }: {
     subcultures: any[];
     specimenId: string;
     onreload: () => void;
+    onnavigate?: (id: string) => void;
   } = $props();
 
   let expandedPassages = $state(new Set<string>());
@@ -34,6 +36,10 @@
     if (n === -1) return { label: '? – Unknown / Awaiting', color: '#7c3aed' };
     const i = Math.max(0, Math.min(4, n));
     return { label: `${i} – ${hlabels[i]}`, color: hcolors[i] };
+  }
+
+  function stageLabel(s: string | undefined | null) {
+    return s?.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) || '—';
   }
 
   function dotColor(passageNumber: number) {
@@ -91,18 +97,32 @@
 {:else}
   <div class="timeline">
     {#each subcultures as sc, i}
-      {#if sc.isSplitEvent}
-        <!-- ── Split event card ── -->
+      {#if sc.isAncestralDivider}
+        <!-- ── Ancestral section divider ── -->
+        <div class="tl-ancestral-section">
+          <div class="tl-ancestral-line"></div>
+          <span class="tl-ancestral-label">Ancestral passages{sc.ancestorAccession ? ` — ${sc.ancestorAccession}` : ''}</span>
+          <div class="tl-ancestral-line"></div>
+        </div>
+      {:else if sc.isSplitEvent}
+        <!-- ── Split event card (expandable) ── -->
+        {@const isSplitExpanded = expandedPassages.has(sc.id)}
         <div class="timeline-item">
           <div class="timeline-left">
             <div class="tl-dot tl-dot-split" title={sc.splitRole === 'child' ? 'Origin: split from parent' : 'End: specimen was split into children'}></div>
-            {#if i < subcultures.length - 1}
+            {#if i < subcultures.length - 1 && !subcultures[i + 1]?.isAncestralDivider}
               <div class="tl-line"></div>
             {/if}
           </div>
-          <div class="tl-card tl-card-split">
-            {#if sc.splitRole === 'child'}
-              <div class="tl-split-header">
+          <div class="tl-card tl-card-split" class:expanded={isSplitExpanded}>
+            <div
+              class="tl-split-header tl-split-header-btn"
+              role="button"
+              tabindex="0"
+              onclick={() => togglePassage(sc.id)}
+              onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}
+            >
+              {#if sc.splitRole === 'child'}
                 <span class="tl-split-icon">⑃</span>
                 <div class="tl-card-left">
                   <span class="tl-passage-num tl-split-label" title="This specimen was created by splitting from a parent at P{sc.passage_number}">P{sc.passage_number} · Split</span>
@@ -111,36 +131,144 @@
                     <span class="tl-pill split-pill" title="This specimen was created by splitting from {sc.relatedAccession}">Split from {sc.relatedAccession}</span>
                   </div>
                 </div>
-              </div>
-            {:else}
-              <div class="tl-split-header">
+              {:else}
                 <span class="tl-split-icon">⑂</span>
                 <div class="tl-card-left">
                   <span class="tl-passage-num tl-split-label" title="P{sc.passage_number} — this specimen was split into {sc.childCount} child specimen{sc.childCount > 1 ? 's' : ''}; children continue from P{sc.passage_number + 1}">P{sc.passage_number} · Split</span>
                   <div class="tl-card-summary">
                     <span class="tl-date">{sc.date}</span>
                     <span class="tl-pill split-pill">Split into {sc.childCount} child{sc.childCount > 1 ? 'ren' : ''}</span>
-                    {#each sc.childAccessions as acc}
-                      <span class="tl-pill split-child-pill" title="Child specimen {acc}">{acc}</span>
-                    {/each}
                   </div>
                 </div>
+              {/if}
+              <span class="tl-chevron" style="color:#7c3aed;">{isSplitExpanded ? '▴' : '▾'}</span>
+            </div>
+            {#if isSplitExpanded}
+              <div class="tl-split-body">
+                {#if sc.splitRole === 'child'}
+                  <!-- Expanded child split: show parent + siblings + initial state -->
+                  <div class="tl-detail-grid" style="margin-bottom:10px;">
+                    {#if sc.selfStage}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Stage at Creation</span>
+                        <span class="tl-detail-value">{stageLabel(sc.selfStage)}</span>
+                      </div>
+                    {/if}
+                    {#if sc.selfLocation}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Initial Location</span>
+                        <span class="tl-detail-value">{sc.selfLocation}</span>
+                      </div>
+                    {/if}
+                    {#if sc.selfHealth !== null && sc.selfHealth !== '' && !isNaN(Number(sc.selfHealth))}
+                      {@const hb = healthInfo(sc.selfHealth)}
+                      {#if hb}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label">Health at Creation</span>
+                          <span class="tl-detail-value">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">{hb.label}</span>
+                          </span>
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
+                  <div style="margin-bottom:8px;">
+                    <div class="tl-detail-label" style="margin-bottom:5px;">Parent Specimen</div>
+                    <button
+                      class="tl-nav-chip"
+                      onclick={() => onnavigate?.(sc.relatedId)}
+                      title="Navigate to parent specimen {sc.relatedAccession}"
+                      disabled={!onnavigate}
+                    >{sc.relatedAccession}</button>
+                  </div>
+                  {#if sc.siblings?.length > 0}
+                    <div>
+                      <div class="tl-detail-label" style="margin-bottom:5px;">Siblings from Same Split</div>
+                      <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                        {#each sc.siblings as sib}
+                          <button
+                            class="tl-nav-chip"
+                            onclick={() => onnavigate?.(sib.id)}
+                            title="Navigate to sibling {sib.accession_number}"
+                            disabled={!onnavigate}
+                            style={sib.is_archived ? 'opacity:0.6;' : ''}
+                          >{sib.accession_number}{sib.is_archived ? ' (archived)' : ''}</button>
+                        {/each}
+                      </div>
+                    </div>
+                  {/if}
+                {:else}
+                  <!-- Expanded parent split: show parent state + children chips -->
+                  <div class="tl-detail-grid" style="margin-bottom:10px;">
+                    {#if sc.parentStage}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Stage at Split</span>
+                        <span class="tl-detail-value">{stageLabel(sc.parentStage)}</span>
+                      </div>
+                    {/if}
+                    {#if sc.parentLocation}
+                      <div class="tl-detail-item">
+                        <span class="tl-detail-label">Location at Split</span>
+                        <span class="tl-detail-value">{sc.parentLocation}</span>
+                      </div>
+                    {/if}
+                    {#if sc.parentHealth !== null && sc.parentHealth !== '' && !isNaN(Number(sc.parentHealth))}
+                      {@const hb = healthInfo(sc.parentHealth)}
+                      {#if hb}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label">Health at Split</span>
+                          <span class="tl-detail-value">
+                            <span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:700;background:{hb.color}20;color:{hb.color};border:1px solid {hb.color}60;">{hb.label}</span>
+                          </span>
+                        </div>
+                      {/if}
+                    {/if}
+                  </div>
+                  {#if sc.parentNotes}
+                    <div class="tl-detail-text" style="margin-bottom:10px;">
+                      <span class="tl-detail-label">Notes</span>
+                      <p class="tl-detail-p">{sc.parentNotes}</p>
+                    </div>
+                  {/if}
+                  {#if sc.parentContaminationFlag}
+                    <div class="tl-contam-block">
+                      <span>⚠ <strong>Contamination detected at time of split</strong></span>
+                      {#if sc.parentContaminationNotes}
+                        <p class="tl-detail-p" style="margin-top:4px;">{sc.parentContaminationNotes}</p>
+                      {/if}
+                    </div>
+                  {/if}
+                  <div>
+                    <div class="tl-detail-label" style="margin-bottom:5px;">Children Created (P{sc.passage_number + 1}+)</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:5px;">
+                      {#each (sc.childAccessions || []) as acc, idx}
+                        {@const childId = sc.childIds?.[idx]}
+                        <button
+                          class="tl-nav-chip"
+                          onclick={() => onnavigate?.(childId)}
+                          title="Navigate to child specimen {acc}"
+                          disabled={!childId || !onnavigate}
+                        >{acc}</button>
+                      {/each}
+                    </div>
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>
         </div>
       {:else}
-        <!-- ── Normal passage card ── -->
+        <!-- ── Normal passage card (with optional ancestral tint) ── -->
         {@const color = dotColor(sc.passage_number)}
         {@const isExpanded = expandedPassages.has(sc.id)}
         <div class="timeline-item">
           <div class="timeline-left">
             <div class="tl-dot" style="background:{color};box-shadow:0 0 0 3px {color}30;"></div>
-            {#if i < subcultures.length - 1}
+            {#if i < subcultures.length - 1 && !subcultures[i + 1]?.isAncestralDivider}
               <div class="tl-line"></div>
             {/if}
           </div>
-          <div class="tl-card" class:expanded={isExpanded}>
+          <div class="tl-card" class:expanded={isExpanded} class:ancestral={sc.isAncestral}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="tl-card-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
@@ -413,7 +541,53 @@
     color: #7c3aed !important;
   }
   .split-pill { background: #ede9fe; color: #5b21b6; }
-  .split-child-pill { background: #f3e8ff; color: #7c3aed; font-family: 'JetBrains Mono', monospace; font-size: 10px; }
   :global(.dark) .split-pill { background: #3b0764; color: #c4b5fd; }
-  :global(.dark) .split-child-pill { background: #4c1d95; color: #e9d5ff; }
+
+  /* Expandable split card states */
+  .tl-split-header-btn { cursor: pointer; user-select: none; justify-content: space-between; }
+  .tl-split-header-btn:hover { background: #f3e8ff; }
+  :global(.dark) .tl-split-header-btn:hover { background: #3b0764; }
+  .tl-card-split.expanded { border-color: #a78bfa; box-shadow: 0 2px 12px rgba(124,58,237,0.15); }
+  :global(.dark) .tl-card-split.expanded { border-color: #7c3aed; box-shadow: 0 2px 12px rgba(124,58,237,0.25); }
+  .tl-split-body { padding: 0 14px 14px; border-top: 1px solid #ede9fe; }
+  :global(.dark) .tl-split-body { border-color: #4c1d95; }
+
+  /* Navigation chips inside expanded split events */
+  .tl-nav-chip {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 12px; font-weight: 600; font-family: 'JetBrains Mono', monospace;
+    background: #ede9fe; color: #5b21b6;
+    border: 1px solid #c4b5fd; cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+  }
+  .tl-nav-chip:hover:not(:disabled) { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+  .tl-nav-chip:disabled { opacity: 0.5; cursor: default; }
+  :global(.dark) .tl-nav-chip { background: #3b0764; color: #e9d5ff; border-color: #6d28d9; }
+  :global(.dark) .tl-nav-chip:hover:not(:disabled) { background: #7c3aed; color: #fff; }
+
+  /* Ancestral section divider */
+  .tl-ancestral-section {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 0 8px; margin-left: 40px;
+  }
+  .tl-ancestral-line { flex: 1; height: 1px; background: #d1d5db; border: none; }
+  :global(.dark) .tl-ancestral-line { background: #475569; }
+  .tl-ancestral-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.6px; color: #9ca3af; white-space: nowrap;
+  }
+  :global(.dark) .tl-ancestral-label { color: #64748b; }
+
+  /* Ancestral passage cards — subtle tint to distinguish from current lineage */
+  .tl-card.ancestral { background: #f8fafc; border-color: #e2e8f0; opacity: 0.85; }
+  :global(.dark) .tl-card.ancestral { background: #0f172a; border-color: #1e293b; }
+  .tl-card.ancestral:hover { opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+  /* Contamination block inside expanded parent split card */
+  .tl-contam-block {
+    padding: 8px 10px; border-radius: 6px; margin-bottom: 10px;
+    background: #fff1f2; border: 1px solid #fecdd3;
+    font-size: 12px; color: #b91c1c;
+  }
+  :global(.dark) .tl-contam-block { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
 </style>

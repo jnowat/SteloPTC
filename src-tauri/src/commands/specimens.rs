@@ -84,6 +84,8 @@ pub fn list_specimens(
             employee_id: row.get("employee_id")?,
             is_archived: row.get::<_, i32>("is_archived")? != 0,
             archived_at: row.get("archived_at")?,
+            contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
+            contamination_notes: row.get("contamination_notes")?,
             created_by: row.get("created_by")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
@@ -157,6 +159,8 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 employee_id: row.get("employee_id")?,
                 is_archived: row.get::<_, i32>("is_archived")? != 0,
                 archived_at: row.get("archived_at")?,
+                contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
+                contamination_notes: row.get("contamination_notes")?,
                 created_by: row.get("created_by")?,
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
@@ -467,6 +471,8 @@ pub fn search_specimens(
             employee_id: row.get("employee_id")?,
             is_archived: row.get::<_, i32>("is_archived")? != 0,
             archived_at: row.get("archived_at")?,
+            contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
+            contamination_notes: row.get("contamination_notes")?,
             created_by: row.get("created_by")?,
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
@@ -712,23 +718,45 @@ pub fn split_specimen(
         .unchecked_transaction()
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
-    // 1. Archive the parent
+    let contam_flag_i32 = request.contamination_flag.unwrap_or(false) as i32;
+
+    // 1. Archive the parent, recording its health/notes/contamination as of the split.
+    //    Contamination is stored in dedicated columns (not appended to notes).
+    //    These values power the expanded "Split into N children" card on the parent's timeline.
     tx.execute(
-        "UPDATE specimens SET is_archived = 1, archived_at = datetime('now'), \
-         updated_at = datetime('now') WHERE id = ?1",
-        params![request.parent_specimen_id],
+        "UPDATE specimens SET \
+         is_archived = 1, archived_at = datetime('now'), updated_at = datetime('now'), \
+         health_status = CASE WHEN ?2 IS NOT NULL THEN ?2 ELSE health_status END, \
+         notes = CASE WHEN ?3 IS NOT NULL THEN ?3 ELSE notes END, \
+         contamination_flag  = ?4, \
+         contamination_notes = CASE WHEN ?4 = 1 THEN ?5 ELSE contamination_notes END \
+         WHERE id = ?1",
+        params![
+            request.parent_specimen_id,
+            request.health_status,
+            request.notes,
+            contam_flag_i32,
+            request.contamination_notes,
+        ],
     ).map_err(|e| format!("Failed to archive parent: {}", e))?;
 
     // 2. Log the split event on the parent's chain.
     //    This becomes the parent's last entry_hash, which ALL children
     //    will inherit as their shared prev_hash (the cryptographic fork point).
-    queries::log_audit(
-        &tx, Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
-        None, None,
-        Some(&format!(
+    let audit_detail = if request.contamination_flag.unwrap_or(false) {
+        format!(
+            "Specimen split into {} children on {} [contamination flagged]",
+            request.children.len(), request.date
+        )
+    } else {
+        format!(
             "Specimen split into {} children on {}",
             request.children.len(), request.date
-        )),
+        )
+    };
+    queries::log_audit(
+        &tx, Some(&user.id), "split", "specimen", Some(&request.parent_specimen_id),
+        None, None, Some(&audit_detail),
     ).map_err(|e| format!("Failed to log split event on parent: {}", e))?;
 
     let mut child_results: Vec<SplitChildResult> = Vec::new();

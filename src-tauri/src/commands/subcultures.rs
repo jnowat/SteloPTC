@@ -107,11 +107,15 @@ pub fn create_subculture(
         return Err("Insufficient permissions".to_string());
     }
 
-    let current_count: i32 = db.conn.query_row(
-        "SELECT subculture_count FROM specimens WHERE id = ?1",
+    let (current_count, is_archived): (i32, i32) = db.conn.query_row(
+        "SELECT subculture_count, is_archived FROM specimens WHERE id = ?1",
         params![request.specimen_id],
-        |r| r.get(0),
+        |r| Ok((r.get(0)?, r.get(1)?)),
     ).map_err(|_| "Specimen not found".to_string())?;
+
+    if is_archived != 0 {
+        return Err("Cannot record a passage on an archived specimen".to_string());
+    }
 
     let passage_number = current_count + 1;
     let id = uuid::Uuid::new_v4().to_string();
