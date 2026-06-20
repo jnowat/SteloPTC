@@ -1017,9 +1017,9 @@ ${complianceSection}
 
               {#if isSplitting && specimen.contamination_flag}
                 <div class="split-contam-warning">
-                  ⚠ <strong>This specimen is contaminated.</strong> All child specimens will automatically inherit the contamination flag.
+                  <span>⚠ <strong>Contaminated parent — all child specimens will be created with the contamination flag set.</strong> Review the contamination record below and confirm this split is intentional.</span>
                   {#if specimen.contamination_notes}
-                    <span class="split-contam-notes">{specimen.contamination_notes}</span>
+                    <span class="split-contam-notes">Recorded reason: {specimen.contamination_notes}</span>
                   {/if}
                 </div>
               {/if}

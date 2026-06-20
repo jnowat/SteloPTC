@@ -205,10 +205,10 @@
                       {/if}
                     </div>
                   {:else if sc.parentContaminationFlag}
-                    <div class="tl-contam-block" style="margin-top:10px;background:#fff8f1;border-color:#fed7aa;">
-                      <span style="color:#92400e;">ℹ <strong>Parent was contaminated at time of split</strong></span>
+                    <div class="tl-contam-block tl-contam-info" style="margin-top:10px;">
+                      <span>ℹ <strong>Parent specimen was contaminated — this specimen was not flagged at creation</strong></span>
                       {#if sc.parentContaminationNotes}
-                        <p class="tl-detail-p" style="margin-top:4px;color:#78350f;">{sc.parentContaminationNotes}</p>
+                        <p class="tl-detail-p" style="margin-top:4px;">{sc.parentContaminationNotes}</p>
                       {/if}
                     </div>
                   {/if}
@@ -605,4 +605,9 @@
     font-size: 12px; color: #b91c1c;
   }
   :global(.dark) .tl-contam-block { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+  /* Amber variant: pre-v1.9.0 informational block for children of contaminated parents */
+  .tl-contam-info { background: #fff8f1; border-color: #fed7aa; color: #92400e; }
+  :global(.dark) .tl-contam-info { background: #431a02; border-color: #92400e; color: #fcd34d; }
+  .tl-contam-info .tl-detail-p { color: #78350f; }
+  :global(.dark) .tl-contam-info .tl-detail-p { color: #fbbf24; }
 </style>
