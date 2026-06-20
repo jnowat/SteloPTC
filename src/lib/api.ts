@@ -252,6 +252,18 @@ export async function verifyAuditLineage(lineageId: string) {
   return call<any>('verify_audit_lineage', { lineageId });
 }
 
+export async function createAuditCheckpoint(lineageId: string, startSeq?: number, endSeq?: number) {
+  return call<any>('create_audit_checkpoint', { lineageId, startSeq, endSeq });
+}
+
+export async function verifyAgainstCheckpoint(checkpointId: string) {
+  return call<any>('verify_against_checkpoint', { checkpointId });
+}
+
+export async function listAuditCheckpoints(lineageId?: string) {
+  return call<any[]>('list_audit_checkpoints', { lineageId });
+}
+
 // Import
 export async function importXlsx(payload: {
   specimens: string[][];

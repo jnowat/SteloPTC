@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getAuditLog, verifyAuditEntry, verifyAuditLineage } from '../api';
+  import { getAuditLog, verifyAuditEntry, verifyAuditLineage,
+           createAuditCheckpoint, verifyAgainstCheckpoint, listAuditCheckpoints } from '../api';
   import { addNotification } from '../stores/app';
   import DataState from './DataState.svelte';
 
@@ -120,6 +121,79 @@
   // Counts of chained vs legacy rows on the current page
   let chainedCount = $derived(entries.filter((e: any) => e.chain_seq != null).length);
   let legacyCount = $derived(entries.length - chainedCount);
+
+  // --- Checkpoint state ---
+  let showCheckpoints = $state(false);
+  let checkpoints = $state<any[]>([]);
+  let checkpointsLoading = $state(false);
+  let newCpLineage = $state('');
+  let newCpStartSeq = $state<number | null>(null);
+  let newCpEndSeq = $state<number | null>(null);
+  let cpCreating = $state(false);
+  let cpVerifyState = $state<Record<string, { pending: boolean; ok?: boolean; message?: string }>>({});
+
+  // Unique lineages on current page (for the create-checkpoint dropdown)
+  let pageLineages = $derived(
+    entries
+      .filter((e: any) => e.lineage_id)
+      .map((e: any) => ({
+        lineage_id: e.lineage_id as string,
+        label: `${e.entity_type} (${(e.lineage_id as string).slice(0, 8)}…)`,
+      }))
+      .filter((v, i, a) => a.findIndex((x: any) => x.lineage_id === v.lineage_id) === i)
+  );
+
+  async function toggleCheckpoints() {
+    showCheckpoints = !showCheckpoints;
+    if (showCheckpoints && checkpoints.length === 0) {
+      await reloadCheckpoints();
+    }
+  }
+
+  async function reloadCheckpoints() {
+    checkpointsLoading = true;
+    try {
+      checkpoints = await listAuditCheckpoints();
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      checkpointsLoading = false;
+    }
+  }
+
+  async function doCreateCheckpoint() {
+    if (!newCpLineage) return;
+    cpCreating = true;
+    try {
+      const result = await createAuditCheckpoint(
+        newCpLineage,
+        newCpStartSeq ?? undefined,
+        newCpEndSeq ?? undefined,
+      );
+      addNotification(
+        `Checkpoint created — ${result.entry_count} entr${result.entry_count === 1 ? 'y' : 'ies'}, seq ${result.start_seq}–${result.end_seq}.`,
+        'success',
+      );
+      newCpLineage = '';
+      newCpStartSeq = null;
+      newCpEndSeq = null;
+      await reloadCheckpoints();
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      cpCreating = false;
+    }
+  }
+
+  async function doVerifyCheckpoint(cp: any) {
+    cpVerifyState[cp.id] = { pending: true };
+    try {
+      const result = await verifyAgainstCheckpoint(cp.id);
+      cpVerifyState[cp.id] = { pending: false, ok: result.ok, message: result.message };
+    } catch (e: any) {
+      cpVerifyState[cp.id] = { pending: false, ok: false, message: e.message };
+    }
+  }
 </script>
 
 <div>
@@ -147,6 +221,11 @@
             onclick={verifyAllLineages}
             title="Walk the full hash chain for every unique lineage visible on this page"
           >{batchVerifying ? 'Verifying…' : 'Verify All Lineages'}</button>
+          <button
+            class="btn btn-sm"
+            onclick={toggleCheckpoints}
+            title="Create or verify Merkle checkpoints over audit history"
+          >{showCheckpoints ? 'Hide Checkpoints' : 'Checkpoints'}</button>
           {#if batchResult}
             {#if batchResult.failed === 0}
               <span class="batch-ok">✓ All {batchResult.passed} lineage{batchResult.passed !== 1 ? 's' : ''} intact</span>
@@ -159,6 +238,119 @@
       {:else}
         <span class="chain-banner-icon chain-banner-icon--legacy">📋</span>
         <span>All visible entries are legacy (pre-v1.5.0) — no chain data to verify.</span>
+      {/if}
+    </div>
+  {/if}
+
+  <!-- Merkle Checkpoint Panel -->
+  {#if showCheckpoints}
+    <div class="cp-panel">
+      <div class="cp-panel-header">
+        <strong>Merkle Checkpoints</strong>
+        <span class="cp-panel-hint">
+          A checkpoint seals a range of a lineage's audit chain into a single Merkle root.
+          Verify it later to confirm history has not changed.
+        </span>
+      </div>
+
+      <!-- Create checkpoint form -->
+      <div class="cp-create-row">
+        <select
+          bind:value={newCpLineage}
+          title="Choose the lineage to checkpoint (from entries visible on this page)"
+          class="cp-select"
+        >
+          <option value="">— select lineage —</option>
+          {#each pageLineages as pl}
+            <option value={pl.lineage_id}>{pl.label}</option>
+          {/each}
+        </select>
+        <input
+          type="number"
+          bind:value={newCpStartSeq}
+          placeholder="Start seq (optional)"
+          title="First chain_seq to include — leave blank for the earliest entry"
+          class="cp-seq-input"
+          min="1"
+        />
+        <input
+          type="number"
+          bind:value={newCpEndSeq}
+          placeholder="End seq (optional)"
+          title="Last chain_seq to include — leave blank for the latest entry"
+          class="cp-seq-input"
+          min="1"
+        />
+        <button
+          class="btn btn-sm"
+          disabled={!newCpLineage || cpCreating}
+          onclick={doCreateCheckpoint}
+          title="Build a Merkle tree over the selected range and store the root"
+        >{cpCreating ? 'Creating…' : 'Create Checkpoint'}</button>
+      </div>
+
+      <!-- Checkpoint list -->
+      {#if checkpointsLoading}
+        <p class="cp-empty">Loading checkpoints…</p>
+      {:else if checkpoints.length === 0}
+        <p class="cp-empty">No checkpoints yet — create one above to seal the current audit history.</p>
+      {:else}
+        <div style="overflow-x:auto;">
+          <table class="cp-table">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Lineage</th>
+                <th>Seq range</th>
+                <th title="Number of audit entries sealed in this checkpoint">Entries</th>
+                <th>Merkle root</th>
+                <th>Created</th>
+                <th>Verify</th>
+              </tr>
+            </thead>
+            <tbody>
+              {#each checkpoints as cp}
+                {@const cv = cpVerifyState[cp.id]}
+                <tr>
+                  <td><code class="mono-sm">{cp.id.slice(0, 8)}…</code></td>
+                  <td><code class="mono-sm">{cp.lineage_id.slice(0, 8)}…</code></td>
+                  <td class="nowrap">{cp.start_seq}–{cp.end_seq}</td>
+                  <td>{cp.entry_count}</td>
+                  <td>
+                    <button
+                      class="hash-btn"
+                      title="Merkle root — click to copy:\n{cp.merkle_root}"
+                      onclick={() => copyHash(cp.merkle_root, `cp-${cp.id}`)}
+                    ><code>{copiedId === `cp-${cp.id}` ? '✓ copied' : trunc(cp.merkle_root)}</code></button>
+                  </td>
+                  <td class="nowrap">{cp.created_at.slice(0, 10)}</td>
+                  <td class="nowrap">
+                    {#if cv?.pending}
+                      <span class="verify-pending">…</span>
+                    {:else if cv?.ok === true}
+                      <span class="verify-ok" title={cv.message}>✓ OK</span>
+                      <button class="dismiss-btn" onclick={() => { const s = {...cpVerifyState}; delete s[cp.id]; cpVerifyState = s; }}>×</button>
+                    {:else if cv?.ok === false}
+                      <span class="verify-fail" title={cv.message}>✗ Fail</span>
+                      <button class="dismiss-btn" onclick={() => { const s = {...cpVerifyState}; delete s[cp.id]; cpVerifyState = s; }}>×</button>
+                    {:else}
+                      <button class="btn btn-sm" onclick={() => doVerifyCheckpoint(cp)} title="Verify this checkpoint against the current chain state">Verify</button>
+                    {/if}
+                  </td>
+                </tr>
+                {#if cv && !cv.pending && cv.message}
+                  <tr class="verify-detail-row">
+                    <td colspan="7">
+                      <span class={cv.ok ? 'verify-detail-ok' : 'verify-detail-fail'}>
+                        {cv.ok ? '✓' : '✗'} {cv.message}
+                      </span>
+                    </td>
+                  </tr>
+                {/if}
+              {/each}
+            </tbody>
+          </table>
+        </div>
       {/if}
     </div>
   {/if}
@@ -425,4 +617,74 @@
     line-height: 1;
   }
   .dismiss-btn:hover { color: var(--color-text, #111); }
+
+  /* Checkpoint panel */
+  .cp-panel {
+    background: color-mix(in srgb, var(--color-primary, #3b82f6) 6%, var(--color-surface, #fff));
+    border: 1px solid color-mix(in srgb, var(--color-primary, #3b82f6) 25%, transparent);
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
+    font-size: 13px;
+  }
+
+  .cp-panel-header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .cp-panel-hint {
+    font-size: 12px;
+    color: var(--color-text-muted, #6b7280);
+  }
+
+  .cp-create-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+
+  .cp-select {
+    min-width: 220px;
+    max-width: 320px;
+    font-size: 13px;
+  }
+
+  .cp-seq-input {
+    width: 160px;
+    font-size: 13px;
+  }
+
+  .cp-empty {
+    font-size: 12px;
+    color: var(--color-text-muted, #6b7280);
+    margin: 6px 0 0;
+  }
+
+  .cp-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+
+  .cp-table th, .cp-table td {
+    padding: 5px 10px;
+    border-bottom: 1px solid var(--color-border, #e5e7eb);
+    text-align: left;
+  }
+
+  .cp-table th {
+    font-weight: 600;
+    color: var(--color-text-muted, #6b7280);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .mono-sm { font-family: monospace; font-size: 11px; }
+  .nowrap  { white-space: nowrap; }
 </style>
