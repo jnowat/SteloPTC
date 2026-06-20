@@ -1007,3 +1007,132 @@ pub fn bulk_update_stage(
     }
     Ok(count)
 }
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::{Connection, params};
+
+    /// Minimal schema sufficient to test contamination inheritance SQL.
+    fn setup_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        conn.execute_batch(
+            "CREATE TABLE species (
+                id TEXT PRIMARY KEY,
+                species_code TEXT NOT NULL
+            );
+            CREATE TABLE specimens (
+                id TEXT PRIMARY KEY,
+                accession_number TEXT NOT NULL,
+                species_id TEXT NOT NULL,
+                is_archived INTEGER NOT NULL DEFAULT 0,
+                contamination_flag INTEGER NOT NULL DEFAULT 0,
+                contamination_notes TEXT
+            );
+            INSERT INTO species (id, species_code) VALUES ('sp1', 'TST-01');",
+        )
+        .expect("setup DB");
+        conn
+    }
+
+    /// Mirrors the contamination inheritance computation inside `split_specimen`.
+    fn inherit_contamination(
+        parent_flag: i32,
+        parent_notes: Option<&str>,
+        request_flag: Option<bool>,
+        request_notes: Option<&str>,
+    ) -> (i32, Option<String>) {
+        let effective = parent_flag != 0 || request_flag.unwrap_or(false);
+        let flag = effective as i32;
+        let notes = if effective {
+            request_notes.or(parent_notes).map(str::to_string)
+        } else {
+            None
+        };
+        (flag, notes)
+    }
+
+    // ── Contamination inheritance logic ──────────────────────────────────────
+
+    #[test]
+    fn test_split_inherits_contamination_from_contaminated_parent() {
+        let (flag, notes) =
+            inherit_contamination(1, Some("Fungal contamination observed"), None, None);
+        assert_eq!(flag, 1, "child should be flagged when parent is contaminated");
+        assert_eq!(
+            notes,
+            Some("Fungal contamination observed".to_string()),
+            "parent contamination notes should carry over to child"
+        );
+    }
+
+    #[test]
+    fn test_split_request_notes_take_precedence_over_parent_notes() {
+        let (flag, notes) = inherit_contamination(
+            1,
+            Some("Older parent record"),
+            Some(true),
+            Some("Fresh observation at time of split"),
+        );
+        assert_eq!(flag, 1);
+        assert_eq!(
+            notes,
+            Some("Fresh observation at time of split".to_string()),
+            "split-request notes should override parent notes"
+        );
+    }
+
+    #[test]
+    fn test_split_clean_parent_produces_clean_children() {
+        let (flag, notes) = inherit_contamination(0, None, None, None);
+        assert_eq!(flag, 0, "child of uncontaminated parent should not be flagged");
+        assert_eq!(notes, None, "child of clean parent should have no contamination notes");
+    }
+
+    // ── DB round-trip: inherited values are persisted correctly ──────────────
+
+    #[test]
+    fn test_split_contamination_persisted_to_child_in_db() {
+        let conn = setup_db();
+
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, contamination_flag, contamination_notes)
+             VALUES ('parent-1', 'TST-001', 'sp1', 1, 'Bacterial contamination')",
+            [],
+        )
+        .unwrap();
+
+        // Fetch parent contamination as split_specimen does.
+        let (parent_flag, parent_notes): (i32, Option<String>) = conn
+            .query_row(
+                "SELECT contamination_flag, contamination_notes
+                 FROM specimens WHERE id = ?1 AND is_archived = 0",
+                params!["parent-1"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        let (child_flag, child_notes) =
+            inherit_contamination(parent_flag, parent_notes.as_deref(), None, None);
+
+        // Insert child with the inherited contamination values.
+        conn.execute(
+            "INSERT INTO specimens
+             (id, accession_number, species_id, contamination_flag, contamination_notes)
+             VALUES ('child-1', 'TST-001-A', 'sp1', ?1, ?2)",
+            params![child_flag, child_notes],
+        )
+        .unwrap();
+
+        let (stored_flag, stored_notes): (i32, Option<String>) = conn
+            .query_row(
+                "SELECT contamination_flag, contamination_notes
+                 FROM specimens WHERE id = ?1",
+                params!["child-1"],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+
+        assert_eq!(stored_flag, 1);
+        assert_eq!(stored_notes, Some("Bacterial contamination".to_string()));
+    }
+}
