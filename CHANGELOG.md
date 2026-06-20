@@ -5,6 +5,37 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-06-20
+
+### Added — WP-21: Portable Merkle Proofs, Standalone Verification & Auto-Checkpointing
+
+- **Portable Merkle proof export**
+  - New `export_audit_proof(checkpoint_id)` Tauri command generates a self-contained `PortableMerkleProof` JSON for any sealed Merkle checkpoint. The proof bundles every audit entry in the range with its canonical pipe-delimited form, `prev_hash`, `entry_hash`, and an individual Merkle inclusion path from the leaf to the root.
+  - **Export** button per checkpoint row in the Audit Log UI downloads the proof as `merkle-proof-<id>.json`.
+
+- **Standalone proof verification**
+  - New `verify_exported_proof(proof_json)` Tauri command runs three-stage verification (content hash integrity → hash-chain link continuity → Merkle root rebuild) entirely without the database — designed for offline auditors.
+  - Proof import-and-verify panel in the Audit Log UI: paste a `merkle-proof-*.json` and click **Verify Proof** for immediate in-app verification with a pass/fail result.
+  - `docs/merkle-proofs.md` — complete proof format specification, field-by-field reference, the three-stage algorithm, and a standalone Python verifier (Python 3.8+, zero external dependencies).
+
+- **Auto-checkpointing**
+  - `auto_checkpoint_lineages` query finds all lineages with uncovered entries meeting a configurable `min_uncovered` threshold and creates Merkle checkpoints flagged `is_auto = 1` with an `auto_source` tag (`"backup"` or `"entry_count"`).
+  - `create_backup` pre-checkpoint hook: silently checkpoints all eligible lineages before copying the WAL — never blocks the backup.
+  - `get_auto_checkpoint_config` / `set_auto_checkpoint_config` / `run_auto_checkpoint` Tauri commands with persistent configuration in the new `app_settings` table.
+  - Auto-checkpoint config panel in the Audit Log UI: toggle enabled/disabled, set the entry-count interval, toggle pre-backup checkpointing, and **Run Now**.
+  - **Auto** badge on auto-created checkpoint rows in the checkpoint table.
+
+- **Migration 014** — adds `is_auto INTEGER NOT NULL DEFAULT 0` and `auto_source TEXT` to `audit_checkpoints`; creates `app_settings` key-value table with seeded defaults (`auto_checkpoint_enabled = 1`, `auto_checkpoint_interval = 100`, `auto_checkpoint_on_backup = 1`).
+
+- **10 new tests** — Merkle path correctness (single leaf, 4 leaves, 3-leaf odd count); proof verification (valid proof passes, tampered canonical detected, broken chain detected, wrong root detected); auto-checkpoint behavior (creates for eligible lineage, respects min_uncovered interval, skips below threshold). All 59 tests pass.
+
+### Changed
+
+- Audit Log checkpoint table: added **Proof** export column and **Auto** badge column; `verify-detail-row` colspan updated to 8.
+- `list_audit_checkpoints` now returns `is_auto` and `auto_source` fields per checkpoint.
+
+---
+
 ## [1.9.0] - 2026-06-20
 
 ### Added — WP-19: Trust Layer Polish

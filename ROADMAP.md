@@ -4,7 +4,7 @@
 **Schema:** **11 migrations** total; latest is **migration 011** (`is_draft` column on `media_batches` for draft media in split workflow, v1.8.0). Migration 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0; split workflow overhauled in v1.8.0 with letter-suffix accessions (001A/001B…), per-child controls, draft media batches, safety confirmation dialog, and synthetic split events in the passage timeline.
-**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) is substantially complete (WP-20/21 — Merkle checkpoints + proof export — remain pending). Current focus: Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Trust Layer work (WP-20/21). Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. Phase TX-1 (WP-28–29) targets v1.9.0 alongside or immediately after Phase C.
+**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅ — WP-20 Merkle checkpoints (v1.9.0) and WP-21 portable proof export + auto-checkpointing (v1.10.0) complete. Current focus: Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Phase C work. Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. Phase TX-1 (WP-28–29) targets v1.11.0.
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -279,17 +279,20 @@ The work is staged so that real value lands early and nothing is over-built befo
   - Schema uses `lineage_id` instead of the originally planned global range approach, enabling per-lineage isolation from day one.
 - **Bump:** minor → **v1.9.0**.
 
-### WP-21 — Merkle proof export, auto-checkpointing & standalone re-verification
-- **Goal:** Export one record's audit history plus its Merkle proof to a checkpoint root as portable JSON, with a documented standalone verifier so a third party can confirm tamper-evidence without running SteloPTC. Also add automatic checkpoint creation on high-value events and pre-backup.
-- **Files:** `src-tauri/src/commands/audit.rs` (`export_audit_proof`), `src/lib/components/ExportManager.svelte` hook, `src-tauri/src/commands/backup.rs` (pre-backup checkpoint), `docs/merkle-checkpoints.md` (extend).
-- **Steps:**
-  1. `export_audit_proof(entity_id)` produces `{ record, entries[], leaf_hashes[], proof_path[], merkle_root, checkpoint_range }`.
-  2. Extend `docs/merkle-checkpoints.md` with full canonical serialization spec and a complete standalone Python verifier that consumes the exported JSON.
-  3. Add automatic checkpoint creation: (a) after any high-value audit event (new subculture, new media batch, contamination flag, specimen location change); (b) `create_backup` triggers a checkpoint before copying the WAL.
-  4. Ship the standalone verifier script in `docs/verify_checkpoint.py`.
-- **Acceptance:** An exported proof verifies with the standalone script against the stored root; tampering with any field of the exported record fails verification; a backup's WAL always has an associated checkpoint.
-- **Preserve:** The WP-20 checkpoint format (this consumes it); export must not mutate any audit data.
-- **Bump:** minor → completes the Phase-1 Trust layer.
+### WP-21 — Merkle proof export, auto-checkpointing & standalone re-verification — ✅ Delivered in **v1.10.0**
+- **Goal:** Export one record's audit history plus its Merkle proof to a checkpoint root as portable JSON, with a documented standalone verifier so a third party can confirm tamper-evidence without running SteloPTC. Also add automatic checkpoint creation on a configurable entry-count threshold and pre-backup.
+- **As built (v1.10.0):**
+  - `export_audit_proof(checkpoint_id)` command produces a self-contained `PortableMerkleProof` JSON with every entry's canonical form, `prev_hash`, `entry_hash`, and individual Merkle inclusion path.
+  - `verify_exported_proof(proof_json)` command runs three-stage verification (content hash → chain links → Merkle root) entirely without the database — suitable for offline auditors.
+  - `verify_proof_data` pure function is separately unit-tested for all four failure modes.
+  - Auto-checkpoint: `auto_checkpoint_lineages` query finds all lineages with uncovered entries ≥ `min_uncovered` and creates checkpoints flagged `is_auto = 1` with an `auto_source` tag.
+  - `create_backup` pre-checkpoint hook: runs `auto_checkpoint_lineages(..., "backup", 0)` silently before WAL copy — never blocks the backup.
+  - `get_auto_checkpoint_config` / `set_auto_checkpoint_config` / `run_auto_checkpoint` commands with `app_settings` persistence (migration 014).
+  - UI: **Export** button per checkpoint row, **Auto** badge on auto-created checkpoints, proof import-and-verify panel, auto-checkpoint config section with interval, on-backup toggle, and Run Now.
+  - Documentation: `docs/merkle-proofs.md` — proof format spec, field-by-field reference, the three-stage algorithm, and a standalone Python verifier (zero external dependencies).
+  - Tests: 10 new tests — Merkle path (single leaf, 4 leaves, 3 leaves odd), proof verification (valid, tampered canonical, broken chain, wrong root), auto-checkpoint (creates, respects interval, skips below threshold). All 59 tests pass.
+- **Bump:** minor — completes the Phase-1 Trust Layer.
+- **Migration:** 014 — adds `is_auto` / `auto_source` to `audit_checkpoints`; creates `app_settings` with seeded defaults.
 
 #### Phase 2 — On-Chain Anchoring (Dogecoin first) — *future, not yet scoped*
 

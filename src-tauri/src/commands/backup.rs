@@ -3,6 +3,15 @@ use crate::db::queries;
 use crate::AppState;
 use tauri::State;
 
+fn read_setting(conn: &rusqlite::Connection, key: &str, default: &str) -> String {
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        rusqlite::params![key],
+        |r| r.get::<_, String>(0),
+    )
+    .unwrap_or_else(|_| default.to_string())
+}
+
 #[tauri::command]
 pub fn create_backup(
     state: State<AppState>,
@@ -21,11 +30,16 @@ pub fn create_backup(
         return Err("Database file not found (using in-memory database)".to_string());
     }
 
+    // Auto-checkpoint eligible lineages before the WAL snapshot when enabled.
+    // Runs silently — a failure here must never block the backup itself.
+    let on_backup = read_setting(&db.conn, "auto_checkpoint_on_backup", "1") == "1";
+    let auto_enabled = read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
+    if on_backup && auto_enabled {
+        // interval=0 means: checkpoint every lineage with any uncovered entries.
+        let _ = queries::auto_checkpoint_lineages(&db.conn, &user.id, "backup", 0);
+    }
+
     // Checkpoint WAL before copying so the .db file is a self-contained snapshot.
-    // TRUNCATE waits for all readers, fully checkpoints, then empties the WAL.
-    // We verify the result: if busy_frames > 0 an active reader prevented a full
-    // checkpoint; the copy is still consistent (WAL is append-only) but the DB
-    // file alone may be missing recent frames, so we abort and ask the caller to retry.
     let (busy_frames, _log_frames, _ckpt_frames): (i64, i64, i64) = db.conn
         .query_row("PRAGMA wal_checkpoint(TRUNCATE);", [], |r| {
             Ok((r.get(0)?, r.get(1)?, r.get(2)?))
@@ -51,7 +65,6 @@ pub fn create_backup(
             dest_path
         }
     } else {
-        // Default: backup directory next to the database
         let backup_dir = db_path
             .parent()
             .ok_or_else(|| "Could not determine database parent directory".to_string())?
