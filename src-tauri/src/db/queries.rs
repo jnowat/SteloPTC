@@ -806,4 +806,105 @@ mod tests {
         ).unwrap();
         assert_ne!(current_count, expected_count, "removal must be detected via count mismatch");
     }
+
+    #[test]
+    fn checkpoint_on_nonexistent_lineage_yields_no_hashes() {
+        let conn = mem_conn_with_checkpoints();
+        // No audit entries are inserted — query must return empty
+        let mut stmt = conn.prepare(
+            "SELECT entry_hash FROM audit_log \
+             WHERE lineage_id='does-not-exist' AND entry_hash IS NOT NULL ORDER BY chain_seq",
+        ).unwrap();
+        let hashes: Vec<String> = stmt
+            .query_map([], |r| r.get(0)).unwrap()
+            .filter_map(|r| r.ok()).collect();
+        assert!(hashes.is_empty(), "nonexistent lineage must yield empty hash list");
+        // The command layer rejects empty hashes with an error, but the Merkle
+        // function itself handles the empty case gracefully.
+        assert_eq!(build_merkle_root(&hashes), ZERO_HASH);
+    }
+
+    #[test]
+    fn checkpoint_passes_after_entries_added_beyond_end_seq() {
+        let conn = mem_conn_with_checkpoints();
+        log_audit(&conn, None, "create", "specimen", Some("sp-X"), None, None, None).unwrap();
+        log_audit(&conn, None, "update", "specimen", Some("sp-X"), None, None, None).unwrap();
+
+        // Snapshot hashes for seq 1-2 and create a checkpoint over that range
+        let hashes: Vec<String> = {
+            let mut s = conn.prepare(
+                "SELECT entry_hash FROM audit_log \
+                 WHERE lineage_id='sp-X' AND chain_seq >= 1 AND chain_seq <= 2 ORDER BY chain_seq",
+            ).unwrap();
+            s.query_map([], |r| r.get(0)).unwrap().filter_map(|r| r.ok()).collect()
+        };
+        assert_eq!(hashes.len(), 2);
+        let root = build_merkle_root(&hashes);
+        let cp_id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO audit_checkpoints \
+             (id, lineage_id, start_seq, end_seq, entry_count, merkle_root, created_at) \
+             VALUES (?1, 'sp-X', 1, 2, 2, ?2, '2026-01-01')",
+            rusqlite::params![cp_id, root],
+        ).unwrap();
+
+        // Add a third entry beyond the sealed end_seq
+        log_audit(&conn, None, "update", "specimen", Some("sp-X"), None, None, None).unwrap();
+
+        // Checkpoint covers only seq 1-2; the new entry must not affect the result
+        let sealed_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM audit_log WHERE lineage_id='sp-X' AND chain_seq >= 1 AND chain_seq <= 2",
+            [], |r| r.get(0),
+        ).unwrap();
+        let sealed_hashes: Vec<String> = {
+            let mut s = conn.prepare(
+                "SELECT entry_hash FROM audit_log \
+                 WHERE lineage_id='sp-X' AND chain_seq >= 1 AND chain_seq <= 2 ORDER BY chain_seq",
+            ).unwrap();
+            s.query_map([], |r| r.get(0)).unwrap().filter_map(|r| r.ok()).collect()
+        };
+        let stored_root: String = conn.query_row(
+            "SELECT merkle_root FROM audit_checkpoints WHERE id = ?1",
+            rusqlite::params![cp_id], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(sealed_count, 2, "count check must match despite new entry beyond end_seq");
+        assert_eq!(build_merkle_root(&sealed_hashes), stored_root,
+            "Merkle root must still match after entries added beyond end_seq");
+    }
+
+    #[test]
+    fn checkpoint_seq_range_outside_actual_entries_yields_empty() {
+        let conn = mem_conn_with_checkpoints();
+        log_audit(&conn, None, "create", "specimen", Some("sp-Y"), None, None, None).unwrap();
+
+        // Only seq 1 exists; query seq 100-200 — must return no rows
+        let mut stmt = conn.prepare(
+            "SELECT entry_hash FROM audit_log \
+             WHERE lineage_id='sp-Y' AND chain_seq >= 100 AND chain_seq <= 200 \
+             AND entry_hash IS NOT NULL ORDER BY chain_seq",
+        ).unwrap();
+        let hashes: Vec<String> = stmt
+            .query_map([], |r| r.get(0)).unwrap()
+            .filter_map(|r| r.ok()).collect();
+        assert!(hashes.is_empty(), "out-of-range seq window must return no hashes");
+    }
+
+    #[test]
+    fn checkpoint_inverted_seq_range_yields_empty() {
+        let conn = mem_conn_with_checkpoints();
+        log_audit(&conn, None, "create", "specimen", Some("sp-Z"), None, None, None).unwrap();
+        log_audit(&conn, None, "update", "specimen", Some("sp-Z"), None, None, None).unwrap();
+
+        // start_seq (5) > end_seq (3) — SQL returns 0 rows;
+        // the command layer rejects this before querying, but the SQL contract holds
+        let mut stmt = conn.prepare(
+            "SELECT entry_hash FROM audit_log \
+             WHERE lineage_id='sp-Z' AND chain_seq >= 5 AND chain_seq <= 3 \
+             AND entry_hash IS NOT NULL ORDER BY chain_seq",
+        ).unwrap();
+        let hashes: Vec<String> = stmt
+            .query_map([], |r| r.get(0)).unwrap()
+            .filter_map(|r| r.ok()).collect();
+        assert!(hashes.is_empty(), "inverted seq range must yield no hashes");
+    }
 }

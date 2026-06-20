@@ -170,8 +170,9 @@
         newCpStartSeq ?? undefined,
         newCpEndSeq ?? undefined,
       );
+      const rootSnippet = result.merkle_root.slice(0, 12) + '…';
       addNotification(
-        `Checkpoint created — ${result.entry_count} entr${result.entry_count === 1 ? 'y' : 'ies'}, seq ${result.start_seq}–${result.end_seq}.`,
+        `Checkpoint ${result.checkpoint_id.slice(0, 8)}… created — ${result.entry_count} entr${result.entry_count === 1 ? 'y' : 'ies'}, seq ${result.start_seq}–${result.end_seq}, root ${rootSnippet}`,
         'success',
       );
       newCpLineage = '';
@@ -190,8 +191,12 @@
     try {
       const result = await verifyAgainstCheckpoint(cp.id);
       cpVerifyState[cp.id] = { pending: false, ok: result.ok, message: result.message };
+      if (!result.ok) {
+        addNotification(`Checkpoint ${cp.id.slice(0, 8)}…: ${result.message}`, 'error');
+      }
     } catch (e: any) {
       cpVerifyState[cp.id] = { pending: false, ok: false, message: e.message };
+      addNotification(e.message, 'error');
     }
   }
 </script>
@@ -250,6 +255,7 @@
         <span class="cp-panel-hint">
           A checkpoint seals a range of a lineage's audit chain into a single Merkle root.
           Verify it later to confirm history has not changed.
+          See <code>docs/merkle-checkpoints.md</code> for the full specification.
         </span>
       </div>
 
