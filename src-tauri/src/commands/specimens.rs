@@ -159,6 +159,8 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 employee_id: row.get("employee_id")?,
                 is_archived: row.get::<_, i32>("is_archived")? != 0,
                 archived_at: row.get("archived_at")?,
+                contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
+                contamination_notes: row.get("contamination_notes")?,
                 created_by: row.get("created_by")?,
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
