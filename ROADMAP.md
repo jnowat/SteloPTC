@@ -261,31 +261,35 @@ The work is staged so that real value lands early and nothing is over-built befo
 - **Preserve:** Verification is strictly read-only; the existing audit viewer is untouched apart from the added entry point.
 - **Bump:** minor.
 
-### WP-20 — Periodic Merkle checkpoints over audit batches
+### WP-20 — Merkle checkpoints over audit lineages — ✅ Delivered in **v1.9.0**
 - **Goal:** Roll ranges of audit entries into a Merkle tree and store the root, so verification is efficient and roots are ready to anchor later — without redesign.
-- **Files:** new migration (008) for an `audit_checkpoints` table, `src-tauri/src/commands/audit.rs` (`build_checkpoint`, `list_checkpoints`).
-- **Steps:**
-  1. Migration 008: `audit_checkpoints (id, from_seq, to_seq, merkle_root, entry_count, created_at, created_by, anchored_txid TEXT NULL)`. The `anchored_txid` column is the **Phase 2 hook** — created now, unused until on-chain anchoring exists.
-  2. Implement a **deterministic Merkle tree** over the `entry_hash` leaves for the range. **Locked construction rule:** for odd node counts, duplicate the last leaf before pairing (the same rule used by Bitcoin's Merkle tree). Document this rule precisely in code comments and in `docs/CRYPTO_AUDIT.md` (WP-21), because an off-app or on-chain verifier must reproduce it byte-for-byte. This choice is permanent — changing it after checkpoints exist invalidates all prior proofs.
-  3. Checkpoint creation is triggered in three ways:
-     - **Event-driven:** automatically after any high-value audit event — new subculture, new media batch, contamination flag, or specimen location change.
-     - **Manual:** admin/supervisor can trigger a checkpoint on demand from the Audit Log view.
-     - **On backup:** `create_backup` triggers a checkpoint before copying the WAL, so every backup file contains a complete, sealed checkpoint covering all records at the time of backup.
-  4. Store root + range + entry count for each checkpoint.
-- **Acceptance:** Building a checkpoint over a known entry set reproduces the **same** root deterministically across runs; a per-entry Merkle proof verifies against the stored root; the "duplicate-last" rule is visibly enforced in the implementation.
-- **Preserve:** The WP-18 hash chain — Merkle leaves *are* the `entry_hash` values, not a parallel hash. The WP-16 backup flow must still succeed after the pre-backup checkpoint step is added.
-- **Bump:** minor.
+- **As built:**
+  - **Migration 013** adds `audit_checkpoints (id, lineage_id, start_seq, end_seq, entry_count, merkle_root, created_at, created_by, anchored_txid TEXT NULL)`. `anchored_txid` is the Phase-2 Dogecoin hook (WP-65+), always NULL for now.
+  - **`build_merkle_root`** in `db/queries.rs`: binary Merkle tree with Bitcoin's "duplicate-last" rule for odd counts. Pure function; takes a slice of SHA-256 hex strings and returns the root. Empty → ZERO_HASH; single leaf → leaf itself (no extra hash round).
+  - **Three Tauri commands** in `commands/audit.rs`:
+    - `create_audit_checkpoint(lineage_id, start_seq?, end_seq?)` — builds and stores a checkpoint. Requires supervisor/admin role.
+    - `verify_against_checkpoint(checkpoint_id)` — three-stage verification: count check → Merkle root check → individual content-hash check. Reports the first break with precise `tampered_seq` when pinpointable.
+    - `list_audit_checkpoints(lineage_id?)` — lists stored checkpoints, newest first.
+  - **Frontend:** Checkpoints panel in the Audit Log view (toggled by a banner button). Create form with lineage dropdown + optional seq range. Per-checkpoint Verify button with inline pass/fail display.
+  - **Tests:** 10 new Rust unit tests covering Merkle tree edge cases (empty, single, two-leaf, three-leaf duplicate-last, determinism, mutation detection) plus four checkpoint scenario tests (creation, intact verification, tamper detection, removal detection).
+  - **Docs:** `docs/merkle-checkpoints.md` specifies the canonical serialization, construction algorithm, schema, command API, and includes a Python standalone verifier snippet.
+- **Differed from plan:**
+  - Automatic (event-driven and pre-backup) checkpoint creation deferred to WP-21 — manual creation only for this phase.
+  - Per-entry Merkle proof paths not yet exportable — deferred to WP-21.
+  - Schema uses `lineage_id` instead of the originally planned global range approach, enabling per-lineage isolation from day one.
+- **Bump:** minor → **v1.9.0**.
 
-### WP-21 — Merkle proof export & standalone re-verification
-- **Goal:** Export one record's audit history plus its Merkle proof to a checkpoint root as portable JSON, with a documented standalone verifier so a third party can confirm tamper-evidence without running SteloPTC.
-- **Files:** `src-tauri/src/commands/audit.rs` (`export_audit_proof`), `src/lib/components/ExportManager.svelte` hook, new `docs/CRYPTO_AUDIT.md`.
+### WP-21 — Merkle proof export, auto-checkpointing & standalone re-verification
+- **Goal:** Export one record's audit history plus its Merkle proof to a checkpoint root as portable JSON, with a documented standalone verifier so a third party can confirm tamper-evidence without running SteloPTC. Also add automatic checkpoint creation on high-value events and pre-backup.
+- **Files:** `src-tauri/src/commands/audit.rs` (`export_audit_proof`), `src/lib/components/ExportManager.svelte` hook, `src-tauri/src/commands/backup.rs` (pre-backup checkpoint), `docs/merkle-checkpoints.md` (extend).
 - **Steps:**
   1. `export_audit_proof(entity_id)` produces `{ record, entries[], leaf_hashes[], proof_path[], merkle_root, checkpoint_range }`.
-  2. Write `docs/CRYPTO_AUDIT.md` specifying the canonical serialization (WP-18), the hash algorithm (SHA-256), and the Merkle construction (WP-20, including the duplicate-last odd-node rule) precisely enough to reimplement independently.
-  3. Ship a minimal standalone verifier (a short Node or Python script in `docs/`) that takes the exported JSON and confirms the proof against the root.
-- **Acceptance:** An exported proof verifies with the standalone script against the stored root; tampering with any field of the exported record fails verification.
+  2. Extend `docs/merkle-checkpoints.md` with full canonical serialization spec and a complete standalone Python verifier that consumes the exported JSON.
+  3. Add automatic checkpoint creation: (a) after any high-value audit event (new subculture, new media batch, contamination flag, specimen location change); (b) `create_backup` triggers a checkpoint before copying the WAL.
+  4. Ship the standalone verifier script in `docs/verify_checkpoint.py`.
+- **Acceptance:** An exported proof verifies with the standalone script against the stored root; tampering with any field of the exported record fails verification; a backup's WAL always has an associated checkpoint.
 - **Preserve:** The WP-20 checkpoint format (this consumes it); export must not mutate any audit data.
-- **Bump:** minor → ships the Phase-1 Trust layer as **v1.3.0**.
+- **Bump:** minor → completes the Phase-1 Trust layer.
 
 #### Phase 2 — On-Chain Anchoring (Dogecoin first) — *future, not yet scoped*
 

@@ -37,6 +37,43 @@ pub struct VerifyChainResult {
     pub message: String,
 }
 
+/// A stored Merkle checkpoint over a contiguous range of one lineage's audit chain.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditCheckpoint {
+    pub id: String,
+    pub lineage_id: String,
+    pub start_seq: i64,
+    pub end_seq: i64,
+    pub entry_count: i64,
+    pub merkle_root: String,
+    pub created_at: String,
+    pub created_by: Option<String>,
+    /// Nullable Phase-2 hook: Dogecoin txid once the root is anchored on-chain.
+    pub anchored_txid: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CreateCheckpointResult {
+    pub checkpoint_id: String,
+    pub lineage_id: String,
+    pub start_seq: i64,
+    pub end_seq: i64,
+    pub entry_count: i64,
+    pub merkle_root: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VerifyCheckpointResult {
+    pub checkpoint_id: String,
+    pub lineage_id: String,
+    pub ok: bool,
+    pub expected_count: i64,
+    pub actual_count: i64,
+    /// First chain_seq where tampering was detected, if pinpointable.
+    pub tampered_seq: Option<i64>,
+    pub message: String,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AuditSearchParams {
     pub user_id: Option<String>,

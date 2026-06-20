@@ -89,6 +89,9 @@ pub fn run() {
             commands::audit::get_audit_log,
             commands::audit::verify_audit_entry,
             commands::audit::verify_audit_lineage,
+            commands::audit::create_audit_checkpoint,
+            commands::audit::verify_against_checkpoint,
+            commands::audit::list_audit_checkpoints,
             // Export/Import
             commands::export::export_specimens_csv,
             commands::export::export_specimens_json,

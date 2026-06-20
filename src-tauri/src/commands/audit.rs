@@ -1,7 +1,7 @@
 use crate::auth as auth_service;
 use crate::models::audit::*;
 use crate::models::specimen::PaginatedResponse;
-use crate::db::queries::{self, audit_canonical_bytes, compute_entry_hash};
+use crate::db::queries::{self, audit_canonical_bytes, compute_entry_hash, build_merkle_root};
 use crate::AppState;
 use tauri::State;
 
@@ -336,4 +336,312 @@ pub fn verify_audit_lineage(
             checked
         ),
     })
+}
+
+/// Create a Merkle checkpoint over a contiguous seq range of one lineage's audit chain.
+///
+/// If start_seq or end_seq are omitted they default to the minimum/maximum chain_seq
+/// present in the lineage. The Merkle root is built over the `entry_hash` column values
+/// in chain_seq order using the "duplicate-last" binary tree rule.
+#[tauri::command]
+pub fn create_audit_checkpoint(
+    state: State<AppState>,
+    token: String,
+    lineage_id: String,
+    start_seq: Option<i64>,
+    end_seq: Option<i64>,
+) -> Result<CreateCheckpointResult, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Insufficient permissions — admin or supervisor role required.".to_string());
+    }
+
+    let actual_start: i64 = if let Some(s) = start_seq {
+        s
+    } else {
+        db.conn.query_row(
+            "SELECT MIN(chain_seq) FROM audit_log WHERE lineage_id = ?1 AND entry_hash IS NOT NULL",
+            rusqlite::params![&lineage_id],
+            |r| r.get::<_, Option<i64>>(0),
+        ).map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("No chained entries found in lineage '{}'.", lineage_id))?
+    };
+
+    let actual_end: i64 = if let Some(e) = end_seq {
+        e
+    } else {
+        db.conn.query_row(
+            "SELECT MAX(chain_seq) FROM audit_log WHERE lineage_id = ?1 AND entry_hash IS NOT NULL",
+            rusqlite::params![&lineage_id],
+            |r| r.get::<_, Option<i64>>(0),
+        ).map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("No chained entries found in lineage '{}'.", lineage_id))?
+    };
+
+    if actual_start > actual_end {
+        return Err(format!(
+            "start_seq ({}) must be ≤ end_seq ({}).", actual_start, actual_end
+        ));
+    }
+
+    let mut stmt = db.conn.prepare(
+        "SELECT entry_hash FROM audit_log \
+         WHERE lineage_id = ?1 AND chain_seq >= ?2 AND chain_seq <= ?3 AND entry_hash IS NOT NULL \
+         ORDER BY chain_seq ASC",
+    ).map_err(|e| e.to_string())?;
+
+    let hashes: Vec<String> = stmt
+        .query_map(rusqlite::params![&lineage_id, actual_start, actual_end], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if hashes.is_empty() {
+        return Err(format!(
+            "No chained entries found in lineage '{}' for seq range [{}, {}].",
+            lineage_id, actual_start, actual_end
+        ));
+    }
+
+    let entry_count = hashes.len() as i64;
+    let merkle_root = build_merkle_root(&hashes);
+    let checkpoint_id = uuid::Uuid::new_v4().to_string();
+    let created_at = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    db.conn.execute(
+        "INSERT INTO audit_checkpoints \
+         (id, lineage_id, start_seq, end_seq, entry_count, merkle_root, created_at, created_by) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        rusqlite::params![
+            &checkpoint_id, &lineage_id, actual_start, actual_end,
+            entry_count, &merkle_root, &created_at, &user.id
+        ],
+    ).map_err(|e| e.to_string())?;
+
+    Ok(CreateCheckpointResult {
+        checkpoint_id,
+        lineage_id,
+        start_seq: actual_start,
+        end_seq: actual_end,
+        entry_count,
+        merkle_root,
+    })
+}
+
+/// Verify a stored checkpoint against the current state of the audit chain.
+///
+/// Checks (in order):
+///   1. Entry count — detects deletions or insertions in the sealed range.
+///   2. Merkle root — rebuilt from current `entry_hash` values; mismatch means
+///      a hash value was changed (content+hash co-tampered).
+///   3. Individual content hashes — recomputes each entry_hash from canonical
+///      fields; mismatch here means content was edited without updating entry_hash.
+#[tauri::command]
+pub fn verify_against_checkpoint(
+    state: State<AppState>,
+    token: String,
+    checkpoint_id: String,
+) -> Result<VerifyCheckpointResult, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    auth_service::validate_session(&db, &token)?;
+
+    struct CpRow {
+        lineage_id: String,
+        start_seq: i64,
+        end_seq: i64,
+        expected_count: i64,
+        stored_root: String,
+    }
+
+    let cp = db.conn.query_row(
+        "SELECT lineage_id, start_seq, end_seq, entry_count, merkle_root \
+         FROM audit_checkpoints WHERE id = ?1",
+        rusqlite::params![&checkpoint_id],
+        |r| Ok(CpRow {
+            lineage_id: r.get(0)?,
+            start_seq: r.get(1)?,
+            end_seq: r.get(2)?,
+            expected_count: r.get(3)?,
+            stored_root: r.get(4)?,
+        }),
+    ).map_err(|_| format!("Checkpoint '{}' not found.", checkpoint_id))?;
+
+    struct EntryRow {
+        chain_seq: i64,
+        user_id: Option<String>,
+        entity_type: String,
+        action: String,
+        entity_id: Option<String>,
+        created_at: String,
+        details: Option<String>,
+        prev_hash: String,
+        entry_hash: String,
+    }
+
+    let mut stmt = db.conn.prepare(
+        "SELECT chain_seq, user_id, entity_type, action, entity_id, created_at, details, prev_hash, entry_hash \
+         FROM audit_log \
+         WHERE lineage_id = ?1 AND chain_seq >= ?2 AND chain_seq <= ?3 AND entry_hash IS NOT NULL \
+         ORDER BY chain_seq ASC",
+    ).map_err(|e| e.to_string())?;
+
+    let entries: Vec<EntryRow> = stmt
+        .query_map(
+            rusqlite::params![&cp.lineage_id, cp.start_seq, cp.end_seq],
+            |r| Ok(EntryRow {
+                chain_seq: r.get(0)?,
+                user_id: r.get(1)?,
+                entity_type: r.get(2)?,
+                action: r.get(3)?,
+                entity_id: r.get(4)?,
+                created_at: r.get(5)?,
+                details: r.get(6)?,
+                prev_hash: r.get(7)?,
+                entry_hash: r.get(8)?,
+            }),
+        ).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let actual_count = entries.len() as i64;
+
+    // Check 1: entry count (detects deletions / insertions)
+    if actual_count != cp.expected_count {
+        let diff = (cp.expected_count - actual_count).abs();
+        let noun = if diff == 1 { "entry" } else { "entries" };
+        return Ok(VerifyCheckpointResult {
+            checkpoint_id,
+            lineage_id: cp.lineage_id,
+            ok: false,
+            expected_count: cp.expected_count,
+            actual_count,
+            tampered_seq: None,
+            message: format!(
+                "Entry count mismatch — expected {}, found {}. {} {} may have been removed or inserted.",
+                cp.expected_count, actual_count, diff, noun
+            ),
+        });
+    }
+
+    // Check 2: Merkle root over current stored entry_hash values
+    let current_hashes: Vec<String> = entries.iter().map(|e| e.entry_hash.clone()).collect();
+    let current_root = build_merkle_root(&current_hashes);
+
+    if current_root != cp.stored_root {
+        // Try to identify the tampered entry via individual hash recomputation.
+        let tampered_seq = entries.iter().find_map(|e| {
+            let canonical = audit_canonical_bytes(
+                &cp.lineage_id, e.chain_seq, &e.created_at,
+                e.user_id.as_deref().unwrap_or(""),
+                &e.entity_type,
+                e.entity_id.as_deref().unwrap_or(""),
+                &e.action,
+                e.details.as_deref().unwrap_or(""),
+            );
+            let computed = compute_entry_hash(&canonical, &e.prev_hash);
+            if computed != e.entry_hash { Some(e.chain_seq) } else { None }
+        });
+
+        let message = if let Some(seq) = tampered_seq {
+            format!(
+                "Merkle root mismatch — entry at seq {} was tampered with (content no longer matches its stored hash).",
+                seq
+            )
+        } else {
+            "Merkle root mismatch — stored entry_hash values have been altered. \
+             Use chain verification for per-entry detail.".to_string()
+        };
+        return Ok(VerifyCheckpointResult {
+            checkpoint_id,
+            lineage_id: cp.lineage_id,
+            ok: false,
+            expected_count: cp.expected_count,
+            actual_count,
+            tampered_seq,
+            message,
+        });
+    }
+
+    // Check 3: individual entry content hashes (catches content edits without hash update)
+    for e in &entries {
+        let canonical = audit_canonical_bytes(
+            &cp.lineage_id, e.chain_seq, &e.created_at,
+            e.user_id.as_deref().unwrap_or(""),
+            &e.entity_type,
+            e.entity_id.as_deref().unwrap_or(""),
+            &e.action,
+            e.details.as_deref().unwrap_or(""),
+        );
+        let computed = compute_entry_hash(&canonical, &e.prev_hash);
+        if computed != e.entry_hash {
+            return Ok(VerifyCheckpointResult {
+                checkpoint_id,
+                lineage_id: cp.lineage_id,
+                ok: false,
+                expected_count: cp.expected_count,
+                actual_count,
+                tampered_seq: Some(e.chain_seq),
+                message: format!(
+                    "Content tampered at seq {} — entry_hash unchanged (Merkle root still matches) but content was modified.",
+                    e.chain_seq
+                ),
+            });
+        }
+    }
+
+    Ok(VerifyCheckpointResult {
+        checkpoint_id,
+        lineage_id: cp.lineage_id,
+        ok: true,
+        expected_count: cp.expected_count,
+        actual_count,
+        tampered_seq: None,
+        message: format!(
+            "Checkpoint verified — all {} {} match the recorded Merkle root.",
+            actual_count,
+            if actual_count == 1 { "entry" } else { "entries" }
+        ),
+    })
+}
+
+/// List all stored checkpoints, optionally filtered to a single lineage.
+#[tauri::command]
+pub fn list_audit_checkpoints(
+    state: State<AppState>,
+    token: String,
+    lineage_id: Option<String>,
+) -> Result<Vec<AuditCheckpoint>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    auth_service::validate_session(&db, &token)?;
+
+    let rows: Vec<AuditCheckpoint> = if let Some(ref lid) = lineage_id {
+        let mut stmt = db.conn.prepare(
+            "SELECT id, lineage_id, start_seq, end_seq, entry_count, merkle_root, created_at, created_by, anchored_txid \
+             FROM audit_checkpoints WHERE lineage_id = ?1 ORDER BY created_at DESC",
+        ).map_err(|e| e.to_string())?;
+        let collected: Vec<AuditCheckpoint> = stmt.query_map(rusqlite::params![lid], |r| Ok(AuditCheckpoint {
+            id: r.get(0)?, lineage_id: r.get(1)?, start_seq: r.get(2)?,
+            end_seq: r.get(3)?, entry_count: r.get(4)?, merkle_root: r.get(5)?,
+            created_at: r.get(6)?, created_by: r.get(7)?, anchored_txid: r.get(8)?,
+        })).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+        collected
+    } else {
+        let mut stmt = db.conn.prepare(
+            "SELECT id, lineage_id, start_seq, end_seq, entry_count, merkle_root, created_at, created_by, anchored_txid \
+             FROM audit_checkpoints ORDER BY created_at DESC LIMIT 100",
+        ).map_err(|e| e.to_string())?;
+        let collected: Vec<AuditCheckpoint> = stmt.query_map([], |r| Ok(AuditCheckpoint {
+            id: r.get(0)?, lineage_id: r.get(1)?, start_seq: r.get(2)?,
+            end_seq: r.get(3)?, entry_count: r.get(4)?, merkle_root: r.get(5)?,
+            created_at: r.get(6)?, created_by: r.get(7)?, anchored_txid: r.get(8)?,
+        })).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+        collected
+    };
+
+    Ok(rows)
 }

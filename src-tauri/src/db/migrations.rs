@@ -73,6 +73,37 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (12)", [])?;
     }
 
+    if current < 13 {
+        migration_013_audit_checkpoints(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (13)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_013_audit_checkpoints(conn: &Connection) -> DbResult<()> {
+    // Merkle checkpoint table (WP-20). Each row seals a range of a lineage's audit chain
+    // into a single Merkle root so the sealed history can be re-verified at any time.
+    //
+    // anchored_txid is the Phase-2 hook (WP-65+): once on-chain anchoring is added,
+    // the published Dogecoin txid for this root will be stored here. Left NULL for now.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS audit_checkpoints (
+            id            TEXT PRIMARY KEY,
+            lineage_id    TEXT NOT NULL,
+            start_seq     INTEGER NOT NULL,
+            end_seq       INTEGER NOT NULL,
+            entry_count   INTEGER NOT NULL,
+            merkle_root   TEXT NOT NULL,
+            created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+            created_by    TEXT REFERENCES users(id),
+            anchored_txid TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_audit_checkpoints_lineage
+            ON audit_checkpoints(lineage_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_checkpoints_created
+            ON audit_checkpoints(created_at);
+    ")?;
     Ok(())
 }
 
