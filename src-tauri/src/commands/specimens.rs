@@ -1135,4 +1135,19 @@ mod tests {
         assert_eq!(stored_flag, 1);
         assert_eq!(stored_notes, Some("Bacterial contamination".to_string()));
     }
+
+    #[test]
+    fn test_split_request_can_force_contamination_even_on_clean_parent() {
+        // A technician may observe contamination during the split procedure
+        // even though the parent record was previously clean. The request flag
+        // alone must be sufficient to flag all children.
+        let (flag, notes) = inherit_contamination(
+            0,
+            None,
+            Some(true),
+            Some("Contamination detected during split procedure"),
+        );
+        assert_eq!(flag, 1, "request contamination flag should propagate to child even when parent is clean");
+        assert_eq!(notes, Some("Contamination detected during split procedure".to_string()));
+    }
 }
