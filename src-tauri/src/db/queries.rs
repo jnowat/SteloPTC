@@ -63,7 +63,7 @@ pub fn build_merkle_root(leaves: &[String]) -> String {
     }
     let mut level: Vec<String> = leaves.to_vec();
     while level.len() > 1 {
-        if level.len() % 2 != 0 {
+        if !level.len().is_multiple_of(2) {
             let last = level.last().unwrap().clone();
             level.push(last);
         }
