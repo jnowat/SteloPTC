@@ -19,12 +19,17 @@
   // Clipboard copy state: unique key → true while "copied" is shown
   let copiedId = $state<string | null>(null);
 
+  // Batch verification state (Verify All Lineages button)
+  let batchVerifying = $state(false);
+  let batchResult = $state<{ total: number; passed: number; failed: number } | null>(null);
+
   onMount(() => { load(); });
 
   async function load() {
     loading = true;
     error = null;
     rowVerify = {};
+    batchResult = null;
     try {
       const result = await getAuditLog({
         entity_type: filterEntity || undefined,
@@ -69,17 +74,51 @@
     rowVerify[entry.id] = { pending: true };
     try {
       const result = await verifyAuditLineage(entry.lineage_id);
+      // result.message already contains the seq number and failure reason;
+      // avoid duplicating it in a "Chain break at seq N: Chain broken at seq N" prefix.
       const msg = result.ok
-        ? `Lineage chain OK — ${result.checked} entries verified.`
-        : `Chain break at seq ${result.first_break_seq}: ${result.message}`;
+        ? `All ${result.checked} entries verified — chain is intact.`
+        : result.message;
       rowVerify[entry.id] = { pending: false, ok: result.ok, message: msg };
     } catch (e: any) {
       rowVerify[entry.id] = { pending: false, ok: false, message: e.message };
     }
   }
 
+  async function verifyAllLineages() {
+    const uniqueLineages = [...new Set(
+      entries.filter((e: any) => e.lineage_id).map((e: any) => e.lineage_id as string)
+    )];
+    if (uniqueLineages.length === 0) return;
+
+    batchVerifying = true;
+    batchResult = null;
+    let passed = 0, failed = 0;
+
+    for (const lineageId of uniqueLineages) {
+      const firstEntry = entries.find((e: any) => e.lineage_id === lineageId);
+      if (!firstEntry) continue;
+
+      rowVerify[firstEntry.id] = { pending: true };
+      try {
+        const result = await verifyAuditLineage(lineageId);
+        const msg = result.ok
+          ? `All ${result.checked} entries verified — chain is intact.`
+          : result.message;
+        rowVerify[firstEntry.id] = { pending: false, ok: result.ok, message: msg };
+        if (result.ok) passed++; else failed++;
+      } catch (e: any) {
+        rowVerify[firstEntry.id] = { pending: false, ok: false, message: e.message };
+        failed++;
+      }
+    }
+
+    batchResult = { total: uniqueLineages.length, passed, failed };
+    batchVerifying = false;
+  }
+
   // Counts of chained vs legacy rows on the current page
-  let chainedCount = $derived(entries.filter(e => e.chain_seq != null).length);
+  let chainedCount = $derived(entries.filter((e: any) => e.chain_seq != null).length);
   let legacyCount = $derived(entries.length - chainedCount);
 </script>
 
@@ -95,15 +134,31 @@
         <span class="chain-banner-icon">🔒</span>
         <span>
           <strong>{chainedCount}</strong> of {entries.length} visible entries are hash-chained.
-          Click <strong>Verify</strong> on any row to check its integrity,
-          or <strong>Verify Lineage</strong> to check the full chain for that entity.
+          Use <strong>Row</strong> (single hash check) or <strong>Chain</strong> (full lineage walk) on any row,
+          or verify all visible lineages at once below.
         </span>
+        {#if legacyCount > 0}
+          <span class="legacy-note">({legacyCount} legacy row{legacyCount !== 1 ? 's' : ''} not in count)</span>
+        {/if}
+        <div class="chain-banner-actions">
+          <button
+            class="btn btn-sm"
+            disabled={batchVerifying}
+            onclick={verifyAllLineages}
+            title="Walk the full hash chain for every unique lineage visible on this page"
+          >{batchVerifying ? 'Verifying…' : 'Verify All Lineages'}</button>
+          {#if batchResult}
+            {#if batchResult.failed === 0}
+              <span class="batch-ok">✓ All {batchResult.passed} lineage{batchResult.passed !== 1 ? 's' : ''} intact</span>
+            {:else}
+              <span class="batch-fail">✗ {batchResult.failed} of {batchResult.total} lineage{batchResult.total !== 1 ? 's' : ''} failed</span>
+            {/if}
+            <button class="dismiss-btn" onclick={() => { batchResult = null; }} title="Dismiss batch result">×</button>
+          {/if}
+        </div>
       {:else}
         <span class="chain-banner-icon chain-banner-icon--legacy">📋</span>
         <span>All visible entries are legacy (pre-v1.5.0) — no chain data to verify.</span>
-      {/if}
-      {#if legacyCount > 0 && chainedCount > 0}
-        <span class="legacy-note">({legacyCount} legacy row{legacyCount !== 1 ? 's' : ''} hidden from count)</span>
       {/if}
     </div>
   {/if}
@@ -275,7 +330,17 @@
 
   .chain-banner-icon { font-size: 16px; }
   .chain-banner-icon--legacy { opacity: 0.5; }
-  .legacy-note { color: var(--color-text-muted, #9ca3af); font-size: 12px; margin-left: 4px; }
+  .legacy-note { color: var(--color-text-muted, #9ca3af); font-size: 12px; }
+
+  .chain-banner-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .batch-ok { font-size: 12px; font-weight: 600; color: var(--color-success, #16a34a); }
+  .batch-fail { font-size: 12px; font-weight: 600; color: var(--color-danger, #dc2626); }
 
   .chain-th {
     white-space: nowrap;

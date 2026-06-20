@@ -197,6 +197,21 @@
                       </div>
                     </div>
                   {/if}
+                  {#if sc.selfContaminationFlag}
+                    <div class="tl-contam-block" style="margin-top:10px;">
+                      <span>⚠ <strong>Contamination inherited from split parent</strong></span>
+                      {#if sc.selfContaminationNotes || sc.parentContaminationNotes}
+                        <p class="tl-detail-p" style="margin-top:4px;">{sc.selfContaminationNotes || sc.parentContaminationNotes}</p>
+                      {/if}
+                    </div>
+                  {:else if sc.parentContaminationFlag}
+                    <div class="tl-contam-block" style="margin-top:10px;background:#fff8f1;border-color:#fed7aa;">
+                      <span style="color:#92400e;">ℹ <strong>Parent was contaminated at time of split</strong></span>
+                      {#if sc.parentContaminationNotes}
+                        <p class="tl-detail-p" style="margin-top:4px;color:#78350f;">{sc.parentContaminationNotes}</p>
+                      {/if}
+                    </div>
+                  {/if}
                 {:else}
                   <!-- Expanded parent split: show parent state + children chips -->
                   <div class="tl-detail-grid" style="margin-bottom:10px;">

@@ -11,8 +11,9 @@ use tauri::State;
 
 // Tuple returned by the parent-specimen query in split_specimen.
 // Fields: (species_id, species_code, stage, provenance, source_plant, location,
-//          generation, lineage_passage_offset, subculture_count, root_specimen_id, accession_number)
-type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>, String);
+//          generation, lineage_passage_offset, subculture_count, root_specimen_id, accession_number,
+//          contamination_flag, contamination_notes)
+type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>, String, i32, Option<String>);
 
 #[tauri::command]
 pub fn list_specimens(
@@ -633,11 +634,13 @@ pub fn split_specimen(
     let (parent_species_id, _parent_species_code, parent_stage,
          parent_provenance, parent_source_plant, parent_location,
          parent_generation, parent_passage_offset, parent_subculture_count,
-         parent_root_id, parent_accession): ParentInfo = db.conn.query_row(
+         parent_root_id, parent_accession,
+         parent_contamination_flag, parent_contamination_notes): ParentInfo = db.conn.query_row(
         "SELECT s.species_id, sp.species_code, s.stage,
                 s.provenance, s.source_plant, s.location,
                 s.generation, s.lineage_passage_offset, s.subculture_count,
-                s.root_specimen_id, s.accession_number
+                s.root_specimen_id, s.accession_number,
+                s.contamination_flag, s.contamination_notes
          FROM specimens s
          JOIN species sp ON s.species_id = sp.id
          WHERE s.id = ?1 AND s.is_archived = 0",
@@ -646,6 +649,7 @@ pub fn split_specimen(
             row.get(0)?, row.get(1)?, row.get(2)?,
             row.get(3)?, row.get(4)?, row.get(5)?,
             row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?,
+            row.get(11)?, row.get(12)?,
         )),
     ).map_err(|_| "Parent specimen not found or already archived".to_string())?;
 
@@ -713,6 +717,23 @@ pub fn split_specimen(
     let child_root_id: &str = parent_root_id
         .as_deref()
         .unwrap_or(&request.parent_specimen_id);
+
+    // Contamination inheritance: children of a contaminated parent are themselves
+    // flagged, because we cannot determine which child is clean without testing.
+    // The split request can also introduce contamination observed during the split
+    // that wasn't previously recorded on the parent record.
+    let effective_contaminated = parent_contamination_flag != 0
+        || request.contamination_flag.unwrap_or(false);
+    let child_contamination_flag_i32 = effective_contaminated as i32;
+    // Use the request's notes if provided (freshest observation); fall back to
+    // the parent's existing notes so the reason is never silently dropped.
+    let child_contamination_notes: Option<String> = if effective_contaminated {
+        request.contamination_notes.as_deref()
+            .or(parent_contamination_notes.as_deref())
+            .map(str::to_string)
+    } else {
+        None
+    };
 
     let tx = db.conn
         .unchecked_transaction()
@@ -784,31 +805,41 @@ pub fn split_specimen(
             .filter(|s| !s.is_empty())
             .unwrap_or(default_note.as_str());
 
-        // Insert child specimen with genealogy fields
+        // Insert child specimen with genealogy fields and inherited contamination status
         tx.execute(
             "INSERT INTO specimens \
              (id, accession_number, species_id, stage, initiation_date, \
               location, health_status, qr_code_data, parent_specimen_id, \
               provenance, source_plant, notes, created_by, \
-              generation, lineage_passage_offset, root_specimen_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+              generation, lineage_passage_offset, root_specimen_id, \
+              contamination_flag, contamination_notes) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             params![
                 child_id, accession, parent_species_id, child_stage, request.date,
                 child_location, child_health, qr_data, request.parent_specimen_id,
                 parent_provenance, parent_source_plant, child_notes, user.id,
                 child_generation, child_passage_offset, child_root_id,
+                child_contamination_flag_i32, child_contamination_notes,
             ],
         ).map_err(|e| format!("Failed to create child specimen {}: {}", i + 1, e))?;
 
         // Fork the audit chain from the parent (all children inherit the same
         // parent prev_hash — the split event logged above — making the fork visible)
+        let child_audit_detail = if child_contamination_flag_i32 != 0 {
+            format!(
+                "Split from {} — container {} of {} [contamination inherited]",
+                request.parent_specimen_id, i + 1, request.children.len()
+            )
+        } else {
+            format!(
+                "Split from {} — container {} of {}",
+                request.parent_specimen_id, i + 1, request.children.len()
+            )
+        };
         queries::log_audit_for_child(
             &tx, Some(&user.id), "create", "specimen", Some(&child_id),
             None, Some(accession.as_str()),
-            Some(&format!(
-                "Split from {} — container {} of {}",
-                request.parent_specimen_id, i + 1, request.children.len()
-            )),
+            Some(&child_audit_detail),
             &request.parent_specimen_id,
         ).map_err(|e| format!("Failed to audit child specimen {}: {}", i + 1, e))?;
 

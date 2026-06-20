@@ -308,6 +308,12 @@
           selfStage: s.stage,
           selfHealth: s.health_status,
           selfLocation: s.location,
+          // Contamination state on this child at creation (inherited from parent)
+          selfContaminationFlag: s.contamination_flag,
+          selfContaminationNotes: s.contamination_notes,
+          // Parent's contamination state at the time of the split for additional context
+          parentContaminationFlag: parentSpecimen?.contamination_flag,
+          parentContaminationNotes: parentSpecimen?.contamination_notes,
           siblings: siblings.map((m: any) => ({ accession_number: m.accession_number, id: m.id, is_archived: m.is_archived })),
         });
       }
@@ -1008,6 +1014,15 @@ ${complianceSection}
                 <input type="checkbox" title="Enable split mode — parent specimen will be archived" bind:checked={isSplitting} style="margin-right:6px;" />
                 Split culture into multiple child specimens
               </label>
+
+              {#if isSplitting && specimen.contamination_flag}
+                <div class="split-contam-warning">
+                  ⚠ <strong>This specimen is contaminated.</strong> All child specimens will automatically inherit the contamination flag.
+                  {#if specimen.contamination_notes}
+                    <span class="split-contam-notes">{specimen.contamination_notes}</span>
+                  {/if}
+                </div>
+              {/if}
 
               {#if isSplitting}
                 <div class="split-count-row">
@@ -1837,5 +1852,21 @@ ${complianceSection}
   .contam-toggle-label { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600; }
   .contam-toggle-text { color: #b91c1c; }
   :global(.dark) .contam-toggle-text { color: #f87171; }
+
+  .split-contam-warning {
+    margin: 8px 0 4px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    font-size: 13px;
+    color: #b91c1c;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  :global(.dark) .split-contam-warning { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
+  .split-contam-notes { font-size: 12px; color: #7f1d1d; font-weight: 400; }
+  :global(.dark) .split-contam-notes { color: #fca5a5; }
 
 </style>
