@@ -59,6 +59,7 @@
   let splitCount = $state(2);
   let submitting = $state(false);
   let showSplitConfirm = $state(false);
+  let showDeathConfirm = $state(false);
   let showDraftMediaDialog = $state(false);
   let draftMediaForChild = $state(-1);
   let draftMediaName = $state('');
@@ -360,6 +361,7 @@
     showPassageForm = false;
     isSplitting = false;
     showSplitConfirm = false;
+    showDeathConfirm = false;
     splitCount = 2;
     splitChildren = [makeChild(), makeChild()];
     passageHealthValue = 4;
@@ -370,6 +372,28 @@
       health_status: '', health_unknown: false, employee_id: '',
       contamination_flag: false, contamination_notes: '',
     };
+  }
+
+  async function executeDeathRecord() {
+    if (!$selectedSpecimenId || !specimen) return;
+    showDeathConfirm = false;
+    submitting = true;
+    try {
+      await recordSpecimenDeath({
+        specimen_id: $selectedSpecimenId,
+        date: subcultureForm.date,
+        notes: subcultureForm.notes || undefined,
+        observations: subcultureForm.observations || undefined,
+        employee_id: subcultureForm.employee_id || undefined,
+      });
+      addNotification('Specimen marked as dead and archived. No further passages can be recorded.', 'success');
+      resetPassageForm();
+      loadAll($selectedSpecimenId!);
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      submitting = false;
+    }
   }
 
   async function executeSplit() {
@@ -423,25 +447,9 @@
       return;
     }
 
-    // ── Death path — record terminal event and archive specimen ──
+    // ── Death path — show confirmation before executing ──
     if (isDeathMode) {
-      submitting = true;
-      try {
-        await recordSpecimenDeath({
-          specimen_id: $selectedSpecimenId,
-          date: subcultureForm.date,
-          notes: subcultureForm.notes || undefined,
-          observations: subcultureForm.observations || undefined,
-          employee_id: subcultureForm.employee_id || undefined,
-        });
-        addNotification('Specimen marked as dead and archived. No further passages can be recorded.', 'success');
-        resetPassageForm();
-        loadAll($selectedSpecimenId!);
-      } catch (e: any) {
-        addNotification(e.message, 'error');
-      } finally {
-        submitting = false;
-      }
+      showDeathConfirm = true;
       return;
     }
 
@@ -867,7 +875,11 @@ ${complianceSection}
             onclick={() => { if (!specimen.is_archived) showPassageForm = !showPassageForm; }}
             disabled={specimen.is_archived}
             title={specimen.is_archived
-              ? (childSpecimens.length > 0 ? 'This specimen was split and archived — passages cannot be recorded on inactive specimens' : 'This specimen is archived — passages cannot be recorded')
+              ? (childSpecimens.length > 0
+                  ? 'This specimen was split and archived — passages cannot be recorded on inactive specimens'
+                  : specimen.health_status === '0'
+                    ? 'This specimen was marked dead and archived — no further passages can be recorded'
+                    : 'This specimen is archived — passages cannot be recorded')
               : (showPassageForm ? 'Cancel passage recording' : 'Log a new subculture or transfer event for this specimen — records date, media batch, vessel, health, location, and observations')}
           >
             {showPassageForm ? '✕ Cancel' : '+ Record Passage'}
@@ -1358,6 +1370,33 @@ ${complianceSection}
         <button class="btn" onclick={() => showSplitConfirm = false} disabled={submitting}>Cancel</button>
         <button class="btn btn-danger" onclick={executeSplit} disabled={submitting}>
           {submitting ? 'Splitting…' : `Confirm Split — ${splitCount} children`}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Death Confirmation Dialog -->
+{#if showDeathConfirm}
+  <div class="modal-overlay" onclick={() => showDeathConfirm = false} onkeydown={(e) => e.key === 'Escape' && (showDeathConfirm = false)} role="presentation">
+    <div class="modal-box confirm-dialog" role="dialog" aria-modal="true" aria-label="Confirm death record" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+      <div class="confirm-header">
+        <span class="confirm-icon" style="color:#dc2626;">&#9760;</span>
+        <h3 class="confirm-title" style="color:#dc2626;">Record Death &amp; Archive</h3>
+      </div>
+      <div class="confirm-warning" style="background:#fff1f2;border-color:#fca5a5;color:#7f1d1d;">
+        <strong>This action is permanent and cannot be undone:</strong>
+        <ul>
+          <li>Specimen <strong style="font-family:monospace;">{specimen?.accession_number}</strong> will be permanently archived.</li>
+          <li>Health status will be set to <strong>Dead (0)</strong>.</li>
+          <li>No further passages or splits can be recorded on this specimen.</li>
+          <li>The death event will be recorded in the audit chain.</li>
+        </ul>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn" onclick={() => showDeathConfirm = false} disabled={submitting}>Cancel</button>
+        <button class="btn btn-danger" onclick={executeDeathRecord} disabled={submitting}>
+          {submitting ? 'Archiving…' : '☠ Confirm — Record Death & Archive'}
         </button>
       </div>
     </div>

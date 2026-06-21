@@ -14,14 +14,21 @@ crate-type = ["lib", "cdylib", "staticlib"]
 name = "stelo-ptc"
 path = "src/main.rs"
 
+[features]
+# Default build includes the full Tauri command layer (required for the desktop app).
+# Disable for unit-test builds in environments without GTK/WebKit system libraries:
+#   cargo test --lib --no-default-features
+default = ["tauri-commands"]
+tauri-commands = ["tauri", "tauri-plugin-dialog", "tauri-plugin-fs", "tauri-plugin-shell"]
+
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = [], optional = true }
 
 [dependencies]
-tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
-tauri-plugin-fs = "2"
-tauri-plugin-shell = "2"
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+tauri-plugin-fs = { version = "2", optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }

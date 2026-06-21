@@ -1,16 +1,21 @@
 pub mod auth;
-pub mod commands;
 pub mod db;
 pub mod models;
 
+#[cfg(feature = "tauri-commands")]
+pub mod commands;
+
 use db::Database;
 use std::sync::Mutex;
-use tauri::Manager;
 
 pub struct AppState {
     pub db: Mutex<Database>,
 }
 
+#[cfg(feature = "tauri-commands")]
+use tauri::Manager;
+
+#[cfg(feature = "tauri-commands")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let db = match Database::new() {
