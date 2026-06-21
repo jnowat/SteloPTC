@@ -36,6 +36,8 @@ pub struct Subculture {
     pub contamination_notes: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    /// "passage" for normal subculture events; "death" for terminal death recordings.
+    pub event_type: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -67,6 +69,16 @@ pub struct CreateSubcultureRequest {
     pub health_status: Option<String>,
     pub contamination_flag: Option<bool>,
     pub contamination_notes: Option<String>,
+}
+
+/// Payload for the "Record Death & Archive" terminal event.
+#[derive(Debug, Deserialize)]
+pub struct RecordSpecimenDeathRequest {
+    pub specimen_id: String,
+    pub date: String,
+    pub observations: Option<String>,
+    pub notes: Option<String>,
+    pub employee_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

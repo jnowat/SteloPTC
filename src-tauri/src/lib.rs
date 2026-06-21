@@ -1,16 +1,21 @@
 pub mod auth;
-pub mod commands;
 pub mod db;
 pub mod models;
 
+#[cfg(feature = "tauri-commands")]
+pub mod commands;
+
 use db::Database;
 use std::sync::Mutex;
-use tauri::Manager;
 
 pub struct AppState {
     pub db: Mutex<Database>,
 }
 
+#[cfg(feature = "tauri-commands")]
+use tauri::Manager;
+
+#[cfg(feature = "tauri-commands")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let db = match Database::new() {
@@ -66,6 +71,7 @@ pub fn run() {
             commands::subcultures::list_subcultures,
             commands::subcultures::list_all_subcultures,
             commands::subcultures::create_subculture,
+            commands::subcultures::record_specimen_death,
             commands::subcultures::update_subculture,
             commands::subcultures::get_contamination_stats,
             commands::subcultures::get_subculture_schedule,
@@ -121,6 +127,8 @@ pub fn run() {
             // Admin tools
             commands::admin::reset_database,
             commands::admin::load_demo_data,
+            commands::admin::get_lab_profile,
+            commands::admin::set_lab_profile,
             // Error Logs
             commands::error_logs::log_error,
             commands::error_logs::list_error_logs,

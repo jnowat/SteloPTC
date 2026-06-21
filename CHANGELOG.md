@@ -5,6 +5,37 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-06-21
+
+### Added — Dead Specimen Workflow & Lab Profile (WP-22)
+
+**Part 1: Dead Specimen / Archive Workflow**
+
+- **"Record Death & Archive" action** — when the health slider is set to 0 (Dead) in the Record Passage form, the primary button changes to "☠ Record Death & Archive" styled as a danger button.
+- **Death warning banner** — a red warning panel appears in the form when death mode is active, explaining that the action is terminal and irreversible.
+- **`record_specimen_death` Tauri command** — dedicated backend command that archives the specimen (`is_archived = 1`, `health_status = '0'`, `archived_at = now()`), inserts a terminal subculture row with `event_type = 'death'` (does **not** increment `subculture_count`), and writes a `"death"` audit entry.
+- **Death event card** in SpecimenPassageTimeline — distinct red card with skull icon and "Death · Archived" pill for `event_type = 'death'` rows; expandable to show observations and notes.
+- **"Dead / Archived" status badge** — specimens archived via the death workflow show a red `Dead / Archived` badge instead of the generic grey `Archived` badge.
+- **Dead banner variant** — the archived info banner on dead specimens uses a red colour scheme, skull icon, and "Dead / Archived" heading.
+- **Passage count excludes death events** — `realPassageCount` in SpecimenDetail now filters out `event_type = 'death'` rows so the displayed passage count reflects only actual subcultures.
+- **`recordSpecimenDeath` API function** in `src/lib/api.ts`.
+- **5 new Rust unit tests** covering: death archives specimen and zeroes health, event_type stored as 'death', archived specimen blocks further passages, normal passages retain 'passage' event_type, and app_config seeded with default profile.
+
+**Part 2: WP-22 — Lab Profile**
+
+- **Migration 015** adds `event_type TEXT NOT NULL DEFAULT 'passage'` to `subcultures` (with index) and creates the `app_config` single-row table (`CHECK (id = 1)`) with `lab_profile` constrained to `plant_tissue_culture | cell_culture | mycology`; seeds the default `plant_tissue_culture` row.
+- **`get_lab_profile` / `set_lab_profile` Tauri commands** — any authenticated user can read the profile; only admins can change it; profile is locked once any specimens exist to preserve data-integrity invariants.
+- **`src/lib/profile.ts`** — Svelte writable store (`labProfile`), `LAB_PROFILE_LABELS` map, `loadLabProfile()` async loader, and `currentLabProfile()` synchronous accessor. Default remains `plant_tissue_culture` so existing deployments see no change.
+- **`getLabProfile` / `setLabProfile` API functions** in `src/lib/api.ts`.
+
+### Changed
+
+- Version bumped to 1.11.0 across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+- `record_specimen_death` command registered in `lib.rs` `invoke_handler`.
+- `get_lab_profile` and `set_lab_profile` commands registered in `lib.rs` `invoke_handler`.
+
+---
+
 ## [1.10.0] - 2026-06-20
 
 ### Added — WP-21: Portable Merkle Proofs, Standalone Verification & Auto-Checkpointing

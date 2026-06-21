@@ -6,6 +6,92 @@ use crate::AppState;
 use rusqlite::params;
 use tauri::State;
 
+/// Records a terminal "death" event for a specimen, archives it, and prevents
+/// any further passages or splits.  Unlike `create_subculture` this does NOT
+/// increment the specimen's `subculture_count` — the death event is terminal,
+/// not a normal passage in the culture's lineage.
+#[tauri::command]
+pub fn record_specimen_death(
+    state: State<AppState>,
+    token: String,
+    request: RecordSpecimenDeathRequest,
+) -> Result<Subculture, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+
+    let (current_count, is_archived): (i32, i32) = db.conn.query_row(
+        "SELECT subculture_count, is_archived FROM specimens WHERE id = ?1",
+        params![request.specimen_id],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    ).map_err(|_| "Specimen not found".to_string())?;
+
+    if is_archived != 0 {
+        return Err("Specimen is already archived — cannot record a death event".to_string());
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    // Store after last passage number for ordering, but subculture_count stays unchanged.
+    let event_passage_number = current_count + 1;
+
+    let tx = db.conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to begin transaction: {}", e))?;
+
+    tx.execute(
+        "INSERT INTO subcultures
+             (id, specimen_id, passage_number, date, notes, observations,
+              performed_by, employee_id, health_status, contamination_flag, event_type)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,'0',0,'death')",
+        params![
+            id,
+            request.specimen_id,
+            event_passage_number,
+            request.date,
+            request.notes,
+            request.observations,
+            user.id,
+            request.employee_id,
+        ],
+    ).map_err(|e| format!("Failed to insert death event: {}", e))?;
+
+    // Archive specimen; set health to 0 (Dead).  subculture_count is intentionally untouched.
+    tx.execute(
+        "UPDATE specimens
+         SET is_archived  = 1,
+             archived_at  = datetime('now'),
+             health_status = '0',
+             updated_at   = datetime('now')
+         WHERE id = ?1",
+        params![request.specimen_id],
+    ).map_err(|e| format!("Failed to archive specimen: {}", e))?;
+
+    queries::log_audit(
+        &tx,
+        Some(&user.id),
+        "death",
+        "specimen",
+        Some(&request.specimen_id),
+        None,
+        None,
+        Some("Specimen marked dead and archived — terminal event"),
+    ).map_err(|e| format!("Failed to write death audit: {}", e))?;
+
+    tx.commit().map_err(|e| format!("Failed to commit death transaction: {}", e))?;
+
+    db.conn.query_row(
+        "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
+         FROM subcultures sc
+         LEFT JOIN users u ON sc.performed_by = u.id
+         LEFT JOIN media_batches mb ON sc.media_batch_id = mb.id
+         WHERE sc.id = ?1",
+        params![id],
+        row_to_subculture,
+    ).map_err(|e| format!("Failed to fetch death event: {}", e))
+}
+
 // ── helper: map a DB row to a Subculture ────────────────────────────────────
 fn row_to_subculture(row: &rusqlite::Row) -> rusqlite::Result<Subculture> {
     let flag: i32 = row.get("contamination_flag").unwrap_or(0);
@@ -44,6 +130,7 @@ fn row_to_subculture(row: &rusqlite::Row) -> rusqlite::Result<Subculture> {
         contamination_notes: row.get("contamination_notes")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
+        event_type: row.get("event_type").unwrap_or_else(|_| "passage".to_string()),
     })
 }
 
@@ -424,3 +511,4 @@ pub fn get_subculture_schedule(
 
     Ok(entries)
 }
+

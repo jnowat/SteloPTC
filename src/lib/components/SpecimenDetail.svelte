@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments } from '../api';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
   import SpecimenComplianceTable from './SpecimenComplianceTable.svelte';
   import SpecimenPassageTimeline from './SpecimenPassageTimeline.svelte';
@@ -24,8 +24,10 @@
   let familyMembers = $state<any[]>([]);
   let loading = $state(true);
 
-  // Real passage count (excludes synthetic split events injected for the timeline)
-  let realPassageCount = $derived(subcultures.filter((sc: any) => !sc.isSplitEvent).length);
+  // Real passage count — excludes synthetic split events and terminal death events.
+  let realPassageCount = $derived(
+    subcultures.filter((sc: any) => !sc.isSplitEvent && sc.event_type !== 'death').length
+  );
 
   // Navigation history stack for in-detail lineage navigation (back button support)
   let navHistory = $state<string[]>([]);
@@ -52,6 +54,7 @@
   let splitCount = $state(2);
   let submitting = $state(false);
   let showSplitConfirm = $state(false);
+  let showDeathConfirm = $state(false);
   let showDraftMediaDialog = $state(false);
   let draftMediaForChild = $state(-1);
   let draftMediaName = $state('');
@@ -205,6 +208,13 @@
   const healthLabels = ['Dead', 'Poor', 'Fair', 'Good', 'Healthy'];
   const healthColors = ['#dc2626', '#d97706', '#ca8a04', '#65a30d', '#16a34a'];
 
+  // True when the health slider is at Dead (0) and death-recording mode is active.
+  // Declared here so all dependencies (showPassageForm, passageHealthValue,
+  // subcultureForm, isSplitting) are already in scope.
+  let isDeathMode = $derived(
+    showPassageForm && passageHealthValue === 0 && !subcultureForm.health_unknown && !isSplitting
+  );
+
   function effectivePassageHealth(): string {
     return subcultureForm.health_unknown ? '-1' : String(passageHealthValue);
   }
@@ -353,6 +363,7 @@
     showPassageForm = false;
     isSplitting = false;
     showSplitConfirm = false;
+    showDeathConfirm = false;
     splitCount = 2;
     splitChildren = [makeChild(), makeChild()];
     passageHealthValue = 4;
@@ -363,6 +374,28 @@
       health_status: '', health_unknown: false, employee_id: '',
       contamination_flag: false, contamination_notes: '',
     };
+  }
+
+  async function executeDeathRecord() {
+    if (!$selectedSpecimenId || !specimen) return;
+    showDeathConfirm = false;
+    submitting = true;
+    try {
+      await recordSpecimenDeath({
+        specimen_id: $selectedSpecimenId,
+        date: subcultureForm.date,
+        notes: subcultureForm.notes || undefined,
+        observations: subcultureForm.observations || undefined,
+        employee_id: subcultureForm.employee_id || undefined,
+      });
+      addNotification('Specimen marked as dead and archived. No further passages can be recorded.', 'success');
+      resetPassageForm();
+      loadAll($selectedSpecimenId!);
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      submitting = false;
+    }
   }
 
   async function executeSplit() {
@@ -413,6 +446,12 @@
     if (isSplitting) {
       // Show confirmation dialog instead of executing directly
       showSplitConfirm = true;
+      return;
+    }
+
+    // ── Death path — show confirmation before executing ──
+    if (isDeathMode) {
+      showDeathConfirm = true;
       return;
     }
 
@@ -642,6 +681,8 @@ ${complianceSection}
         {#if specimen.is_archived}
           {#if childSpecimens.length > 0}
             <span class="badge badge-gray" title="This specimen was split into children and is now inactive — no further passages can be recorded">Split / Inactive</span>
+          {:else if specimen.health_status === '0'}
+            <span class="badge badge-red" title="This specimen was marked dead and archived — no further passages can be recorded">Dead / Archived</span>
           {:else}
             <span class="badge badge-gray" title="This specimen has been archived — no further passages can be recorded">Archived</span>
           {/if}
@@ -725,12 +766,14 @@ ${complianceSection}
 
     <!-- ── Archived Banner ── -->
     {#if specimen.is_archived}
-      <div class="archived-banner">
-        <span class="archived-banner-icon">⊘</span>
+      <div class="archived-banner" class:dead-banner={childSpecimens.length === 0 && specimen.health_status === '0'}>
+        <span class="archived-banner-icon">{childSpecimens.length === 0 && specimen.health_status === '0' ? '☠' : '⊘'}</span>
         <div>
-          <strong>{childSpecimens.length > 0 ? 'Split / Inactive' : 'Archived'}</strong>
+          <strong>{childSpecimens.length > 0 ? 'Split / Inactive' : (specimen.health_status === '0' ? 'Dead / Archived' : 'Archived')}</strong>
           {#if childSpecimens.length > 0}
             — This specimen was split into {childSpecimens.length} child{childSpecimens.length > 1 ? 'ren' : ''}. Passage history is read-only.
+          {:else if specimen.health_status === '0'}
+            — This specimen was marked dead and archived. No further passages can be recorded.
           {:else}
             — This specimen has been archived. No further passages can be recorded.
           {/if}
@@ -834,7 +877,11 @@ ${complianceSection}
             onclick={() => { if (!specimen.is_archived) showPassageForm = !showPassageForm; }}
             disabled={specimen.is_archived}
             title={specimen.is_archived
-              ? (childSpecimens.length > 0 ? 'This specimen was split and archived — passages cannot be recorded on inactive specimens' : 'This specimen is archived — passages cannot be recorded')
+              ? (childSpecimens.length > 0
+                  ? 'This specimen was split and archived — passages cannot be recorded on inactive specimens'
+                  : specimen.health_status === '0'
+                    ? 'This specimen was marked dead and archived — no further passages can be recorded'
+                    : 'This specimen is archived — passages cannot be recorded')
               : (showPassageForm ? 'Cancel passage recording' : 'Log a new subculture or transfer event for this specimen — records date, media batch, vessel, health, location, and observations')}
           >
             {showPassageForm ? '✕ Cancel' : '+ Record Passage'}
@@ -969,6 +1016,16 @@ ${complianceSection}
                 {/if}
               </div>
             </div>
+
+            {#if isDeathMode}
+              <div class="death-warning">
+                <span class="death-warning-icon">☠</span>
+                <div>
+                  <strong>Terminal event — this will permanently archive the specimen.</strong>
+                  Clicking "Record Death &amp; Archive" will mark this specimen as dead, archive it, and prevent any further passages or splits. This action cannot be undone.
+                </div>
+              </div>
+            {/if}
 
             <!-- Employee ID -->
             <div class="form-group">
@@ -1209,15 +1266,20 @@ ${complianceSection}
 
             <div style="display:flex;justify-content:flex-end;margin-top:12px;">
               <button type="submit" class="btn btn-primary"
+                class:btn-danger={isDeathMode}
                 title={isSplitting
                   ? `Review and confirm split of this specimen into ${splitCount} children`
-                  : 'Save this passage event to the specimen record'}
+                  : isDeathMode
+                    ? 'Permanently mark this specimen as dead and archive it — no further passages can be recorded'
+                    : 'Save this passage event to the specimen record'}
                 disabled={submitting}>
                 {submitting
-                  ? (isSplitting ? 'Splitting…' : 'Recording…')
+                  ? (isSplitting ? 'Splitting…' : isDeathMode ? 'Archiving…' : 'Recording…')
                   : isSplitting
                     ? `Review Split (${splitCount} children) →`
-                    : 'Record Passage'}
+                    : isDeathMode
+                      ? '☠ Record Death & Archive'
+                      : 'Record Passage'}
               </button>
             </div>
           </form>
@@ -1316,6 +1378,33 @@ ${complianceSection}
   </div>
 {/if}
 
+<!-- Death Confirmation Dialog -->
+{#if showDeathConfirm}
+  <div class="modal-overlay" onclick={() => showDeathConfirm = false} onkeydown={(e) => e.key === 'Escape' && (showDeathConfirm = false)} role="presentation">
+    <div class="modal-box confirm-dialog" role="dialog" aria-modal="true" aria-label="Confirm death record" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
+      <div class="confirm-header">
+        <span class="confirm-icon" style="color:#dc2626;">&#9760;</span>
+        <h3 class="confirm-title" style="color:#dc2626;">Record Death &amp; Archive</h3>
+      </div>
+      <div class="confirm-warning" style="background:#fff1f2;border-color:#fca5a5;color:#7f1d1d;">
+        <strong>This action is permanent and cannot be undone:</strong>
+        <ul>
+          <li>Specimen <strong style="font-family:monospace;">{specimen?.accession_number}</strong> will be permanently archived.</li>
+          <li>Health status will be set to <strong>Dead (0)</strong>.</li>
+          <li>No further passages or splits can be recorded on this specimen.</li>
+          <li>The death event will be recorded in the audit chain.</li>
+        </ul>
+      </div>
+      <div class="confirm-actions">
+        <button class="btn" onclick={() => showDeathConfirm = false} disabled={submitting}>Cancel</button>
+        <button class="btn btn-danger" onclick={executeDeathRecord} disabled={submitting}>
+          {submitting ? 'Archiving…' : '☠ Confirm — Record Death & Archive'}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
 <!-- Draft Media Batch Dialog -->
 {#if showDraftMediaDialog}
   <div class="modal-overlay" onclick={() => { showDraftMediaDialog = false; }} onkeydown={(e) => e.key === 'Escape' && (showDraftMediaDialog = false)} role="presentation">
@@ -1406,7 +1495,18 @@ ${complianceSection}
     font-size: 13px; color: #78350f;
   }
   :global(.dark) .archived-banner { background: #1c1a00; border-color: #713f12; color: #fcd34d; }
+  .archived-banner.dead-banner { background: #fff1f2; border-color: #fecaca; color: #7f1d1d; }
+  :global(.dark) .archived-banner.dead-banner { background: #1f0000; border-color: #7f1d1d; color: #fca5a5; }
   .archived-banner-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; opacity: 0.8; }
+
+  .death-warning {
+    display: flex; align-items: flex-start; gap: 10px;
+    padding: 10px 14px; margin-bottom: 12px;
+    background: #fff1f2; border: 1px solid #fca5a5; border-radius: 8px;
+    font-size: 13px; color: #7f1d1d;
+  }
+  :global(.dark) .death-warning { background: #1f0000; border-color: #7f1d1d; color: #fca5a5; }
+  .death-warning-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
 
   /* Contamination block inside specimen info card (archived specimens) */
   .contam-info-block {

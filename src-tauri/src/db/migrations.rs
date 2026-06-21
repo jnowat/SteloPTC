@@ -83,6 +83,37 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (14)", [])?;
     }
 
+    if current < 15 {
+        migration_015_death_events_and_lab_profile(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (15)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_015_death_events_and_lab_profile(conn: &Connection) -> DbResult<()> {
+    // WP-22: two additive additions.
+    //
+    // 1. event_type on subcultures distinguishes normal passages ('passage') from terminal
+    //    death recordings ('death').  Death events do not increment subculture_count on the
+    //    specimen; they archive it instead.  DEFAULT 'passage' keeps all existing rows valid.
+    //
+    // 2. app_config is a guaranteed-single-row table (id = 1 enforced by CHECK) that holds
+    //    app-level settings that differ from app_settings (which is key/value).  Starting
+    //    with lab_profile — the discipline this installation is configured for.
+    //    Allowed: 'plant_tissue_culture' | 'cell_culture' | 'mycology'.
+    conn.execute_batch("
+        ALTER TABLE subcultures ADD COLUMN event_type TEXT NOT NULL DEFAULT 'passage';
+        CREATE INDEX IF NOT EXISTS idx_subcultures_event_type ON subcultures(event_type);
+
+        CREATE TABLE IF NOT EXISTS app_config (
+            id          INTEGER PRIMARY KEY CHECK (id = 1),
+            lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture'
+                        CHECK (lab_profile IN ('plant_tissue_culture','cell_culture','mycology')),
+            updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO app_config (id, lab_profile) VALUES (1, 'plant_tissue_culture');
+    ")?;
     Ok(())
 }
 

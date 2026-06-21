@@ -172,6 +172,16 @@ export async function createSubculture(request: any) {
   return call<any>('create_subculture', { request });
 }
 
+export async function recordSpecimenDeath(request: {
+  specimen_id: string;
+  date: string;
+  observations?: string;
+  notes?: string;
+  employee_id?: string;
+}) {
+  return call<any>('record_specimen_death', { request });
+}
+
 export async function updateSubculture(request: any) {
   return call<void>('update_subculture', { request });
 }
@@ -339,6 +349,14 @@ export async function resetDatabase(confirmation: string) {
 
 export async function loadDemoData() {
   return call<string>('load_demo_data');
+}
+
+export async function getLabProfile() {
+  return call<string>('get_lab_profile');
+}
+
+export async function setLabProfile(profile: string) {
+  return call<void>('set_lab_profile', { profile });
 }
 
 // Prepared Solutions

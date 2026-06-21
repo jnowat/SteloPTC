@@ -272,6 +272,61 @@
             {/if}
           </div>
         </div>
+      {:else if sc.event_type === 'death'}
+        <!-- ── Death event card ── -->
+        {@const isExpanded = expandedPassages.has(sc.id)}
+        <div class="timeline-item">
+          <div class="timeline-left">
+            <div class="tl-dot tl-dot-death" title="Terminal event — specimen was marked dead and archived"></div>
+            {#if i < subcultures.length - 1 && !subcultures[i + 1]?.isAncestralDivider}
+              <div class="tl-line tl-line-death"></div>
+            {/if}
+          </div>
+          <div class="tl-card tl-card-death">
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="tl-card-header tl-card-death-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
+              <div class="tl-card-left">
+                <span class="tl-passage-num tl-death-label" title="Terminal death event — specimen marked dead and archived">☠ Death</span>
+                <div class="tl-card-summary">
+                  <span class="tl-date">{sc.date}</span>
+                  <span class="tl-pill death-pill" title="Specimen was permanently archived">Archived</span>
+                </div>
+              </div>
+              <span class="tl-chevron" style="color:#dc2626;">{isExpanded ? '▴' : '▾'}</span>
+            </div>
+            {#if isExpanded}
+              <div class="tl-card-body tl-death-body">
+                <div class="tl-detail-grid">
+                  {#if sc.employee_id}
+                    <div class="tl-detail-item">
+                      <span class="tl-detail-label">Employee ID</span>
+                      <span class="tl-detail-value">{sc.employee_id}</span>
+                    </div>
+                  {/if}
+                  {#if sc.performer_name}
+                    <div class="tl-detail-item">
+                      <span class="tl-detail-label">Recorded By</span>
+                      <span class="tl-detail-value">{sc.performer_name}</span>
+                    </div>
+                  {/if}
+                </div>
+                {#if sc.observations}
+                  <div class="tl-detail-text">
+                    <span class="tl-detail-label">Observations</span>
+                    <p class="tl-detail-p">{sc.observations}</p>
+                  </div>
+                {/if}
+                {#if sc.notes}
+                  <div class="tl-detail-text">
+                    <span class="tl-detail-label">Notes</span>
+                    <p class="tl-detail-p">{sc.notes}</p>
+                  </div>
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
       {:else}
         <!-- ── Normal passage card (with optional ancestral tint) ── -->
         {@const color = dotColor(sc.passage_number)}
@@ -597,6 +652,28 @@
   .tl-card.ancestral { background: #f8fafc; border-color: #e2e8f0; opacity: 0.85; }
   :global(.dark) .tl-card.ancestral { background: #0f172a; border-color: #1e293b; }
   .tl-card.ancestral:hover { opacity: 1; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+
+  /* Death event cards */
+  .tl-dot-death {
+    width: 14px; height: 14px; border-radius: 50%;
+    background: #dc2626;
+    box-shadow: 0 0 0 3px #dc262630;
+    flex-shrink: 0; z-index: 1; position: relative;
+  }
+  .tl-line-death { background: #fecaca; }
+  :global(.dark) .tl-line-death { background: #7f1d1d; }
+  .tl-card-death {
+    border: 1px solid #fca5a5;
+    background: #fff1f2;
+  }
+  :global(.dark) .tl-card-death { background: #1f0000; border-color: #7f1d1d; }
+  .tl-card-death-header:hover { background: #fee2e2; }
+  :global(.dark) .tl-card-death-header:hover { background: #2d0000; }
+  .tl-death-label { color: #dc2626 !important; }
+  .death-pill { background: #fee2e2; color: #b91c1c; font-weight: 700; }
+  :global(.dark) .death-pill { background: #7f1d1d; color: #fca5a5; }
+  .tl-death-body { border-top-color: #fecaca; }
+  :global(.dark) .tl-death-body { border-top-color: #7f1d1d; }
 
   /* Contamination block inside expanded parent split card */
   .tl-contam-block {
