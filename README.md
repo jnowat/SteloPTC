@@ -424,7 +424,7 @@ SteloPTC/
 │       ├── auth/mod.rs               # bcrypt + session management
 │       ├── db/
 │       │   ├── mod.rs                # Connection pool, init
-│       │   ├── migrations.rs         # 10 schema migrations
+│       │   ├── migrations.rs         # 15 schema migrations
 │       │   └── queries.rs            # SQL helpers
 │       ├── models/                   # Rust data structures
 │       │   ├── user.rs, specimen.rs, media.rs
@@ -508,6 +508,8 @@ SQLite, stored at:
 | 011 | v1.8.0 | Added is_draft column to media_batches for placeholder batches created during split workflow |
 | 012 | v1.8.x | Added contamination_flag and contamination_notes columns to specimens (archived contamination state) |
 | 013 | v1.9.0 | Added audit_checkpoints table with Merkle root, seq range, entry count, and Dogecoin anchor hook |
+| 014 | v1.10.0 | Added `is_auto` and `auto_source` to `audit_checkpoints`; created `app_settings` key-value table with seeded auto-checkpoint defaults |
+| 015 | v1.11.0 | Added `event_type TEXT NOT NULL DEFAULT 'passage'` to `subcultures` (with index); created `app_config` single-row table with `lab_profile` (constrained to `plant_tissue_culture \| cell_culture \| mycology`) |
 
 ### Backup
 
@@ -580,7 +582,7 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] **Tauri-reliable print invocation** — popup + in-page DOM fallback for all three print functions; no silent failures in WebView2 (v1.2.5)
 - [x] **Accessibility pass (WCAG 2.1 AA target)** — visible keyboard focus indicators, skip-to-content link, ARIA landmarks, `aria-current` navigation, focus traps in QR modal and photo lightbox, `aria-label` on all icon-only buttons, health slider ARIA attributes (v1.2.6)
 
-### v1.2.7 — v1.7.0 — Completed
+### v1.2.7 — v1.8.0 — Completed
 
 - [x] **Query performance & indexing** — six composite indexes on specimens and subcultures (migration 007); N+1 contamination subquery eliminated; subculture list paginated (v1.2.7)
 - [x] **Backup restore** — admin-only restore from any listed backup with two-step confirmation; app restarts automatically on success (v1.3.0)
@@ -595,13 +597,19 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [x] **Generational depth & genealogy tracking** — `generation` badge in specimen detail header; `lineage_passage_offset` for cumulative passage count from root; `root_specimen_id` for efficient family-tree queries; `get_specimen_family` command; sibling display in lineage banner; migration 010 (v1.7.0)
 - [x] **Split workflow overhaul** — letter-suffix accessions (001A/001B/001AA…), per-child configuration cards (health, stage, location, media batch, vessel, notes, reminder), draft media batches (migration 011), safety confirmation dialog, synthetic split timeline events (purple dashed cards), lineage bar includes archived children, Back button navigation history stack (v1.8.0)
 
+### v1.9.0 — v1.11.0 — Completed
+
+- [x] **Trust Layer Polish (WP-19)** — contamination inheritance on split (children inherit parent's `contamination_flag` + notes; audit entry reflects inheritance); **Verify All Lineages** batch button in Audit Log; cleaner per-lineage verification messages (v1.9.0)
+- [x] **Merkle checkpoints (WP-20)** — binary Merkle tree over per-lineage `entry_hash` values; create/verify/list via admin UI and Tauri commands; three-stage tamper detection (count → root → per-entry content); [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md) (v1.9.0)
+- [x] **Merkle proof export & auto-checkpointing (WP-21)** — portable `PortableMerkleProof` JSON per checkpoint; `verify_exported_proof` command for offline auditors; standalone Python verifier; configurable auto-checkpointing on entry-count threshold and pre-backup; [`docs/merkle-proofs.md`](docs/merkle-proofs.md) — **Trust Layer Phase 1 complete** (v1.10.0)
+- [x] **Lab Profile concept (WP-22)** — `app_config` single-row table with `lab_profile` (`plant_tissue_culture | cell_culture | mycology`); admin-only write, locked once specimens exist; `profile.ts` Svelte store (v1.11.0)
+- [x] **Dead specimen workflow** — "☠ Record Death & Archive" action when health slider hits 0; `record_specimen_death` command (archives specimen + inserts `event_type = 'death'` subculture row + writes audit entry); death event card in passage timeline with skull icon; "Dead / Archived" red badge; passage count excludes death events (v1.11.0)
+
 ### Planned
 
 - [ ] **Interactive lab map** — floor plan overlay with specimen location heat-map and drag-to-move
-- [x] **Merkle checkpoints** — binary Merkle tree over per-lineage `entry_hash` values; create/verify/list via admin UI and Tauri commands; three-stage tamper detection (count → root → per-entry content); [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md) (WP-20, v1.9.0)
-- [ ] **Merkle proof export** — individual leaf + sibling-path proofs; standalone Python verifier script; auto-checkpointing post-event and pre-backup (WP-21)
 
-### v1.9.0 — Taxonomic & Provenance Module Phase 1
+### v2.0.0 — Taxonomic & Provenance Module Phase 1 (Phase TX-1)
 
 - [ ] **Strain/Cultivar Registry** — Strains as first-class entities under each species with their own SHA-256 hash chains seeded from the parent species hash (WP-28). Accession numbers never encode strain.
 - [ ] **Strain version binding** — specimens cryptographically bound to a specific strain version (`strain_chain_seq`) at creation time; strain version badge in specimen detail header (WP-28)
@@ -611,9 +619,9 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 - [ ] **Basic Taxonomy Navigator** — two-column panel (Species → Strains → Specimens) with text search and quick-navigate (WP-29)
 - [ ] **Hybrid pedigree foundation** — `strain_parents` table supporting multi-parent pedigree from day one (WP-28)
 
-### v2.0+ — Multi-Vertical & Taxonomy Expansion
+### v2.1.0+ — Multi-Vertical & Taxonomy Expansion
 
-- [ ] **Phase C — profile-ready engine** — convert hardcoded vocabularies (stage CHECK constraints, hormone types, compliance rules) into profile-scoped lookup tables; one codebase serves multiple lab types (v1.8.0 target)
+- [ ] **Phase C — WP-23–27** — convert remaining hardcoded vocabularies (stage CHECK → `stages` lookup table, hormone types, compliance rules, UI profile manifest) into profile-scoped data; one codebase serves multiple lab types (v1.12.0–v1.15.0)
 - [ ] **Phase TX-2 — Taxonomy expansion** — Genus → Kingdom hierarchy (`taxa` table — classification/navigation only, no hash chains above Species), NCBI Taxonomy import + ongoing sync with conflict resolution, multi-generational pedigree (ancestry, descendants, and specimen-tree queries across all hybrid generations), generation labeling + backcross notation, advanced full-rank Taxonomy Navigator with filtering and descendant counts (WP-35–39)
 - [ ] **SteloCC (Cell Culture)** — cell line registry, passage number / PDL tracking, cryopreservation & LN2 inventory, mycoplasma compliance rules (v2.0.0 target); benefits from Phase TX generic taxonomy engine
 - [ ] **SteloMyco (Mycology)** — strain/isolate registry, colonization % tracking, fruiting conditions & yield, substrate composition (v2.1.0 target); Phase TX strain model maps directly to mycology strain concepts

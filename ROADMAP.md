@@ -1,10 +1,10 @@
 # SteloPTC → Stelo Lab Suite — Engineering Roadmap
 
-**Status as of June 2026:** **v1.8.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Phase B Trust Layer shipped — per-lineage hash chain + generational depth tracking + split workflow overhaul live**
-**Schema:** **11 migrations** total; latest is **migration 011** (`is_draft` column on `media_batches` for draft media in split workflow, v1.8.0). Migration 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
+**Status as of June 2026:** **v1.11.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Trust Layer Phase 1 complete (WP-18–21) · dead specimen workflow · lab_profile (WP-22) · Phase C WP-23+ in progress**
+**Schema:** **15 migrations** total; latest is **migration 015** (`event_type` on `subcultures` + `app_config` table with `lab_profile`, v1.11.0). Migration 014 added `is_auto`/`auto_source` to `audit_checkpoints` + `app_settings` (v1.10.0); 013 added the `audit_checkpoints` Merkle table (v1.9.0); 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` to `media_batches` (v1.8.0); 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0; split workflow overhauled in v1.8.0 with letter-suffix accessions (001A/001B…), per-child controls, draft media batches, safety confirmation dialog, and synthetic split events in the passage timeline.
-**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅ — WP-20 Merkle checkpoints (v1.9.0) and WP-21 portable proof export + auto-checkpointing (v1.10.0) complete. Current focus: Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Phase C work. Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. Phase TX-1 (WP-28–29) targets v1.11.0.
+**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅ — WP-20 Merkle checkpoints (v1.9.0) and WP-21 portable proof export + auto-checkpointing (v1.10.0) complete. Current focus: Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Phase C work. Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. WP-22 (lab_profile + dead specimen workflow) shipped as **v1.11.0**; current active focus is WP-23 (stage CHECK → lookup table) alongside Phase TX-1 (WP-28–29). **Phase TX-1 targets v2.0.0.**
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -251,7 +251,7 @@ The work is staged so that real value lands early and nothing is over-built befo
 - **Preserve:** The audit log stays append-only and immutable; existing columns unchanged; existing audit writes from every command keep working.
 - **Bump:** minor.
 
-### WP-19 — Chain verification command + integrity panel
+### WP-19 — Chain verification command + integrity panel — ✅ Delivered in **v1.5.1 / v1.6.0** (core); **v1.9.0** (polish)
 - **Goal:** A backend command that re-walks the chain and reports the first broken link, surfaced in a small admin/supervisor panel.
 - **Files:** `src-tauri/src/commands/audit.rs` (`verify_audit_chain`), `src/lib/api.ts`, a new `AuditIntegrity.svelte` panel (reachable from the existing Audit Log view).
 - **Steps:**
@@ -260,6 +260,7 @@ The work is staged so that real value lands early and nothing is over-built befo
 - **Acceptance:** A clean DB verifies green; a manual out-of-band row edit is detected and the breaking `chain_seq` is reported.
 - **Preserve:** Verification is strictly read-only; the existing audit viewer is untouched apart from the added entry point.
 - **Bump:** minor.
+- **As built:** Core `verify_audit_entry` and `verify_audit_lineage` Tauri commands + Audit Log UI (chain columns `#`/Prev Hash/Entry Hash, Row + Chain verify buttons, chain-integrity banner) delivered in **v1.5.1** and **v1.6.0**. v1.9.0 polished: contamination inheritance on split (children inherit parent's `contamination_flag` + notes; audit entry text reflects inheritance), **Verify All Lineages** batch button that walks every unique lineage on the current Audit Log page in one click, and cleaner per-lineage verification message formatting.
 
 ### WP-20 — Merkle checkpoints over audit lineages — ✅ Delivered in **v1.9.0**
 - **Goal:** Roll ranges of audit entries into a Merkle tree and store the root, so verification is efficient and roots are ready to anchor later — without redesign.
@@ -308,7 +309,7 @@ A more formal model in which specimen lifecycle events are individually signed a
 
 This is the work that turns one product into a platform. It is **behavior-preserving for PTC** — after this phase, the plant app looks and works identically, but the vocabulary lives in data instead of in `CHECK` constraints, Rust enums, and hardcoded labels. Do it in this order.
 
-### WP-22 — Introduce the `lab_profile` concept
+### WP-22 — Introduce the `lab_profile` concept — ✅ Delivered in **v1.11.0**
 - **Goal:** One app-level setting that says which kind of lab this install is.
 - **Files:** new migration, `src-tauri/src/commands/admin.rs`, a new `src/lib/profile.ts`.
 - **Steps:**
@@ -318,6 +319,13 @@ This is the work that turns one product into a platform. It is **behavior-preser
 - **Acceptance:** Profile is readable app-wide; defaults to PTC so nothing changes.
 - **Preserve:** Everything — this packet adds, removes nothing.
 - **Bump:** minor.
+- **As built (v1.11.0):**
+  - **Migration 015** adds `event_type TEXT NOT NULL DEFAULT 'passage'` to `subcultures` (with `idx_subcultures_event_type` index) and creates the `app_config` single-row table (`CHECK (id = 1)`) with `lab_profile` constrained to `plant_tissue_culture | cell_culture | mycology`; seeds the default `plant_tissue_culture` row.
+  - `get_lab_profile` / `set_lab_profile` Tauri commands — any authenticated user can read the profile; only admins can change it; profile is locked once any specimens exist to preserve data-integrity invariants.
+  - `src/lib/profile.ts` — Svelte writable store (`labProfile`), `LAB_PROFILE_LABELS` map, `loadLabProfile()` async loader, and `currentLabProfile()` synchronous accessor. Default remains `plant_tissue_culture` so existing deployments see no change.
+  - **Dead Specimen workflow** (bonus scope in same PR): "☠ Record Death & Archive" action when health slider hits 0; `record_specimen_death` Tauri command (archives specimen, inserts `event_type = 'death'` subculture row without incrementing `subculture_count`, writes `"death"` audit entry); death event card in passage timeline (skull icon, "Death · Archived" pill, red card); "Dead / Archived" red badge on archived specimens from the death workflow; passage count excludes `event_type = 'death'` rows.
+  - **5 new Rust unit tests:** death archives specimen and zeroes health, `event_type` stored as `'death'`, archived specimen blocks further passages, normal passages retain `'passage'` event_type, `app_config` seeded with default profile.
+- **Differed from plan:** WP-22 originally scoped only the lab_profile concept; the Dead Specimen archive workflow was added as complementary scope in the same PR since both share migration 015's `event_type` column.
 
 ### WP-23 — Convert stage `CHECK` constraints → a `stages` lookup table
 - **Goal:** Make the specimen lifecycle vocabulary *data*. This is the single most important schema change for multi-vertical.
@@ -695,11 +703,15 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | v1.6.1–v1.6.4 | Hash-chain bug fixes; demo data chaining; species-seeded chain anchoring; atomic specimen + audit | ✅ shipped |
 | **v1.7.0** | Generational depth, lineage passage offsets, `root_specimen_id`, sibling display (migration 010) | ✅ shipped |
 | **v1.8.0** | Split workflow overhaul — letter-suffix accessions (001A/001B…), per-child controls, draft media batches (migration 011), safety confirmation dialog, synthetic split timeline events, lineage bar includes archived children | ✅ shipped |
-| **v1.9.0** *(Phase C)* | Phase C — profile-ready engine (PTC behavior unchanged, WP-22–27) | planned |
-| **v2.0.0** *(Phase TX-1)* | **Phase TX-1 — Strain/Cultivar foundation:** WP-28 (strain data model + hash chain seeding + backend), WP-29 (Strain Manager UI + basic Taxonomy Navigator). New migration. | planned |
-| v2.1.0 | WP-20 Merkle checkpoints + WP-21 Merkle proof export (Trust Layer Phase 1 complete); first multi-app release: SteloPTC + **SteloCC** | planned |
+| **v1.9.0** | WP-19 Trust Layer polish — contamination inheritance on split, Verify All Lineages batch button + WP-20 Merkle checkpoints — migration 013, `build_merkle_root`, create/verify/list commands, checkpoint UI; `docs/merkle-checkpoints.md` | ✅ shipped |
+| **v1.10.0** | WP-21 Portable Merkle proof export, standalone verification, auto-checkpointing — migration 014, `export_audit_proof`, `verify_exported_proof`, `auto_checkpoint_lineages`, pre-backup hook; `docs/merkle-proofs.md` — **Trust Layer Phase 1 complete** | ✅ shipped |
+| **v1.11.0** | WP-22 lab_profile concept (`app_config` table, migration 015) + Dead Specimen archive workflow (`record_specimen_death`, death timeline card, `event_type` on subcultures, "Dead/Archived" badge) — **Phase C begun** | ✅ shipped |
+| **v1.12.0** *(Phase C)* | WP-23: stage `CHECK` → `stages` lookup table (migration + table rebuild, one final time); WP-24: remaining hardcoded vocabularies → profile-scoped lookup tables | planned |
+| **v1.13.0–v1.15.0** *(Phase C)* | WP-25: UI profile manifest; WP-26: profile-scoped compliance rules; WP-27: per-vertical build-time app identity — **Phase C complete** | planned |
+| **v2.0.0** *(Phase TX-1)* | **Phase TX-1 — Strain/Cultivar foundation:** WP-28 (strain data model + hash chain seeding from species + backend commands), WP-29 (Strain Manager UI + Hybrid Wizard + basic Taxonomy Navigator). New migration. | planned |
 | v2.x *(Phase TX-2)* | **Phase TX-2 — Taxonomy expansion:** WP-35 expanded taxonomy backbone (Genus→Kingdom), WP-36 NCBI import/sync, WP-37 multi-generational pedigree tools, WP-38 intraspecific hybridization, WP-39 advanced taxonomy navigator | planned |
-| v2.2.0 | **SteloMyco** | planned |
+| v2.1.0 | **SteloCC (Cell Culture)** — first multi-vertical release | planned |
+| v2.2.0 | **SteloMyco (Mycology)** | planned |
 | v3.x *(Phase TX-3)* | **Phase TX-3 — Advanced taxonomy:** WP-45 full taxonomic hash chain, WP-46 cross-domain support, WP-47 breeding programs, WP-48 advanced hybridization, WP-49 custom taxa & Darwin Core export | future |
 | v2.x+ | Phase F cross-cutting features; Trust Layer **Phase 2** (Dogecoin anchoring, WP-65+) when external proof is needed | future |
 
@@ -707,4 +719,4 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 
 ---
 
-*This roadmap is grounded in the live repository at **v1.8.0**: 11 migrations with `is_draft` on `media_batches` (migration 011) latest; generational-depth columns in migration 010; per-lineage hash chain in migration 009; performance indexes in migration 007; stage CHECK-constraint rebuilds in migrations 002/003 at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; compliance rules in `commands/compliance.rs`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
+*This roadmap is grounded in the live repository at **v1.11.0**: 15 migrations, latest being migration 015 (`event_type` on `subcultures` + `app_config` for `lab_profile`); migration 014 added `app_settings` + auto-checkpoint flags on `audit_checkpoints`; 013 added the `audit_checkpoints` Merkle table; 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` on `media_batches`; 010 added generational-depth columns; 009 introduced per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes; stage CHECK-constraint rebuilds in migrations 002/003 at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; compliance rules in `commands/compliance.rs`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
