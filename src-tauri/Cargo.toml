@@ -22,7 +22,11 @@ default = ["tauri-commands"]
 tauri-commands = ["tauri", "tauri-plugin-dialog", "tauri-plugin-fs", "tauri-plugin-shell"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [], optional = true }
+# tauri-build is a pure Rust code-generator — no system libs required.
+# It is always present so build.rs can reference it unconditionally;
+# the #[cfg(feature = "tauri-commands")] guard in build.rs ensures
+# tauri_build::build() is only invoked when the full Tauri layer is compiled.
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [], optional = true }
