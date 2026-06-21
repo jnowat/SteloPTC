@@ -274,6 +274,7 @@
         </div>
       {:else if sc.event_type === 'death'}
         <!-- ── Death event card ── -->
+        {@const isExpanded = expandedPassages.has(sc.id)}
         <div class="timeline-item">
           <div class="timeline-left">
             <div class="tl-dot tl-dot-death" title="Terminal event — specimen was marked dead and archived"></div>
@@ -284,7 +285,6 @@
           <div class="tl-card tl-card-death">
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_static_element_interactions -->
-            {@const isExpanded = expandedPassages.has(sc.id)}
             <div class="tl-card-header tl-card-death-header" role="button" tabindex="0" onclick={() => togglePassage(sc.id)} onkeydown={(e) => e.key === 'Enter' && togglePassage(sc.id)}>
               <div class="tl-card-left">
                 <span class="tl-passage-num tl-death-label" title="Terminal death event — specimen marked dead and archived">☠ Death</span>

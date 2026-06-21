@@ -29,11 +29,6 @@
     subcultures.filter((sc: any) => !sc.isSplitEvent && sc.event_type !== 'death').length
   );
 
-  // True when the health slider is at Dead (0) and death-recording mode is active.
-  let isDeathMode = $derived(
-    showPassageForm && passageHealthValue === 0 && !subcultureForm.health_unknown && !isSplitting
-  );
-
   // Navigation history stack for in-detail lineage navigation (back button support)
   let navHistory = $state<string[]>([]);
   // Flag to distinguish internal (lineage) navigation from external (list) navigation
@@ -212,6 +207,13 @@
   let passageHealthValue = $state(4);
   const healthLabels = ['Dead', 'Poor', 'Fair', 'Good', 'Healthy'];
   const healthColors = ['#dc2626', '#d97706', '#ca8a04', '#65a30d', '#16a34a'];
+
+  // True when the health slider is at Dead (0) and death-recording mode is active.
+  // Declared here so all dependencies (showPassageForm, passageHealthValue,
+  // subcultureForm, isSplitting) are already in scope.
+  let isDeathMode = $derived(
+    showPassageForm && passageHealthValue === 0 && !subcultureForm.health_unknown && !isSplitting
+  );
 
   function effectivePassageHealth(): string {
     return subcultureForm.health_unknown ? '-1' : String(passageHealthValue);
