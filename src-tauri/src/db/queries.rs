@@ -7,6 +7,17 @@ use super::{DbError, DbResult};
 pub const ZERO_HASH: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
+/// Read a key from the `app_settings` table, returning `default` when the key
+/// is absent or the table doesn't exist yet (e.g. before migration 014).
+pub fn read_setting(conn: &Connection, key: &str, default: &str) -> String {
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        params![key],
+        |r| r.get::<_, String>(0),
+    )
+    .unwrap_or_else(|_| default.to_string())
+}
+
 /// Audit fields shared across all `log_audit*` public wrappers.
 /// Passed as a single argument to `log_audit_impl` to stay within Clippy's
 /// `too_many_arguments` limit without changing the public-facing API.
@@ -79,6 +90,202 @@ pub fn build_merkle_root(leaves: &[String]) -> String {
         level = next;
     }
     level.remove(0)
+}
+
+/// A node in a Merkle proof path (internal type; not serialised here).
+///
+/// `position` describes where the sibling sits relative to the current node:
+///   "right" → SHA256(current || sibling)
+///   "left"  → SHA256(sibling || current)
+pub struct PathNode {
+    pub sibling_hash: String,
+    pub position: String,
+}
+
+/// Compute the Merkle inclusion path for the leaf at `leaf_index`.
+///
+/// Uses the identical "duplicate-last" padding rule as `build_merkle_root`
+/// so paths verify correctly against roots produced by that function.
+/// Returns an empty Vec for trees with 0 or 1 leaf (root == leaf, no path needed).
+///
+/// To verify: start with `current = leaves[leaf_index]`, walk `path`, applying
+///   SHA256(current || sibling)  when position == "right"
+///   SHA256(sibling || current)  when position == "left"
+/// and compare the final value to the stored `merkle_root`.
+pub fn build_merkle_path(leaves: &[String], leaf_index: usize) -> Vec<PathNode> {
+    if leaves.len() <= 1 || leaf_index >= leaves.len() {
+        return vec![];
+    }
+
+    let mut path = Vec::new();
+    let mut level: Vec<String> = leaves.to_vec();
+    let mut idx = leaf_index;
+
+    while level.len() > 1 {
+        let padded: Vec<String> = if !level.len().is_multiple_of(2) {
+            let mut v = level.clone();
+            v.push(v.last().unwrap().clone());
+            v
+        } else {
+            level.clone()
+        };
+
+        let sibling_idx = if idx.is_multiple_of(2) { idx + 1 } else { idx - 1 };
+        path.push(PathNode {
+            sibling_hash: padded[sibling_idx].clone(),
+            position: if idx.is_multiple_of(2) { "right".to_string() } else { "left".to_string() },
+        });
+
+        let mut next = Vec::with_capacity(padded.len() / 2);
+        let mut i = 0;
+        while i < padded.len() {
+            let mut hasher = Sha256::new();
+            hasher.update(padded[i].as_bytes());
+            hasher.update(padded[i + 1].as_bytes());
+            next.push(format!("{:x}", hasher.finalize()));
+            i += 2;
+        }
+
+        idx /= 2;
+        level = next;
+    }
+
+    path
+}
+
+/// Verify a Merkle inclusion path, returning true when the recomputed root matches.
+///
+/// For a single-leaf tree (empty path), `leaf_hash` must equal `expected_root`.
+pub fn verify_merkle_path(leaf_hash: &str, path: &[PathNode], expected_root: &str) -> bool {
+    if path.is_empty() {
+        return leaf_hash == expected_root;
+    }
+    let mut current = leaf_hash.to_string();
+    for node in path {
+        let mut hasher = Sha256::new();
+        if node.position == "right" {
+            hasher.update(current.as_bytes());
+            hasher.update(node.sibling_hash.as_bytes());
+        } else {
+            hasher.update(node.sibling_hash.as_bytes());
+            hasher.update(current.as_bytes());
+        }
+        current = format!("{:x}", hasher.finalize());
+    }
+    current == expected_root
+}
+
+/// Create auto-checkpoints for lineages that have enough uncovered entries.
+///
+/// A lineage is eligible when the number of entries beyond its latest checkpoint
+/// is >= `min_uncovered` (or any count when `min_uncovered == 0`).
+///
+/// Returns the list of newly created checkpoint IDs so callers can log or surface them.
+pub fn auto_checkpoint_lineages(
+    conn: &Connection,
+    user_id: &str,
+    auto_source: &str,
+    min_uncovered: i64,
+) -> DbResult<Vec<String>> {
+    let mut lineage_stmt = conn.prepare(
+        "SELECT DISTINCT lineage_id FROM audit_log \
+         WHERE entry_hash IS NOT NULL AND lineage_id IS NOT NULL",
+    )?;
+    let lineages: Vec<String> = lineage_stmt
+        .query_map([], |r| r.get(0))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut created_ids = Vec::new();
+
+    for lineage_id in &lineages {
+        // Use -1 as the sentinel "no prior checkpoint" value so that seq=0
+        // entries (written by log_audit_at_seq_zero for species births) are
+        // included in the first auto-checkpoint for those lineages.
+        let last_end_seq: i64 = conn
+            .query_row(
+                "SELECT COALESCE(MAX(end_seq), -1) FROM audit_checkpoints WHERE lineage_id = ?1",
+                params![lineage_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(-1);
+
+        let max_seq: Option<i64> = conn
+            .query_row(
+                "SELECT MAX(chain_seq) FROM audit_log \
+                 WHERE lineage_id = ?1 AND entry_hash IS NOT NULL",
+                params![lineage_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(None);
+
+        let max_seq = match max_seq {
+            Some(s) if s > last_end_seq => s,
+            _ => continue,
+        };
+
+        let uncovered: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM audit_log \
+                 WHERE lineage_id = ?1 AND chain_seq > ?2 AND entry_hash IS NOT NULL",
+                params![lineage_id, last_end_seq],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        if min_uncovered > 0 && uncovered < min_uncovered {
+            continue;
+        }
+
+        // Use the actual minimum uncovered chain_seq as start_seq so the
+        // checkpoint accurately reflects its true coverage, including seq=0
+        // for species lineages that use log_audit_at_seq_zero.
+        let start_seq: i64 = conn
+            .query_row(
+                "SELECT MIN(chain_seq) FROM audit_log \
+                 WHERE lineage_id = ?1 AND chain_seq > ?2 AND entry_hash IS NOT NULL",
+                params![lineage_id, last_end_seq],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .unwrap_or(None)
+            .unwrap_or(last_end_seq + 1);
+
+        let mut stmt = conn.prepare(
+            "SELECT entry_hash FROM audit_log \
+             WHERE lineage_id = ?1 AND chain_seq >= ?2 AND chain_seq <= ?3 \
+             AND entry_hash IS NOT NULL ORDER BY chain_seq ASC",
+        )?;
+        let hashes: Vec<String> = stmt
+            .query_map(params![lineage_id, start_seq, max_seq], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if hashes.is_empty() {
+            continue;
+        }
+
+        let entry_count = hashes.len() as i64;
+        let merkle_root = build_merkle_root(&hashes);
+        let checkpoint_id = uuid::Uuid::new_v4().to_string();
+        let created_at = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+
+        conn.execute(
+            "INSERT INTO audit_checkpoints \
+             (id, lineage_id, start_seq, end_seq, entry_count, merkle_root, \
+              created_at, created_by, is_auto, auto_source) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9)",
+            params![
+                &checkpoint_id, lineage_id, start_seq, max_seq,
+                entry_count, &merkle_root, &created_at, user_id, auto_source
+            ],
+        )?;
+
+        created_ids.push(checkpoint_id);
+    }
+
+    Ok(created_ids)
 }
 
 /// SHA-256(canonical_bytes || prev_hash_utf8), returned as lowercase hex.
@@ -906,5 +1113,116 @@ mod tests {
             .query_map([], |r| r.get(0)).unwrap()
             .filter_map(|r| r.ok()).collect();
         assert!(hashes.is_empty(), "inverted seq range must yield no hashes");
+    }
+
+    // --- WP-21: Merkle path tests ---
+
+    #[test]
+    fn merkle_path_single_leaf_returns_empty() {
+        let leaves = vec!["abc123".to_string()];
+        let path = build_merkle_path(&leaves, 0);
+        assert!(path.is_empty(), "single-leaf tree has no path nodes");
+        // empty path: verify_merkle_path compares leaf directly to expected root
+        assert!(verify_merkle_path(&leaves[0], &path, &leaves[0]));
+    }
+
+    #[test]
+    fn merkle_path_verifies_for_four_leaves() {
+        let leaves: Vec<String> = (0..4u8).map(|i| format!("{:064x}", i)).collect();
+        let root = build_merkle_root(&leaves);
+        for i in 0..leaves.len() {
+            let path = build_merkle_path(&leaves, i);
+            assert!(
+                verify_merkle_path(&leaves[i], &path, &root),
+                "path verification failed for leaf index {i}",
+            );
+        }
+    }
+
+    #[test]
+    fn merkle_path_verifies_for_three_leaves_odd() {
+        // Odd count forces duplicate-last padding; all three leaves must still verify.
+        let leaves: Vec<String> = (0..3u8).map(|i| format!("{:064x}", i)).collect();
+        let root = build_merkle_root(&leaves);
+        for i in 0..leaves.len() {
+            let path = build_merkle_path(&leaves, i);
+            assert!(
+                verify_merkle_path(&leaves[i], &path, &root),
+                "odd-count path verification failed for leaf index {i}",
+            );
+        }
+    }
+
+    // --- WP-21: Auto-checkpoint tests ---
+
+    fn mem_conn_with_auto_checkpoints() -> Connection {
+        let conn = mem_conn_with_audit();
+        conn.execute_batch(
+            "CREATE TABLE audit_checkpoints (
+                id TEXT PRIMARY KEY,
+                lineage_id TEXT NOT NULL,
+                start_seq INTEGER NOT NULL,
+                end_seq INTEGER NOT NULL,
+                entry_count INTEGER NOT NULL,
+                merkle_root TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                created_by TEXT,
+                anchored_txid TEXT,
+                is_auto INTEGER NOT NULL DEFAULT 0,
+                auto_source TEXT
+            );",
+        ).expect("create audit_checkpoints with auto columns");
+        conn
+    }
+
+    #[test]
+    fn auto_checkpoint_creates_for_eligible_lineage() {
+        let conn = mem_conn_with_auto_checkpoints();
+        log_audit(&conn, Some("u1"), "create", "specimen", Some("sp-A"), None, None, None).unwrap();
+        log_audit(&conn, Some("u1"), "update", "specimen", Some("sp-A"), None, None, None).unwrap();
+
+        // min_uncovered = 0 → any lineage with uncovered entries qualifies
+        let created = auto_checkpoint_lineages(&conn, "u1", "test", 0).unwrap();
+        assert_eq!(created.len(), 1, "should create exactly one checkpoint");
+
+        let (is_auto, source): (i64, String) = conn.query_row(
+            "SELECT is_auto, auto_source FROM audit_checkpoints WHERE id = ?1",
+            rusqlite::params![&created[0]],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!(is_auto, 1, "auto-checkpoint must be flagged is_auto=1");
+        assert_eq!(source, "test");
+    }
+
+    #[test]
+    fn auto_checkpoint_respects_min_uncovered_interval() {
+        let conn = mem_conn_with_auto_checkpoints();
+        for _ in 0..5 {
+            log_audit(&conn, None, "update", "specimen", Some("sp-B"), None, None, None).unwrap();
+        }
+
+        // 5 entries < 10 threshold → no checkpoint
+        let created = auto_checkpoint_lineages(&conn, "u1", "test", 10).unwrap();
+        assert!(created.is_empty(), "should not checkpoint when below min_uncovered threshold");
+
+        // 5 entries == 5 threshold → should checkpoint
+        let created = auto_checkpoint_lineages(&conn, "u1", "test", 5).unwrap();
+        assert_eq!(created.len(), 1, "should checkpoint when exactly at the min_uncovered threshold");
+    }
+
+    #[test]
+    fn auto_checkpoint_skips_if_not_enough_entries() {
+        let conn = mem_conn_with_auto_checkpoints();
+        log_audit(&conn, None, "create", "specimen", Some("sp-C"), None, None, None).unwrap();
+
+        // 1 entry < 3 threshold → skip
+        let created = auto_checkpoint_lineages(&conn, "u1", "test", 3).unwrap();
+        assert!(created.is_empty(), "lineage with too few entries must be skipped");
+
+        // Add 2 more (total = 3) → now qualifies
+        log_audit(&conn, None, "update", "specimen", Some("sp-C"), None, None, None).unwrap();
+        log_audit(&conn, None, "update", "specimen", Some("sp-C"), None, None, None).unwrap();
+        let created = auto_checkpoint_lineages(&conn, "u1", "test", 3).unwrap();
+        assert_eq!(created.len(), 1, "lineage with exactly min_uncovered entries must qualify");
     }
 }

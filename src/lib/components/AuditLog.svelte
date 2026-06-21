@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { getAuditLog, verifyAuditEntry, verifyAuditLineage,
-           createAuditCheckpoint, verifyAgainstCheckpoint, listAuditCheckpoints } from '../api';
+           createAuditCheckpoint, verifyAgainstCheckpoint, listAuditCheckpoints,
+           exportAuditProof, verifyExportedProof,
+           getAutoCheckpointConfig, setAutoCheckpointConfig, runAutoCheckpoint } from '../api';
   import { addNotification } from '../stores/app';
   import DataState from './DataState.svelte';
 
@@ -199,6 +201,99 @@
       addNotification(e.message, 'error');
     }
   }
+
+  // WP-21: Export proof (download as JSON file)
+  let cpExporting = $state<Record<string, boolean>>({});
+
+  async function doExportProof(cp: any) {
+    cpExporting[cp.id] = true;
+    try {
+      const proofJson = await exportAuditProof(cp.id);
+      const blob = new Blob([proofJson], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `merkle-proof-${cp.id.slice(0, 8)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      addNotification(`Proof for checkpoint ${cp.id.slice(0, 8)}… downloaded.`, 'success');
+    } catch (e: any) {
+      addNotification(`Export failed: ${e.message}`, 'error');
+    } finally {
+      cpExporting[cp.id] = false;
+    }
+  }
+
+  // WP-21: Imported proof verification panel
+  let showProofVerify = $state(false);
+  let proofPasteText = $state('');
+  let proofVerifyResult = $state<any | null>(null);
+  let proofVerifying = $state(false);
+
+  async function doVerifyImportedProof() {
+    if (!proofPasteText.trim()) return;
+    proofVerifying = true;
+    proofVerifyResult = null;
+    try {
+      proofVerifyResult = await verifyExportedProof(proofPasteText.trim());
+    } catch (e: any) {
+      proofVerifyResult = { ok: false, message: e.message };
+    } finally {
+      proofVerifying = false;
+    }
+  }
+
+  // WP-21: Auto-checkpoint config
+  let autoConfig = $state<{ enabled: boolean; interval: number; on_backup: boolean } | null>(null);
+  let autoConfigSaving = $state(false);
+  let autoRunning = $state(false);
+  let autoRunResult = $state<any | null>(null);
+
+  async function loadAutoConfig() {
+    try {
+      autoConfig = await getAutoCheckpointConfig();
+    } catch { /* non-fatal */ }
+  }
+
+  async function saveAutoConfig() {
+    if (!autoConfig) return;
+    autoConfigSaving = true;
+    try {
+      await setAutoCheckpointConfig(autoConfig);
+      addNotification('Auto-checkpoint settings saved.', 'success');
+    } catch (e: any) {
+      addNotification(`Save failed: ${e.message}`, 'error');
+    } finally {
+      autoConfigSaving = false;
+    }
+  }
+
+  async function doRunAutoCheckpoint() {
+    autoRunning = true;
+    autoRunResult = null;
+    try {
+      autoRunResult = await runAutoCheckpoint();
+      const n = autoRunResult.checkpoints_created;
+      addNotification(
+        n > 0
+          ? `Auto-checkpoint: created ${n} checkpoint${n !== 1 ? 's' : ''}.`
+          : 'Auto-checkpoint: no lineages met the threshold.',
+        n > 0 ? 'success' : 'info',
+      );
+      if (n > 0) await reloadCheckpoints();
+    } catch (e: any) {
+      addNotification(`Auto-checkpoint failed: ${e.message}`, 'error');
+    } finally {
+      autoRunning = false;
+    }
+  }
+
+  // Load auto-config whenever checkpoints panel opens
+  $effect(() => {
+    if (showCheckpoints && autoConfig === null) {
+      loadAutoConfig();
+    }
+  });
 </script>
 
 <div>
@@ -312,13 +407,19 @@
                 <th>Merkle root</th>
                 <th>Created</th>
                 <th>Verify</th>
+                <th title="Export a portable Merkle proof JSON for offline verification">Proof</th>
               </tr>
             </thead>
             <tbody>
               {#each checkpoints as cp}
                 {@const cv = cpVerifyState[cp.id]}
                 <tr>
-                  <td><code class="mono-sm">{cp.id.slice(0, 8)}…</code></td>
+                  <td>
+                    <code class="mono-sm">{cp.id.slice(0, 8)}…</code>
+                    {#if cp.is_auto}
+                      <span class="auto-badge" title="Created automatically — source: {cp.auto_source ?? 'unknown'}">Auto</span>
+                    {/if}
+                  </td>
                   <td><code class="mono-sm">{cp.lineage_id.slice(0, 8)}…</code></td>
                   <td class="nowrap">{cp.start_seq}–{cp.end_seq}</td>
                   <td>{cp.entry_count}</td>
@@ -343,10 +444,18 @@
                       <button class="btn btn-sm" onclick={() => doVerifyCheckpoint(cp)} title="Verify this checkpoint against the current chain state">Verify</button>
                     {/if}
                   </td>
+                  <td class="nowrap">
+                    <button
+                      class="btn btn-sm"
+                      disabled={cpExporting[cp.id]}
+                      onclick={() => doExportProof(cp)}
+                      title="Download a self-contained Merkle proof JSON for this checkpoint"
+                    >{cpExporting[cp.id] ? '…' : 'Export'}</button>
+                  </td>
                 </tr>
                 {#if cv && !cv.pending && cv.message}
                   <tr class="verify-detail-row">
-                    <td colspan="7">
+                    <td colspan="8">
                       <span class={cv.ok ? 'verify-detail-ok' : 'verify-detail-fail'}>
                         {cv.ok ? '✓' : '✗'} {cv.message}
                       </span>
@@ -356,6 +465,74 @@
               {/each}
             </tbody>
           </table>
+        </div>
+      {/if}
+
+      <!-- Proof verification import -->
+      <div class="proof-import-panel">
+        <div class="proof-import-header">
+          <strong>Verify Exported Proof</strong>
+          <button class="btn btn-sm" onclick={() => { showProofVerify = !showProofVerify; proofVerifyResult = null; proofPasteText = ''; }}>
+            {showProofVerify ? 'Hide' : 'Import &amp; Verify'}
+          </button>
+        </div>
+        {#if showProofVerify}
+          <textarea
+            class="proof-paste"
+            bind:value={proofPasteText}
+            placeholder="Paste a merkle-proof-*.json file here…"
+            rows="5"
+          ></textarea>
+          <div class="proof-import-actions">
+            <button
+              class="btn btn-sm"
+              disabled={!proofPasteText.trim() || proofVerifying}
+              onclick={doVerifyImportedProof}
+            >{proofVerifying ? 'Verifying…' : 'Verify Proof'}</button>
+            {#if proofVerifyResult}
+              <span class={proofVerifyResult.ok ? 'verify-ok' : 'verify-fail'}>
+                {proofVerifyResult.ok ? '✓' : '✗'} {proofVerifyResult.message}
+              </span>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      <!-- Auto-checkpoint configuration -->
+      {#if autoConfig}
+        <div class="auto-config-panel">
+          <strong>Auto-Checkpointing</strong>
+          <div class="auto-config-row">
+            <label class="auto-config-label">
+              <input type="checkbox" bind:checked={autoConfig.enabled} />
+              Enabled
+            </label>
+            <label class="auto-config-label">
+              Interval (min uncovered entries):
+              <input
+                type="number"
+                class="auto-config-num"
+                bind:value={autoConfig.interval}
+                min="0"
+                title="0 = checkpoint any lineage with uncovered entries"
+              />
+            </label>
+            <label class="auto-config-label">
+              <input type="checkbox" bind:checked={autoConfig.on_backup} />
+              Checkpoint before backup
+            </label>
+            <button class="btn btn-sm" disabled={autoConfigSaving} onclick={saveAutoConfig}>
+              {autoConfigSaving ? 'Saving…' : 'Save'}
+            </button>
+            <button class="btn btn-sm" disabled={autoRunning} onclick={doRunAutoCheckpoint}>
+              {autoRunning ? 'Running…' : 'Run Now'}
+            </button>
+            {#if autoRunResult}
+              <span class="auto-run-result">
+                {autoRunResult.checkpoints_created} checkpoint{autoRunResult.checkpoints_created !== 1 ? 's' : ''} created
+              </span>
+            {/if}
+          </div>
         </div>
       {/if}
     </div>
@@ -693,4 +870,89 @@
 
   .mono-sm { font-family: monospace; font-size: 11px; }
   .nowrap  { white-space: nowrap; }
+
+  /* WP-21: Auto badge on auto-created checkpoints */
+  .auto-badge {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 1px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--color-primary, #3b82f6) 15%, transparent);
+    color: var(--color-primary, #3b82f6);
+    vertical-align: middle;
+  }
+
+  /* WP-21: Imported proof verification panel */
+  .proof-import-panel {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 60%, transparent);
+  }
+
+  .proof-import-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    font-size: 13px;
+  }
+
+  .proof-paste {
+    width: 100%;
+    font-family: monospace;
+    font-size: 11px;
+    resize: vertical;
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 4px;
+    padding: 6px 8px;
+    background: var(--color-surface, #fff);
+    color: var(--color-text, #111);
+    box-sizing: border-box;
+  }
+
+  .proof-import-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 8px;
+  }
+
+  /* WP-21: Auto-checkpoint config panel */
+  .auto-config-panel {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid color-mix(in srgb, var(--color-border, #e5e7eb) 60%, transparent);
+    font-size: 13px;
+  }
+
+  .auto-config-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .auto-config-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+
+  .auto-config-num {
+    width: 70px;
+    font-size: 12px;
+  }
+
+  .auto-run-result {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-success, #16a34a);
+  }
 </style>

@@ -92,6 +92,12 @@ pub fn run() {
             commands::audit::create_audit_checkpoint,
             commands::audit::verify_against_checkpoint,
             commands::audit::list_audit_checkpoints,
+            // WP-21 — proof export, standalone verification, auto-checkpointing
+            commands::audit::export_audit_proof,
+            commands::audit::verify_exported_proof,
+            commands::audit::get_auto_checkpoint_config,
+            commands::audit::set_auto_checkpoint_config,
+            commands::audit::run_auto_checkpoint,
             // Export/Import
             commands::export::export_specimens_csv,
             commands::export::export_specimens_json,

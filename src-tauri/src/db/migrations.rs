@@ -78,6 +78,37 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (13)", [])?;
     }
 
+    if current < 14 {
+        migration_014_checkpoint_auto_and_settings(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (14)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_014_checkpoint_auto_and_settings(conn: &Connection) -> DbResult<()> {
+    // WP-21: add auto-checkpoint provenance columns and a minimal app_settings table.
+    //
+    // is_auto = 1 for checkpoints created automatically (pre-backup or entry-count trigger).
+    // auto_source: "backup" | "entry_count" | NULL (manual).
+    //
+    // app_settings holds simple key/value pairs for app-level configuration; starting
+    // with the auto-checkpoint knobs only. Keys are inserted with sensible defaults and
+    // only written when the user explicitly changes them via set_auto_checkpoint_config.
+    conn.execute_batch("
+        ALTER TABLE audit_checkpoints ADD COLUMN is_auto     INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE audit_checkpoints ADD COLUMN auto_source TEXT;
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key        TEXT PRIMARY KEY,
+            value      TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO app_settings (key, value) VALUES
+            ('auto_checkpoint_enabled',  '1'),
+            ('auto_checkpoint_interval', '100'),
+            ('auto_checkpoint_on_backup','1');
+    ")?;
     Ok(())
 }
 

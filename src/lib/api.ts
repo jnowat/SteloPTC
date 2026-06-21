@@ -264,6 +264,28 @@ export async function listAuditCheckpoints(lineageId?: string) {
   return call<any[]>('list_audit_checkpoints', { lineageId });
 }
 
+// WP-21: Portable Merkle proof export and standalone verification
+export async function exportAuditProof(checkpointId: string) {
+  return call<string>('export_audit_proof', { checkpointId });
+}
+
+export async function verifyExportedProof(proofJson: string) {
+  return call<any>('verify_exported_proof', { proofJson });
+}
+
+// WP-21: Auto-checkpoint configuration
+export async function getAutoCheckpointConfig() {
+  return call<any>('get_auto_checkpoint_config');
+}
+
+export async function setAutoCheckpointConfig(config: { enabled: boolean; interval: number; on_backup: boolean }) {
+  return call<void>('set_auto_checkpoint_config', { config });
+}
+
+export async function runAutoCheckpoint() {
+  return call<any>('run_auto_checkpoint');
+}
+
 // Import
 export async function importXlsx(payload: {
   specimens: string[][];
