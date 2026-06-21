@@ -4,6 +4,79 @@ use crate::AppState;
 use rusqlite::{params, Connection};
 use tauri::State;
 
+/// Returns the current lab profile (any authenticated user can read).
+#[tauri::command]
+pub fn get_lab_profile(
+    state: State<AppState>,
+    token: String,
+) -> Result<String, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+
+    let profile: String = db.conn
+        .query_row("SELECT lab_profile FROM app_config WHERE id = 1", [], |r| r.get(0))
+        .unwrap_or_else(|_| "plant_tissue_culture".to_string());
+
+    Ok(profile)
+}
+
+/// Updates the lab profile.  Admin-only.  Blocked once any specimens exist to
+/// preserve data-integrity invariants that depend on the profile value.
+#[tauri::command]
+pub fn set_lab_profile(
+    state: State<AppState>,
+    token: String,
+    profile: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+
+    if !user.role.is_admin() {
+        return Err("Only admins can change the lab profile".to_string());
+    }
+
+    let allowed = ["plant_tissue_culture", "cell_culture", "mycology"];
+    if !allowed.contains(&profile.as_str()) {
+        return Err(format!(
+            "Invalid lab profile '{}'. Allowed values: plant_tissue_culture, cell_culture, mycology",
+            profile
+        ));
+    }
+
+    // Lock the profile once operational data exists.
+    let specimen_count: i64 = db.conn
+        .query_row("SELECT COUNT(*) FROM specimens", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    if specimen_count > 0 {
+        return Err(
+            "The lab profile cannot be changed after specimens have been accessioned. \
+             Reset the database first if you need to switch profiles."
+                .to_string(),
+        );
+    }
+
+    db.conn
+        .execute(
+            "UPDATE app_config SET lab_profile = ?1, updated_at = datetime('now') WHERE id = 1",
+            params![profile],
+        )
+        .map_err(|e| format!("Failed to update lab profile: {}", e))?;
+
+    queries::log_audit(
+        &db.conn,
+        Some(&user.id),
+        "update",
+        "app_config",
+        None,
+        None,
+        None,
+        Some(&format!("Lab profile set to '{}'", profile)),
+    ).ok();
+
+    Ok(())
+}
+
 /// Wipes all operational data from the database while preserving
 /// user accounts, species definitions, and system tags.
 /// Admin-only. Requires passing the confirmation phrase "RESET DATABASE".
