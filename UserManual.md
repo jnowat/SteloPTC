@@ -1,8 +1,8 @@
 # SteloPTC User Manual
 
-**Current as of:** June 2026 (post split/passage refinements)
+**Current as of:** June 2026 · **v1.11.0** (Trust Layer Phase 1 complete, dead specimen workflow, lab profile)
 
-> **Scope note:** This manual documents both shipping features and planned functionality. Sections marked "Phase TX" or with version targets (e.g. v1.9.0) describe upcoming work in the Taxonomic & Provenance Module. Core features such as the split/passage workflow, hash chain, provenance tracking, and reminders are fully implemented and stable.
+> **Scope note:** This manual documents both shipping features and planned functionality. Sections marked "Phase TX" or with version targets (e.g. v2.0.0) describe upcoming work in the Taxonomic & Provenance Module. Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
 
 SteloPTC is a desktop application for managing plant tissue culture laboratories with a strong focus on **provenance, traceability, and cryptographic data integrity**.
 
@@ -20,7 +20,7 @@ It combines traditional lab record-keeping with an immutable, hash-chained audit
 6. Taxonomy Navigator (Phase TX-1 / TX-2)
 7. Working with Specimens
 8. Splitting Cultures (Detailed)
-9. Recording Passages / Subcultures
+9. Recording Passages / Subcultures (incl. Dead Specimen / Archive Workflow)
 10. The Audit Log & Cryptographic Hash Chain
 11. Provenance & Genealogy Tracking
 12. Reminders & Follow-ups
@@ -169,9 +169,9 @@ Every specimen inherits its species’ hash at creation time. Protecting the spe
 
 ---
 
-## 5. Managing Strains & Cultivars (Phase TX-1 — v1.9.0 target)
+## 5. Managing Strains & Cultivars (Phase TX-1 — v2.0.0 target)
 
-> **Note:** Strain management is planned for Phase TX-1 (v1.9.0). The features described below are not yet available in the current shipping version.
+> **Note:** Strain management is planned for Phase TX-1 (v2.0.0). The features described below are not yet available in the current shipping version.
 
 Strains give you a precise layer of genetic identity between species and individual specimens.
 
@@ -200,7 +200,7 @@ Hybridization is modeled as a distinct event (not a passage or split). It create
 
 ## 6. Taxonomy Navigator (Phase TX-1 / TX-2)
 
-> **Note:** The basic Species → Strains → Specimens navigator is targeted for Phase TX-1 (v1.9.0). The full multi-rank column browser arrives in Phase TX-2.
+> **Note:** The basic Species → Strains → Specimens navigator is targeted for Phase TX-1 (v2.0.0). The full multi-rank column browser arrives in Phase TX-2.
 
 The Taxonomy Navigator lets you browse your collection hierarchically instead of using a flat specimen list. It is especially useful as your collection grows.
 
@@ -267,6 +267,26 @@ Children receive suffixed accessions (e.g. `001A`, `001B`). Further splits conti
 A passage continues the same specimen (no archiving, no new children). The chain sequence increments and the accession number stays the same.
 
 Record via **Passage / Split** with the split checkbox **unchecked**.
+
+### Dead Specimen / Archive Workflow (v1.11.0)
+
+When a specimen has died, slide the **health slider to 0 (Dead)**. The form responds immediately:
+
+- The primary action button changes to **☠ Record Death & Archive**.
+- A red warning banner confirms this is a **terminal, irreversible** action.
+
+Clicking the button:
+1. Archives the specimen (`is_archived = true`, health permanently at 0).
+2. Inserts a terminal subculture row with `event_type = 'death'` (does **not** increment the passage count).
+3. Writes a `"death"` audit entry to the hash chain.
+
+After archiving, the specimen:
+- Shows a red **Dead / Archived** badge instead of the generic grey archived badge.
+- Displays a distinct red death event card with skull icon in the passage timeline.
+- Blocks all further passage recording.
+- Excludes the death event from the displayed passage count.
+
+> **Note:** Dead specimens are permanently archived. If a specimen was incorrectly marked dead, contact an admin — there is no automated un-archive path.
 
 ---
 
@@ -339,9 +359,9 @@ The chain protects against *undetected* changes. It does not prevent authorized 
 
 ## 18. Future Features & Roadmap
 
-SteloPTC development continues along two main tracks: the **Trust Layer** (already shipping) and the **Taxonomic & Provenance Module (Phase TX)**.
+SteloPTC development continues along two main tracks: the **Phase C de-hardening** (making vocabulary data-driven for multi-vertical support) and the **Taxonomic & Provenance Module (Phase TX)**. The Trust Layer (WP-18–21) shipped completely in v1.9.0–v1.10.0; Phase C began with WP-22 (lab profile + dead specimen workflow) in v1.11.0.
 
-### Phase TX-1 (v1.9.0 target)
+### Phase TX-1 (v2.0.0 target)
 - Strain/Cultivar registry with hash chain and version binding
 - Four-level strain status model
 - Hybridization as a distinct event with bidirectional audit entries
