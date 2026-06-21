@@ -3,15 +3,6 @@ use crate::db::queries;
 use crate::AppState;
 use tauri::State;
 
-fn read_setting(conn: &rusqlite::Connection, key: &str, default: &str) -> String {
-    conn.query_row(
-        "SELECT value FROM app_settings WHERE key = ?1",
-        rusqlite::params![key],
-        |r| r.get::<_, String>(0),
-    )
-    .unwrap_or_else(|_| default.to_string())
-}
-
 #[tauri::command]
 pub fn create_backup(
     state: State<AppState>,
@@ -32,8 +23,8 @@ pub fn create_backup(
 
     // Auto-checkpoint eligible lineages before the WAL snapshot when enabled.
     // Runs silently — a failure here must never block the backup itself.
-    let on_backup = read_setting(&db.conn, "auto_checkpoint_on_backup", "1") == "1";
-    let auto_enabled = read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
+    let on_backup = queries::read_setting(&db.conn, "auto_checkpoint_on_backup", "1") == "1";
+    let auto_enabled = queries::read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
     if on_backup && auto_enabled {
         // interval=0 means: checkpoint every lineage with any uncovered entries.
         let _ = queries::auto_checkpoint_lineages(&db.conn, &user.id, "backup", 0);

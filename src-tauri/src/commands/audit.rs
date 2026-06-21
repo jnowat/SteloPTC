@@ -837,10 +837,25 @@ pub fn verify_proof_data(proof: &PortableMerkleProof) -> VerifyProofResult {
         }
     }
 
-    // Stage 2: verify chain links between consecutive entries
+    // Stage 2: verify entries are in ascending chain_seq order, then check links.
+    // Out-of-order entries would produce false chain-break failures; reject them
+    // explicitly with a clear error rather than a misleading "chain link broken".
     for i in 1..proof.entries.len() {
         let prev = &proof.entries[i - 1];
         let curr = &proof.entries[i];
+        if curr.chain_seq <= prev.chain_seq {
+            return VerifyProofResult {
+                ok: false,
+                message: format!(
+                    "Entry ordering error — seq {} appears after seq {} (entries must be ascending).",
+                    curr.chain_seq, prev.chain_seq
+                ),
+                entry_count: n,
+                merkle_root: proof.checkpoint.merkle_root.clone(),
+                failure_reason: Some("Entries out of order".to_string()),
+                failed_seq: Some(curr.chain_seq),
+            };
+        }
         if curr.prev_hash != prev.entry_hash {
             return VerifyProofResult {
                 ok: false,
@@ -892,18 +907,10 @@ pub fn get_auto_checkpoint_config(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     auth_service::validate_session(&db, &token)?;
 
-    fn read_setting(conn: &rusqlite::Connection, key: &str, default: &str) -> String {
-        conn.query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            rusqlite::params![key],
-            |r| r.get::<_, String>(0),
-        ).unwrap_or_else(|_| default.to_string())
-    }
-
-    let enabled = read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
-    let interval = read_setting(&db.conn, "auto_checkpoint_interval", "100")
+    let enabled = queries::read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
+    let interval = queries::read_setting(&db.conn, "auto_checkpoint_interval", "100")
         .parse::<i64>().unwrap_or(100);
-    let on_backup = read_setting(&db.conn, "auto_checkpoint_on_backup", "1") == "1";
+    let on_backup = queries::read_setting(&db.conn, "auto_checkpoint_on_backup", "1") == "1";
 
     Ok(AutoCheckpointConfig { enabled, interval, on_backup })
 }
@@ -919,6 +926,10 @@ pub fn set_auto_checkpoint_config(
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions — admin or supervisor role required.".to_string());
+    }
+
+    if config.interval < 0 {
+        return Err("interval must be non-negative".to_string());
     }
 
     let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
@@ -955,15 +966,7 @@ pub fn run_auto_checkpoint(
         return Err("Insufficient permissions — admin or supervisor role required.".to_string());
     }
 
-    fn read_setting(conn: &rusqlite::Connection, key: &str, default: &str) -> String {
-        conn.query_row(
-            "SELECT value FROM app_settings WHERE key = ?1",
-            rusqlite::params![key],
-            |r| r.get::<_, String>(0),
-        ).unwrap_or_else(|_| default.to_string())
-    }
-
-    let enabled = read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
+    let enabled = queries::read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
     if !enabled {
         return Ok(AutoCheckpointResult {
             lineages_checked: 0,
@@ -972,11 +975,19 @@ pub fn run_auto_checkpoint(
         });
     }
 
-    let interval = read_setting(&db.conn, "auto_checkpoint_interval", "100")
+    let interval = queries::read_setting(&db.conn, "auto_checkpoint_interval", "100")
         .parse::<i64>().unwrap_or(100);
 
+    // Count only lineages that have at least one uncovered entry — matching
+    // what auto_checkpoint_lineages actually iterates over.
     let lineages_checked: usize = db.conn.query_row(
-        "SELECT COUNT(DISTINCT lineage_id) FROM audit_log WHERE entry_hash IS NOT NULL AND lineage_id IS NOT NULL",
+        "SELECT COUNT(DISTINCT a.lineage_id) \
+         FROM audit_log a \
+         WHERE a.entry_hash IS NOT NULL AND a.lineage_id IS NOT NULL \
+           AND a.chain_seq > COALESCE(\
+               (SELECT MAX(end_seq) FROM audit_checkpoints WHERE lineage_id = a.lineage_id), \
+               -1\
+           )",
         [],
         |r| r.get(0),
     ).unwrap_or(0);
@@ -1009,10 +1020,12 @@ mod tests {
         let ts1 = "2026-01-01T00:00:00.000Z";
         let ts2 = "2026-01-01T00:01:00.000Z";
 
-        let canon1 = format!("{}|1|{}||||specimen|sp-TEST|create|", lineage_id, ts1);
+        // Canonical format: lineage_id|chain_seq|timestamp|user_id|entity_type|entity_id|action|details
+        // (8 fields, 7 separators — matches audit_canonical_bytes exactly)
+        let canon1 = format!("{}|1|{}||specimen|sp-TEST|create|", lineage_id, ts1);
         let hash1 = compute_entry_hash(canon1.as_bytes(), ZERO_HASH);
 
-        let canon2 = format!("{}|2|{}||||specimen|sp-TEST|update|", lineage_id, ts2);
+        let canon2 = format!("{}|2|{}||specimen|sp-TEST|update|", lineage_id, ts2);
         let hash2 = compute_entry_hash(canon2.as_bytes(), &hash1);
 
         let leaves = vec![hash1.clone(), hash2.clone()];

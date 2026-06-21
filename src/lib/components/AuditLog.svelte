@@ -215,7 +215,7 @@
       a.href = url;
       a.download = `merkle-proof-${cp.id.slice(0, 8)}.json`;
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
       addNotification(`Proof for checkpoint ${cp.id.slice(0, 8)}… downloaded.`, 'success');
     } catch (e: any) {
       addNotification(`Export failed: ${e.message}`, 'error');

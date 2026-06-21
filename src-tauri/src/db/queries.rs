@@ -7,6 +7,17 @@ use super::{DbError, DbResult};
 pub const ZERO_HASH: &str =
     "0000000000000000000000000000000000000000000000000000000000000000";
 
+/// Read a key from the `app_settings` table, returning `default` when the key
+/// is absent or the table doesn't exist yet (e.g. before migration 014).
+pub fn read_setting(conn: &Connection, key: &str, default: &str) -> String {
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        params![key],
+        |r| r.get::<_, String>(0),
+    )
+    .unwrap_or_else(|_| default.to_string())
+}
+
 /// Audit fields shared across all `log_audit*` public wrappers.
 /// Passed as a single argument to `log_audit_impl` to stay within Clippy's
 /// `too_many_arguments` limit without changing the public-facing API.
@@ -119,10 +130,10 @@ pub fn build_merkle_path(leaves: &[String], leaf_index: usize) -> Vec<PathNode> 
             level.clone()
         };
 
-        let sibling_idx = if idx % 2 == 0 { idx + 1 } else { idx - 1 };
+        let sibling_idx = if idx.is_multiple_of(2) { idx + 1 } else { idx - 1 };
         path.push(PathNode {
             sibling_hash: padded[sibling_idx].clone(),
-            position: if idx % 2 == 0 { "right".to_string() } else { "left".to_string() },
+            position: if idx.is_multiple_of(2) { "right".to_string() } else { "left".to_string() },
         });
 
         let mut next = Vec::with_capacity(padded.len() / 2);
@@ -188,13 +199,16 @@ pub fn auto_checkpoint_lineages(
     let mut created_ids = Vec::new();
 
     for lineage_id in &lineages {
+        // Use -1 as the sentinel "no prior checkpoint" value so that seq=0
+        // entries (written by log_audit_at_seq_zero for species births) are
+        // included in the first auto-checkpoint for those lineages.
         let last_end_seq: i64 = conn
             .query_row(
-                "SELECT COALESCE(MAX(end_seq), 0) FROM audit_checkpoints WHERE lineage_id = ?1",
+                "SELECT COALESCE(MAX(end_seq), -1) FROM audit_checkpoints WHERE lineage_id = ?1",
                 params![lineage_id],
                 |r| r.get(0),
             )
-            .unwrap_or(0);
+            .unwrap_or(-1);
 
         let max_seq: Option<i64> = conn
             .query_row(
@@ -223,7 +237,19 @@ pub fn auto_checkpoint_lineages(
             continue;
         }
 
-        let start_seq = last_end_seq + 1;
+        // Use the actual minimum uncovered chain_seq as start_seq so the
+        // checkpoint accurately reflects its true coverage, including seq=0
+        // for species lineages that use log_audit_at_seq_zero.
+        let start_seq: i64 = conn
+            .query_row(
+                "SELECT MIN(chain_seq) FROM audit_log \
+                 WHERE lineage_id = ?1 AND chain_seq > ?2 AND entry_hash IS NOT NULL",
+                params![lineage_id, last_end_seq],
+                |r| r.get::<_, Option<i64>>(0),
+            )
+            .unwrap_or(None)
+            .unwrap_or(last_end_seq + 1);
+
         let mut stmt = conn.prepare(
             "SELECT entry_hash FROM audit_log \
              WHERE lineage_id = ?1 AND chain_seq >= ?2 AND chain_seq <= ?3 \
