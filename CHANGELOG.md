@@ -5,6 +5,31 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-06-22
+
+### Added — WP-25: Profile-Aware Dashboard Statistics
+
+- **`src-tauri/src/db/dashboard.rs`** — new module with three testable, pure-connection query functions that power all profile-sensitive dashboard panels:
+  - `query_specimen_stats` — the `by_stage` breakdown now inner-joins against the `stages` vocabulary table, so only stages defined for the active lab profile are counted; returns vocabulary **labels** (e.g. "Shoot Meristem") rather than raw stage codes. Aggregate totals (total/active/quarantined/archived/recent) remain database-wide.
+  - `query_contamination_stats` — all specimen and vessel counts join through `stages` so the active profile controls which specimens are in scope; the `total_specimens` denominator and `contaminated_specimens` numerator are both profile-filtered, keeping the contamination rate internally consistent.
+  - `query_subculture_schedule` — only specimens whose `stage` exists in the `stages` vocabulary for the active profile appear in the schedule.
+- **11 new Rust unit tests** in `db/dashboard.rs` covering: vocabulary labels returned for PTC, cross-profile stage exclusion, empty result for unseeded profile, database-wide aggregate counts, contamination scoping and rate, vessel-type breakdown, and schedule filtering.
+- No hardcoded stage lists remain in any dashboard query.
+
+### Changed
+
+- `commands/specimens.rs::get_specimen_stats` — delegated to `db::dashboard::query_specimen_stats`; removed now-unused `StageCount`/`SpeciesCount` imports.
+- `commands/subcultures.rs::get_contamination_stats` and `get_subculture_schedule` — delegated to `db::dashboard`.
+- `Dashboard.svelte` — "Specimens by Stage" tooltip updated to mention the active lab profile.
+- Version bumped to 1.13.0 across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+
+### Notes
+
+- For `plant_tissue_culture` deployments (the default), all existing numbers are unchanged — all current stages are seeded in the vocabulary, so every specimen continues to appear in every panel.
+- Profiles with no seeded vocabulary data return empty `by_stage` arrays and zero contamination counts (graceful degradation, not an error).
+
+---
+
 ## [1.12.0] - 2026-06-21
 
 ### Added — WP-23 & WP-24: Profile-Scoped Vocabulary Tables

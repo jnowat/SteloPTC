@@ -1,0 +1,678 @@
+use rusqlite::Connection;
+
+use crate::models::specimen::{SpeciesCount, SpecimenStats, StageCount};
+use crate::models::subculture::{
+    ContaminationStats, RecentContaminationEvent, SubcultureScheduleEntry,
+    VesselContaminationCount,
+};
+
+/// Returns specimen statistics fully scoped to stages defined for `profile` in
+/// the `stages` vocabulary table.  Every count — including the top-line
+/// totals (total, active, quarantined, archived, recent subcultures) and the
+/// per-species breakdown — uses an inner-join through `stages` so numbers
+/// change when the active lab profile changes.
+///
+/// `by_stage` returns vocabulary **labels** (e.g. "Shoot Meristem") rather
+/// than raw stage codes.
+pub fn query_specimen_stats(conn: &Connection, profile: &str) -> Result<SpecimenStats, String> {
+    let total: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1",
+            [profile],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let active: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sp.is_archived = 0",
+            [profile],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let quarantined: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sp.quarantine_flag = 1 AND sp.is_archived = 0",
+            [profile],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    let archived: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sp.is_archived = 1",
+            [profile],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    // Profile-aware: inner-join with stages so only stages defined for the
+    // active profile are counted; return the vocabulary label for display.
+    let mut stage_stmt = conn
+        .prepare(
+            "SELECT st.label, COUNT(*) AS cnt
+             FROM specimens sp
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             WHERE sp.is_archived = 0
+             GROUP BY st.code
+             ORDER BY cnt DESC, st.sort_order ASC",
+        )
+        .map_err(|e| e.to_string())?;
+    let by_stage: Vec<StageCount> = stage_stmt
+        .query_map([profile], |row| {
+            Ok(StageCount {
+                stage: row.get(0)?,
+                count: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Profile-aware: only count specimens whose stage belongs to this profile.
+    let mut species_stmt = conn
+        .prepare(
+            "SELECT sp_info.species_code, COUNT(*) \
+             FROM specimens s \
+             JOIN species sp_info ON s.species_id = sp_info.id \
+             JOIN stages st ON s.stage = st.code AND st.profile = ?1 \
+             WHERE s.is_archived = 0 \
+             GROUP BY sp_info.species_code \
+             ORDER BY COUNT(*) DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let by_species: Vec<SpeciesCount> = species_stmt
+        .query_map([profile], |row| {
+            Ok(SpeciesCount {
+                species_code: row.get(0)?,
+                count: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Profile-aware: count only subcultures on specimens in this profile.
+    let recent: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM subcultures sc \
+             JOIN specimens sp ON sc.specimen_id = sp.id \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sc.date >= date('now', '-7 days')",
+            [profile],
+            |r| r.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+
+    Ok(SpecimenStats {
+        total_specimens: total,
+        active_specimens: active,
+        quarantined,
+        archived,
+        by_stage,
+        by_species,
+        recent_subcultures: recent,
+    })
+}
+
+/// Returns contamination statistics restricted to specimens whose `stage` exists
+/// in the `stages` vocabulary for `profile`.  Both the denominator
+/// (`total_specimens`) and numerator (`contaminated_specimens`) are scoped to the
+/// same profile so the resulting rate is internally consistent.
+pub fn query_contamination_stats(
+    conn: &Connection,
+    profile: &str,
+) -> Result<ContaminationStats, String> {
+    let total_specimens: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM specimens sp
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             WHERE sp.is_archived = 0",
+            [profile],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    let contaminated_specimens: i64 = conn
+        .query_row(
+            "SELECT COUNT(DISTINCT sc.specimen_id)
+             FROM subcultures sc
+             JOIN specimens sp ON sc.specimen_id = sp.id
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             WHERE sc.contamination_flag = 1 AND sp.is_archived = 0",
+            [profile],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    let contamination_rate_pct = if total_specimens > 0 {
+        (contaminated_specimens as f64 / total_specimens as f64) * 100.0
+    } else {
+        0.0
+    };
+
+    let contaminated_vessels: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM subcultures sc
+             JOIN specimens sp ON sc.specimen_id = sp.id
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             WHERE sc.contamination_flag = 1",
+            [profile],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+
+    let mut stmt = conn
+        .prepare(
+            "SELECT COALESCE(sc.vessel_type, 'Unknown') as vessel_type, \
+                    COUNT(*) as cnt
+             FROM subcultures sc
+             JOIN specimens sp ON sc.specimen_id = sp.id
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             WHERE sc.contamination_flag = 1
+             GROUP BY sc.vessel_type
+             ORDER BY cnt DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+    let by_vessel_type: Vec<VesselContaminationCount> = stmt
+        .query_map([profile], |row| {
+            Ok(VesselContaminationCount {
+                vessel_type: row.get("vessel_type")?,
+                count: row.get("cnt")?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut stmt2 = conn
+        .prepare(
+            "SELECT sc.id as subculture_id, sc.specimen_id, \
+                    sp.accession_number, s.species_code, \
+                    sc.passage_number, sc.date, sc.vessel_type, \
+                    sc.contamination_notes
+             FROM subcultures sc
+             JOIN specimens sp ON sc.specimen_id = sp.id
+             JOIN species s ON sp.species_id = s.id
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             WHERE sc.contamination_flag = 1
+             ORDER BY sc.date DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+    let recent_events: Vec<RecentContaminationEvent> = stmt2
+        .query_map([profile], |row| {
+            Ok(RecentContaminationEvent {
+                subculture_id: row.get("subculture_id")?,
+                specimen_id: row.get("specimen_id")?,
+                accession_number: row.get("accession_number")?,
+                species_code: row.get("species_code")?,
+                passage_number: row.get("passage_number")?,
+                date: row.get("date")?,
+                vessel_type: row.get("vessel_type")?,
+                contamination_notes: row.get("contamination_notes")?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(ContaminationStats {
+        total_specimens,
+        contaminated_specimens,
+        contamination_rate_pct,
+        contaminated_vessels,
+        by_vessel_type,
+        recent_events,
+    })
+}
+
+/// Returns the subculture due-date schedule, restricted to specimens whose
+/// `stage` exists in the `stages` vocabulary for `profile`.
+pub fn query_subculture_schedule(
+    conn: &Connection,
+    profile: &str,
+) -> Result<Vec<SubcultureScheduleEntry>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                sp.id              AS specimen_id,
+                sp.accession_number,
+                s.species_code     AS species_code,
+                (s.genus || ' ' || s.species_name) AS species_name,
+                sp.location,
+                MAX(sc.date)       AS last_passage_date,
+                s.default_subculture_interval_days AS interval_days,
+                CASE
+                    WHEN s.default_subculture_interval_days IS NOT NULL
+                         AND MAX(sc.date) IS NOT NULL
+                    THEN date(MAX(sc.date),
+                              '+' || s.default_subculture_interval_days || ' days')
+                    ELSE NULL
+                END AS next_due_date,
+                CASE
+                    WHEN s.default_subculture_interval_days IS NOT NULL
+                         AND MAX(sc.date) IS NOT NULL
+                    THEN CAST(
+                        julianday(date(MAX(sc.date),
+                            '+' || s.default_subculture_interval_days || ' days'))
+                        - julianday('now') AS INTEGER)
+                    ELSE NULL
+                END AS days_until_due
+             FROM specimens sp
+             JOIN species s ON sp.species_id = s.id
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             LEFT JOIN subcultures sc ON sc.specimen_id = sp.id
+             WHERE sp.is_archived = 0
+             GROUP BY sp.id
+             ORDER BY days_until_due ASC NULLS LAST",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let entries: Vec<SubcultureScheduleEntry> = stmt
+        .query_map([profile], |row| {
+            let days_until_due: Option<i64> = row.get("days_until_due")?;
+            let is_overdue = days_until_due.map(|d| d < 0).unwrap_or(false);
+            Ok(SubcultureScheduleEntry {
+                specimen_id: row.get("specimen_id")?,
+                accession_number: row.get("accession_number")?,
+                species_code: row.get("species_code")?,
+                species_name: row.get("species_name")?,
+                location: row.get("location")?,
+                last_passage_date: row.get("last_passage_date")?,
+                interval_days: row.get("interval_days")?,
+                next_due_date: row.get("next_due_date")?,
+                days_until_due,
+                is_overdue,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(entries)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    // ── Test helpers ──────────────────────────────────────────────────────────
+
+    fn setup_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE stages (
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 profile    TEXT    NOT NULL,
+                 code       TEXT    NOT NULL,
+                 label      TEXT    NOT NULL,
+                 sort_order INTEGER NOT NULL DEFAULT 0,
+                 is_terminal INTEGER NOT NULL DEFAULT 0,
+                 UNIQUE(profile, code)
+             );
+             CREATE TABLE species (
+                 id         TEXT    PRIMARY KEY,
+                 species_code TEXT  NOT NULL UNIQUE,
+                 genus      TEXT    NOT NULL,
+                 species_name TEXT  NOT NULL,
+                 default_subculture_interval_days INTEGER
+             );
+             CREATE TABLE specimens (
+                 id               TEXT    PRIMARY KEY,
+                 accession_number TEXT    NOT NULL UNIQUE,
+                 species_id       TEXT    NOT NULL,
+                 stage            TEXT    NOT NULL DEFAULT 'explant',
+                 quarantine_flag  INTEGER NOT NULL DEFAULT 0,
+                 is_archived      INTEGER NOT NULL DEFAULT 0,
+                 location         TEXT,
+                 contamination_flag INTEGER NOT NULL DEFAULT 0,
+                 created_at       TEXT    NOT NULL DEFAULT (datetime('now')),
+                 updated_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+             );
+             CREATE TABLE subcultures (
+                 id                  TEXT    PRIMARY KEY,
+                 specimen_id         TEXT    NOT NULL,
+                 passage_number      INTEGER NOT NULL DEFAULT 1,
+                 date                TEXT    NOT NULL,
+                 vessel_type         TEXT,
+                 contamination_flag  INTEGER NOT NULL DEFAULT 0,
+                 contamination_notes TEXT,
+                 event_type          TEXT    NOT NULL DEFAULT 'passage',
+                 created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+                 updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+             );",
+        )
+        .unwrap();
+        conn
+    }
+
+    fn seed_ptc_stages(conn: &Connection) {
+        conn.execute_batch(
+            "INSERT INTO stages (profile, code, label, sort_order) VALUES
+                 ('plant_tissue_culture', 'explant',  'Explant',  1),
+                 ('plant_tissue_culture', 'callus',   'Callus',   2),
+                 ('plant_tissue_culture', 'shoot',    'Shoot',    5),
+                 ('plant_tissue_culture', 'archived', 'Archived', 14);",
+        )
+        .unwrap();
+    }
+
+    fn seed_cell_culture_stages(conn: &Connection) {
+        conn.execute_batch(
+            "INSERT INTO stages (profile, code, label, sort_order) VALUES
+                 ('cell_culture', 'adherent',   'Adherent',   1),
+                 ('cell_culture', 'suspension', 'Suspension', 2);",
+        )
+        .unwrap();
+    }
+
+    fn insert_species(conn: &Connection, id: &str, code: &str, interval: Option<i64>) {
+        conn.execute(
+            "INSERT INTO species \
+             (id, species_code, genus, species_name, default_subculture_interval_days) \
+             VALUES (?1, ?2, 'Genus', 'species', ?3)",
+            rusqlite::params![id, code, interval],
+        )
+        .unwrap();
+    }
+
+    fn insert_specimen(
+        conn: &Connection,
+        id: &str,
+        accession: &str,
+        species_id: &str,
+        stage: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, created_at, updated_at) \
+             VALUES (?1, ?2, ?3, ?4, datetime('now'), datetime('now'))",
+            rusqlite::params![id, accession, species_id, stage],
+        )
+        .unwrap();
+    }
+
+    fn insert_subculture(
+        conn: &Connection,
+        id: &str,
+        specimen_id: &str,
+        date: &str,
+        contaminated: bool,
+        vessel_type: Option<&str>,
+    ) {
+        conn.execute(
+            "INSERT INTO subcultures \
+             (id, specimen_id, passage_number, date, contamination_flag, vessel_type, \
+              created_at, updated_at) \
+             VALUES (?1, ?2, 1, ?3, ?4, ?5, datetime('now'), datetime('now'))",
+            rusqlite::params![id, specimen_id, date, contaminated as i64, vessel_type],
+        )
+        .unwrap();
+    }
+
+    // ── Specimen stats ────────────────────────────────────────────────────────
+
+    #[test]
+    fn by_stage_returns_vocabulary_labels() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        insert_specimen(&conn, "s2", "ACC-002", "sp1", "callus");
+        insert_specimen(&conn, "s3", "ACC-003", "sp1", "callus");
+
+        let stats = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+
+        assert_eq!(stats.active_specimens, 3);
+        assert_eq!(stats.by_stage.len(), 2);
+        // Callus (count 2) first; Explant (count 1) second
+        assert_eq!(stats.by_stage[0].stage, "Callus");
+        assert_eq!(stats.by_stage[0].count, 2);
+        assert_eq!(stats.by_stage[1].stage, "Explant");
+        assert_eq!(stats.by_stage[1].count, 1);
+    }
+
+    #[test]
+    fn by_stage_excludes_stages_not_in_active_profile() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        // PTC specimen
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        // Cell-culture specimen (stage 'adherent' not in PTC vocabulary)
+        insert_specimen(&conn, "s2", "ACC-002", "sp1", "adherent");
+
+        let ptc = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+        let cc = query_specimen_stats(&conn, "cell_culture").unwrap();
+
+        // PTC sees only the explant specimen
+        assert_eq!(ptc.by_stage.len(), 1);
+        assert_eq!(ptc.by_stage[0].stage, "Explant");
+        assert_eq!(ptc.by_stage[0].count, 1);
+
+        // Cell culture sees only the adherent specimen
+        assert_eq!(cc.by_stage.len(), 1);
+        assert_eq!(cc.by_stage[0].stage, "Adherent");
+        assert_eq!(cc.by_stage[0].count, 1);
+    }
+
+    #[test]
+    fn by_stage_is_empty_for_profile_with_no_stages() {
+        let conn = setup_db();
+        // No stages seeded for 'mycology'
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+
+        let stats = query_specimen_stats(&conn, "mycology").unwrap();
+        assert!(stats.by_stage.is_empty());
+    }
+
+    #[test]
+    fn aggregate_counts_are_profile_filtered() {
+        // total/active/quarantined/archived must be scoped to stages that belong
+        // to the requested profile — a PTC query must not count CC specimens.
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        // PTC specimen (stage 'explant' is in the PTC vocabulary)
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        // CC specimen (stage 'adherent' is in the CC vocabulary, not PTC)
+        insert_specimen(&conn, "s2", "ACC-002", "sp1", "adherent");
+
+        let ptc = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+        let cc = query_specimen_stats(&conn, "cell_culture").unwrap();
+
+        // PTC profile sees only the PTC specimen
+        assert_eq!(ptc.total_specimens, 1);
+        assert_eq!(ptc.active_specimens, 1);
+
+        // CC profile sees only the CC specimen
+        assert_eq!(cc.total_specimens, 1);
+        assert_eq!(cc.active_specimens, 1);
+    }
+
+    #[test]
+    fn quarantined_and_archived_counts_are_profile_filtered() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+
+        // PTC: one quarantined specimen, one archived
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, quarantine_flag, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s1', 'ACC-001', 'sp1', 'explant', 1, 0, \
+              datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, quarantine_flag, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s2', 'ACC-002', 'sp1', 'archived', 0, 1, \
+              datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        // CC: one clean active specimen — should not appear in PTC counts
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, quarantine_flag, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s3', 'ACC-003', 'sp1', 'adherent', 1, 0, \
+              datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let ptc = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+        // PTC: 1 quarantined (not archived), 1 archived, 0 of CC's quarantined
+        assert_eq!(ptc.quarantined, 1);
+        assert_eq!(ptc.archived, 1);
+
+        let cc = query_specimen_stats(&conn, "cell_culture").unwrap();
+        // CC: 1 quarantined, 0 archived
+        assert_eq!(cc.quarantined, 1);
+        assert_eq!(cc.archived, 0);
+    }
+
+    #[test]
+    fn ptc_stage_sum_equals_active_when_all_stages_valid() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        insert_specimen(&conn, "s2", "ACC-002", "sp1", "callus");
+        insert_specimen(&conn, "s3", "ACC-003", "sp1", "shoot");
+
+        let stats = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+        let stage_total: i64 = stats.by_stage.iter().map(|s| s.count).sum();
+        assert_eq!(stage_total, 3);
+        assert_eq!(stage_total, stats.active_specimens);
+    }
+
+    // ── Contamination stats ───────────────────────────────────────────────────
+
+    #[test]
+    fn contamination_stats_scoped_to_active_profile() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "ptc1", "ACC-001", "sp1", "explant");
+        insert_specimen(&conn, "cc1",  "ACC-002", "sp1", "adherent");
+        // Only the PTC specimen has a contaminated passage
+        insert_subculture(&conn, "sc1", "ptc1", "2026-01-01", true, Some("flask"));
+
+        let ptc = query_contamination_stats(&conn, "plant_tissue_culture").unwrap();
+        let cc  = query_contamination_stats(&conn, "cell_culture").unwrap();
+
+        assert_eq!(ptc.total_specimens, 1);
+        assert_eq!(ptc.contaminated_specimens, 1);
+        assert!((ptc.contamination_rate_pct - 100.0).abs() < 0.01);
+        assert_eq!(ptc.contaminated_vessels, 1);
+
+        assert_eq!(cc.total_specimens, 1);
+        assert_eq!(cc.contaminated_specimens, 0);
+        assert!((cc.contamination_rate_pct).abs() < 0.01);
+        assert_eq!(cc.contaminated_vessels, 0);
+    }
+
+    #[test]
+    fn contamination_rate_is_zero_when_no_specimens_for_profile() {
+        let conn = setup_db();
+        // No stages for 'mycology' — no specimens in scope
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        insert_subculture(&conn, "sc1", "s1", "2026-01-01", true, None);
+
+        let stats = query_contamination_stats(&conn, "mycology").unwrap();
+        assert_eq!(stats.total_specimens, 0);
+        assert_eq!(stats.contaminated_specimens, 0);
+        assert!((stats.contamination_rate_pct).abs() < 0.01);
+    }
+
+    #[test]
+    fn contamination_by_vessel_type_scoped_to_profile() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        insert_subculture(&conn, "sc1", "s1", "2026-01-01", true, Some("jar"));
+        insert_subculture(&conn, "sc2", "s1", "2026-01-02", true, Some("jar"));
+
+        let stats = query_contamination_stats(&conn, "plant_tissue_culture").unwrap();
+        assert_eq!(stats.by_vessel_type.len(), 1);
+        assert_eq!(stats.by_vessel_type[0].vessel_type, "jar");
+        assert_eq!(stats.by_vessel_type[0].count, 2);
+    }
+
+    // ── Subculture schedule ───────────────────────────────────────────────────
+
+    #[test]
+    fn schedule_scoped_to_active_profile() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", Some(30));
+        insert_specimen(&conn, "ptc1", "ACC-001", "sp1", "explant");
+        insert_specimen(&conn, "cc1",  "ACC-002", "sp1", "adherent");
+        insert_subculture(&conn, "sc1", "ptc1", "2025-12-01", false, None);
+        insert_subculture(&conn, "sc2", "cc1",  "2025-12-01", false, None);
+
+        let ptc_sched = query_subculture_schedule(&conn, "plant_tissue_culture").unwrap();
+        let cc_sched  = query_subculture_schedule(&conn, "cell_culture").unwrap();
+
+        assert_eq!(ptc_sched.len(), 1);
+        assert_eq!(ptc_sched[0].accession_number, "ACC-001");
+
+        assert_eq!(cc_sched.len(), 1);
+        assert_eq!(cc_sched[0].accession_number, "ACC-002");
+    }
+
+    #[test]
+    fn schedule_empty_for_profile_with_no_stages() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "ARABTH", Some(30));
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        insert_subculture(&conn, "sc1", "s1", "2025-12-01", false, None);
+
+        let sched = query_subculture_schedule(&conn, "mycology").unwrap();
+        assert!(sched.is_empty());
+    }
+
+    #[test]
+    fn schedule_excludes_archived_specimens() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", Some(30));
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s1', 'ACC-001', 'sp1', 'explant', 1, \
+              datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let sched = query_subculture_schedule(&conn, "plant_tissue_culture").unwrap();
+        assert!(sched.is_empty());
+    }
+}

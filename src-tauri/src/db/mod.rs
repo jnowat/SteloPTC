@@ -1,3 +1,4 @@
+pub mod dashboard;
 pub mod migrations;
 pub mod queries;
 pub mod vocabulary;
