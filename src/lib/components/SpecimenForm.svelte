@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { createSpecimen, listSpecies, listMedia } from '../api';
+  import { createSpecimen, listSpecies, listMedia, listStages, listPropagationMethods } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
   import { effectiveHealth } from '../utils';
   import Tooltip from './Tooltip.svelte';
@@ -36,32 +36,8 @@
     notes: '',
   });
 
-  const stages = [
-    { value: 'explant', label: 'Explant' },
-    { value: 'callus', label: 'Callus' },
-    { value: 'suspension', label: 'Suspension' },
-    { value: 'protoplast', label: 'Protoplast' },
-    { value: 'shoot', label: 'Shoot' },
-    { value: 'shoot_meristem', label: 'Shoot Meristem' },
-    { value: 'apical_meristem', label: 'Apical Meristem' },
-    { value: 'root', label: 'Root' },
-    { value: 'root_meristem', label: 'Root Meristem' },
-    { value: 'embryogenic', label: 'Embryogenic' },
-    { value: 'plantlet', label: 'Plantlet' },
-    { value: 'acclimatized', label: 'Acclimatized' },
-    { value: 'stock', label: 'Stock' },
-  ];
-
-  const propagationMethods = [
-    { value: '', label: 'Select...' },
-    { value: 'microprop', label: 'Micropropagation' },
-    { value: 'somatic_embryogenesis', label: 'Somatic Embryogenesis' },
-    { value: 'organogenesis', label: 'Organogenesis' },
-    { value: 'meristem_culture', label: 'Meristem Culture' },
-    { value: 'anther_culture', label: 'Anther Culture' },
-    { value: 'protoplast_fusion', label: 'Protoplast Fusion' },
-    { value: 'other', label: 'Other' },
-  ];
+  let stages = $state<any[]>([]);
+  let propagationMethods = $state<any[]>([]);
 
   const rooms = ['1', '2', '3', '4', '5'];
   const racks = ['A', 'B', 'C', 'D'];
@@ -71,6 +47,8 @@
   onMount(() => {
     listSpecies().then(s => species = s).catch(() => {});
     listMedia().then(m => mediaBatches = m).catch(() => {});
+    listStages().then(s => stages = s).catch((e: any) => addNotification(e.message, 'error'));
+    listPropagationMethods().then(m => propagationMethods = m).catch((e: any) => addNotification(e.message, 'error'));
   });
 
   function composeLocation(): string {
@@ -165,9 +143,13 @@
     <div class="form-group">
       <label for="stage">Stage * <Tooltip text="Current development stage: Explant (initial tissue), Callus, Suspension, Shoot, Plantlet, etc." /></label>
       <select id="stage" bind:value={form.stage} title="Development stage: explant (initial tissue), callus (undifferentiated mass), suspension (liquid culture), shoot (organized shoot growth), plantlet (complete small plant), etc.">
-        {#each stages as s}
-          <option value={s.value}>{s.label}</option>
-        {/each}
+        {#if stages.length === 0}
+          <option value={form.stage}>{form.stage || 'Loading...'}</option>
+        {:else}
+          {#each stages.filter(s => !s.is_terminal) as s}
+            <option value={s.code}>{s.label}</option>
+          {/each}
+        {/if}
       </select>
     </div>
   </div>
@@ -180,8 +162,9 @@
     <div class="form-group">
       <label for="prop_method">Propagation Method <Tooltip text="Technique used to multiply this specimen: micropropagation, somatic embryogenesis, organogenesis, meristem culture, etc." /></label>
       <select id="prop_method" bind:value={form.propagation_method} title="Select the propagation technique: micropropagation, somatic embryogenesis, organogenesis, meristem culture, etc.">
+        <option value="">Select...</option>
         {#each propagationMethods as m}
-          <option value={m.value}>{m.label}</option>
+          <option value={m.code}>{m.label}</option>
         {/each}
       </select>
     </div>

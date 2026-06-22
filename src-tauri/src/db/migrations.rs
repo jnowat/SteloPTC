@@ -88,6 +88,384 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (15)", [])?;
     }
 
+    if current < 16 {
+        migration_016_vocabulary_tables(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (16)", [])?;
+    }
+
+    if current < 17 {
+        migration_017_remaining_vocabularies(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (17)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_016_vocabulary_tables(conn: &Connection) -> DbResult<()> {
+    // WP-23: stages lookup table replaces the CHECK constraint on specimens.stage.
+    // WP-24 (partial): propagation_methods lookup table replaces CHECK on specimens.propagation_method.
+    //
+    // Codes exactly match the values from the existing CHECK constraints so all
+    // existing specimen rows remain valid after the rebuild.  After this migration,
+    // adding a stage or propagation method only requires a row insert — no DDL.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS stages (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile     TEXT    NOT NULL,
+            code        TEXT    NOT NULL,
+            label       TEXT    NOT NULL,
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            is_terminal INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(profile, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_stages_profile
+            ON stages(profile, sort_order);
+
+        INSERT OR IGNORE INTO stages (profile, code, label, sort_order, is_terminal) VALUES
+            ('plant_tissue_culture', 'explant',         'Explant',         1,  0),
+            ('plant_tissue_culture', 'callus',          'Callus',          2,  0),
+            ('plant_tissue_culture', 'suspension',      'Suspension',      3,  0),
+            ('plant_tissue_culture', 'protoplast',      'Protoplast',      4,  0),
+            ('plant_tissue_culture', 'shoot',           'Shoot',           5,  0),
+            ('plant_tissue_culture', 'shoot_meristem',  'Shoot Meristem',  6,  0),
+            ('plant_tissue_culture', 'apical_meristem', 'Apical Meristem', 7,  0),
+            ('plant_tissue_culture', 'root',            'Root',            8,  0),
+            ('plant_tissue_culture', 'root_meristem',   'Root Meristem',   9,  0),
+            ('plant_tissue_culture', 'embryogenic',     'Embryogenic',     10, 0),
+            ('plant_tissue_culture', 'plantlet',        'Plantlet',        11, 0),
+            ('plant_tissue_culture', 'acclimatized',    'Acclimatized',    12, 0),
+            ('plant_tissue_culture', 'stock',           'Stock',           13, 0),
+            ('plant_tissue_culture', 'archived',        'Archived',        14, 1),
+            ('plant_tissue_culture', 'custom',          'Custom',          15, 0);
+
+        CREATE TABLE IF NOT EXISTS propagation_methods (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile     TEXT    NOT NULL,
+            code        TEXT    NOT NULL,
+            label       TEXT    NOT NULL,
+            sort_order  INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(profile, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_propagation_methods_profile
+            ON propagation_methods(profile, sort_order);
+
+        INSERT OR IGNORE INTO propagation_methods (profile, code, label, sort_order) VALUES
+            ('plant_tissue_culture', 'microprop',             'Micropropagation',      1),
+            ('plant_tissue_culture', 'somatic_embryogenesis', 'Somatic Embryogenesis', 2),
+            ('plant_tissue_culture', 'organogenesis',         'Organogenesis',         3),
+            ('plant_tissue_culture', 'meristem_culture',      'Meristem Culture',      4),
+            ('plant_tissue_culture', 'anther_culture',        'Anther Culture',        5),
+            ('plant_tissue_culture', 'protoplast_fusion',     'Protoplast Fusion',     6),
+            ('plant_tissue_culture', 'other',                 'Other',                 7);
+    ")?;
+
+    // Rebuild specimens to drop CHECK constraints on stage and propagation_method.
+    // acclimatization_status keeps its CHECK — it is not in the WP-23/24 scope.
+    // All columns from migrations 002–012 (genealogy from 010, contamination from 012)
+    // are preserved exactly.
+    conn.execute("PRAGMA foreign_keys = OFF", [])?;
+    let result = conn.execute_batch("
+        BEGIN;
+        CREATE TABLE IF NOT EXISTS specimens_v16 (
+            id                      TEXT    PRIMARY KEY,
+            accession_number        TEXT    NOT NULL UNIQUE,
+            species_id              TEXT    NOT NULL REFERENCES species(id),
+            project_id              TEXT    REFERENCES projects(id),
+            stage                   TEXT    NOT NULL DEFAULT 'explant',
+            custom_stage            TEXT,
+            provenance              TEXT,
+            source_plant            TEXT,
+            initiation_date         TEXT    NOT NULL,
+            location                TEXT,
+            location_details        TEXT,
+            propagation_method      TEXT,
+            acclimatization_status  TEXT    CHECK(acclimatization_status IN (
+                                        'not_applicable','in_vitro','hardening',
+                                        'greenhouse','field','completed'
+                                    )),
+            health_status           TEXT    DEFAULT 'healthy',
+            disease_status          TEXT,
+            quarantine_flag         INTEGER NOT NULL DEFAULT 0,
+            quarantine_release_date TEXT,
+            permit_number           TEXT,
+            permit_expiry           TEXT,
+            ip_flag                 INTEGER NOT NULL DEFAULT 0,
+            ip_notes                TEXT,
+            environmental_notes     TEXT,
+            subculture_count        INTEGER NOT NULL DEFAULT 0,
+            parent_specimen_id      TEXT    REFERENCES specimens_v16(id),
+            qr_code_data            TEXT,
+            notes                   TEXT,
+            is_archived             INTEGER NOT NULL DEFAULT 0,
+            archived_at             TEXT,
+            employee_id             TEXT,
+            created_by              TEXT    REFERENCES users(id),
+            created_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at              TEXT    NOT NULL DEFAULT (datetime('now')),
+            generation              INTEGER NOT NULL DEFAULT 0,
+            lineage_passage_offset  INTEGER NOT NULL DEFAULT 0,
+            root_specimen_id        TEXT    REFERENCES specimens_v16(id),
+            contamination_flag      INTEGER NOT NULL DEFAULT 0,
+            contamination_notes     TEXT
+        );
+
+        INSERT INTO specimens_v16 (
+            id, accession_number, species_id, project_id, stage, custom_stage,
+            provenance, source_plant, initiation_date, location, location_details,
+            propagation_method, acclimatization_status, health_status, disease_status,
+            quarantine_flag, quarantine_release_date, permit_number, permit_expiry,
+            ip_flag, ip_notes, environmental_notes, subculture_count, parent_specimen_id,
+            qr_code_data, notes, is_archived, archived_at, employee_id, created_by,
+            created_at, updated_at, generation, lineage_passage_offset, root_specimen_id,
+            contamination_flag, contamination_notes
+        )
+        SELECT
+            id, accession_number, species_id, project_id, stage, custom_stage,
+            provenance, source_plant, initiation_date, location, location_details,
+            propagation_method, acclimatization_status, health_status, disease_status,
+            quarantine_flag, quarantine_release_date, permit_number, permit_expiry,
+            ip_flag, ip_notes, environmental_notes, subculture_count, parent_specimen_id,
+            qr_code_data, notes, is_archived, archived_at, employee_id, created_by,
+            created_at, updated_at,
+            COALESCE(generation, 0),
+            COALESCE(lineage_passage_offset, 0),
+            root_specimen_id,
+            COALESCE(contamination_flag, 0),
+            contamination_notes
+        FROM specimens;
+
+        DROP TABLE specimens;
+        ALTER TABLE specimens_v16 RENAME TO specimens;
+
+        CREATE INDEX IF NOT EXISTS idx_specimens_accession
+            ON specimens(accession_number);
+        CREATE INDEX IF NOT EXISTS idx_specimens_species
+            ON specimens(species_id);
+        CREATE INDEX IF NOT EXISTS idx_specimens_project
+            ON specimens(project_id);
+        CREATE INDEX IF NOT EXISTS idx_specimens_stage
+            ON specimens(stage);
+        CREATE INDEX IF NOT EXISTS idx_specimens_quarantine
+            ON specimens(quarantine_flag);
+        CREATE INDEX IF NOT EXISTS idx_specimens_archived
+            ON specimens(is_archived);
+        CREATE INDEX IF NOT EXISTS idx_specimens_created_at
+            ON specimens(created_at);
+        CREATE INDEX IF NOT EXISTS idx_specimens_parent
+            ON specimens(parent_specimen_id);
+        CREATE INDEX IF NOT EXISTS idx_specimens_archived_created
+            ON specimens(is_archived, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_specimens_root
+            ON specimens(root_specimen_id);
+        COMMIT;
+    ");
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+    result?;
+
+    Ok(())
+}
+
+fn migration_017_remaining_vocabularies(conn: &Connection) -> DbResult<()> {
+    // WP-24: remaining vocabulary tables — hormone_types, compliance_record_types,
+    // compliance_agencies, inventory_categories — all profile-scoped and seeded with
+    // plant_tissue_culture values.  Then rebuilds media_hormones, compliance_records,
+    // and inventory_items to drop their respective CHECK constraints in one pass.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS hormone_types (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile    TEXT    NOT NULL,
+            code       TEXT    NOT NULL,
+            label      TEXT    NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(profile, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_hormone_types_profile
+            ON hormone_types(profile, sort_order);
+
+        INSERT OR IGNORE INTO hormone_types (profile, code, label, sort_order) VALUES
+            ('plant_tissue_culture', 'auxin',       'Auxin',       1),
+            ('plant_tissue_culture', 'cytokinin',   'Cytokinin',   2),
+            ('plant_tissue_culture', 'gibberellin', 'Gibberellin', 3),
+            ('plant_tissue_culture', 'other',       'Other',       4);
+
+        CREATE TABLE IF NOT EXISTS compliance_record_types (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile    TEXT    NOT NULL,
+            code       TEXT    NOT NULL,
+            label      TEXT    NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(profile, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_compliance_record_types_profile
+            ON compliance_record_types(profile, sort_order);
+
+        INSERT OR IGNORE INTO compliance_record_types (profile, code, label, sort_order) VALUES
+            ('plant_tissue_culture', 'disease_test',       'Disease Test',         1),
+            ('plant_tissue_culture', 'permit',             'Permit',               2),
+            ('plant_tissue_culture', 'phytosanitary_cert', 'Phytosanitary Cert.',  3),
+            ('plant_tissue_culture', 'inspection',         'Inspection',           4),
+            ('plant_tissue_culture', 'quarantine',         'Quarantine',           5),
+            ('plant_tissue_culture', 'movement_permit',    'Movement Permit',      6),
+            ('plant_tissue_culture', 'pest_risk',          'Pest Risk Assessment', 7),
+            ('plant_tissue_culture', 'export_cert',        'Export Certificate',   8),
+            ('plant_tissue_culture', 'other',              'Other',                9);
+
+        CREATE TABLE IF NOT EXISTS compliance_agencies (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile    TEXT    NOT NULL,
+            code       TEXT    NOT NULL,
+            label      TEXT    NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(profile, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_compliance_agencies_profile
+            ON compliance_agencies(profile, sort_order);
+
+        INSERT OR IGNORE INTO compliance_agencies (profile, code, label, sort_order) VALUES
+            ('plant_tissue_culture', 'USDA_APHIS', 'USDA APHIS',               1),
+            ('plant_tissue_culture', 'TX_AG',      'TX Dept. of Agriculture',  2),
+            ('plant_tissue_culture', 'FL_FDACS',   'FL FDACS',                 3),
+            ('plant_tissue_culture', 'other',      'Other',                    4);
+
+        CREATE TABLE IF NOT EXISTS inventory_categories (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            profile    TEXT    NOT NULL,
+            code       TEXT    NOT NULL,
+            label      TEXT    NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            UNIQUE(profile, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_inventory_categories_profile
+            ON inventory_categories(profile, sort_order);
+
+        INSERT OR IGNORE INTO inventory_categories (profile, code, label, sort_order) VALUES
+            ('plant_tissue_culture', 'media_ingredient', 'Media Ingredient', 1),
+            ('plant_tissue_culture', 'vessel',           'Vessel',           2),
+            ('plant_tissue_culture', 'hormone',          'Hormone',          3),
+            ('plant_tissue_culture', 'chemical',         'Chemical',         4),
+            ('plant_tissue_culture', 'consumable',       'Consumable',       5),
+            ('plant_tissue_culture', 'equipment',        'Equipment',        6),
+            ('plant_tissue_culture', 'other',            'Other',            7);
+    ")?;
+
+    // Rebuild three tables to drop their CHECK constraints in one PRAGMA OFF/ON window.
+    conn.execute("PRAGMA foreign_keys = OFF", [])?;
+    let result = conn.execute_batch("
+        BEGIN;
+        -- media_hormones: drop CHECK on hormone_type.
+        -- amount_used and amount_unit (added by ALTER in migration_002) are included.
+        CREATE TABLE IF NOT EXISTS media_hormones_v17 (
+            id                     TEXT PRIMARY KEY,
+            media_batch_id         TEXT NOT NULL REFERENCES media_batches(id) ON DELETE CASCADE,
+            hormone_name           TEXT NOT NULL,
+            hormone_type           TEXT,
+            concentration_mg_per_l REAL NOT NULL,
+            supplier               TEXT,
+            lot_number             TEXT,
+            reagent_batch_id       TEXT,
+            amount_used            REAL,
+            amount_unit            TEXT
+        );
+
+        INSERT INTO media_hormones_v17
+        SELECT id, media_batch_id, hormone_name, hormone_type,
+               concentration_mg_per_l, supplier, lot_number, reagent_batch_id,
+               amount_used, amount_unit
+        FROM media_hormones;
+
+        DROP TABLE media_hormones;
+        ALTER TABLE media_hormones_v17 RENAME TO media_hormones;
+
+        -- compliance_records: drop CHECK on record_type and agency.
+        -- test_result and status CHECKs are kept (operational, not vocabulary-driven).
+        CREATE TABLE IF NOT EXISTS compliance_records_v17 (
+            id               TEXT PRIMARY KEY,
+            specimen_id      TEXT NOT NULL REFERENCES specimens(id) ON DELETE CASCADE,
+            record_type      TEXT NOT NULL,
+            agency           TEXT,
+            permit_number    TEXT,
+            permit_expiry    TEXT,
+            test_type        TEXT,
+            test_method      TEXT,
+            test_date        TEXT,
+            test_lab         TEXT,
+            test_result      TEXT CHECK(test_result IN (
+                                 'positive','negative','inconclusive','pending',NULL
+                             )),
+            status           TEXT NOT NULL DEFAULT 'valid' CHECK(status IN (
+                                 'valid','expired','pending','flagged','revoked'
+                             )),
+            flag_reason      TEXT,
+            chain_of_custody TEXT,
+            notes            TEXT,
+            document_path    TEXT,
+            created_by       TEXT REFERENCES users(id),
+            created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO compliance_records_v17
+        SELECT id, specimen_id, record_type, agency, permit_number, permit_expiry,
+               test_type, test_method, test_date, test_lab, test_result, status,
+               flag_reason, chain_of_custody, notes, document_path,
+               created_by, created_at, updated_at
+        FROM compliance_records;
+
+        DROP TABLE compliance_records;
+        ALTER TABLE compliance_records_v17 RENAME TO compliance_records;
+
+        CREATE INDEX IF NOT EXISTS idx_compliance_specimen
+            ON compliance_records(specimen_id);
+        CREATE INDEX IF NOT EXISTS idx_compliance_type
+            ON compliance_records(record_type);
+        CREATE INDEX IF NOT EXISTS idx_compliance_status
+            ON compliance_records(status);
+
+        -- inventory_items: drop CHECK on category.
+        -- physical_state, concentration, concentration_unit (added by ALTER in migration_002)
+        -- are included in the rebuild.
+        CREATE TABLE IF NOT EXISTS inventory_items_v17 (
+            id                TEXT PRIMARY KEY,
+            name              TEXT NOT NULL,
+            category          TEXT NOT NULL,
+            unit              TEXT NOT NULL,
+            current_stock     REAL NOT NULL DEFAULT 0,
+            minimum_stock     REAL NOT NULL DEFAULT 0,
+            reorder_point     REAL,
+            supplier          TEXT,
+            catalog_number    TEXT,
+            lot_number        TEXT,
+            storage_location  TEXT,
+            expiration_date   TEXT,
+            cost_per_unit     REAL,
+            notes             TEXT,
+            created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at        TEXT NOT NULL DEFAULT (datetime('now')),
+            physical_state    TEXT DEFAULT 'solid',
+            concentration     REAL,
+            concentration_unit TEXT
+        );
+
+        INSERT INTO inventory_items_v17
+        SELECT id, name, category, unit, current_stock, minimum_stock, reorder_point,
+               supplier, catalog_number, lot_number, storage_location, expiration_date,
+               cost_per_unit, notes, created_at, updated_at,
+               COALESCE(physical_state, 'solid'), concentration, concentration_unit
+        FROM inventory_items;
+
+        DROP TABLE inventory_items;
+        ALTER TABLE inventory_items_v17 RENAME TO inventory_items;
+        COMMIT;
+    ");
+    conn.execute("PRAGMA foreign_keys = ON", [])?;
+    result?;
+
     Ok(())
 }
 
@@ -972,4 +1350,154 @@ pub fn seed_defaults(conn: &Connection) -> DbResult<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn migrated_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        run_all(&conn).expect("all migrations must succeed on a fresh in-memory DB");
+        conn
+    }
+
+    #[test]
+    fn all_migrations_run_on_empty_db() {
+        let _ = migrated_db();
+    }
+
+    #[test]
+    fn migrations_are_idempotent() {
+        // Running run_all a second time on an already-migrated DB should be a no-op.
+        let conn = migrated_db();
+        run_all(&conn).expect("second run of migrations must not error");
+    }
+
+    #[test]
+    fn stages_has_fifteen_ptc_entries() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 15, "expected 15 PTC stage entries from seed data");
+    }
+
+    #[test]
+    fn only_archived_stage_is_terminal() {
+        let conn = migrated_db();
+        let terminal: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT code FROM stages \
+                     WHERE profile = 'plant_tissue_culture' AND is_terminal = 1",
+                )
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+        assert_eq!(terminal, vec!["archived"],
+            "exactly one stage should be terminal, and it must be 'archived'");
+    }
+
+    #[test]
+    fn non_terminal_stages_count_is_fourteen() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages \
+                 WHERE profile = 'plant_tissue_culture' AND is_terminal = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 14,
+            "14 non-terminal stages should be available for selection in the UI");
+    }
+
+    #[test]
+    fn propagation_methods_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM propagation_methods WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 7);
+    }
+
+    #[test]
+    fn compliance_record_types_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM compliance_record_types WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 9);
+    }
+
+    #[test]
+    fn inventory_categories_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM inventory_categories WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 7);
+    }
+
+    #[test]
+    fn hormone_types_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM hormone_types WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn specimen_with_valid_stage_persists_after_migration() {
+        let conn = migrated_db();
+        // Insert a species first (required FK).
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-01')",
+            [],
+        )
+        .unwrap();
+        let now = "2026-01-01";
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, \
+              quarantine_flag, ip_flag, subculture_count, is_archived, contamination_flag, \
+              generation, lineage_passage_offset, created_at, updated_at) \
+             VALUES ('s1', '2026-01-01-CIT-01-001', 'sp1', 'explant', ?1, \
+                     0, 0, 0, 0, 0, 0, 0, ?1, ?1)",
+            [now],
+        )
+        .unwrap();
+        let stage: String = conn
+            .query_row("SELECT stage FROM specimens WHERE id = 's1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stage, "explant");
+    }
 }

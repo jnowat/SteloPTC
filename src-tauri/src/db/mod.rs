@@ -1,5 +1,6 @@
 pub mod migrations;
 pub mod queries;
+pub mod vocabulary;
 
 use rusqlite::Connection;
 use std::path::PathBuf;

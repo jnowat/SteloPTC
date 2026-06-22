@@ -976,19 +976,15 @@ pub fn bulk_update_stage(
     if ids.is_empty() {
         return Ok(0);
     }
-    const VALID_STAGES: &[&str] = &[
-        "explant", "callus", "suspension", "protoplast",
-        "shoot", "shoot_meristem", "apical_meristem",
-        "root", "root_meristem",
-        "embryogenic", "plantlet", "acclimatized", "stock", "custom",
-    ];
-    if !VALID_STAGES.contains(&stage.as_str()) {
-        return Err(format!("Invalid stage: {}", stage));
-    }
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
+    }
+    // Validate against the vocabulary table; is_terminal = 0 prevents setting 'archived' in bulk.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
+    if !crate::db::vocabulary::stage_is_selectable(&db.conn, &profile, &stage) {
+        return Err(format!("'{}' is not a valid or selectable stage", stage));
     }
     let mut count = 0usize;
     for id in &ids {

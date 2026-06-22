@@ -359,6 +359,34 @@ export async function setLabProfile(profile: string) {
   return call<void>('set_lab_profile', { profile });
 }
 
+// Vocabulary lookups (WP-23 / WP-24) — returns entries for the active lab profile.
+export type VocabEntry = { id: number; code: string; label: string; sort_order: number };
+export type StageEntry = VocabEntry & { is_terminal: boolean };
+
+export async function listStages() {
+  return call<StageEntry[]>('list_stages');
+}
+
+export async function listPropagationMethods() {
+  return call<VocabEntry[]>('list_propagation_methods');
+}
+
+export async function listHormoneTypes() {
+  return call<VocabEntry[]>('list_hormone_types');
+}
+
+export async function listComplianceRecordTypes() {
+  return call<VocabEntry[]>('list_compliance_record_types');
+}
+
+export async function listComplianceAgencies() {
+  return call<VocabEntry[]>('list_compliance_agencies');
+}
+
+export async function listInventoryCategories() {
+  return call<VocabEntry[]>('list_inventory_categories');
+}
+
 // Prepared Solutions
 export async function listPreparedSolutions() {
   return call<any[]>('list_prepared_solutions');
