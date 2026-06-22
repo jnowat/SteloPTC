@@ -362,91 +362,8 @@ pub fn get_contamination_stats(
 ) -> Result<ContaminationStats, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-
-    let total_specimens: i64 = db.conn.query_row(
-        "SELECT COUNT(*) FROM specimens WHERE is_archived = 0",
-        [],
-        |r| r.get(0),
-    ).unwrap_or(0);
-
-    let contaminated_specimens: i64 = db.conn.query_row(
-        "SELECT COUNT(DISTINCT sc.specimen_id)
-         FROM subcultures sc
-         JOIN specimens sp ON sc.specimen_id = sp.id
-         WHERE sc.contamination_flag = 1 AND sp.is_archived = 0",
-        [],
-        |r| r.get(0),
-    ).unwrap_or(0);
-
-    let contamination_rate_pct = if total_specimens > 0 {
-        (contaminated_specimens as f64 / total_specimens as f64) * 100.0
-    } else {
-        0.0
-    };
-
-    let contaminated_vessels: i64 = db.conn.query_row(
-        "SELECT COUNT(*) FROM subcultures WHERE contamination_flag = 1",
-        [],
-        |r| r.get(0),
-    ).unwrap_or(0);
-
-    let mut stmt = db.conn.prepare(
-        "SELECT COALESCE(vessel_type, 'Unknown') as vessel_type, COUNT(*) as cnt
-         FROM subcultures
-         WHERE contamination_flag = 1
-         GROUP BY vessel_type
-         ORDER BY cnt DESC
-         LIMIT 10"
-    ).map_err(|e| e.to_string())?;
-
-    let by_vessel_type: Vec<VesselContaminationCount> = stmt
-        .query_map([], |row| {
-            Ok(VesselContaminationCount {
-                vessel_type: row.get("vessel_type")?,
-                count: row.get("cnt")?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    let mut stmt2 = db.conn.prepare(
-        "SELECT sc.id as subculture_id, sc.specimen_id, sp.accession_number,
-                s.species_code, sc.passage_number, sc.date, sc.vessel_type,
-                sc.contamination_notes
-         FROM subcultures sc
-         JOIN specimens sp ON sc.specimen_id = sp.id
-         JOIN species s ON sp.species_id = s.id
-         WHERE sc.contamination_flag = 1
-         ORDER BY sc.date DESC
-         LIMIT 10"
-    ).map_err(|e| e.to_string())?;
-
-    let recent_events: Vec<RecentContaminationEvent> = stmt2
-        .query_map([], |row| {
-            Ok(RecentContaminationEvent {
-                subculture_id: row.get("subculture_id")?,
-                specimen_id: row.get("specimen_id")?,
-                accession_number: row.get("accession_number")?,
-                species_code: row.get("species_code")?,
-                passage_number: row.get("passage_number")?,
-                date: row.get("date")?,
-                vessel_type: row.get("vessel_type")?,
-                contamination_notes: row.get("contamination_notes")?,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(ContaminationStats {
-        total_specimens,
-        contaminated_specimens,
-        contamination_rate_pct,
-        contaminated_vessels,
-        by_vessel_type,
-        recent_events,
-    })
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
+    crate::db::dashboard::query_contamination_stats(&db.conn, &profile)
 }
 
 // ── Subculture Schedule ──────────────────────────────────────────────────────
@@ -458,57 +375,7 @@ pub fn get_subculture_schedule(
 ) -> Result<Vec<SubcultureScheduleEntry>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-
-    // For each active specimen, compute next due date using the species default
-    // subculture interval and the date of the most recent passage.
-    let mut stmt = db.conn.prepare(
-        "SELECT
-            sp.id              AS specimen_id,
-            sp.accession_number,
-            s.species_code     AS species_code,
-            (s.genus || ' ' || s.species_name) AS species_name,
-            sp.location,
-            MAX(sc.date)       AS last_passage_date,
-            s.default_subculture_interval_days AS interval_days,
-            CASE
-                WHEN s.default_subculture_interval_days IS NOT NULL AND MAX(sc.date) IS NOT NULL
-                THEN date(MAX(sc.date), '+' || s.default_subculture_interval_days || ' days')
-                ELSE NULL
-            END AS next_due_date,
-            CASE
-                WHEN s.default_subculture_interval_days IS NOT NULL AND MAX(sc.date) IS NOT NULL
-                THEN CAST(julianday(date(MAX(sc.date), '+' || s.default_subculture_interval_days || ' days')) - julianday('now') AS INTEGER)
-                ELSE NULL
-            END AS days_until_due
-         FROM specimens sp
-         JOIN species s ON sp.species_id = s.id
-         LEFT JOIN subcultures sc ON sc.specimen_id = sp.id
-         WHERE sp.is_archived = 0
-         GROUP BY sp.id
-         ORDER BY days_until_due ASC NULLS LAST"
-    ).map_err(|e| e.to_string())?;
-
-    let entries: Vec<SubcultureScheduleEntry> = stmt
-        .query_map([], |row| {
-            let days_until_due: Option<i64> = row.get("days_until_due")?;
-            let is_overdue = days_until_due.map(|d| d < 0).unwrap_or(false);
-            Ok(SubcultureScheduleEntry {
-                specimen_id: row.get("specimen_id")?,
-                accession_number: row.get("accession_number")?,
-                species_code: row.get("species_code")?,
-                species_name: row.get("species_name")?,
-                location: row.get("location")?,
-                last_passage_date: row.get("last_passage_date")?,
-                interval_days: row.get("interval_days")?,
-                next_due_date: row.get("next_due_date")?,
-                days_until_due,
-                is_overdue,
-            })
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
-
-    Ok(entries)
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
+    crate::db::dashboard::query_subculture_schedule(&db.conn, &profile)
 }
 

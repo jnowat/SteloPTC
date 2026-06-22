@@ -3,7 +3,7 @@ use crate::db::queries;
 use crate::models::specimen::{
     CreateSpecimenRequest, FamilyMember, PaginatedResponse, Specimen, SpecimenSearchParams,
     SpecimenStats, SplitChildResult, SplitResult, SplitSpecimenRequest,
-    StageCount, SpeciesCount, UpdateSpecimenRequest,
+    UpdateSpecimenRequest,
 };
 use crate::AppState;
 use rusqlite::params;
@@ -498,45 +498,8 @@ pub fn search_specimens(
 pub fn get_specimen_stats(state: State<AppState>, token: String) -> Result<SpecimenStats, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-
-    let total: i64 = db.conn.query_row("SELECT COUNT(*) FROM specimens", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    let active: i64 = db.conn.query_row("SELECT COUNT(*) FROM specimens WHERE is_archived = 0", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    let quarantined: i64 = db.conn.query_row("SELECT COUNT(*) FROM specimens WHERE quarantine_flag = 1 AND is_archived = 0", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-    let archived: i64 = db.conn.query_row("SELECT COUNT(*) FROM specimens WHERE is_archived = 1", [], |r| r.get(0))
-        .map_err(|e| e.to_string())?;
-
-    let mut stage_stmt = db.conn.prepare(
-        "SELECT stage, COUNT(*) FROM specimens WHERE is_archived = 0 GROUP BY stage ORDER BY COUNT(*) DESC"
-    ).map_err(|e| e.to_string())?;
-    let by_stage: Vec<StageCount> = stage_stmt.query_map([], |row| {
-        Ok(StageCount { stage: row.get(0)?, count: row.get(1)? })
-    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
-
-    let mut species_stmt = db.conn.prepare(
-        "SELECT sp.species_code, COUNT(*) FROM specimens s
-         JOIN species sp ON s.species_id = sp.id WHERE s.is_archived = 0
-         GROUP BY sp.species_code ORDER BY COUNT(*) DESC"
-    ).map_err(|e| e.to_string())?;
-    let by_species: Vec<SpeciesCount> = species_stmt.query_map([], |row| {
-        Ok(SpeciesCount { species_code: row.get(0)?, count: row.get(1)? })
-    }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
-
-    let recent: i64 = db.conn.query_row(
-        "SELECT COUNT(*) FROM subcultures WHERE date >= date('now', '-7 days')", [], |r| r.get(0)
-    ).map_err(|e| e.to_string())?;
-
-    Ok(SpecimenStats {
-        total_specimens: total,
-        active_specimens: active,
-        quarantined,
-        archived,
-        by_stage,
-        by_species,
-        recent_subcultures: recent,
-    })
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
+    crate::db::dashboard::query_specimen_stats(&db.conn, &profile)
 }
 
 #[tauri::command]

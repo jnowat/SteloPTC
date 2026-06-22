@@ -260,7 +260,7 @@
       </div>
 
       <div class="panel">
-        <h3 title="Distribution of active specimens across culture stages">Specimens by Stage</h3>
+        <h3 title="Distribution of active specimens across stages defined for the active lab profile">Specimens by Stage</h3>
         {#if stats.by_stage.length === 0}
           <p class="empty-state">No specimens yet</p>
         {:else}
