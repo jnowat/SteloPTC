@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem, adjustStock, listPreparedSolutions, createPreparedSolution, updatePreparedSolution, deletePreparedSolution } from '../api';
+  import { listInventory, createInventoryItem, updateInventoryItem, deleteInventoryItem, adjustStock, listPreparedSolutions, createPreparedSolution, updatePreparedSolution, deletePreparedSolution, listInventoryCategories } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
@@ -36,19 +36,12 @@
   });
   let editingSolutionId = $state<string | null>(null);
 
-  const categories = [
-    { value: 'media_ingredient', label: 'Media Ingredient' },
-    { value: 'vessel', label: 'Vessel' },
-    { value: 'hormone', label: 'Hormone' },
-    { value: 'chemical', label: 'Chemical' },
-    { value: 'consumable', label: 'Consumable' },
-    { value: 'equipment', label: 'Equipment' },
-    { value: 'other', label: 'Other' },
-  ];
+  let categories = $state<any[]>([]);
 
   onMount(() => {
     load();
     listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
+    listInventoryCategories().then(c => categories = c).catch(() => {});
   });
 
   async function load() {
@@ -179,7 +172,7 @@
   }
 
   function getCategoryLabel(val: string): string {
-    return categories.find(c => c.value === val)?.label || val;
+    return categories.find(c => c.code === val)?.label || val;
   }
 
   function getFilteredItems(): any[] {
@@ -281,7 +274,7 @@
             <label title="The category this item belongs to — affects how it is grouped and reported">Category *</label>
             <select title="Select the category: media ingredient, vessel, hormone, chemical, consumable, equipment, or other" bind:value={form.category} required>
               {#each categories as cat}
-                <option value={cat.value}>{cat.label}</option>
+                <option value={cat.code}>{cat.label}</option>
               {/each}
             </select>
           </div>
@@ -394,7 +387,7 @@
     <select title="Filter inventory items by category" bind:value={filterCategory} style="max-width:180px;">
       <option value="">All Categories</option>
       {#each categories as cat}
-        <option value={cat.value}>{cat.label}</option>
+        <option value={cat.code}>{cat.label}</option>
       {/each}
     </select>
     <label title="Show only items that are currently below their minimum or reorder stock threshold" style="display:inline-flex; align-items:center; gap:6px; font-size:13px; text-transform:none; letter-spacing:0; cursor:pointer;">

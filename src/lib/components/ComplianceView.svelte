@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listComplianceRecords, getComplianceFlags, createComplianceRecord } from '../api';
+  import { listComplianceRecords, getComplianceFlags, createComplianceRecord, listComplianceRecordTypes, listComplianceAgencies } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
@@ -20,10 +20,14 @@
     test_lab: '', test_result: '', permit_number: '', permit_expiry: '', notes: '',
   });
 
-  const recordTypes = ['disease_test', 'permit', 'phytosanitary_cert', 'inspection', 'quarantine', 'movement_permit', 'pest_risk', 'export_cert', 'other'];
-  const agencies = ['USDA_APHIS', 'TX_AG', 'FL_FDACS', 'other'];
+  let recordTypes = $state<any[]>([]);
+  let agencies = $state<any[]>([]);
 
-  onMount(() => { load(); });
+  onMount(() => {
+    load();
+    listComplianceRecordTypes().then(r => recordTypes = r).catch(() => {});
+    listComplianceAgencies().then(a => agencies = a).catch(() => {});
+  });
 
   async function load() {
     loading = true;
@@ -88,7 +92,7 @@
             <label title="Category of compliance record being created">Record Type</label>
             <select title="Select the type of compliance record" bind:value={form.record_type}>
               {#each recordTypes as t}
-                <option value={t}>{t.replace(/_/g, ' ')}</option>
+                <option value={t.code}>{t.label}</option>
               {/each}
             </select>
           </div>
@@ -99,7 +103,7 @@
             <select title="Select the governing regulatory agency" bind:value={form.agency}>
               <option value="">Select...</option>
               {#each agencies as a}
-                <option value={a}>{a.replace(/_/g, ' ')}</option>
+                <option value={a.code}>{a.label}</option>
               {/each}
             </select>
           </div>

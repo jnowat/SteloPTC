@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages } from '../api';
+  import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
   import SpecimenComplianceTable from './SpecimenComplianceTable.svelte';
   import SpecimenPassageTimeline from './SpecimenPassageTimeline.svelte';
@@ -60,19 +61,11 @@
   let draftMediaName = $state('');
   let draftMediaSubmitting = $state(false);
 
-  const stageOptions = [
-    { value: 'explant', label: 'Explant' },
-    { value: 'callus', label: 'Callus' },
-    { value: 'suspension', label: 'Suspension' },
-    { value: 'protoplast', label: 'Protoplast' },
-    { value: 'shoot', label: 'Shoot' },
-    { value: 'root', label: 'Root' },
-    { value: 'embryogenic', label: 'Embryogenic' },
-    { value: 'plantlet', label: 'Plantlet' },
-    { value: 'acclimatized', label: 'Acclimatized' },
-    { value: 'stock', label: 'Stock' },
-    { value: 'custom', label: 'Custom' },
-  ];
+  let stageOptions = $state<any[]>([]);
+
+  onMount(() => {
+    listStages().then(s => stageOptions = s).catch(() => {});
+  });
 
   // Per-child configuration array for split mode
   function makeChild() {
@@ -1112,7 +1105,7 @@ ${complianceSection}
                         <label for="split-{i}-stage" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Stage</label>
                         <select id="split-{i}-stage" bind:value={child.stage} title="Stage for child {letter}">
                           {#each stageOptions as opt}
-                            <option value={opt.value}>{opt.label}</option>
+                            <option value={opt.code}>{opt.label}</option>
                           {/each}
                         </select>
                       </div>

@@ -129,6 +129,13 @@ pub fn run() {
             commands::admin::load_demo_data,
             commands::admin::get_lab_profile,
             commands::admin::set_lab_profile,
+            // Vocabulary lookups (WP-23 / WP-24)
+            commands::vocabulary::list_stages,
+            commands::vocabulary::list_propagation_methods,
+            commands::vocabulary::list_hormone_types,
+            commands::vocabulary::list_compliance_record_types,
+            commands::vocabulary::list_compliance_agencies,
+            commands::vocabulary::list_inventory_categories,
             // Error Logs
             commands::error_logs::log_error,
             commands::error_logs::list_error_logs,

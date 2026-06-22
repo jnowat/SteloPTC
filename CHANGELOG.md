@@ -5,6 +5,34 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-06-21
+
+### Added — WP-23 & WP-24: Profile-Scoped Vocabulary Tables
+
+**WP-23 — stages lookup table**
+
+- **Migration 016**: creates `stages` table (`profile`, `code`, `label`, `sort_order`, `is_terminal`); seeds all 15 plant tissue culture stage codes; rebuilds `specimens` in one pass to drop the `CHECK(stage IN (...))` constraint while keeping `acclimatization_status` CHECK intact. All existing specimen rows remain valid.
+- Adding a new stage for any profile now requires only a row insert — no code change, no migration.
+- `list_stages` Tauri command returns stages ordered by `sort_order` for the active lab profile.
+- `SpecimenForm.svelte` and `SpecimenDetail.svelte` now populate their stage dropdowns from `list_stages` instead of hardcoded arrays.
+
+**WP-24 — remaining vocabulary tables**
+
+- **Migration 017**: creates four additional lookup tables — `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` — all profile-scoped and seeded with plant tissue culture values; then rebuilds `media_hormones`, `compliance_records`, and `inventory_items` in one FK OFF/ON window to drop their respective `CHECK` constraints. Groups all three rebuilds together to minimise the number of table-rebuild migrations.
+- `list_propagation_methods`, `list_hormone_types`, `list_compliance_record_types`, `list_compliance_agencies`, `list_inventory_categories` Tauri commands added.
+- `SpecimenForm.svelte`: propagation method dropdown populated from `list_propagation_methods`.
+- `ComplianceView.svelte`: record type and agency dropdowns populated from `list_compliance_record_types` / `list_compliance_agencies`.
+- `InventoryManager.svelte`: category dropdown and label function populated from `list_inventory_categories`.
+- New `src/lib/api.ts` exports: `listStages`, `listPropagationMethods`, `listHormoneTypes`, `listComplianceRecordTypes`, `listComplianceAgencies`, `listInventoryCategories`; `VocabEntry` and `StageEntry` types.
+- New `commands/vocabulary.rs` module with all six vocabulary query commands.
+
+### Changed
+
+- Version bumped to 1.12.0 across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+- All six vocabulary commands registered in `lib.rs` `invoke_handler`.
+
+---
+
 ## [1.11.0] - 2026-06-21
 
 ### Added — Dead Specimen Workflow & Lab Profile (WP-22)
