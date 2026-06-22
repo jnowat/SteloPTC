@@ -5,6 +5,25 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-06-22
+
+### Added — WP-27: Seed Minimal Usable `cell_culture` Profile
+
+- **Migration 018** — inserts seed vocabulary for the `cell_culture` profile into all six vocabulary tables using `INSERT OR IGNORE` inside a single transaction; no schema changes, no table rebuilds, no existing data touched.
+  - **Stages (12):** Primary Culture, Subculture, Expansion, Maintenance, Differentiation, Characterization, Selection, Stable Cell Line, Cryo Stock, Thaw Recovery, Archived *(terminal)*, Custom.
+  - **Propagation methods (7):** Trypsin Passage, Mechanical Passage, Suspension Dilution, Feeder-Free, Feeder-Dependent, Spin-out & Reseed, Other.
+  - **Hormone types (4):** Growth Factor, Cytokine, Steroid, Other.
+  - **Compliance record types (9):** Mycoplasma Test, Sterility Test, Identity Test, BSL Review, IRB Approval, Material Transfer, Cert. of Analysis, Permit, Other.
+  - **Compliance agencies (4):** CDC / NIH, FDA CBER, USDA APHIS, Other.
+  - **Inventory categories (7):** Cell Culture Media, Serum / Serum-Free, Enzyme, Growth Supplement, Vessel, Cryoprotectant, Other.
+- **9 new Rust unit tests** in `db/migrations.rs` verifying: stage count (12), single terminal stage (`archived`), non-terminal count (11), propagation method count (7), hormone type count (4), compliance record type count (9), compliance agency count (4), inventory category count (7), and isolation from `plant_tissue_culture` (PTC stage and propagation method counts unchanged).
+
+### Changed
+
+- Version bumped to 1.15.0 across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+
+---
+
 ## [1.14.0] - 2026-06-22
 
 ### Added — WP-26: Lab Profile Switcher in Settings

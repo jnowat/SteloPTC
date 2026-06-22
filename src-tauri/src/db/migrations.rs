@@ -98,6 +98,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (17)", [])?;
     }
 
+    if current < 18 {
+        migration_018_cell_culture_vocabulary(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (18)", [])?;
+    }
+
     Ok(())
 }
 
@@ -466,6 +471,73 @@ fn migration_017_remaining_vocabularies(conn: &Connection) -> DbResult<()> {
     conn.execute("PRAGMA foreign_keys = ON", [])?;
     result?;
 
+    Ok(())
+}
+
+fn migration_018_cell_culture_vocabulary(conn: &Connection) -> DbResult<()> {
+    // WP-27: seed minimal vocabulary for the cell_culture profile.
+    // All tables already exist from migrations 016/017; this is purely additive.
+    // INSERT OR IGNORE keeps re-runs safe with no duplicates.
+    conn.execute_batch("
+        BEGIN;
+
+        INSERT OR IGNORE INTO stages (profile, code, label, sort_order, is_terminal) VALUES
+            ('cell_culture', 'primary',          'Primary Culture',  1,  0),
+            ('cell_culture', 'subculture',       'Subculture',       2,  0),
+            ('cell_culture', 'expansion',        'Expansion',        3,  0),
+            ('cell_culture', 'maintenance',      'Maintenance',      4,  0),
+            ('cell_culture', 'differentiation',  'Differentiation',  5,  0),
+            ('cell_culture', 'characterization', 'Characterization', 6,  0),
+            ('cell_culture', 'selection',        'Selection',        7,  0),
+            ('cell_culture', 'stable_line',      'Stable Cell Line', 8,  0),
+            ('cell_culture', 'cryo_stock',       'Cryo Stock',       9,  0),
+            ('cell_culture', 'thaw_recovery',    'Thaw Recovery',    10, 0),
+            ('cell_culture', 'archived',         'Archived',         11, 1),
+            ('cell_culture', 'custom',           'Custom',           12, 0);
+
+        INSERT OR IGNORE INTO propagation_methods (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'trypsin_passage',     'Trypsin Passage',     1),
+            ('cell_culture', 'mechanical_passage',  'Mechanical Passage',  2),
+            ('cell_culture', 'suspension_dilution', 'Suspension Dilution', 3),
+            ('cell_culture', 'feeder_free',         'Feeder-Free',         4),
+            ('cell_culture', 'feeder_dependent',    'Feeder-Dependent',    5),
+            ('cell_culture', 'spin_out',            'Spin-out & Reseed',   6),
+            ('cell_culture', 'other',               'Other',               7);
+
+        INSERT OR IGNORE INTO hormone_types (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'growth_factor', 'Growth Factor', 1),
+            ('cell_culture', 'cytokine',      'Cytokine',      2),
+            ('cell_culture', 'steroid',       'Steroid',       3),
+            ('cell_culture', 'other',         'Other',         4);
+
+        INSERT OR IGNORE INTO compliance_record_types (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'mycoplasma_test',   'Mycoplasma Test',    1),
+            ('cell_culture', 'sterility_test',    'Sterility Test',     2),
+            ('cell_culture', 'identity_test',     'Identity Test',      3),
+            ('cell_culture', 'bsl_review',        'BSL Review',         4),
+            ('cell_culture', 'irb_approval',      'IRB Approval',       5),
+            ('cell_culture', 'material_transfer', 'Material Transfer',  6),
+            ('cell_culture', 'coa',               'Cert. of Analysis',  7),
+            ('cell_culture', 'permit',            'Permit',             8),
+            ('cell_culture', 'other',             'Other',              9);
+
+        INSERT OR IGNORE INTO compliance_agencies (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'CDC_NIH',    'CDC / NIH',  1),
+            ('cell_culture', 'FDA_CBER',   'FDA CBER',   2),
+            ('cell_culture', 'USDA_APHIS', 'USDA APHIS', 3),
+            ('cell_culture', 'other',      'Other',      4);
+
+        INSERT OR IGNORE INTO inventory_categories (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'media',          'Cell Culture Media', 1),
+            ('cell_culture', 'serum',          'Serum / Serum-Free', 2),
+            ('cell_culture', 'enzyme',         'Enzyme',             3),
+            ('cell_culture', 'supplement',     'Growth Supplement',  4),
+            ('cell_culture', 'vessel',         'Vessel',             5),
+            ('cell_culture', 'cryoprotectant', 'Cryoprotectant',     6),
+            ('cell_culture', 'other',          'Other',              7);
+
+        COMMIT;
+    ")?;
     Ok(())
 }
 
@@ -1472,6 +1544,147 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 4);
+    }
+
+    // ── cell_culture vocabulary tests (WP-27) ──────────────────────────────
+
+    #[test]
+    fn cell_culture_stages_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 12, "expected 12 cell_culture stage entries from seed data");
+    }
+
+    #[test]
+    fn cell_culture_only_archived_is_terminal() {
+        let conn = migrated_db();
+        let terminal: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT code FROM stages \
+                     WHERE profile = 'cell_culture' AND is_terminal = 1",
+                )
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+        assert_eq!(terminal, vec!["archived"],
+            "exactly one cell_culture stage should be terminal, and it must be 'archived'");
+    }
+
+    #[test]
+    fn cell_culture_non_terminal_stages_count() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages \
+                 WHERE profile = 'cell_culture' AND is_terminal = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 11,
+            "11 non-terminal cell_culture stages should be available for selection");
+    }
+
+    #[test]
+    fn cell_culture_propagation_methods_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM propagation_methods WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 7);
+    }
+
+    #[test]
+    fn cell_culture_hormone_types_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM hormone_types WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn cell_culture_compliance_record_types_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM compliance_record_types WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 9);
+    }
+
+    #[test]
+    fn cell_culture_compliance_agencies_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM compliance_agencies WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn cell_culture_inventory_categories_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM inventory_categories WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 7);
+    }
+
+    #[test]
+    fn cell_culture_vocabulary_does_not_affect_ptc() {
+        let conn = migrated_db();
+        // PTC stage count must remain exactly 15 after migration 018.
+        let ptc_stages: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ptc_stages, 15,
+            "PTC stage count must be unchanged after cell_culture seeding");
+
+        // PTC propagation methods must still be 7.
+        let ptc_props: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM propagation_methods \
+                 WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ptc_props, 7,
+            "PTC propagation method count must be unchanged after cell_culture seeding");
     }
 
     #[test]
