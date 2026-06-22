@@ -4,6 +4,7 @@
   import { isLoggedIn, token, currentUser, clearAuth, initializing, mustChangePassword } from './lib/stores/auth';
   import { currentView, darkMode, navigateTo, setErrorLogger, unreadErrorCount, workQueueCount } from './lib/stores/app';
   import { getCurrentUser, logout as apiLogout, logError, getUnreadErrorCount, getWorkQueue } from './lib/api';
+  import { loadLabProfile } from './lib/profile';
   import Login from './lib/components/Login.svelte';
   import ForceChangePassword from './lib/components/ForceChangePassword.svelte';
   import Sidebar from './lib/components/Sidebar.svelte';
@@ -66,6 +67,7 @@
           initializing.set(false);
           refreshUnreadCount();
           refreshWorkQueueCount();
+          loadLabProfile();
         }).catch((err) => {
           console.warn('Session restore failed:', err);
           clearAuth();
