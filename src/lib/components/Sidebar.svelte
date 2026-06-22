@@ -1,10 +1,14 @@
 <script lang="ts">
   import { currentView, navigateTo, unreadErrorCount, workQueueCount, type View } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import { getVersion } from '@tauri-apps/api/app';
 
   let { onlogout, ontoggleDark, isDark }: { onlogout: () => void; ontoggleDark: () => void; isDark: boolean } = $props();
 
   let mobileOpen = $state(false);
+  let appVersion = $state('…');
+
+  getVersion().then(v => { appVersion = `v${v}`; });
 
   interface NavItem {
     id: View;
@@ -65,7 +69,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v1.7.0</span>
+    <span class="version" title="Application version">{appVersion}</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>

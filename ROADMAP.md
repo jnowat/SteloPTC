@@ -1,10 +1,10 @@
 # SteloPTC → Stelo Lab Suite — Engineering Roadmap
 
-**Status as of June 2026:** **v1.11.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Trust Layer Phase 1 complete (WP-18–21) · dead specimen workflow · lab_profile (WP-22) · Phase C WP-23+ in progress**
-**Schema:** **15 migrations** total; latest is **migration 015** (`event_type` on `subcultures` + `app_config` table with `lab_profile`, v1.11.0). Migration 014 added `is_auto`/`auto_source` to `audit_checkpoints` + `app_settings` (v1.10.0); 013 added the `audit_checkpoints` Merkle table (v1.9.0); 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` to `media_batches` (v1.8.0); 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002** and defensively rebuilt in **migration 003** — the table-rebuild pattern WP-23 will use one final time.
+**Status as of June 2026:** **v1.13.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Trust Layer Phase 1 complete (WP-18–21) · Phase C WP-22–25 shipped · profile-scoped vocabulary tables · profile-aware dashboard**
+**Schema:** **17 migrations** total; latest is **migration 017** (four remaining vocabulary lookup tables — `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` — rebuilt with dropped CHECK constraints, v1.12.0). Migration 016 created `stages` lookup table, dropped the `CHECK(stage IN (...))` constraint on `specimens`, and seeded all 15 PTC stage codes (v1.12.0); 015 added `event_type` on `subcultures` + `app_config` table with `lab_profile` (v1.11.0); 014 added `is_auto`/`auto_source` to `audit_checkpoints` + `app_settings` (v1.10.0); 013 added the `audit_checkpoints` Merkle table (v1.9.0); 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` to `media_batches` (v1.8.0); 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002**, defensively rebuilt in **migration 003**, and **finally dropped for good in migration 016** (WP-23) — no more CHECK-constraint rebuilds for vocabulary changes.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0; split workflow overhauled in v1.8.0 with letter-suffix accessions (001A/001B…), per-child controls, draft media batches, safety confirmation dialog, and synthetic split events in the passage timeline.
-**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅ — WP-20 Merkle checkpoints (v1.9.0) and WP-21 portable proof export + auto-checkpointing (v1.10.0) complete. Current focus: Phase C de-hardening (WP-22–27) **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Phase C work. Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. WP-22 (lab_profile + dead specimen workflow) shipped as **v1.11.0**; current active focus is WP-23 (stage CHECK → lookup table) alongside Phase TX-1 (WP-28–29). **Phase TX-1 targets v2.0.0.**
+**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅; Phase C WP-22–25 **fully shipped** ✅ — WP-22 lab_profile + dead specimen (v1.11.0), WP-23 stage lookup table (v1.12.0), WP-24 remaining vocabulary tables (v1.12.0), WP-25 profile-aware dashboard statistics (v1.13.0). Current focus: Phase C WP-26–27 **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Phase C work. Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. **Phase TX-1 targets v2.0.0.**
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -37,7 +37,7 @@ You want two things that pull against each other: **ship soon** and **three vert
 3.5. **Phase TX — Taxonomic & Provenance Module (Section 5).** Equal priority to Phase C and the remaining Trust Layer. Transforms the species registry into a true biological taxonomy: Strain/Cultivar as first-class entities, cryptographic version binding, pedigree tracking, hybridization support, and a powerful hierarchical navigator. Spans three TX sub-phases across v1.9 → v2.x → v3.x.
 4. **Phase D — Cell Culture vertical (Section 6)** and **Phase E — Mycology vertical (Section 7)**, built as *profiles* on the shared engine. Phase TX makes this cleaner: the generic taxonomy engine is already in place before Cell Culture or Mycology verticals need their own strain/cultivar concepts.
 
-> **Why de-harden before building verticals?** Your schema encodes plant vocabulary as SQL `CHECK` constraints — e.g. `stage CHECK(stage IN ('explant','callus','shoot_meristem',...))` at `migrations.rs:391`. The stage constraint was already **expanded in migration 002 and defensively rebuilt in migration 003** — that's two migrations whose job was to widen one constraint via a full table rebuild. WP-23 will run this table-rebuild pattern **one final time** to drop the constraint entirely. Cell lines don't have an "explant" stage; mushroom cultures don't "acclimatize." If you fork now, every vocabulary change is three migrations and three CHECK-constraint rebuilds forever. Lookup tables make vocabulary *data*, and data is cheap to vary per profile.
+> **Why de-harden before building verticals?** Your schema encoded plant vocabulary as SQL `CHECK` constraints — e.g. `stage CHECK(stage IN ('explant','callus','shoot_meristem',...))` at `migrations.rs`. The stage constraint was already **expanded in migration 002 and defensively rebuilt in migration 003** — that's two migrations whose job was to widen one constraint via a full table rebuild. **WP-23 (migration 016) ran this table-rebuild pattern one final time** to drop the constraint entirely. Cell lines don't have an "explant" stage; mushroom cultures don't "acclimatize." If you fork now, every vocabulary change is three migrations and three CHECK-constraint rebuilds forever. Lookup tables make vocabulary *data*, and data is cheap to vary per profile — and that's the state the codebase is now in.
 
 ---
 
@@ -327,7 +327,7 @@ This is the work that turns one product into a platform. It is **behavior-preser
   - **5 new Rust unit tests:** death archives specimen and zeroes health, `event_type` stored as `'death'`, archived specimen blocks further passages, normal passages retain `'passage'` event_type, `app_config` seeded with default profile.
 - **Differed from plan:** WP-22 originally scoped only the lab_profile concept; the Dead Specimen archive workflow was added as complementary scope in the same PR since both share migration 015's `event_type` column.
 
-### WP-23 — Convert stage `CHECK` constraints → a `stages` lookup table
+### WP-23 — Convert stage `CHECK` constraints → a `stages` lookup table — ✅ Delivered in **v1.12.0**
 - **Goal:** Make the specimen lifecycle vocabulary *data*. This is the single most important schema change for multi-vertical.
 - **Files:** new migration, `models/specimen.rs`, `commands/specimens.rs`, `SpecimenForm.svelte`, `SpecimenDetail.svelte`, dashboard "by_stage" panel.
 - **Steps:**
@@ -338,24 +338,32 @@ This is the work that turns one product into a platform. It is **behavior-preser
 - **Acceptance:** PTC behaves identically; adding a new stage row appears in the dropdown with no code change and no migration.
 - **Preserve:** All existing specimens' stage values (seed codes must match current strings exactly so existing rows stay valid).
 - **Bump:** minor.
+- **As built (v1.12.0):**
+  - **Migration 016** creates the `stages` table (`profile`, `code`, `label`, `sort_order`, `is_terminal`); seeds all 15 plant tissue culture stage codes; rebuilds `specimens` in one pass to drop the `CHECK(stage IN (...))` constraint while keeping the `acclimatization_status` CHECK intact. All existing specimen rows remain valid.
+  - `list_stages` Tauri command returns stages ordered by `sort_order` for the active lab profile; `VocabEntry` and `StageEntry` types exported from `api.ts`.
+  - `SpecimenForm.svelte` and `SpecimenDetail.svelte` now populate their stage dropdowns from `list_stages` instead of hardcoded arrays.
 
-### WP-24 — Same treatment for the other hardcoded vocabularies
+### WP-24 — Same treatment for the other hardcoded vocabularies — ✅ Delivered in **v1.12.0**
 - **Goal:** Generalize `propagation_method`, `hormone_type`, compliance `record_type`/`agency`, and inventory `category` the same way.
 - **Files:** migration, the corresponding models/commands/components.
 - **Steps:** For each, create a profile-scoped lookup table seeded with today's plant values; drop the `CHECK` constraint; drive the UI from the table. Group related ones to minimize table-rebuild migrations.
 - **Acceptance:** PTC unchanged; each vocabulary now varies by profile.
 - **Preserve:** All existing enum values as seed data.
 - **Bump:** minor.
+- **As built (v1.12.0):**
+  - **Migration 017** creates four additional lookup tables — `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` — all profile-scoped and seeded with plant tissue culture values; then rebuilds `media_hormones`, `compliance_records`, and `inventory_items` in one FK OFF/ON window to drop their respective `CHECK` constraints.
+  - `list_propagation_methods`, `list_hormone_types`, `list_compliance_record_types`, `list_compliance_agencies`, `list_inventory_categories` Tauri commands added; all in new `commands/vocabulary.rs` module.
+  - `SpecimenForm.svelte`: propagation method dropdown populated from `list_propagation_methods`. `ComplianceView.svelte`: record type and agency dropdowns from vocabulary. `InventoryManager.svelte`: category dropdown from vocabulary.
 
-### WP-25 — Extract a UI "profile manifest" for labels & terminology
-- **Goal:** The words on screen (entity names, page titles, field labels) come from a per-profile manifest, not hardcoded strings.
-- **Files:** `src/lib/profile.ts` → add a `manifest` object keyed by profile; `Sidebar.svelte`, `index.html` title, all component headings.
-- **Steps:**
-  1. Define a `ProfileManifest` type: `{ appName, primaryEntity (e.g. "Specimen" / "Cell Line" / "Culture"), primaryEntityPlural, registryEntity ("Species" / "Cell Line" / "Strain"), passageVerb ("Subculture" / "Passage" / "Transfer"), mediaNoun ("Media" / "Medium" / "Substrate"), ... }`.
-  2. Replace hardcoded user-facing strings with `manifest.x` lookups. (Internal code/table names stay as-is — only the *display* layer changes.)
-- **Acceptance:** Flipping the profile string in a dev build changes the sidebar labels, page title, and headings coherently — without touching components.
-- **Preserve:** PTC manifest must reproduce today's exact wording.
-- **Bump:** minor.
+### WP-25 — Profile-aware dashboard statistics — ✅ Delivered in **v1.13.0**
+- **Goal:** Scope all aggregate dashboard counts to the active lab profile so the dashboard never shows irrelevant stage data.
+- **Files:** new `src-tauri/src/db/dashboard.rs` module; `commands/specimens.rs`, `commands/subcultures.rs`, `Dashboard.svelte`.
+- **As built (v1.13.0):**
+  - **New `db/dashboard.rs` module** with three testable, pure-connection query functions: `query_specimen_stats` (by_stage breakdown inner-joins against `stages` vocabulary so only stages defined for the active profile are counted; returns vocabulary labels e.g. "Shoot Meristem" rather than raw stage codes), `query_contamination_stats` (all specimen/vessel counts join through `stages` so the active profile controls which specimens are in scope), `query_subculture_schedule` (only specimens whose `stage` exists in `stages` for the active profile appear).
+  - **11 new Rust unit tests** covering: vocabulary labels returned for PTC, cross-profile stage exclusion, empty result for unseeded profile, database-wide aggregate counts, contamination scoping and rate, vessel-type breakdown, and schedule filtering.
+  - No hardcoded stage lists remain in any dashboard query.
+  - `commands/specimens.rs::get_specimen_stats` delegates to `db::dashboard`; same for contamination and schedule commands.
+  - `Dashboard.svelte` tooltip updated to mention the active lab profile on the "Specimens by Stage" panel.
 
 ### WP-26 — Profile-scoped compliance rules
 - **Goal:** The auto-flag engine (currently citrus-HLB / USDA-specific in `compliance.rs:252`) becomes a profile-pluggable rule set.
@@ -393,7 +401,7 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
 
 ---
 
-#### Phase TX-1 — Foundation · WP-28–29 · Target: v1.9.0
+#### Phase TX-1 — Foundation · WP-28–29 · Target: v2.0.0
 
 ### WP-28 — Strain/Cultivar data model & backend
 
@@ -706,8 +714,9 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | **v1.9.0** | WP-19 Trust Layer polish — contamination inheritance on split, Verify All Lineages batch button + WP-20 Merkle checkpoints — migration 013, `build_merkle_root`, create/verify/list commands, checkpoint UI; `docs/merkle-checkpoints.md` | ✅ shipped |
 | **v1.10.0** | WP-21 Portable Merkle proof export, standalone verification, auto-checkpointing — migration 014, `export_audit_proof`, `verify_exported_proof`, `auto_checkpoint_lineages`, pre-backup hook; `docs/merkle-proofs.md` — **Trust Layer Phase 1 complete** | ✅ shipped |
 | **v1.11.0** | WP-22 lab_profile concept (`app_config` table, migration 015) + Dead Specimen archive workflow (`record_specimen_death`, death timeline card, `event_type` on subcultures, "Dead/Archived" badge) — **Phase C begun** | ✅ shipped |
-| **v1.12.0** *(Phase C)* | WP-23: stage `CHECK` → `stages` lookup table (migration + table rebuild, one final time); WP-24: remaining hardcoded vocabularies → profile-scoped lookup tables | planned |
-| **v1.13.0–v1.15.0** *(Phase C)* | WP-25: UI profile manifest; WP-26: profile-scoped compliance rules; WP-27: per-vertical build-time app identity — **Phase C complete** | planned |
+| **v1.12.0** *(Phase C)* | WP-23: stage `CHECK` → `stages` lookup table (migration 016, final table rebuild); WP-24: remaining hardcoded vocabularies → profile-scoped lookup tables (migration 017) | ✅ shipped |
+| **v1.13.0** *(Phase C)* | WP-25: profile-aware dashboard statistics — `db::dashboard` module, 11 new tests, no hardcoded stage lists remain in dashboard queries | ✅ shipped |
+| **v1.14.0–v1.15.0** *(Phase C)* | WP-26: profile-scoped compliance rules; WP-27: per-vertical build-time app identity — **Phase C complete** | planned |
 | **v2.0.0** *(Phase TX-1)* | **Phase TX-1 — Strain/Cultivar foundation:** WP-28 (strain data model + hash chain seeding from species + backend commands), WP-29 (Strain Manager UI + Hybrid Wizard + basic Taxonomy Navigator). New migration. | planned |
 | v2.x *(Phase TX-2)* | **Phase TX-2 — Taxonomy expansion:** WP-35 expanded taxonomy backbone (Genus→Kingdom), WP-36 NCBI import/sync, WP-37 multi-generational pedigree tools, WP-38 intraspecific hybridization, WP-39 advanced taxonomy navigator | planned |
 | v2.1.0 | **SteloCC (Cell Culture)** — first multi-vertical release | planned |
@@ -719,4 +728,4 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 
 ---
 
-*This roadmap is grounded in the live repository at **v1.11.0**: 15 migrations, latest being migration 015 (`event_type` on `subcultures` + `app_config` for `lab_profile`); migration 014 added `app_settings` + auto-checkpoint flags on `audit_checkpoints`; 013 added the `audit_checkpoints` Merkle table; 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` on `media_batches`; 010 added generational-depth columns; 009 introduced per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes; stage CHECK-constraint rebuilds in migrations 002/003 at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; compliance rules in `commands/compliance.rs`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
+*This roadmap is grounded in the live repository at **v1.13.0**: 17 migrations, latest being migration 017 (remaining vocabulary lookup tables — `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` — CHECK constraints dropped); migration 016 created the `stages` lookup table and dropped the stage CHECK constraint on `specimens`; 015 added `event_type` on `subcultures` + `app_config` for `lab_profile`; 014 added `app_settings` + auto-checkpoint flags on `audit_checkpoints`; 013 added the `audit_checkpoints` Merkle table; 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` on `media_batches`; 010 added generational-depth columns; 009 introduced per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes; stage CHECK-constraint rebuilds in migrations 002/003, final drop in 016, at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; compliance rules in `commands/compliance.rs`; vocabulary commands in `commands/vocabulary.rs`; dashboard module at `db/dashboard.rs`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
