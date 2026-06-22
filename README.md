@@ -73,7 +73,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Design Token System** — All colors, spacing, typography, radii, shadows, and z-index layers are defined as CSS custom properties in `src/lib/styles/tokens.css`. Changing a single token updates the UI consistently across all token-aware components (v1.2.2).
 - **Consistent Data States** — `DataState.svelte` provides a unified skeleton loading state, friendly empty state with optional CTA, and inline error state with retry across all list views (v1.2.3).
 - **Professional Print / PDF Output** — Culture Certificates and Specimens Summary reports open as formatted print windows with consistent header (logo space, lab name, accession, date, prepared-by) and footer (lab name, page numbers). Layouts are clean and well-organized on both A4 and US Letter paper, portrait and landscape. The Specimens Summary supports three grouping modes: by development stage, by health/urgency, or flat list — with an executive summary section (stats, stage distribution, health distribution) at the top. All three print functions (`printSummaryReport`, `printCultureReport`, `printLabel`) use a shared `printUtils.ts` delivery module: popup path for browsers, in-page DOM fallback for Tauri/WebView2 where `window.open` is blocked (v1.2.4, v1.4.0, v1.4.1).
-- **Automated Tests** — Vitest test suite covers core utility functions (`utils.ts`) and print utilities (`printUtils.ts`) — 50 assertions total. Rust unit tests cover accession number generation, pagination helpers, stock depletion rules, all four compliance auto-flag SQL rules, and **hash-chain invariants** (per-lineage `chain_seq` increments, child chains inherit parent's last `entry_hash`, split siblings share the same `prev_hash`, `compute_entry_hash` determinism). Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4, v1.4.1, v1.6.0).
+- **Automated Tests** — Vitest test suite covers utility functions, export row builders, and import validation — ~101 assertions across 3 test files. Rust unit tests (90 test functions) cover accession number generation, pagination helpers, stock depletion rules, all four compliance auto-flag SQL rules, **hash-chain invariants** (per-lineage `chain_seq`, fork invariants, `compute_entry_hash` determinism), Merkle checkpoint correctness, death workflow invariants, `UserRole` parsing, and **profile-aware dashboard** queries (11 dedicated tests). Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4, v1.4.1, v1.6.0, v1.11.0, v1.13.0).
 - **Accessibility** — WCAG 2.1 AA target: visible `:focus-visible` keyboard indicators, skip-to-content link, ARIA landmarks and `aria-current` on sidebar navigation, focus trapping in QR modal and photo lightbox, `aria-label` on all icon-only buttons, ARIA attributes (`aria-valuenow`/`aria-valuetext`) on health status sliders (v1.2.6).
 - **Query Performance** — Six composite and covering indexes added (migration 007) on `specimens(created_at)`, `specimens(parent_specimen_id)`, `specimens(is_archived, created_at)`, `subcultures(specimen_id, passage_number)`, `subcultures(created_at)`, and `subcultures(contamination_flag, specimen_id)`. Correlated per-row contamination subqueries in specimen list/search replaced with a single aggregating LEFT JOIN. Subculture history list endpoint now uses the `PaginatedResponse` pattern. Scales to 10k+ specimens and 50k+ subcultures (v1.2.7).
 
@@ -138,7 +138,7 @@ npm test          # run once (CI mode)
 npm run test:watch  # watch mode (development)
 ```
 
-Tests live in `src/**/*.test.ts`. The current suite covers 50 assertions across two test files:
+Tests live in `src/**/*.test.ts`. The current suite covers ~101 assertions across three test files:
 
 **`src/lib/utils.test.ts`** — core utility functions:
 
@@ -151,14 +151,21 @@ Tests live in `src/**/*.test.ts`. The current suite covers 50 assertions across 
 | `formatAccessionNumber` | zero-padding, 3-digit sequences |
 | `computeStockAdjustment` | positive/negative deltas, exact-zero, below-zero guard |
 | `datestamp` | formatted date output |
+| `ageDays` / `fmtAge` / `healthNum` / `effectiveHealth` | age, formatting, and health extraction edge cases |
 
-**`src/lib/printUtils.test.ts`** — print utility functions (v1.4.1):
+**`src/lib/exportUtils.test.ts`** — export row builders (v1.3.0+):
 
 | Area | Coverage |
 |---|---|
-| `ageDays` | age calculation from initiation date |
-| `fmtAge` | day/month formatting, edge cases |
-| `healthNum` | numeric health value extraction |
+| `specimenRows` / `subcultureRows` / `mediaRows` | Core export sheet row construction |
+| `inventoryRows` / `complianceRows` / `prepSolutionRows` | Supplementary export sheets |
+
+**`src/lib/importUtils.test.ts`** — import validation:
+
+| Area | Coverage |
+|---|---|
+| `REQUIRED_SHEET_NAMES` | Expected sheets present |
+| `findMissingSheets` | Detects missing required sheets |
 
 ### Rust tests
 
@@ -171,8 +178,11 @@ Requires Linux GTK system libraries (installed automatically in CI):
 | Module | Tests |
 |---|---|
 | `db::queries` | Accession number format, first/second/different-species/different-date sequences, zero-padding, pagination offset/limit calculations; **hash-chain invariants** — per-lineage `chain_seq` increments, child chains start at seq 1 with parent's `entry_hash` as `prev_hash`, split siblings share the same `prev_hash`, `compute_entry_hash` is deterministic (v1.6.0); **Merkle checkpoint tests** — empty/single/two/three-leaf trees, determinism, mutation detection, checkpoint creation, intact verification, tamper detection, removal detection, entries-beyond-end-seq, out-of-range seq windows (v1.9.0) |
+| `db::dashboard` | Vocabulary labels returned for PTC, cross-profile stage exclusion, empty result for unseeded profile, database-wide aggregate counts, contamination scoping and rate, vessel-type breakdown, schedule filtering — 11 tests (v1.13.0) |
 | `commands::inventory` | `apply_stock_adjustment` — positive delta, negative delta, to-zero, below-zero error; `is_low_stock` — at/below/above minimum |
 | `commands::compliance` | Expired permit detected/not-detected; quarantine-no-release detected/not-detected; positive-not-quarantined detected/not-detected; HLB missing/recent; archived specimens excluded from all flags |
+| `commands::auth` | `UserRole::from_str` — all four roles parse correctly |
+| `commands::specimens` | Death archives specimen and zeroes health; `event_type` stored as `'death'`; archived specimen blocks further passages; normal passages retain `'passage'` event_type; `app_config` seeded with default profile — 5 tests (v1.11.0) |
 
 ### CI
 
@@ -425,7 +435,7 @@ SteloPTC/
 │       ├── auth/mod.rs               # bcrypt + session management
 │       ├── db/
 │       │   ├── mod.rs                # Connection pool, init
-│       │   ├── migrations.rs         # 15 schema migrations
+│       │   ├── migrations.rs         # 17 schema migrations
 │       │   └── queries.rs            # SQL helpers
 │       ├── models/                   # Rust data structures
 │       │   ├── user.rs, specimen.rs, media.rs
@@ -489,6 +499,14 @@ SQLite, stored at:
 | `compliance_records` | Regulatory tests, permits, inspections                    |
 | `inventory_items`    | Supply inventory with reorder alerts                      |
 | `audit_log`          | Append-only audit trail; `chain_seq`, `prev_hash`, `entry_hash` for SHA-256 per-lineage hash chain; `lineage_id` for per-entity chain isolation (v1.5.0, v1.6.0) |
+| `audit_checkpoints`  | Merkle checkpoint records per lineage range; `is_auto`, `auto_source` for auto-checkpointing; Dogecoin anchor hook (v1.9.0, v1.10.0) |
+| `app_settings`       | Key-value settings store; seeded with auto-checkpoint defaults (v1.10.0) |
+| `app_config`         | Single-row config table; `lab_profile` constrained to `plant_tissue_culture \| cell_culture \| mycology` (v1.11.0) |
+| `stages`             | Profile-scoped specimen stage vocabulary; replaces `CHECK(stage IN (...))` constraint on `specimens` (v1.12.0) |
+| `hormone_types`      | Profile-scoped hormone type vocabulary for `media_hormones` (v1.12.0) |
+| `compliance_record_types` | Profile-scoped compliance record type vocabulary (v1.12.0) |
+| `compliance_agencies` | Profile-scoped compliance agency vocabulary (v1.12.0) |
+| `inventory_categories` | Profile-scoped inventory category vocabulary (v1.12.0) |
 | `error_logs`         | Persistent error tracking with form payloads              |
 | `qr_scans`           | QR scan events with timestamp and user                    |
 
@@ -511,6 +529,8 @@ SQLite, stored at:
 | 013 | v1.9.0 | Added audit_checkpoints table with Merkle root, seq range, entry count, and Dogecoin anchor hook |
 | 014 | v1.10.0 | Added `is_auto` and `auto_source` to `audit_checkpoints`; created `app_settings` key-value table with seeded auto-checkpoint defaults |
 | 015 | v1.11.0 | Added `event_type TEXT NOT NULL DEFAULT 'passage'` to `subcultures` (with index); created `app_config` single-row table with `lab_profile` (constrained to `plant_tissue_culture \| cell_culture \| mycology`) |
+| 016 | v1.12.0 | Created `stages` lookup table (`profile`, `code`, `label`, `sort_order`, `is_terminal`); seeded 15 PTC stage codes; rebuilt `specimens` to drop the `CHECK(stage IN (...))` constraint — the final vocabulary-driven table rebuild |
+| 017 | v1.12.0 | Created `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` lookup tables (profile-scoped, seeded with PTC values); rebuilt `media_hormones`, `compliance_records`, `inventory_items` to drop their respective `CHECK` constraints |
 
 ### Backup
 
