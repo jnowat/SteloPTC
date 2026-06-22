@@ -26,17 +26,19 @@ fn query_vocab(
     profile: &str,
 ) -> Result<Vec<VocabEntry>, String> {
     let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
-    stmt.query_map([profile], |row| {
-        Ok(VocabEntry {
-            id: row.get(0)?,
-            code: row.get(1)?,
-            label: row.get(2)?,
-            sort_order: row.get(3)?,
+    let result = stmt
+        .query_map([profile], |row| {
+            Ok(VocabEntry {
+                id: row.get(0)?,
+                code: row.get(1)?,
+                label: row.get(2)?,
+                sort_order: row.get(3)?,
+            })
         })
-    })
-    .map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string());
+    result
 }
 
 #[tauri::command]
@@ -56,18 +58,20 @@ pub fn list_stages(
         )
         .map_err(|e| e.to_string())?;
 
-    stmt.query_map([&profile], |row| {
-        Ok(StageEntry {
-            id: row.get(0)?,
-            code: row.get(1)?,
-            label: row.get(2)?,
-            sort_order: row.get(3)?,
-            is_terminal: row.get::<_, i64>(4)? != 0,
+    let result = stmt
+        .query_map([&profile], |row| {
+            Ok(StageEntry {
+                id: row.get(0)?,
+                code: row.get(1)?,
+                label: row.get(2)?,
+                sort_order: row.get(3)?,
+                is_terminal: row.get::<_, i64>(4)? != 0,
+            })
         })
-    })
-    .map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>()
-    .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string());
+    result
 }
 
 #[tauri::command]
