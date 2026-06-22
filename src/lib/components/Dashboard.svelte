@@ -168,23 +168,23 @@
     <FirstRun onDemoLoaded={loadDashboard} />
   {:else if stats}
     <div class="stats-grid">
-      <div class="stat-card" title="Number of specimens currently in active culture">
+      <div class="stat-card" title="Active specimens in the current lab profile (excludes archived; excludes specimens from other profiles)">
         <div class="stat-value">{stats.active_specimens}</div>
         <div class="stat-label">Active Specimens</div>
       </div>
-      <div class="stat-card" title="Total number of specimens ever accessioned into the system">
+      <div class="stat-card" title="All specimens (active + archived) whose stage belongs to the current lab profile">
         <div class="stat-value">{stats.total_specimens}</div>
         <div class="stat-label">Total Specimens</div>
       </div>
-      <div class="stat-card warn" title="Specimens currently under quarantine restrictions">
+      <div class="stat-card warn" title="Active specimens currently under quarantine for the current lab profile">
         <div class="stat-value">{stats.quarantined}</div>
         <div class="stat-label">Quarantined</div>
       </div>
-      <div class="stat-card" title="Number of subculture passages performed in the last 7 days">
+      <div class="stat-card" title="Subculture passages on current-profile specimens in the last 7 days">
         <div class="stat-value">{stats.recent_subcultures}</div>
         <div class="stat-label">Subcultures (7d)</div>
       </div>
-      <div class="stat-card" title="Specimens that have been archived and are no longer in active culture">
+      <div class="stat-card" title="Specimens archived under the current lab profile">
         <div class="stat-value">{stats.archived}</div>
         <div class="stat-label">Archived</div>
       </div>
@@ -197,16 +197,16 @@
         <div class="stat-label">Low Stock Items</div>
       </div>
       {#if contaminationStats}
-        <div class="stat-card" class:alert={contaminationStats.contaminated_specimens > 0} title="Number of active specimens that have at least one contaminated vessel event">
+        <div class="stat-card" class:alert={contaminationStats.contaminated_specimens > 0} title="Active current-profile specimens with at least one contaminated vessel event">
           <div class="stat-value">{contaminationStats.contaminated_specimens}</div>
           <div class="stat-label">Contaminated Vessels</div>
         </div>
-        <div class="stat-card" class:alert={contaminationStats.contamination_rate_pct > 10} title="Percentage of active specimens with at least one contaminated vessel">
+        <div class="stat-card" class:alert={contaminationStats.contamination_rate_pct > 10} title="Percentage of active current-profile specimens that have at least one contaminated vessel event">
           <div class="stat-value">{contaminationStats.contamination_rate_pct.toFixed(1)}%</div>
           <div class="stat-label">Contamination Rate</div>
         </div>
       {/if}
-      <div class="stat-card" class:alert={overdueItems.length > 0} title="Specimens past their scheduled subculture date based on species interval">
+      <div class="stat-card" class:alert={overdueItems.length > 0} title="Current-profile specimens past their scheduled subculture date based on the species interval">
         <div class="stat-value">{overdueItems.length}</div>
         <div class="stat-label">Overdue Subcultures</div>
       </div>
@@ -282,7 +282,7 @@
       </div>
 
       <div class="panel">
-        <h3 title="Distribution of active specimens grouped by species code">Specimens by Species</h3>
+        <h3 title="Distribution of active current-profile specimens grouped by species code">Specimens by Species</h3>
         {#if stats.by_species.length === 0}
           <p class="empty-state">No specimens yet</p>
         {:else}
@@ -305,7 +305,7 @@
 
       <!-- Subculture Schedule panel -->
       <div class="panel">
-        <h3 title="Upcoming and overdue subculture passages based on each species' recommended interval">Subculture Schedule</h3>
+        <h3 title="Upcoming and overdue subculture passages for current-profile specimens, based on each species' recommended interval">Subculture Schedule</h3>
         {#if schedule.length === 0}
           <p class="empty-state">No specimens with scheduling data</p>
         {:else}
@@ -359,7 +359,7 @@
       <!-- Contamination Stats panel -->
       {#if contaminationStats}
         <div class="panel">
-          <h3 title="Summary of contamination events across all specimens and vessel types">Contamination Overview</h3>
+          <h3 title="Summary of contamination events for current-profile specimens and vessel types">Contamination Overview</h3>
           <div class="contam-rate-row">
             <div class="contam-rate-value" class:contam-high={contaminationStats.contamination_rate_pct > 10}>
               {contaminationStats.contamination_rate_pct.toFixed(1)}%

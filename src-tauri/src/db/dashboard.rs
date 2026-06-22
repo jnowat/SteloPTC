@@ -6,42 +6,53 @@ use crate::models::subculture::{
     VesselContaminationCount,
 };
 
-/// Returns specimen statistics filtered to stages that exist for `profile` in the
-/// `stages` vocabulary table.  The `by_stage` breakdown uses vocabulary labels
-/// (e.g. "Shoot Meristem") rather than raw stage codes.
+/// Returns specimen statistics fully scoped to stages defined for `profile` in
+/// the `stages` vocabulary table.  Every count — including the top-line
+/// totals (total, active, quarantined, archived, recent subcultures) and the
+/// per-species breakdown — uses an inner-join through `stages` so numbers
+/// change when the active lab profile changes.
 ///
-/// Total, active, quarantined, archived, and recent-subculture counts are
-/// database-wide (not filtered by profile) because they represent overall lab
-/// state independent of which discipline is currently active.
+/// `by_stage` returns vocabulary **labels** (e.g. "Shoot Meristem") rather
+/// than raw stage codes.
 pub fn query_specimen_stats(conn: &Connection, profile: &str) -> Result<SpecimenStats, String> {
     let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM specimens", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1",
+            [profile],
+            |r| r.get(0),
+        )
         .map_err(|e| e.to_string())?;
     let active: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM specimens WHERE is_archived = 0",
-            [],
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sp.is_archived = 0",
+            [profile],
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
     let quarantined: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM specimens \
-             WHERE quarantine_flag = 1 AND is_archived = 0",
-            [],
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sp.quarantine_flag = 1 AND sp.is_archived = 0",
+            [profile],
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
     let archived: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM specimens WHERE is_archived = 1",
-            [],
+            "SELECT COUNT(*) FROM specimens sp \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sp.is_archived = 1",
+            [profile],
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
 
     // Profile-aware: inner-join with stages so only stages defined for the
-    // active profile are counted, and return the vocabulary label for display.
+    // active profile are counted; return the vocabulary label for display.
     let mut stage_stmt = conn
         .prepare(
             "SELECT st.label, COUNT(*) AS cnt
@@ -63,18 +74,20 @@ pub fn query_specimen_stats(conn: &Connection, profile: &str) -> Result<Specimen
         .filter_map(|r| r.ok())
         .collect();
 
+    // Profile-aware: only count specimens whose stage belongs to this profile.
     let mut species_stmt = conn
         .prepare(
-            "SELECT sp.species_code, COUNT(*) \
+            "SELECT sp_info.species_code, COUNT(*) \
              FROM specimens s \
-             JOIN species sp ON s.species_id = sp.id \
+             JOIN species sp_info ON s.species_id = sp_info.id \
+             JOIN stages st ON s.stage = st.code AND st.profile = ?1 \
              WHERE s.is_archived = 0 \
-             GROUP BY sp.species_code \
+             GROUP BY sp_info.species_code \
              ORDER BY COUNT(*) DESC",
         )
         .map_err(|e| e.to_string())?;
     let by_species: Vec<SpeciesCount> = species_stmt
-        .query_map([], |row| {
+        .query_map([profile], |row| {
             Ok(SpeciesCount {
                 species_code: row.get(0)?,
                 count: row.get(1)?,
@@ -84,10 +97,14 @@ pub fn query_specimen_stats(conn: &Connection, profile: &str) -> Result<Specimen
         .filter_map(|r| r.ok())
         .collect();
 
+    // Profile-aware: count only subcultures on specimens in this profile.
     let recent: i64 = conn
         .query_row(
-            "SELECT COUNT(*) FROM subcultures WHERE date >= date('now', '-7 days')",
-            [],
+            "SELECT COUNT(*) FROM subcultures sc \
+             JOIN specimens sp ON sc.specimen_id = sp.id \
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1 \
+             WHERE sc.date >= date('now', '-7 days')",
+            [profile],
             |r| r.get(0),
         )
         .map_err(|e| e.to_string())?;
@@ -462,19 +479,77 @@ mod tests {
     }
 
     #[test]
-    fn aggregate_counts_are_database_wide_not_profile_filtered() {
-        // total/active/quarantined/archived include all specimens regardless of
-        // which profile is active, because they represent overall lab state.
+    fn aggregate_counts_are_profile_filtered() {
+        // total/active/quarantined/archived must be scoped to stages that belong
+        // to the requested profile — a PTC query must not count CC specimens.
         let conn = setup_db();
         seed_ptc_stages(&conn);
         seed_cell_culture_stages(&conn);
         insert_species(&conn, "sp1", "ARABTH", None);
+        // PTC specimen (stage 'explant' is in the PTC vocabulary)
         insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        // CC specimen (stage 'adherent' is in the CC vocabulary, not PTC)
         insert_specimen(&conn, "s2", "ACC-002", "sp1", "adherent");
 
-        let stats = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
-        assert_eq!(stats.total_specimens, 2);
-        assert_eq!(stats.active_specimens, 2);
+        let ptc = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+        let cc = query_specimen_stats(&conn, "cell_culture").unwrap();
+
+        // PTC profile sees only the PTC specimen
+        assert_eq!(ptc.total_specimens, 1);
+        assert_eq!(ptc.active_specimens, 1);
+
+        // CC profile sees only the CC specimen
+        assert_eq!(cc.total_specimens, 1);
+        assert_eq!(cc.active_specimens, 1);
+    }
+
+    #[test]
+    fn quarantined_and_archived_counts_are_profile_filtered() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+
+        // PTC: one quarantined specimen, one archived
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, quarantine_flag, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s1', 'ACC-001', 'sp1', 'explant', 1, 0, \
+              datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, quarantine_flag, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s2', 'ACC-002', 'sp1', 'archived', 0, 1, \
+              datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        // CC: one clean active specimen — should not appear in PTC counts
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, quarantine_flag, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s3', 'ACC-003', 'sp1', 'adherent', 1, 0, \
+              datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let ptc = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+        // PTC: 1 quarantined (not archived), 1 archived, 0 of CC's quarantined
+        assert_eq!(ptc.quarantined, 1);
+        assert_eq!(ptc.archived, 1);
+
+        let cc = query_specimen_stats(&conn, "cell_culture").unwrap();
+        // CC: 1 quarantined, 0 archived
+        assert_eq!(cc.quarantined, 1);
+        assert_eq!(cc.archived, 0);
     }
 
     #[test]
