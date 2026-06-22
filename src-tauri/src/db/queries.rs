@@ -524,6 +524,28 @@ fn log_audit_impl(
     Ok(())
 }
 
+/// Returns `Ok(())` if a lab profile change is permitted given the current specimen count.
+/// When `specimen_count > 0`, requires `confirmation` to equal `"CHANGE PROFILE"` (trimmed).
+/// When `specimen_count == 0`, the confirmation argument is ignored.
+pub fn check_profile_change_allowed(
+    specimen_count: i64,
+    confirmation: Option<&str>,
+) -> Result<(), String> {
+    if specimen_count == 0 {
+        return Ok(());
+    }
+    match confirmation.map(str::trim) {
+        Some("CHANGE PROFILE") => Ok(()),
+        _ => Err(format!(
+            "This lab has {} specimen{}. \
+             Changing the active lab profile may affect vocabulary lookups and stage \
+             validation for existing data. To confirm the change, type exactly: CHANGE PROFILE",
+            specimen_count,
+            if specimen_count == 1 { "" } else { "s" }
+        )),
+    }
+}
+
 /// Paginated query helper
 pub struct PaginationParams {
     pub page: u32,
@@ -1224,5 +1246,48 @@ mod tests {
         log_audit(&conn, None, "update", "specimen", Some("sp-C"), None, None, None).unwrap();
         let created = auto_checkpoint_lineages(&conn, "u1", "test", 3).unwrap();
         assert_eq!(created.len(), 1, "lineage with exactly min_uncovered entries must qualify");
+    }
+
+    // ── check_profile_change_allowed ──────────────────────────────────────────
+
+    #[test]
+    fn profile_change_no_specimens_always_allowed() {
+        assert!(check_profile_change_allowed(0, None).is_ok());
+    }
+
+    #[test]
+    fn profile_change_no_specimens_ignores_confirmation() {
+        // Confirmation is accepted but not required when the lab is empty.
+        assert!(check_profile_change_allowed(0, Some("CHANGE PROFILE")).is_ok());
+    }
+
+    #[test]
+    fn profile_change_with_specimens_blocked_without_confirmation() {
+        let err = check_profile_change_allowed(5, None).unwrap_err();
+        assert!(err.contains("5 specimens"), "error should report count: {err}");
+        assert!(err.contains("CHANGE PROFILE"), "error should name the phrase: {err}");
+    }
+
+    #[test]
+    fn profile_change_with_specimens_blocked_on_wrong_confirmation() {
+        let err = check_profile_change_allowed(3, Some("yes")).unwrap_err();
+        assert!(err.contains("CHANGE PROFILE"), "error should name the phrase: {err}");
+    }
+
+    #[test]
+    fn profile_change_with_specimens_allowed_on_correct_confirmation() {
+        assert!(check_profile_change_allowed(12, Some("CHANGE PROFILE")).is_ok());
+    }
+
+    #[test]
+    fn profile_change_confirmation_trimmed() {
+        // Leading/trailing whitespace is accepted.
+        assert!(check_profile_change_allowed(1, Some("  CHANGE PROFILE  ")).is_ok());
+    }
+
+    #[test]
+    fn profile_change_singular_specimen_grammar() {
+        let err = check_profile_change_allowed(1, None).unwrap_err();
+        assert!(err.contains("1 specimen."), "should use singular 'specimen': {err}");
     }
 }

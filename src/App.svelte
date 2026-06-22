@@ -22,6 +22,7 @@
   import ExportManager from './lib/components/ExportManager.svelte';
   import ImportManager from './lib/components/ImportManager.svelte';
   import WorkQueue from './lib/components/WorkQueue.svelte';
+  import Settings from './lib/components/Settings.svelte';
 
   let startupError = '';
 
@@ -168,6 +169,8 @@
           <ImportManager />
         {:else if $currentView === 'work-queue'}
           <WorkQueue />
+        {:else if $currentView === 'settings'}
+          <Settings />
         {:else}
           <Dashboard />
         {/if}

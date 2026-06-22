@@ -20,13 +20,14 @@ pub fn get_lab_profile(
     Ok(profile)
 }
 
-/// Updates the lab profile.  Admin-only.  Blocked once any specimens exist to
-/// preserve data-integrity invariants that depend on the profile value.
+/// Updates the lab profile.  Admin-only.
+/// When specimens exist, requires `confirmation == "CHANGE PROFILE"` to proceed.
 #[tauri::command]
 pub fn set_lab_profile(
     state: State<AppState>,
     token: String,
     profile: String,
+    confirmation: Option<String>,
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let user = auth_service::validate_session(&db, &token)?;
@@ -43,18 +44,11 @@ pub fn set_lab_profile(
         ));
     }
 
-    // Lock the profile once operational data exists.
     let specimen_count: i64 = db.conn
         .query_row("SELECT COUNT(*) FROM specimens", [], |r| r.get(0))
         .unwrap_or(0);
 
-    if specimen_count > 0 {
-        return Err(
-            "The lab profile cannot be changed after specimens have been accessioned. \
-             Reset the database first if you need to switch profiles."
-                .to_string(),
-        );
-    }
+    queries::check_profile_change_allowed(specimen_count, confirmation.as_deref())?;
 
     db.conn
         .execute(

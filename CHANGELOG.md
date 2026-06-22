@@ -5,6 +5,27 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-06-22
+
+### Added — WP-26: Lab Profile Switcher in Settings
+
+- **`Settings.svelte`** — new admin-only Settings view accessible from the sidebar (gear icon). Shows the current active lab profile, a dropdown to select a new profile, a prominent warning box explaining the implications of switching (vocabulary changes, existing stage values may become unlisted, empty dropdowns for unseeded profiles), and a mandatory `CHANGE PROFILE` confirmation input before changes are applied.
+- **`check_profile_change_allowed(specimen_count, confirmation)`** — new pure, testable helper in `db/queries.rs`. Returns `Ok(())` when the lab is empty (no confirmation required) or when `confirmation.trim() == "CHANGE PROFILE"`. Returns a descriptive error with the specimen count when data exists and no valid confirmation is provided.
+- **7 new Rust unit tests** in `db/queries.rs` covering: empty lab always allowed, confirmation ignored on empty lab, blocked without confirmation when specimens exist, blocked on wrong confirmation, allowed with correct confirmation, whitespace trimming accepted, singular/plural grammar in the error message.
+- **6 new TypeScript tests** in `src/lib/profile.test.ts` covering: default store value, reactive updates, synchronous `currentLabProfile()` accessor, immediate store reflection after profile switch, `LAB_PROFILE_LABELS` completeness, and human-readable label for the default profile.
+- **Vocabulary notice** panel in Settings explaining that empty dropdowns after a profile switch mean no vocabulary data has been seeded for that profile yet.
+
+### Changed
+
+- `commands/admin.rs::set_lab_profile` — now accepts an optional `confirmation: Option<String>` parameter and delegates the data-existence guard to `queries::check_profile_change_allowed`. When specimens exist but no valid confirmation is provided, returns a clear error naming the required phrase. Removes the previous hard-block in favour of the guarded confirmation flow.
+- `src/lib/api.ts::setLabProfile` — updated signature to `setLabProfile(profile, confirmation?)`, passing `null` when confirmation is absent so Tauri receives `None` on the Rust side.
+- `src/lib/components/Sidebar.svelte` — added "Settings" nav item (gear icon, admin-only); corrected the displayed version tag to `v1.14.0`.
+- `src/App.svelte` — imports `Settings.svelte` and routes the `'settings'` view to it (view key was already defined in `app.ts`).
+- After a successful profile change, `labProfile.set(selected)` updates the Svelte writable store immediately so all subscribed components react without a restart.
+- Version bumped to 1.14.0 across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+
+---
+
 ## [1.13.0] - 2026-06-22
 
 ### Added — WP-25: Profile-Aware Dashboard Statistics
