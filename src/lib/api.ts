@@ -355,8 +355,8 @@ export async function getLabProfile() {
   return call<string>('get_lab_profile');
 }
 
-export async function setLabProfile(profile: string) {
-  return call<void>('set_lab_profile', { profile });
+export async function setLabProfile(profile: string, confirmation?: string) {
+  return call<void>('set_lab_profile', { profile, confirmation: confirmation ?? null });
 }
 
 // Vocabulary lookups (WP-23 / WP-24) — returns entries for the active lab profile.

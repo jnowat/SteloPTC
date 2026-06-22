@@ -23,6 +23,7 @@
     { id: 'species', label: 'Species', icon: '&#127807;' },
     { id: 'inventory', label: 'Inventory', icon: '&#128230;' },
     { id: 'users', label: 'Users', icon: '&#128101;', roles: ['admin'] },
+    { id: 'settings', label: 'Settings', icon: '&#9881;', roles: ['admin'] },
     { id: 'audit', label: 'Audit Log', icon: '&#128220;', roles: ['admin', 'supervisor'] },
     { id: 'error-log', label: 'Error Log', icon: '&#9888;' },
     { id: 'export', label: 'Export Data', icon: '&#8659;' },
@@ -65,7 +66,7 @@
 <aside class="sidebar" class:mobile-open={mobileOpen}>
   <div class="sidebar-header">
     <h2 title="SteloPTC — Sterilized Tissue/Plant Tissue Culture management system">SteloPTC</h2>
-    <span class="version" title="Application version">v1.7.0</span>
+    <span class="version" title="Application version">v1.14.0</span>
     <!-- Mobile close button inside drawer -->
     <button class="drawer-close" aria-label="Close menu" title="Close navigation menu" onclick={() => (mobileOpen = false)}>&#10005;</button>
   </div>
@@ -88,6 +89,7 @@
             item.id === 'species' ? 'Species — manage species definitions and subculture intervals' :
             item.id === 'inventory' ? 'Inventory — track stock levels and supply usage' :
             item.id === 'users' ? 'Users — manage user accounts and roles (admin only)' :
+            item.id === 'settings' ? 'Settings — configure lab profile and system options (admin only)' :
             item.id === 'audit' ? 'Audit Log — view system-wide change history (admin/supervisor)' :
             item.id === 'error-log' ? 'Error Log — review application errors and warnings (Ctrl+5)' :
             item.id === 'export' ? 'Export Data — download data as Excel, CSV, or JSON' :
@@ -104,6 +106,7 @@
             item.id === 'species' ? 'Go to Species — manage species definitions and subculture intervals' :
             item.id === 'inventory' ? 'Go to Inventory — track stock levels and supply usage' :
             item.id === 'users' ? 'Go to Users — manage user accounts and roles (admin only)' :
+            item.id === 'settings' ? 'Go to Settings — configure lab profile and system options' :
             item.id === 'audit' ? 'Go to Audit Log — view system-wide change history (admin/supervisor)' :
             item.id === 'error-log' ? 'Go to Error Log — review application errors and warnings' :
             item.id === 'export' ? 'Go to Export — download data as Excel, CSV, or JSON' :
