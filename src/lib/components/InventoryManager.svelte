@@ -41,7 +41,7 @@
   onMount(() => {
     load();
     listPreparedSolutions().then(s => solutions = s).catch((e: any) => addNotification(e.message, 'error'));
-    listInventoryCategories().then(c => categories = c).catch(() => {});
+    listInventoryCategories().then(c => categories = c).catch((e: any) => addNotification(e.message, 'error'));
   });
 
   async function load() {

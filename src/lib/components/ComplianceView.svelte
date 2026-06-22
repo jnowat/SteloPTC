@@ -25,8 +25,8 @@
 
   onMount(() => {
     load();
-    listComplianceRecordTypes().then(r => recordTypes = r).catch(() => {});
-    listComplianceAgencies().then(a => agencies = a).catch(() => {});
+    listComplianceRecordTypes().then(r => recordTypes = r).catch((e: any) => addNotification(e.message, 'error'));
+    listComplianceAgencies().then(a => agencies = a).catch((e: any) => addNotification(e.message, 'error'));
   });
 
   async function load() {

@@ -47,8 +47,8 @@
   onMount(() => {
     listSpecies().then(s => species = s).catch(() => {});
     listMedia().then(m => mediaBatches = m).catch(() => {});
-    listStages().then(s => stages = s).catch(() => {});
-    listPropagationMethods().then(m => propagationMethods = m).catch(() => {});
+    listStages().then(s => stages = s).catch((e: any) => addNotification(e.message, 'error'));
+    listPropagationMethods().then(m => propagationMethods = m).catch((e: any) => addNotification(e.message, 'error'));
   });
 
   function composeLocation(): string {
@@ -143,9 +143,13 @@
     <div class="form-group">
       <label for="stage">Stage * <Tooltip text="Current development stage: Explant (initial tissue), Callus, Suspension, Shoot, Plantlet, etc." /></label>
       <select id="stage" bind:value={form.stage} title="Development stage: explant (initial tissue), callus (undifferentiated mass), suspension (liquid culture), shoot (organized shoot growth), plantlet (complete small plant), etc.">
-        {#each stages as s}
-          <option value={s.code}>{s.label}</option>
-        {/each}
+        {#if stages.length === 0}
+          <option value={form.stage}>{form.stage || 'Loading...'}</option>
+        {:else}
+          {#each stages.filter(s => !s.is_terminal) as s}
+            <option value={s.code}>{s.label}</option>
+          {/each}
+        {/if}
       </select>
     </div>
   </div>

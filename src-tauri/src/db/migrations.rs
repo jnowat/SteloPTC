@@ -166,7 +166,8 @@ fn migration_016_vocabulary_tables(conn: &Connection) -> DbResult<()> {
     // All columns from migrations 002–012 (genealogy from 010, contamination from 012)
     // are preserved exactly.
     conn.execute("PRAGMA foreign_keys = OFF", [])?;
-    conn.execute_batch("
+    let result = conn.execute_batch("
+        BEGIN;
         CREATE TABLE IF NOT EXISTS specimens_v16 (
             id                      TEXT    PRIMARY KEY,
             accession_number        TEXT    NOT NULL UNIQUE,
@@ -258,8 +259,10 @@ fn migration_016_vocabulary_tables(conn: &Connection) -> DbResult<()> {
             ON specimens(is_archived, created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_specimens_root
             ON specimens(root_specimen_id);
-    ")?;
+        COMMIT;
+    ");
     conn.execute("PRAGMA foreign_keys = ON", [])?;
+    result?;
 
     Ok(())
 }
@@ -353,7 +356,8 @@ fn migration_017_remaining_vocabularies(conn: &Connection) -> DbResult<()> {
 
     // Rebuild three tables to drop their CHECK constraints in one PRAGMA OFF/ON window.
     conn.execute("PRAGMA foreign_keys = OFF", [])?;
-    conn.execute_batch("
+    let result = conn.execute_batch("
+        BEGIN;
         -- media_hormones: drop CHECK on hormone_type.
         -- amount_used and amount_unit (added by ALTER in migration_002) are included.
         CREATE TABLE IF NOT EXISTS media_hormones_v17 (
@@ -457,8 +461,10 @@ fn migration_017_remaining_vocabularies(conn: &Connection) -> DbResult<()> {
 
         DROP TABLE inventory_items;
         ALTER TABLE inventory_items_v17 RENAME TO inventory_items;
-    ")?;
+        COMMIT;
+    ");
     conn.execute("PRAGMA foreign_keys = ON", [])?;
+    result?;
 
     Ok(())
 }

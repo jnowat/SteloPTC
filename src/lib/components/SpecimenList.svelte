@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import {
     listSpecimens, searchSpecimens, deleteSpecimen, listSpecies, listProjects,
-    bulkArchiveSpecimens, bulkUpdateLocation, bulkUpdateStage,
+    bulkArchiveSpecimens, bulkUpdateLocation, bulkUpdateStage, listStages,
   } from '../api';
   import { navigateTo, addNotification, selectedSpecimenId } from '../stores/app';
   import { currentUser } from '../stores/auth';
@@ -53,21 +53,7 @@
   // Batch stage
   let batchStage = $state('');
 
-  const stages = [
-    { value: 'explant',        label: 'Explant' },
-    { value: 'callus',         label: 'Callus' },
-    { value: 'suspension',     label: 'Suspension' },
-    { value: 'protoplast',     label: 'Protoplast' },
-    { value: 'shoot',          label: 'Shoot' },
-    { value: 'shoot_meristem', label: 'Shoot Meristem' },
-    { value: 'apical_meristem',label: 'Apical Meristem' },
-    { value: 'root',           label: 'Root' },
-    { value: 'root_meristem',  label: 'Root Meristem' },
-    { value: 'embryogenic',    label: 'Embryogenic' },
-    { value: 'plantlet',       label: 'Plantlet' },
-    { value: 'acclimatized',   label: 'Acclimatized' },
-    { value: 'stock',          label: 'Stock' },
-  ];
+  let stages = $state<any[]>([]);
 
   let allPageSelected = $derived(
     specimens.length > 0 && specimens.every(s => selectedIds.has(s.id))
@@ -80,6 +66,7 @@
     load();
     loadSpecies();
     loadProjects();
+    listStages().then(s => stages = s).catch((e: any) => addNotification(e.message, 'error'));
   });
 
   async function loadSpecies() {
@@ -658,7 +645,7 @@ ${mainHtml}
         <select bind:value={filterStage} onchange={handleSearch} title="Filter specimens by development stage">
           <option value="">All stages</option>
           {#each stages as s}
-            <option value={s.value}>{s.label}</option>
+            <option value={s.code}>{s.label}</option>
           {/each}
         </select>
         <select bind:value={filterProject} onchange={handleSearch} title="Filter specimens by project">
@@ -837,8 +824,8 @@ ${mainHtml}
       <div class="batch-form">
         <select bind:value={batchStage} title="New development stage for selected specimens">
           <option value="">Stage…</option>
-          {#each stages as s}
-            <option value={s.value}>{s.label}</option>
+          {#each stages.filter(s => !s.is_terminal) as s}
+            <option value={s.code}>{s.label}</option>
           {/each}
         </select>
         <button class="batch-apply" onclick={executeBatchStage} disabled={batchLoading}>

@@ -64,7 +64,7 @@
   let stageOptions = $state<any[]>([]);
 
   onMount(() => {
-    listStages().then(s => stageOptions = s).catch(() => {});
+    listStages().then(s => stageOptions = s).catch((e: any) => addNotification(e.message, 'error'));
   });
 
   // Per-child configuration array for split mode
@@ -1104,7 +1104,7 @@ ${complianceSection}
                       <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
                         <label for="split-{i}-stage" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Stage</label>
                         <select id="split-{i}-stage" bind:value={child.stage} title="Stage for child {letter}">
-                          {#each stageOptions as opt}
+                          {#each stageOptions.filter(opt => !opt.is_terminal) as opt}
                             <option value={opt.code}>{opt.label}</option>
                           {/each}
                         </select>
