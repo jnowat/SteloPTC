@@ -20,15 +20,6 @@ pub struct StageEntry {
     pub is_terminal: bool,
 }
 
-fn active_profile(conn: &rusqlite::Connection) -> String {
-    conn.query_row(
-        "SELECT lab_profile FROM app_config WHERE id = 1",
-        [],
-        |r| r.get(0),
-    )
-    .unwrap_or_else(|_| "plant_tissue_culture".to_string())
-}
-
 fn query_vocab(
     conn: &rusqlite::Connection,
     sql: &str,
@@ -55,7 +46,7 @@ pub fn list_stages(
 ) -> Result<Vec<StageEntry>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let profile = active_profile(&db.conn);
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
 
     let mut stmt = db
         .conn
@@ -86,7 +77,7 @@ pub fn list_propagation_methods(
 ) -> Result<Vec<VocabEntry>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let profile = active_profile(&db.conn);
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
         &db.conn,
         "SELECT id, code, label, sort_order \
@@ -102,7 +93,7 @@ pub fn list_hormone_types(
 ) -> Result<Vec<VocabEntry>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let profile = active_profile(&db.conn);
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
         &db.conn,
         "SELECT id, code, label, sort_order \
@@ -118,7 +109,7 @@ pub fn list_compliance_record_types(
 ) -> Result<Vec<VocabEntry>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let profile = active_profile(&db.conn);
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
         &db.conn,
         "SELECT id, code, label, sort_order \
@@ -134,7 +125,7 @@ pub fn list_compliance_agencies(
 ) -> Result<Vec<VocabEntry>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let profile = active_profile(&db.conn);
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
         &db.conn,
         "SELECT id, code, label, sort_order \
@@ -150,7 +141,7 @@ pub fn list_inventory_categories(
 ) -> Result<Vec<VocabEntry>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let profile = active_profile(&db.conn);
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
         &db.conn,
         "SELECT id, code, label, sort_order \
@@ -158,3 +149,4 @@ pub fn list_inventory_categories(
         &profile,
     )
 }
+

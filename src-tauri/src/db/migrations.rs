@@ -1351,3 +1351,153 @@ pub fn seed_defaults(conn: &Connection) -> DbResult<()> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn migrated_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        run_all(&conn).expect("all migrations must succeed on a fresh in-memory DB");
+        conn
+    }
+
+    #[test]
+    fn all_migrations_run_on_empty_db() {
+        let _ = migrated_db();
+    }
+
+    #[test]
+    fn migrations_are_idempotent() {
+        // Running run_all a second time on an already-migrated DB should be a no-op.
+        let conn = migrated_db();
+        run_all(&conn).expect("second run of migrations must not error");
+    }
+
+    #[test]
+    fn stages_has_fifteen_ptc_entries() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 15, "expected 15 PTC stage entries from seed data");
+    }
+
+    #[test]
+    fn only_archived_stage_is_terminal() {
+        let conn = migrated_db();
+        let terminal: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT code FROM stages \
+                     WHERE profile = 'plant_tissue_culture' AND is_terminal = 1",
+                )
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+        assert_eq!(terminal, vec!["archived"],
+            "exactly one stage should be terminal, and it must be 'archived'");
+    }
+
+    #[test]
+    fn non_terminal_stages_count_is_fourteen() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages \
+                 WHERE profile = 'plant_tissue_culture' AND is_terminal = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 14,
+            "14 non-terminal stages should be available for selection in the UI");
+    }
+
+    #[test]
+    fn propagation_methods_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM propagation_methods WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 7);
+    }
+
+    #[test]
+    fn compliance_record_types_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM compliance_record_types WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 9);
+    }
+
+    #[test]
+    fn inventory_categories_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM inventory_categories WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 7);
+    }
+
+    #[test]
+    fn hormone_types_seeded_correctly() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM hormone_types WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 4);
+    }
+
+    #[test]
+    fn specimen_with_valid_stage_persists_after_migration() {
+        let conn = migrated_db();
+        // Insert a species first (required FK).
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-01')",
+            [],
+        )
+        .unwrap();
+        let now = "2026-01-01";
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, \
+              quarantine_flag, ip_flag, subculture_count, is_archived, contamination_flag, \
+              generation, lineage_passage_offset, created_at, updated_at) \
+             VALUES ('s1', '2026-01-01-CIT-01-001', 'sp1', 'explant', ?1, \
+                     0, 0, 0, 0, 0, 0, 0, ?1, ?1)",
+            [now],
+        )
+        .unwrap();
+        let stage: String = conn
+            .query_row("SELECT stage FROM specimens WHERE id = 's1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stage, "explant");
+    }
+}
