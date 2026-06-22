@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { labProfile, LAB_PROFILE_LABELS, type LabProfile } from '../profile';
+  import { labProfile, LAB_PROFILE_LABELS, loadLabProfile, type LabProfile } from '../profile';
   import { setLabProfile } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
@@ -13,7 +13,8 @@
   let changed = $derived(selected !== $labProfile);
   let confirmed = $derived(confirmation.trim() === 'CHANGE PROFILE');
 
-  onMount(() => {
+  onMount(async () => {
+    await loadLabProfile();
     selected = $labProfile;
   });
 
