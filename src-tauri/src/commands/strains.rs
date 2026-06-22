@@ -67,11 +67,10 @@ fn is_ancestor(
         Ok(s) => s,
         Err(_) => return false,
     };
-    let parents: Vec<String> = stmt
-        .query_map(params![of_strain], |r| r.get(0))
-        .unwrap_or_else(|_| Box::new(std::iter::empty()))
-        .filter_map(|r| r.ok())
-        .collect();
+    let parents: Vec<String> = match stmt.query_map(params![of_strain], |r| r.get(0)) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => Vec::new(),
+    };
 
     for parent_id in parents {
         if is_ancestor(conn, candidate_ancestor, &parent_id, visited) {
@@ -215,34 +214,35 @@ pub fn update_strain(
         return Err("Insufficient permissions".to_string());
     }
 
-    // Only update fields that are present in the request.
+    let tx = db
+        .conn
+        .unchecked_transaction()
+        .map_err(|e| format!("Failed to start transaction: {}", e))?;
+
     if let Some(ref name) = request.name {
-        db.conn
-            .execute(
-                "UPDATE strains SET name = ?1, updated_at = datetime('now') WHERE id = ?2",
-                params![name, request.id],
-            )
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE strains SET name = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![name, request.id],
+        )
+        .map_err(|e| e.to_string())?;
     }
     if let Some(ref code) = request.code {
-        db.conn
-            .execute(
-                "UPDATE strains SET code = ?1, updated_at = datetime('now') WHERE id = ?2",
-                params![code, request.id],
-            )
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE strains SET code = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![code, request.id],
+        )
+        .map_err(|e| e.to_string())?;
     }
     if let Some(ref strain_type) = request.strain_type {
-        db.conn
-            .execute(
-                "UPDATE strains SET strain_type = ?1, updated_at = datetime('now') WHERE id = ?2",
-                params![strain_type, request.id],
-            )
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "UPDATE strains SET strain_type = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![strain_type, request.id],
+        )
+        .map_err(|e| e.to_string())?;
     }
 
     queries::log_audit(
-        &db.conn,
+        &tx,
         Some(&user.id),
         "update",
         "strain",
@@ -252,6 +252,9 @@ pub fn update_strain(
         Some("Strain updated"),
     )
     .map_err(|e| format!("Failed to write audit entry: {}", e))?;
+
+    tx.commit()
+        .map_err(|e| format!("Failed to commit strain update: {}", e))?;
 
     drop(db);
     get_strain(state, token, request.id)
