@@ -479,3 +479,55 @@ export async function deleteAttachment(id: string) {
 export async function getWorkQueue() {
   return call<any[]>('get_work_queue');
 }
+
+// Strains (WP-28)
+export async function createStrain(request: {
+  species_id: string;
+  name: string;
+  code: string;
+  strain_type?: string;
+}) {
+  return call<any>('create_strain', { request });
+}
+
+export async function getStrain(id: string) {
+  return call<any>('get_strain', { id });
+}
+
+export async function listStrainsBySpecies(speciesId: string) {
+  return call<any[]>('list_strains_by_species', { speciesId });
+}
+
+export async function updateStrain(request: {
+  id: string;
+  name?: string;
+  code?: string;
+  strain_type?: string;
+}) {
+  return call<any>('update_strain', { request });
+}
+
+export async function archiveStrain(id: string) {
+  return call<void>('archive_strain', { id });
+}
+
+export async function updateStrainStatus(request: {
+  id: string;
+  status: string;
+  claimed_by?: string;
+  claimed_at?: string;
+  confirmation_basis?: string;
+  genomic_fingerprint?: string;
+}) {
+  return call<any>('update_strain_status', { request });
+}
+
+export async function createHybridizationEvent(request: {
+  parent_a_id: string;
+  parent_b_id: string;
+  name: string;
+  code: string;
+  notes?: string;
+}) {
+  return call<{ hybrid_strain_id: string; event_id: string }>('create_hybridization_event', { request });
+}

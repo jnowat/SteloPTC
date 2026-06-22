@@ -45,6 +45,8 @@ pub struct Specimen {
     pub created_at: String,
     pub updated_at: String,
     pub has_contamination: bool,
+    pub strain_id: Option<String>,
+    pub strain_chain_seq: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -71,6 +73,7 @@ pub struct CreateSpecimenRequest {
     pub parent_specimen_id: Option<String>,
     pub notes: Option<String>,
     pub employee_id: Option<String>,
+    pub strain_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
