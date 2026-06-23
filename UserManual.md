@@ -1,6 +1,6 @@
 # SteloPTC User Manual
 
-**Current as of:** June 2026 · **v1.13.0** (Trust Layer Phase 1 complete, dead specimen workflow, lab profile, profile-scoped vocabulary tables, profile-aware dashboard)
+**Current as of:** June 2026 · **v1.16.0** (Trust Layer Phase 1 complete, dead specimen workflow, lab profile, profile-scoped vocabulary tables, profile-aware dashboard, lab profile switcher in Settings, cell_culture vocabulary seeded, Strain/Cultivar data model and backend)
 
 > **Scope note:** This manual documents both shipping features and planned functionality. Sections marked "Phase TX" or with version targets (e.g. v2.0.0) describe upcoming work in the Taxonomic & Provenance Module. Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
 

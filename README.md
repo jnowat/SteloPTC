@@ -73,7 +73,7 @@ SteloPTC manages the full lifecycle of plant tissue culture specimens — from i
 - **Design Token System** — All colors, spacing, typography, radii, shadows, and z-index layers are defined as CSS custom properties in `src/lib/styles/tokens.css`. Changing a single token updates the UI consistently across all token-aware components (v1.2.2).
 - **Consistent Data States** — `DataState.svelte` provides a unified skeleton loading state, friendly empty state with optional CTA, and inline error state with retry across all list views (v1.2.3).
 - **Professional Print / PDF Output** — Culture Certificates and Specimens Summary reports open as formatted print windows with consistent header (logo space, lab name, accession, date, prepared-by) and footer (lab name, page numbers). Layouts are clean and well-organized on both A4 and US Letter paper, portrait and landscape. The Specimens Summary supports three grouping modes: by development stage, by health/urgency, or flat list — with an executive summary section (stats, stage distribution, health distribution) at the top. All three print functions (`printSummaryReport`, `printCultureReport`, `printLabel`) use a shared `printUtils.ts` delivery module: popup path for browsers, in-page DOM fallback for Tauri/WebView2 where `window.open` is blocked (v1.2.4, v1.4.0, v1.4.1).
-- **Automated Tests** — Vitest test suite covers utility functions, export row builders, and import validation — ~101 assertions across 3 test files. Rust unit tests (90 test functions) cover accession number generation, pagination helpers, stock depletion rules, all four compliance auto-flag SQL rules, **hash-chain invariants** (per-lineage `chain_seq`, fork invariants, `compute_entry_hash` determinism), Merkle checkpoint correctness, death workflow invariants, `UserRole` parsing, and **profile-aware dashboard** queries (11 dedicated tests). Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4, v1.4.1, v1.6.0, v1.11.0, v1.13.0).
+- **Automated Tests** — Vitest test suite covers utility functions, export row builders, import validation, and lab profile store — ~107 assertions across 4 test files. Rust unit tests (124 test functions) cover accession number generation, pagination helpers, stock depletion rules, all four compliance auto-flag SQL rules, **hash-chain invariants** (per-lineage `chain_seq`, fork invariants, `compute_entry_hash` determinism), Merkle checkpoint correctness, death workflow invariants, profile-aware dashboard queries, check_profile_change_allowed confirmation logic, cell_culture vocabulary seeding, and **strain/cultivar data model** invariants (status transitions, hash-chain seeding, hybridization guard). Both `npm test` and `cargo test` run in CI on every push and block merges on failure (v1.2.4, v1.4.1, v1.6.0, v1.11.0, v1.13.0, v1.14.0, v1.15.0, v1.16.0).
 - **Accessibility** — WCAG 2.1 AA target: visible `:focus-visible` keyboard indicators, skip-to-content link, ARIA landmarks and `aria-current` on sidebar navigation, focus trapping in QR modal and photo lightbox, `aria-label` on all icon-only buttons, ARIA attributes (`aria-valuenow`/`aria-valuetext`) on health status sliders (v1.2.6).
 - **Query Performance** — Six composite and covering indexes added (migration 007) on `specimens(created_at)`, `specimens(parent_specimen_id)`, `specimens(is_archived, created_at)`, `subcultures(specimen_id, passage_number)`, `subcultures(created_at)`, and `subcultures(contamination_flag, specimen_id)`. Correlated per-row contamination subqueries in specimen list/search replaced with a single aggregating LEFT JOIN. Subculture history list endpoint now uses the `PaginatedResponse` pattern. Scales to 10k+ specimens and 50k+ subcultures (v1.2.7).
 
@@ -138,7 +138,7 @@ npm test          # run once (CI mode)
 npm run test:watch  # watch mode (development)
 ```
 
-Tests live in `src/**/*.test.ts`. The current suite covers ~101 assertions across three test files:
+Tests live in `src/**/*.test.ts`. The current suite covers ~107 assertions across four test files:
 
 **`src/lib/utils.test.ts`** — core utility functions:
 
@@ -167,6 +167,14 @@ Tests live in `src/**/*.test.ts`. The current suite covers ~101 assertions acros
 | `REQUIRED_SHEET_NAMES` | Expected sheets present |
 | `findMissingSheets` | Detects missing required sheets |
 
+**`src/lib/profile.test.ts`** — lab profile Svelte store (v1.14.0+):
+
+| Area | Coverage |
+|---|---|
+| `labProfile` store | Default value, reactive updates, immediate reflection after profile switch |
+| `currentLabProfile()` | Synchronous accessor returns current store value |
+| `LAB_PROFILE_LABELS` | Completeness and human-readable label for the default profile |
+
 ### Rust tests
 
 ```bash
@@ -177,11 +185,13 @@ Requires Linux GTK system libraries (installed automatically in CI):
 
 | Module | Tests |
 |---|---|
-| `db::queries` | Accession number format, first/second/different-species/different-date sequences, zero-padding, pagination offset/limit calculations; **hash-chain invariants** — per-lineage `chain_seq` increments, child chains start at seq 1 with parent's `entry_hash` as `prev_hash`, split siblings share the same `prev_hash`, `compute_entry_hash` is deterministic (v1.6.0); **Merkle checkpoint tests** — empty/single/two/three-leaf trees, determinism, mutation detection, checkpoint creation, intact verification, tamper detection, removal detection, entries-beyond-end-seq, out-of-range seq windows (v1.9.0) |
-| `db::dashboard` | Vocabulary labels returned for PTC, cross-profile stage exclusion, empty result for unseeded profile, database-wide aggregate counts, contamination scoping and rate, vessel-type breakdown, schedule filtering — 11 tests (v1.13.0) |
+| `db::queries` | Accession number format, first/second/different-species/different-date sequences, zero-padding, pagination offset/limit calculations; **hash-chain invariants** — per-lineage `chain_seq` increments, child chains start at seq 1 with parent's `entry_hash` as `prev_hash`, split siblings share the same `prev_hash`, `compute_entry_hash` is deterministic (v1.6.0); **Merkle checkpoint tests** — empty/single/two/three-leaf trees, determinism, mutation detection, checkpoint creation, intact verification, tamper detection, removal detection, entries-beyond-end-seq, out-of-range seq windows (v1.9.0); **profile switcher** — `check_profile_change_allowed` — empty lab always allowed, correct confirmation accepted, wrong/missing confirmation rejected, plural grammar (v1.14.0); **strain hash-chain seeding** — strain genesis `prev_hash` equals species `entry_hash`, specimen with strain seeds from strain `entry_hash`, `strain_chain_seq` matches at creation, `create_hybridization_event` cross-species guard, bidirectional `used_as_parent` entries, fork invariant preserved for split siblings with a strain (v1.16.0) — 54 tests |
+| `db::dashboard` | Vocabulary labels returned for PTC, cross-profile stage exclusion, empty result for unseeded profile, database-wide aggregate counts, contamination scoping and rate, vessel-type breakdown, schedule filtering — 12 tests (v1.13.0) |
+| `db::vocabulary` | Stage list returns correct count and order for active profile; vocabulary isolation between profiles — 9 tests |
+| `db::migrations` | Migration fixture correctness; cell_culture stage count (12), single terminal stage, propagation method count (7), hormone type count (4), compliance record type count (9), compliance agency count (4), inventory category count (7), isolation from PTC vocabulary — 23 tests (v1.15.0) |
 | `commands::inventory` | `apply_stock_adjustment` — positive delta, negative delta, to-zero, below-zero error; `is_low_stock` — at/below/above minimum |
 | `commands::compliance` | Expired permit detected/not-detected; quarantine-no-release detected/not-detected; positive-not-quarantined detected/not-detected; HLB missing/recent; archived specimens excluded from all flags |
-| `commands::auth` | `UserRole::from_str` — all four roles parse correctly |
+| `commands::audit` | Checkpoint tamper-detection and verification invariants — 4 tests |
 | `commands::specimens` | Death archives specimen and zeroes health; `event_type` stored as `'death'`; archived specimen blocks further passages; normal passages retain `'passage'` event_type; `app_config` seeded with default profile — 5 tests (v1.11.0) |
 
 ### CI
@@ -507,6 +517,9 @@ SQLite, stored at:
 | `compliance_record_types` | Profile-scoped compliance record type vocabulary (v1.12.0) |
 | `compliance_agencies` | Profile-scoped compliance agency vocabulary (v1.12.0) |
 | `inventory_categories` | Profile-scoped inventory category vocabulary (v1.12.0) |
+| `strains`            | Named strains/cultivars per species with four-value status model (`unverified → claimed → confirmed_manual → confirmed_genomic`); hash chain seeded from parent species (v1.16.0) |
+| `strain_parents`     | Multi-parent hybrid pedigree links; `parent_chain_seq_at_creation` records strain chain version at hybridization time (v1.16.0) |
+| `hybridization_events` | Records both parent strains and their exact chain sequence snapshots at hybridization time; one record per hybrid strain (v1.16.0) |
 | `error_logs`         | Persistent error tracking with form payloads              |
 | `qr_scans`           | QR scan events with timestamp and user                    |
 
@@ -531,6 +544,8 @@ SQLite, stored at:
 | 015 | v1.11.0 | Added `event_type TEXT NOT NULL DEFAULT 'passage'` to `subcultures` (with index); created `app_config` single-row table with `lab_profile` (constrained to `plant_tissue_culture \| cell_culture \| mycology`) |
 | 016 | v1.12.0 | Created `stages` lookup table (`profile`, `code`, `label`, `sort_order`, `is_terminal`); seeded 15 PTC stage codes; rebuilt `specimens` to drop the `CHECK(stage IN (...))` constraint — the final vocabulary-driven table rebuild |
 | 017 | v1.12.0 | Created `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` lookup tables (profile-scoped, seeded with PTC values); rebuilt `media_hormones`, `compliance_records`, `inventory_items` to drop their respective `CHECK` constraints |
+| 018 | v1.15.0 | Seeded `cell_culture` profile vocabulary into all six lookup tables via `INSERT OR IGNORE` — 12 stages, 7 propagation methods, 4 hormone types, 9 compliance record types, 4 compliance agencies, 7 inventory categories; no schema changes, no table rebuilds |
+| 019 | v1.16.0 | Created `strains`, `strain_parents`, and `hybridization_events` tables; added `strain_id` (FK, nullable) and `strain_chain_seq` (nullable) to `specimens`; six covering indexes; purely additive — existing specimen rows receive `NULL` for both new columns |
 
 ### Backup
 
@@ -645,7 +660,8 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 
 ### v2.1.0+ — Multi-Vertical & Taxonomy Expansion
 
-- [ ] **Phase C — WP-26–27** — convert remaining profile-specific logic (UI profile manifest, profile-aware form validation) into profile-scoped data; one codebase serves multiple lab types (v1.14.0–v1.15.0) *(WP-23, WP-24, WP-25 complete)*
+- [x] **Phase C WP-26–27 complete** — lab profile switcher in Settings with confirmation flow (v1.14.0); `cell_culture` vocabulary seeded across all six lookup tables (v1.15.0) — Phase C fully complete
+- [ ] **Phase TX-1 WP-29** — Strain Manager UI, Hybrid Wizard, and basic Taxonomy Navigator (backend WP-28 complete in v1.16.0; UI work targets v1.17.0+)
 - [ ] **Phase TX-2 — Taxonomy expansion** — Genus → Kingdom hierarchy (`taxa` table — classification/navigation only, no hash chains above Species), NCBI Taxonomy import + ongoing sync with conflict resolution, multi-generational pedigree (ancestry, descendants, and specimen-tree queries across all hybrid generations), generation labeling + backcross notation, advanced full-rank Taxonomy Navigator with filtering and descendant counts (WP-35–39)
 - [ ] **SteloCC (Cell Culture)** — cell line registry, passage number / PDL tracking, cryopreservation & LN2 inventory, mycoplasma compliance rules (v2.0.0 target); benefits from Phase TX generic taxonomy engine
 - [ ] **SteloMyco (Mycology)** — strain/isolate registry, colonization % tracking, fruiting conditions & yield, substrate composition (v2.1.0 target); Phase TX strain model maps directly to mycology strain concepts

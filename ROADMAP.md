@@ -1,10 +1,10 @@
 # SteloPTC → Stelo Lab Suite — Engineering Roadmap
 
-**Status as of June 2026:** **v1.13.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Trust Layer Phase 1 complete (WP-18–21) · Phase C WP-22–25 shipped · profile-scoped vocabulary tables · profile-aware dashboard**
-**Schema:** **17 migrations** total; latest is **migration 017** (four remaining vocabulary lookup tables — `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` — rebuilt with dropped CHECK constraints, v1.12.0). Migration 016 created `stages` lookup table, dropped the `CHECK(stage IN (...))` constraint on `specimens`, and seeded all 15 PTC stage codes (v1.12.0); 015 added `event_type` on `subcultures` + `app_config` table with `lab_profile` (v1.11.0); 014 added `is_auto`/`auto_source` to `audit_checkpoints` + `app_settings` (v1.10.0); 013 added the `audit_checkpoints` Merkle table (v1.9.0); 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` to `media_batches` (v1.8.0); 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002**, defensively rebuilt in **migration 003**, and **finally dropped for good in migration 016** (WP-23) — no more CHECK-constraint rebuilds for vocabulary changes.
+**Status as of June 2026:** **v1.16.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Trust Layer Phase 1 complete (WP-18–21) · Phase C WP-22–27 fully shipped · Strain/Cultivar backend shipped (WP-28) · Phase TX-1 UI in progress (WP-29)**
+**Schema:** **19 migrations** total; latest is **migration 019** (Strain/Cultivar data model — `strains`, `strain_parents`, `hybridization_events` tables; nullable `strain_id`/`strain_chain_seq` on `specimens`; six indexes — purely additive, v1.16.0). Migration 018 seeded `cell_culture` vocabulary into all six lookup tables via `INSERT OR IGNORE` (v1.15.0). Migration 017 created the four remaining vocabulary lookup tables and dropped their CHECK constraints (v1.12.0); 016 created `stages` lookup table, dropped the `CHECK(stage IN (...))` constraint on `specimens`, and seeded all 15 PTC stage codes (v1.12.0); 015 added `event_type` on `subcultures` + `app_config` table with `lab_profile` (v1.11.0); 014 added `is_auto`/`auto_source` to `audit_checkpoints` + `app_settings` (v1.10.0); 013 added the `audit_checkpoints` Merkle table (v1.9.0); 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` to `media_batches` (v1.8.0); 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002**, defensively rebuilt in **migration 003**, and **finally dropped for good in migration 016** (WP-23) — no more CHECK-constraint rebuilds for vocabulary changes.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0; split workflow overhauled in v1.8.0 with letter-suffix accessions (001A/001B…), per-child controls, draft media batches, safety confirmation dialog, and synthetic split events in the passage timeline.
-**In progress (Phase C → TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅; Phase C WP-22–25 **fully shipped** ✅ — WP-22 lab_profile + dead specimen (v1.11.0), WP-23 stage lookup table (v1.12.0), WP-24 remaining vocabulary tables (v1.12.0), WP-25 profile-aware dashboard statistics (v1.13.0). Current focus: Phase C WP-26–27 **and, concurrently, Phase TX** (Taxonomic & Provenance Module, WP-28–49). Phase TX has equal priority to completing the remaining Phase C work. Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. **Phase TX-1 targets v2.0.0.**
+**In progress (Phase TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅; **Phase C WP-22–27 fully shipped** ✅ — WP-22 lab_profile + dead specimen (v1.11.0), WP-23 stage lookup table (v1.12.0), WP-24 remaining vocabulary tables (v1.12.0), WP-25 profile-aware dashboard statistics (v1.13.0), WP-26 lab profile switcher in Settings (v1.14.0), WP-27 cell_culture vocabulary seeded (v1.15.0). **Phase TX-1 WP-28 shipped** ✅ — Strain/Cultivar data model + backend + 14 new Rust tests (v1.16.0). Current focus: **Phase TX-1 WP-29** — Strain Manager UI, Hybrid Wizard, basic Taxonomy Navigator. Phase TX introduces Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator. **Phase TX-1 WP-29 targets v1.17.0.**
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -365,24 +365,24 @@ This is the work that turns one product into a platform. It is **behavior-preser
   - `commands/specimens.rs::get_specimen_stats` delegates to `db::dashboard`; same for contamination and schedule commands.
   - `Dashboard.svelte` tooltip updated to mention the active lab profile on the "Specimens by Stage" panel.
 
-### WP-26 — Profile-scoped compliance rules
-- **Goal:** The auto-flag engine (currently citrus-HLB / USDA-specific in `compliance.rs:252`) becomes a profile-pluggable rule set.
-- **Files:** `src-tauri/src/commands/compliance.rs`.
-- **Steps:** Move each rule (expired permit, citrus HLB, quarantine-without-release, positive-without-quarantine) behind a profile gate. PTC keeps all four. Define the rule interface so cell-culture and mycology can register their own (Section 5/6) without editing the plant rules.
-- **Acceptance:** PTC flags identically; the rule registry is profile-aware.
-- **Preserve:** All four current plant rules and their flag messages/types.
-- **Bump:** minor → ship as **v1.4.0** (still a PTC product, now profile-ready underneath).
+### WP-26 — Lab Profile Switcher in Settings — ✅ Delivered in **v1.14.0**
+- **Goal (as planned):** The auto-flag engine (currently citrus-HLB / USDA-specific in `compliance.rs:252`) becomes a profile-pluggable rule set.
+- **As built (v1.14.0):** Scope was reprioritized — the compliance rule engine restructure was deferred and replaced with the more immediately useful lab profile switcher UI in Settings:
+  - **`Settings.svelte`** — new admin-only Settings view (sidebar gear icon). Shows current active lab profile, a dropdown to select a new profile, a warning banner explaining vocabulary implications, and a mandatory `CHANGE PROFILE` confirmation before applying. When the lab has no specimens, confirmation is not required.
+  - **`check_profile_change_allowed(specimen_count, confirmation)`** — new pure, testable helper in `db/queries.rs`. Returns `Ok(())` for empty labs or when confirmation matches `"CHANGE PROFILE"` exactly (whitespace-trimmed). Returns a descriptive error with specimen count otherwise.
+  - **7 new Rust unit tests** covering: empty lab always allowed, confirmation ignored on empty lab, blocked without confirmation when specimens exist, blocked on wrong confirmation, allowed with correct confirmation, whitespace trimming accepted, correct grammar in error message.
+  - **6 new TypeScript tests** in `src/lib/profile.test.ts` covering: default store value, reactive updates, synchronous accessor, immediate store reflection after profile switch, `LAB_PROFILE_LABELS` completeness, human-readable label for the default profile.
+  - After a successful profile change, `labProfile.set(selected)` updates the Svelte writable store immediately so all subscribed components react without a restart.
+- **Compliance rule engine restructure:** Deferred; the existing four PTC rules remain in `commands/compliance.rs` with no profile gating. Will be addressed in a future packet.
+- **Bump:** minor → **v1.14.0**.
 
-### WP-27 — Per-vertical app identity (build-time)
-- **Goal:** Three installable apps from one repo, differentiated at build time, sharing 95%+ of the code.
-- **Files:** `tauri.conf.json` (+ per-profile overrides), CI workflows, package metadata.
-- **Steps:**
-  1. Parameterize `productName`, `identifier` (`com.steloptc.app` → `com.stelocc.app`, `com.stelomyco.app`), window title, icons, and **default `lab_profile`** via a build env var / profile-specific config overlay.
-  2. CI matrix builds all three (or one per tag prefix). Each installs side-by-side with its own data dir.
-  3. **Locked product names:** **SteloPTC** (plant tissue culture), **SteloCC** (cell culture), and **SteloMyco** (mycology), shipped under the **Stelo Lab Suite** umbrella. Use these exact names for `productName`, identifiers, store listings, and docs.
-- **Acceptance:** `npm run build` with `PROFILE=cell_culture` produces a distinct app, distinct identifier, defaulting to the cell-culture profile and vocabulary.
-- **Preserve:** The existing PTC build output exactly when `PROFILE` is unset/`plant_tissue_culture`.
-- **Bump:** minor.
+### WP-27 — Cell Culture Profile Vocabulary Seed — ✅ Delivered in **v1.15.0**
+- **Goal (as planned):** Three installable apps from one repo, differentiated at build time, sharing 95%+ of the code.
+- **As built (v1.15.0):** Scope was reprioritized — build-time app identity and per-vertical CI matrix were deferred. Instead, the `cell_culture` profile vocabulary was seeded so the profile switcher (WP-26) has real data to switch to:
+  - **Migration 018** — `INSERT OR IGNORE` into all six vocabulary tables for `profile = 'cell_culture'`: 12 stages, 7 propagation methods, 4 hormone types, 9 compliance record types, 4 compliance agencies, 7 inventory categories. No schema changes, no table rebuilds, no existing data touched.
+  - **9 new Rust unit tests** in `db/migrations.rs` verifying: stage count (12), single terminal stage (`archived`), non-terminal count (11), propagation method count (7), hormone type count (4), compliance record type count (9), compliance agency count (4), inventory category count (7), and isolation from `plant_tissue_culture`.
+- **Per-vertical build-time identity:** Deferred; the three `productName`/`identifier` parameterization and CI matrix are planned for Phase D/E when the second vertical is ready to ship.
+- **Bump:** minor → **v1.15.0**.
 
 ---
 
@@ -401,9 +401,9 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
 
 ---
 
-#### Phase TX-1 — Foundation · WP-28–29 · Target: v2.0.0
+#### Phase TX-1 — Foundation · WP-28–29 · Target: v1.17.0 (WP-28 complete in v1.16.0; WP-29 in progress)
 
-### WP-28 — Strain/Cultivar data model & backend
+### WP-28 — Strain/Cultivar data model & backend — ✅ Delivered in **v1.16.0**
 
 - **Goal:** Introduce strains as first-class entities sitting between Species and Specimens in both the taxonomic and cryptographic hierarchy. The hash chain for strain records seeds from the species level — making Strain the third tier (after Species) in SteloPTC's cryptographic provenance chain. Taxa above Species (Genus → Kingdom) are classification records only and carry no hash chain lineages.
 - **Files:** new migration (011), new `src-tauri/src/models/strain.rs`, new `src-tauri/src/commands/strains.rs`, `src-tauri/src/db/queries.rs` (new `log_audit_seeded_by_strain` helper), `src/lib/api.ts`.
@@ -427,7 +427,16 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
   6. **Unit tests:** strain genesis `prev_hash` equals species' current `entry_hash`; strain's `entry_hash` becomes specimen's `prev_hash` when `strain_id` is set; `strain_chain_seq` matches at creation; `any → claimed` succeeds with no extra fields; `confirmed_manual → claimed` is rejected; `confirmed_genomic → confirmed_manual` is rejected; `any → confirmed_manual` rejects missing `confirmation_basis`; `any → confirmed_genomic` rejects null fingerprint; `confirmed_manual → confirmed_genomic` succeeds (upgrade path); `create_hybridization_event` rejects cross-species parents; `create_hybridization_event` writes `used_as_parent` entries on both parent strain chains; parent A's audit chain after hybridization has chain_seq N+1 with `action = "used_as_parent"`; split siblings with a strain still share the same `prev_hash` (fork invariant preserved, `queries.rs` test extended).
 - **Acceptance:** Creating a strain writes a genesis audit entry with `prev_hash = species' last entry_hash`. Creating a specimen bound to that strain seeds its genesis from the strain's current `entry_hash`. `strain_chain_seq` on the specimen matches the strain's audit chain_seq at creation. `create_hybridization_event` atomically creates hybrid strain + parent records + hybridization_events row. `confirmed_manual` is rejected without `confirmation_basis`. All existing `create_specimen` behavior when `strain_id = NULL` is unchanged and all existing tests remain green.
 - **Preserve:** `log_audit_seeded_by_species` path is untouched; no hash chains on `taxa` records; no behavior change for specimens without a strain.
-- **Bump:** minor.
+- **Bump:** minor → **v1.16.0**.
+- **As built (v1.16.0):**
+  - **Migration 019** — purely additive: `strains`, `strain_parents`, `hybridization_events` tables; nullable `strain_id` + `strain_chain_seq` on `specimens`; six covering indexes. All existing specimen rows receive `NULL` for both columns.
+  - `log_audit_strain_genesis()` and `log_audit_seeded_by_strain()` helpers in `db/queries.rs`.
+  - `validate_strain_status_transition()` — pure, independently-testable status machine function.
+  - `commands/strains.rs` — `create_strain`, `get_strain`, `list_strains_by_species`, `update_strain`, `archive_strain`, `update_strain_status`, `create_hybridization_event` (single atomic transaction: 1 hybrid strain + 2 `strain_parents` + 1 `hybridization_events` + 4 audit entries).
+  - `commands/specimens.rs` — `CreateSpecimenRequest` updated with optional `strain_id`; seeds audit from strain when provided, from species otherwise (zero behavior change).
+  - TypeScript API: `createStrain`, `getStrain`, `listStrainsBySpecies`, `updateStrain`, `archiveStrain`, `updateStrainStatus`, `createHybridizationEvent`.
+  - **14 new Rust unit tests** covering: strain genesis hash chain seeding, specimen creation with strain, `strain_chain_seq` at creation, status transitions (allowed and blocked), `create_hybridization_event` cross-species guard, bidirectional `used_as_parent` entries, split sibling fork invariant with strain.
+  - **Deviation from plan:** migration numbered 019 (not 011 as originally specified — 011–018 were claimed by intervening features). `get_strain_pedigree` (depth-1) deferred to WP-29 UI packet.
 
 ---
 
@@ -468,7 +477,7 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
   8. Add `specimen_count` to `list_strains_by_species` response (COUNT JOIN on `specimens WHERE strain_id = strains.id AND is_archived = false`).
 - **Acceptance:** Can create a strain; assign it to a new specimen; specimen detail shows version-pinned strain pill with correct status badge; hybrid wizard calls `create_hybridization_event` and renders pedigree preview correctly; `confirmed_manual` status change triggers blocking modal with the exact text above (a toast alone fails this check); Taxonomy Navigator shows Species → Strains → Specimens tree and is text-searchable; print views include the `confirmed_manual` footnote.
 - **Preserve:** SpeciesManager.svelte structural behavior unchanged. All existing specimen creation without a strain continues to work identically.
-- **Bump:** minor → **v1.9.0** — Phase TX-1 complete.
+- **Bump:** minor → **v1.17.0** — Phase TX-1 complete.
 
 ---
 
@@ -716,8 +725,10 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | **v1.11.0** | WP-22 lab_profile concept (`app_config` table, migration 015) + Dead Specimen archive workflow (`record_specimen_death`, death timeline card, `event_type` on subcultures, "Dead/Archived" badge) — **Phase C begun** | ✅ shipped |
 | **v1.12.0** *(Phase C)* | WP-23: stage `CHECK` → `stages` lookup table (migration 016, final table rebuild); WP-24: remaining hardcoded vocabularies → profile-scoped lookup tables (migration 017) | ✅ shipped |
 | **v1.13.0** *(Phase C)* | WP-25: profile-aware dashboard statistics — `db::dashboard` module, 11 new tests, no hardcoded stage lists remain in dashboard queries | ✅ shipped |
-| **v1.14.0–v1.15.0** *(Phase C)* | WP-26: profile-scoped compliance rules; WP-27: per-vertical build-time app identity — **Phase C complete** | planned |
-| **v2.0.0** *(Phase TX-1)* | **Phase TX-1 — Strain/Cultivar foundation:** WP-28 (strain data model + hash chain seeding from species + backend commands), WP-29 (Strain Manager UI + Hybrid Wizard + basic Taxonomy Navigator). New migration. | planned |
+| **v1.14.0** *(Phase C)* | WP-26 as built: lab profile switcher in Settings — `Settings.svelte`, `check_profile_change_allowed`, 7 Rust tests, 6 TypeScript store tests — **Phase C WP-26 complete** | ✅ shipped |
+| **v1.15.0** *(Phase C)* | WP-27 as built: `cell_culture` vocabulary seeded via migration 018 — 12 stages, 7 propagation methods, 4 hormone types, 9 compliance record types, 4 agencies, 7 inventory categories; 9 Rust tests — **Phase C WP-27 complete · Phase C fully complete** | ✅ shipped |
+| **v1.16.0** *(Phase TX-1)* | **WP-28 — Strain/Cultivar data model + backend:** migration 019 (`strains`, `strain_parents`, `hybridization_events`); hash chain seeding from species; strict status machine; `create_hybridization_event` atomic command; 14 new Rust tests | ✅ shipped |
+| **v1.17.0** *(Phase TX-1)* | **WP-29 — Strain Manager UI + Hybrid Wizard + basic Taxonomy Navigator** — `StrainManager.svelte`, `HybridWizard.svelte`, `TaxonomyNavigator.svelte`; strain pill on `SpecimenDetail`; `confirmed_manual` blocking modal; Taxonomy sidebar nav entry — **Phase TX-1 complete** | in progress |
 | v2.x *(Phase TX-2)* | **Phase TX-2 — Taxonomy expansion:** WP-35 expanded taxonomy backbone (Genus→Kingdom), WP-36 NCBI import/sync, WP-37 multi-generational pedigree tools, WP-38 intraspecific hybridization, WP-39 advanced taxonomy navigator | planned |
 | v2.1.0 | **SteloCC (Cell Culture)** — first multi-vertical release | planned |
 | v2.2.0 | **SteloMyco (Mycology)** | planned |
@@ -728,4 +739,4 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 
 ---
 
-*This roadmap is grounded in the live repository at **v1.13.0**: 17 migrations, latest being migration 017 (remaining vocabulary lookup tables — `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` — CHECK constraints dropped); migration 016 created the `stages` lookup table and dropped the stage CHECK constraint on `specimens`; 015 added `event_type` on `subcultures` + `app_config` for `lab_profile`; 014 added `app_settings` + auto-checkpoint flags on `audit_checkpoints`; 013 added the `audit_checkpoints` Merkle table; 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` on `media_batches`; 010 added generational-depth columns; 009 introduced per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes; stage CHECK-constraint rebuilds in migrations 002/003, final drop in 016, at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; compliance rules in `commands/compliance.rs`; vocabulary commands in `commands/vocabulary.rs`; dashboard module at `db/dashboard.rs`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
+*This roadmap is grounded in the live repository at **v1.16.0**: 19 migrations, latest being migration 019 (Strain/Cultivar data model — `strains`, `strain_parents`, `hybridization_events` tables; nullable `strain_id`/`strain_chain_seq` on `specimens`; purely additive); migration 018 seeded `cell_culture` vocabulary into all six lookup tables; 017 created the four remaining vocabulary lookup tables with CHECK constraints dropped; 016 created the `stages` lookup table and dropped the stage CHECK constraint on `specimens`; 015 added `event_type` on `subcultures` + `app_config` for `lab_profile`; 014 added `app_settings` + auto-checkpoint flags on `audit_checkpoints`; 013 added the `audit_checkpoints` Merkle table; 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` on `media_batches`; 010 added generational-depth columns; 009 introduced per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes; stage CHECK-constraint rebuilds in migrations 002/003, final drop in 016, at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; strain commands in `commands/strains.rs`; vocabulary commands in `commands/vocabulary.rs`; dashboard module at `db/dashboard.rs`; Settings view in `Settings.svelte`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
