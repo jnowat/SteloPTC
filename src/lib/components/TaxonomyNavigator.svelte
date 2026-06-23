@@ -28,7 +28,7 @@
       : allSpecies
   );
 
-  let filteredStrains = $derived(() => {
+  let filteredStrains = $derived.by(() => {
     if (statusFilter === 'all') return strains;
     if (statusFilter === 'confirmed_any') return strains.filter(s => s.status === 'confirmed_manual' || s.status === 'confirmed_genomic');
     return strains.filter(s => s.status === statusFilter);
@@ -183,7 +183,7 @@
 
       {#if strainsLoading}
         <div class="empty-state">Loading strains…</div>
-      {:else if filteredStrains().length === 0}
+      {:else if filteredStrains.length === 0}
         <div class="empty-state">
           {strains.length === 0
             ? 'No strains registered for this species.'
@@ -191,7 +191,7 @@
         </div>
       {:else}
         <div class="strain-grid">
-          {#each filteredStrains() as s}
+          {#each filteredStrains as s}
             <button
               class="strain-card"
               class:panel-open={panelStrainId === s.id}
