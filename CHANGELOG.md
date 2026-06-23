@@ -5,6 +5,66 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-06-22
+
+### Added — WP-28: Strain/Cultivar Data Model & Backend
+
+- **Migration 019** (`migration_019_strain_model`) — purely additive, safe to run on existing databases:
+  - New `strains` table with identity fields (`id`, `species_id`, `name`, `code`, `strain_type`), a strict status column (`status CHECK(... IN ('unverified','claimed','confirmed_manual','confirmed_genomic'))`), identity-claim fields (`claimed_by`, `claimed_at`, `confirmation_basis`, `genomic_fingerprint`), hybrid flag (`is_hybrid`), and archive fields.
+  - New `strain_parents` table supporting multi-parent hybridization records, with `parent_chain_seq_at_creation` capturing the parent's audit chain position at event time.
+  - New `hybridization_events` table recording both parents' `chain_seq` snapshots at hybridization time.
+  - Two nullable columns added to `specimens`: `strain_id` (FK to strains) and `strain_chain_seq` (strain chain_seq at specimen creation time). All existing specimen rows receive `NULL` for both columns — no data loss.
+  - Indexes: `idx_strains_species`, `idx_strains_status`, `idx_strain_parents_strain`, `idx_strain_parents_parent`, `idx_hybridization_events_hybrid`, `idx_specimens_strain`.
+
+- **Hash chain integration** (`db/queries.rs`):
+  - `log_audit_strain_genesis()` — writes a genesis audit entry for a new strain at `chain_seq = 0` with `prev_hash` set to the parent species' current `entry_hash` (falls back to `ZERO_HASH`). Cryptographically binds each strain lineage to its species definition at creation time.
+  - `log_audit_seeded_by_strain()` — seeds a specimen's audit chain from the strain's last `entry_hash`, creating a `chain_seq = 1` entry. Analogous to the existing `log_audit_seeded_by_species`.
+  - `validate_strain_status_transition()` — pure function enforcing the status machine rules (see below), independently testable without Tauri.
+
+- **Strain commands** (`commands/strains.rs`):
+  - `create_strain` — validates species exists, inserts strain, writes genesis audit entry (chain_seq = 0) in a single transaction.
+  - `get_strain` — returns a strain with live `specimen_count` (active specimens only).
+  - `list_strains_by_species` — returns all non-archived strains for a species, each with `specimen_count`.
+  - `update_strain` — updates name/code/strain_type, appends to audit chain.
+  - `archive_strain` — soft-deletes with `is_archived = 1`.
+  - `update_strain_status` — enforces the strict status machine before writing.
+  - `create_hybridization_event` — fully atomic (single SQLite transaction); creates the hybrid strain record, two `strain_parents` rows, one `hybridization_events` row, the hybrid genesis audit entry (chain_seq = 0), a "hybridize" audit entry (chain_seq = 1), and `used_as_parent` entries on both parent strain chains. Rejects cross-species parents and performs basic cycle detection before writing.
+
+- **Strict status transition rules** (enforced in `update_strain_status` via `validate_strain_status_transition`):
+  - Ordering: `unverified` → `claimed` → `confirmed_manual` → `confirmed_genomic`.
+  - Downgrades from `confirmed_genomic` or `confirmed_manual` are always rejected.
+  - `confirmed_manual` requires a non-empty `confirmation_basis`; returns a descriptive error without it.
+  - `confirmed_genomic` requires a non-empty `genomic_fingerprint`; returns a descriptive error without it.
+  - `confirmed_manual → claimed` and `confirmed_manual → unverified` are rejected (downgrade).
+
+- **Specimen creation updated** (`commands/specimens.rs`):
+  - `CreateSpecimenRequest` now accepts an optional `strain_id`.
+  - When `strain_id` is provided, the genesis audit entry seeds from the strain's `entry_hash` (via `log_audit_seeded_by_strain`) and `specimens.strain_chain_seq` is set to the strain's current `chain_seq` captured before the transaction opens.
+  - Specimens created without a `strain_id` continue to seed from the species exactly as before — no behavior change.
+
+- **TypeScript API** (`src/lib/api.ts`): `createStrain`, `getStrain`, `listStrainsBySpecies`, `updateStrain`, `archiveStrain`, `updateStrainStatus`, `createHybridizationEvent`.
+
+- **14 new Rust unit tests** in `db/queries.rs` and `db/migrations.rs` covering:
+  - Strain genesis `prev_hash` equals the species' current `entry_hash`.
+  - Specimen created with a strain seeds from the strain's `entry_hash`.
+  - `strain_chain_seq` on the specimen matches the strain's `chain_seq` at creation.
+  - `any → claimed` succeeds with no extra fields.
+  - `confirmed_manual` is rejected without `confirmation_basis`.
+  - `confirmed_genomic → confirmed_manual` is rejected (downgrade).
+  - `confirmed_genomic → claimed` is rejected (downgrade).
+  - `confirmed_manual → claimed` and `confirmed_manual → unverified` are rejected.
+  - `create_hybridization_event` cross-species guard is detectable via `species_id` mismatch.
+  - `create_hybridization_event` writes `used_as_parent` entries on both parent chains.
+  - Split siblings sharing a strain share the same `prev_hash` (fork invariant).
+  - Migration 019 tables exist on a fresh DB; `strain_id` defaults to `NULL` on existing specimens.
+
+### Changed
+
+- `Specimen` model and all three Specimen construction sites in `commands/specimens.rs` now include `strain_id` and `strain_chain_seq` fields (mapped from the new columns; `NULL` for pre-existing rows).
+- Version bumped to 1.16.0 across `package.json`, `Cargo.toml`, and `tauri.conf.json`.
+
+---
+
 ## [1.15.0] - 2026-06-22
 
 ### Added — WP-27: Seed Minimal Usable `cell_culture` Profile

@@ -8,6 +8,7 @@ pub mod species;
 pub mod audit;
 pub mod inventory;
 pub mod error_log;
+pub mod strain;
 
 // Re-export common types
 pub use specimen::*;

@@ -136,6 +136,14 @@ pub fn run() {
             commands::vocabulary::list_compliance_record_types,
             commands::vocabulary::list_compliance_agencies,
             commands::vocabulary::list_inventory_categories,
+            // Strains (WP-28)
+            commands::strains::create_strain,
+            commands::strains::get_strain,
+            commands::strains::list_strains_by_species,
+            commands::strains::update_strain,
+            commands::strains::archive_strain,
+            commands::strains::update_strain_status,
+            commands::strains::create_hybridization_event,
             // Error Logs
             commands::error_logs::log_error,
             commands::error_logs::list_error_logs,

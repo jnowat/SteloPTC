@@ -103,6 +103,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (18)", [])?;
     }
 
+    if current < 19 {
+        migration_019_strain_model(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (19)", [])?;
+    }
+
     Ok(())
 }
 
@@ -1424,6 +1429,79 @@ pub fn seed_defaults(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
+fn migration_019_strain_model(conn: &Connection) -> DbResult<()> {
+    // WP-28: strains as first-class entities between species and specimens.
+    // Purely additive — no existing tables are altered beyond two nullable
+    // columns on specimens.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS strains (
+            id                   TEXT    PRIMARY KEY,
+            species_id           TEXT    NOT NULL REFERENCES species(id),
+            name                 TEXT    NOT NULL,
+            code                 TEXT    NOT NULL,
+            strain_type          TEXT    NOT NULL DEFAULT 'wildtype',
+            status               TEXT    NOT NULL DEFAULT 'unverified'
+                                     CHECK(status IN ('unverified','claimed',
+                                                      'confirmed_manual','confirmed_genomic')),
+            claimed_by           TEXT,
+            claimed_at           TEXT,
+            confirmation_basis   TEXT,
+            genomic_fingerprint  TEXT,
+            is_hybrid            INTEGER NOT NULL DEFAULT 0,
+            is_archived          INTEGER NOT NULL DEFAULT 0,
+            archived_at          TEXT,
+            created_by           TEXT    REFERENCES users(id),
+            created_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at           TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(species_id, code)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_strains_species
+            ON strains(species_id);
+        CREATE INDEX IF NOT EXISTS idx_strains_status
+            ON strains(status);
+
+        CREATE TABLE IF NOT EXISTS strain_parents (
+            id                          TEXT    PRIMARY KEY,
+            strain_id                   TEXT    NOT NULL REFERENCES strains(id),
+            parent_strain_id            TEXT    NOT NULL REFERENCES strains(id),
+            parent_role                 TEXT,
+            parent_chain_seq_at_creation INTEGER
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_strain_parents_strain
+            ON strain_parents(strain_id);
+        CREATE INDEX IF NOT EXISTS idx_strain_parents_parent
+            ON strain_parents(parent_strain_id);
+
+        CREATE TABLE IF NOT EXISTS hybridization_events (
+            id                TEXT    PRIMARY KEY,
+            hybrid_strain_id  TEXT    NOT NULL REFERENCES strains(id),
+            parent_a_strain_id TEXT   NOT NULL REFERENCES strains(id),
+            parent_b_strain_id TEXT   NOT NULL REFERENCES strains(id),
+            parent_a_chain_seq INTEGER NOT NULL,
+            parent_b_chain_seq INTEGER NOT NULL,
+            notes             TEXT,
+            created_by        TEXT    REFERENCES users(id),
+            created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_hybridization_events_hybrid
+            ON hybridization_events(hybrid_strain_id);
+    ")?;
+
+    // Additive columns on specimens — nullable so existing rows are unaffected.
+    // SQLite does not support ADD COLUMN with a REFERENCES clause in older
+    // versions, so we omit the FK keyword and rely on application-level checks.
+    conn.execute_batch("
+        ALTER TABLE specimens ADD COLUMN strain_id TEXT;
+        ALTER TABLE specimens ADD COLUMN strain_chain_seq INTEGER;
+        CREATE INDEX IF NOT EXISTS idx_specimens_strain ON specimens(strain_id);
+    ")?;
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1712,5 +1790,63 @@ mod tests {
             .query_row("SELECT stage FROM specimens WHERE id = 's1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(stage, "explant");
+    }
+
+    // ── migration 019 (WP-28) ──────────────────────────────────────────────────
+
+    #[test]
+    fn strains_table_exists_after_migration_019() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM strains", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "strains table must exist and be empty on fresh DB");
+    }
+
+    #[test]
+    fn strain_parents_table_exists_after_migration_019() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM strain_parents", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn hybridization_events_table_exists_after_migration_019() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM hybridization_events", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn specimens_has_strain_id_column_after_migration_019() {
+        let conn = migrated_db();
+        // Insert a species and specimen; strain_id must default to NULL.
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-01')",
+            [],
+        ).unwrap();
+        let now = "2026-01-01";
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, \
+              quarantine_flag, ip_flag, subculture_count, is_archived, contamination_flag, \
+              generation, lineage_passage_offset, created_at, updated_at) \
+             VALUES ('s1', '2026-01-01-CIT-01-001', 'sp1', 'explant', ?1, \
+                     0, 0, 0, 0, 0, 0, 0, ?1, ?1)",
+            [now],
+        ).unwrap();
+        let strain_id: Option<String> = conn
+            .query_row(
+                "SELECT strain_id FROM specimens WHERE id = 's1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(strain_id.is_none(), "strain_id must default to NULL for existing specimens");
     }
 }

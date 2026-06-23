@@ -16,3 +16,4 @@ pub mod attachments;
 pub mod work_queue;
 pub mod import;
 pub mod vocabulary;
+pub mod strains;

@@ -637,11 +637,11 @@ Additional rules can be added in `src-tauri/src/commands/compliance.rs`.
 
 - [ ] **Strain/Cultivar Registry** — Strains as first-class entities under each species with their own SHA-256 hash chains seeded from the parent species hash (WP-28). Accession numbers never encode strain.
 - [ ] **Strain version binding** — specimens cryptographically bound to a specific strain version (`strain_chain_seq`) at creation time; strain version badge in specimen detail header (WP-28)
-- [ ] **Strain status workflow** — four-value model: `Unverified` (default) → `Claimed` (one-click assertion) → `Confirmed — Manual` (requires documented basis + blocking acknowledgment modal; `⚠ Manual ID` badge permanent, never equivalent to genomic) → `Confirmed — Genomic` (requires fingerprint data); downgrades permanently rejected; full audit trail per status change (WP-28, WP-29)
+- [x] **Strain status workflow** — four-value model: `Unverified` (default) → `Claimed` (one-click assertion) → `Confirmed — Manual` (requires documented basis; downgrades permanently rejected) → `Confirmed — Genomic` (requires fingerprint data; gold standard); full audit trail per status change **(WP-28 backend complete — v1.16.0)**
 - [ ] **Strain management UI** — per-species strain list with status badges, specimen counts, origin notes, and hybrid flags; accessible from Species page (WP-29)
-- [ ] **Hybrid creation wizard** — `hybridization_events` model records both parent strains and their exact chain versions at time of crossing; intraspecific-only in TX-1 (WP-28, WP-29)
+- [x] **Hybrid creation wizard (backend)** — `hybridization_events` model records both parent strains and their exact chain versions at time of crossing; intraspecific-only; atomic transaction writes hybrid strain + 2 parent rows + 4 audit entries **(WP-28 backend complete — v1.16.0)**
 - [ ] **Basic Taxonomy Navigator** — two-column panel (Species → Strains → Specimens) with text search and quick-navigate (WP-29)
-- [ ] **Hybrid pedigree foundation** — `strain_parents` table supporting multi-parent pedigree from day one (WP-28)
+- [x] **Hybrid pedigree foundation** — `strain_parents` table supporting multi-parent pedigree from day one; `strain_chain_seq` on specimens version-binds each specimen to the strain state at creation **(WP-28 backend complete — v1.16.0)**
 
 ### v2.1.0+ — Multi-Vertical & Taxonomy Expansion
 

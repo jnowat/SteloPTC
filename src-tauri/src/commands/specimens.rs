@@ -91,6 +91,8 @@ pub fn list_specimens(
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
             has_contamination: row.get::<_, i32>("has_contamination")? != 0,
+            strain_id: row.get("strain_id")?,
+            strain_chain_seq: row.get("strain_chain_seq")?,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -166,6 +168,8 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
                 has_contamination: row.get::<_, i32>("has_contamination")? != 0,
+                strain_id: row.get("strain_id")?,
+                strain_chain_seq: row.get("strain_chain_seq")?,
             })
         },
     ).map_err(|e| format!("Specimen not found: {}", e))
@@ -202,6 +206,20 @@ pub fn create_specimen(
     //      is visible to the child's log_audit_for_child query (same txn is
     //      not needed here since the parent was committed in a prior request,
     //      but the transaction still ensures our own write is atomic).
+    // Snapshot the strain's current chain_seq before opening the transaction
+    // so that strain_chain_seq records the strain state at the moment the
+    // specimen was created (not after any intra-transaction writes).
+    let strain_chain_seq: Option<i64> = if let Some(ref sid) = request.strain_id {
+        db.conn.query_row(
+            "SELECT COALESCE(MAX(chain_seq), 0) FROM audit_log \
+             WHERE lineage_id = ?1 AND entry_hash IS NOT NULL",
+            params![sid],
+            |r| r.get(0),
+        ).ok()
+    } else {
+        None
+    };
+
     let tx = db.conn
         .unchecked_transaction()
         .map_err(|e| format!("Failed to start transaction: {}", e))?;
@@ -211,8 +229,10 @@ pub fn create_specimen(
          provenance, source_plant, initiation_date, location, location_details,
          propagation_method, acclimatization_status, health_status, disease_status,
          quarantine_flag, permit_number, permit_expiry, ip_flag, ip_notes,
-         environmental_notes, parent_specimen_id, qr_code_data, notes, employee_id, created_by)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26)",
+         environmental_notes, parent_specimen_id, qr_code_data, notes, employee_id, created_by,
+         strain_id, strain_chain_seq)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
+                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
         params![
             id, accession, request.species_id, request.project_id, request.stage, request.custom_stage,
             request.provenance, request.source_plant, request.initiation_date, request.location,
@@ -221,19 +241,26 @@ pub fn create_specimen(
             request.permit_number, request.permit_expiry, request.ip_flag.unwrap_or(false) as i32,
             request.ip_notes, request.environmental_notes, request.parent_specimen_id, qr_data,
             request.notes, request.employee_id, user.id,
+            request.strain_id, strain_chain_seq,
         ],
     ).map_err(|e| format!("Failed to create specimen: {}", e))?;
 
     // Link the audit chain.
     // - Split/derived: fork from parent's last entry_hash (cryptographically visible fork).
-    // - Root specimen: seed from species' last entry_hash (binds specimen to its species
-    //   definition; falls back to ZERO_HASH for pre-hash-chain species).
+    // - Strain-seeded root: seed from strain's last entry_hash.
+    // - Plain root: seed from species' last entry_hash.
     if let Some(ref parent_id) = request.parent_specimen_id {
         queries::log_audit_for_child(
             &tx, Some(&user.id), "create", "specimen", Some(&id),
             None, Some(&accession), Some("Specimen created (split/derived)"),
             parent_id,
         ).map_err(|e| format!("Failed to write split audit entry: {}", e))?;
+    } else if let Some(ref strain_id) = request.strain_id {
+        queries::log_audit_seeded_by_strain(
+            &tx, Some(&user.id), "create", "specimen", Some(&id),
+            None, Some(&accession), Some("Specimen created (strain-seeded)"),
+            strain_id,
+        ).map_err(|e| format!("Failed to write strain audit entry: {}", e))?;
     } else {
         queries::log_audit_seeded_by_species(
             &tx, Some(&user.id), "create", "specimen", Some(&id),
@@ -478,6 +505,8 @@ pub fn search_specimens(
             created_at: row.get("created_at")?,
             updated_at: row.get("updated_at")?,
             has_contamination: row.get::<_, i32>("has_contamination")? != 0,
+            strain_id: row.get("strain_id")?,
+            strain_chain_seq: row.get("strain_chain_seq")?,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
