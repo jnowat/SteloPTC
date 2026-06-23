@@ -1,8 +1,8 @@
 # SteloPTC User Manual
 
-**Current as of:** June 2026 · **v1.16.0** (Trust Layer Phase 1 complete, dead specimen workflow, lab profile, profile-scoped vocabulary tables, profile-aware dashboard, lab profile switcher in Settings, cell_culture vocabulary seeded, Strain/Cultivar data model and backend)
+**Current as of:** June 2026 · **v1.17.0** (Trust Layer Phase 1 complete, dead specimen workflow, lab profile, profile-scoped vocabulary tables, profile-aware dashboard, lab profile switcher in Settings, cell_culture vocabulary seeded, Strain/Cultivar data model and backend, Strain Manager UI, Hybrid Wizard, Taxonomy Navigator — Phase TX-1 complete)
 
-> **Scope note:** This manual documents both shipping features and planned functionality. Sections marked "Phase TX" or with version targets (e.g. v2.0.0) describe upcoming work in the Taxonomic & Provenance Module. Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
+> **Scope note:** This manual documents both shipping features and planned functionality. Sections marked "Phase TX-2+" describe upcoming work in the Taxonomic & Provenance Module. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, Taxonomy Navigator) is fully shipped as of v1.17.0. Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
 
 SteloPTC is a desktop application for managing plant tissue culture laboratories with a strong focus on **provenance, traceability, and cryptographic data integrity**.
 
@@ -169,9 +169,9 @@ Every specimen inherits its species’ hash at creation time. Protecting the spe
 
 ---
 
-## 5. Managing Strains & Cultivars (Phase TX-1 — v2.0.0 target)
+## 5. Managing Strains & Cultivars (Phase TX-1 — shipped v1.16.0–v1.17.0)
 
-> **Note:** Strain management is planned for Phase TX-1 (v2.0.0). The features described below are not yet available in the current shipping version.
+> **Note:** Strain management shipped in Phase TX-1. The backend data model landed in v1.16.0 (WP-28); the full UI — Strain Manager, Hybrid Wizard, and Taxonomy Navigator — shipped in v1.17.0 (WP-29). All features described below are available in the current shipping version.
 
 Strains give you a precise layer of genetic identity between species and individual specimens.
 
@@ -198,9 +198,9 @@ Hybridization is modeled as a distinct event (not a passage or split). It create
 
 ---
 
-## 6. Taxonomy Navigator (Phase TX-1 / TX-2)
+## 6. Taxonomy Navigator (Phase TX-1 shipped v1.17.0 / TX-2 planned)
 
-> **Note:** The basic Species → Strains → Specimens navigator is targeted for Phase TX-1 (v2.0.0). The full multi-rank column browser arrives in Phase TX-2.
+> **Note:** The basic Species → Strains → Specimens navigator shipped in v1.17.0 (WP-29). The full multi-rank column browser (Genus → Kingdom) arrives in Phase TX-2.
 
 The Taxonomy Navigator lets you browse your collection hierarchically instead of using a flat specimen list. It is especially useful as your collection grows.
 
