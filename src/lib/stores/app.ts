@@ -1,9 +1,10 @@
 import { writable, derived } from 'svelte/store';
 
-export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 'reminders' | 'compliance' | 'species' | 'inventory' | 'users' | 'audit' | 'error-log' | 'export' | 'import' | 'settings' | 'work-queue';
+export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 'reminders' | 'compliance' | 'species' | 'inventory' | 'users' | 'audit' | 'error-log' | 'export' | 'import' | 'settings' | 'work-queue' | 'taxonomy';
 
 export const currentView = writable<View>('dashboard');
 export const selectedSpecimenId = writable<string | null>(null);
+export const selectedStrainId = writable<string | null>(null);
 
 function getInitialDarkMode(): boolean {
   try {

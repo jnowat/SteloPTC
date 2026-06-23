@@ -25,6 +25,7 @@
     { id: 'reminders', label: 'Reminders', icon: '&#128276;' },
     { id: 'compliance', label: 'Compliance', icon: '&#128203;' },
     { id: 'species', label: 'Species', icon: '&#127807;' },
+    { id: 'taxonomy', label: 'Taxonomy', icon: '&#129516;' },
     { id: 'inventory', label: 'Inventory', icon: '&#128230;' },
     { id: 'users', label: 'Users', icon: '&#128101;', roles: ['admin'] },
     { id: 'settings', label: 'Settings', icon: '&#9881;', roles: ['admin'] },
@@ -91,6 +92,7 @@
             item.id === 'reminders' ? 'Reminders — view and manage scheduled tasks and alerts (Ctrl+4)' :
             item.id === 'compliance' ? 'Compliance — review compliance flags and regulatory records' :
             item.id === 'species' ? 'Species — manage species definitions and subculture intervals' :
+            item.id === 'taxonomy' ? 'Taxonomy — browse species and strains, manage strain identities' :
             item.id === 'inventory' ? 'Inventory — track stock levels and supply usage' :
             item.id === 'users' ? 'Users — manage user accounts and roles (admin only)' :
             item.id === 'settings' ? 'Settings — configure lab profile and system options (admin only)' :
@@ -108,6 +110,7 @@
             item.id === 'reminders' ? 'Go to Reminders — view and manage scheduled tasks and alerts' :
             item.id === 'compliance' ? 'Go to Compliance — review compliance flags and regulatory records' :
             item.id === 'species' ? 'Go to Species — manage species definitions and subculture intervals' :
+            item.id === 'taxonomy' ? 'Go to Taxonomy — browse species and strains, manage strain identities' :
             item.id === 'inventory' ? 'Go to Inventory — track stock levels and supply usage' :
             item.id === 'users' ? 'Go to Users — manage user accounts and roles (admin only)' :
             item.id === 'settings' ? 'Go to Settings — configure lab profile and system options' :

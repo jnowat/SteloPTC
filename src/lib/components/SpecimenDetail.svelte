@@ -1,12 +1,12 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain } from '../api';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
   import SpecimenComplianceTable from './SpecimenComplianceTable.svelte';
   import SpecimenPassageTimeline from './SpecimenPassageTimeline.svelte';
-  import { selectedSpecimenId, navigateTo, addNotification, devMode } from '../stores/app';
+  import { selectedSpecimenId, selectedStrainId, navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import { escHtml, stageFmt, healthLabel } from '../utils';
   import { deliverPrint } from '../printUtils';
@@ -15,6 +15,7 @@
   import Tooltip from './Tooltip.svelte';
 
   let specimen = $state<any>(null);
+  let strainData = $state<any>(null);
   let showQrModal = $state(false);
   let showQrScanner = $state(false);
   let subcultures = $state<any[]>([]);
@@ -272,6 +273,13 @@
       complianceRecords = cr;
       mediaBatches = mb;
       photos = ph as any[];
+
+      // Load strain data if specimen is bound to a strain
+      if (s.strain_id) {
+        strainData = await getStrain(s.strain_id).catch(() => null);
+      } else {
+        strainData = null;
+      }
 
       // Lineage: fetch parent if present
       if (s.parent_specimen_id) {
@@ -570,7 +578,7 @@
         ${childSpecimens.length > 0 ? `<span class="il">Split Into</span><span class="iv">${childSpecimens.map((c: any) => `<span class="chip">${esc(c.accession_number)}</span>`).join(' ')}</span>` : ''}
       </div>` : '';
 
-    const printCss = `*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%}body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:10.5px;color:#0f172a;background:#fff}.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:11px;margin-bottom:16px;gap:16px}.doc-logo-area{width:64px;height:44px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#94a3b8;letter-spacing:.5px;flex-shrink:0}.doc-title-block{flex:1}.doc-brand{font-size:22px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}.doc-report-name{font-size:12px;color:#475569;margin-top:3px;font-weight:500}.doc-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.8;flex-shrink:0}.doc-meta b{color:#0f172a}h2{font-size:9.5px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:1px;margin:18px 0 7px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}.ig{display:grid;grid-template-columns:155px 1fr;gap:4px 12px;page-break-inside:avoid}.il{font-size:9.5px;color:#64748b;font-weight:600;text-align:right;padding:2px 0}.iv{font-size:10.5px;padding:2px 0;color:#0f172a}table{width:100%;border-collapse:collapse;font-size:9.5px;margin-top:5px}thead{display:table-header-group}th{background:#f1f5f9;font-weight:700;text-align:left;padding:5px 8px;color:#475569;border:1px solid #e2e8f0;white-space:nowrap;font-size:9px;letter-spacing:.2px}td{padding:4px 8px;border:1px solid #e2e8f0;vertical-align:top}tr:nth-child(even) td{background:#f8fafc}tr{page-break-inside:avoid}.ctr{text-align:center}.note-cell{max-width:150px;word-break:break-word}.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.b-blue{background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.chip{display:inline-block;background:#e2e8f0;color:#334155;padding:1px 5px;border-radius:3px;font-size:9.5px;margin:1px}.doc-footer{margin-top:22px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}.doc-footer-pagenum::after{content:"Page " counter(page) " of " counter(pages)}`;
+    const printCss = `*{margin:0;padding:0;box-sizing:border-box}html,body{height:100%}body{font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:10.5px;color:#0f172a;background:#fff}.doc-header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2.5px solid #0f172a;padding-bottom:11px;margin-bottom:16px;gap:16px}.doc-logo-area{width:64px;height:44px;border:1.5px dashed #cbd5e1;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:8px;color:#94a3b8;letter-spacing:.5px;flex-shrink:0}.doc-title-block{flex:1}.doc-brand{font-size:22px;font-weight:900;letter-spacing:-.5px;color:#0f172a;line-height:1}.doc-report-name{font-size:12px;color:#475569;margin-top:3px;font-weight:500}.doc-meta{text-align:right;font-size:9.5px;color:#64748b;line-height:1.8;flex-shrink:0}.doc-meta b{color:#0f172a}h2{font-size:9.5px;font-weight:700;color:#1d4ed8;text-transform:uppercase;letter-spacing:1px;margin:18px 0 7px;border-bottom:1px solid #e2e8f0;padding-bottom:4px}.ig{display:grid;grid-template-columns:155px 1fr;gap:4px 12px;page-break-inside:avoid}.il{font-size:9.5px;color:#64748b;font-weight:600;text-align:right;padding:2px 0}.iv{font-size:10.5px;padding:2px 0;color:#0f172a}table{width:100%;border-collapse:collapse;font-size:9.5px;margin-top:5px}thead{display:table-header-group}th{background:#f1f5f9;font-weight:700;text-align:left;padding:5px 8px;color:#475569;border:1px solid #e2e8f0;white-space:nowrap;font-size:9px;letter-spacing:.2px}td{padding:4px 8px;border:1px solid #e2e8f0;vertical-align:top}tr:nth-child(even) td{background:#f8fafc}tr{page-break-inside:avoid}.ctr{text-align:center}.note-cell{max-width:150px;word-break:break-word}.b-red{background:#fee2e2;color:#991b1b;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.b-green{background:#dcfce7;color:#166534;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.b-blue{background:#dbeafe;color:#1e40af;padding:1px 5px;border-radius:3px;font-size:8.5px;font-weight:700}.chip{display:inline-block;background:#e2e8f0;color:#334155;padding:1px 5px;border-radius:3px;font-size:9.5px;margin:1px}.doc-footer{margin-top:22px;border-top:1px solid #e2e8f0;padding-top:8px;display:flex;justify-content:space-between;align-items:center;font-size:8.5px;color:#94a3b8}.doc-footer-pagenum::after{content:"Page " counter(page) " of " counter(pages)}.footnotes{margin-top:14px;border-top:1px solid #e2e8f0;padding-top:8px;font-size:8.5px;color:#64748b;line-height:1.7}`;
 
     // ── Specimen info grid ─────────────────────────────────────────────────────
     const infoRows = [
@@ -610,6 +618,28 @@
          </tr></thead><tbody>${complianceRows}</tbody></table>`
       : '';
 
+    // ── Strain section for print report ──
+    const strainPrint = strainData ? `
+      <span class="il">Strain</span>
+      <span class="iv"><b>${esc(strainData.code)}</b> — ${esc(strainData.name)}
+        (v${esc(String(specimen.strain_chain_seq ?? 0))} ·
+        ${strainData.status === 'unverified' ? 'Unverified‡' :
+          strainData.status === 'claimed' ? 'Claimed' :
+          strainData.status === 'confirmed_manual' ? '⚠ Manual ID†' :
+          '✓ Genomic'})</span>` : '';
+
+    // ── Footnotes based on strain status ──
+    const footnotes: string[] = [];
+    if (strainData?.status === 'confirmed_manual') {
+      footnotes.push('† Strain identification based on manual assessment only, not genomic verification. See audit log for confirmation basis.');
+    }
+    if (strainData?.status === 'unverified') {
+      footnotes.push('‡ Strain identity not yet asserted by lab staff.');
+    }
+    const footnotesHtml = footnotes.length > 0
+      ? `<div class="footnotes">${footnotes.map(f => `<p>${esc(f)}</p>`).join('')}</div>`
+      : '';
+
     const bodyHtml = `
 <div class="doc-header">
   <div class="doc-logo-area">LOGO</div>
@@ -625,7 +655,7 @@
 </div>
 
 <h2>Specimen Information</h2>
-<div class="ig">${infoRows}</div>
+<div class="ig">${infoRows}${strainPrint}</div>
 
 ${lineage}
 
@@ -633,6 +663,8 @@ ${lineage}
 ${passageTable}
 
 ${complianceSection}
+
+${footnotesHtml}
 
 <div class="doc-footer">
   <span>SteloPTC · Tissue Culture Management System · ${reportDate}</span>
@@ -683,6 +715,36 @@ ${complianceSection}
           <span class="badge badge-red" title="This specimen is under quarantine — movement restricted">Quarantined</span>
         {:else}
           <span class="badge badge-green" title="This specimen is active and not under quarantine">Active</span>
+        {/if}
+
+        <!-- Strain pill -->
+        {#if strainData && specimen.strain_id}
+          {@const strainStatus = strainData.status}
+          <button
+            class="strain-pill strain-pill-{strainStatus}"
+            onclick={() => { selectedStrainId.set(specimen.strain_id); navigateTo('taxonomy'); }}
+            title={
+              strainStatus === 'unverified'
+                ? 'No identity assertion has been made for this strain. Use the Strain Manager to mark it as Claimed if you believe the assignment is correct.'
+                : strainStatus === 'claimed'
+                ? 'Identity asserted by lab staff but not independently verified.'
+                : strainStatus === 'confirmed_manual'
+                ? 'Manually confirmed. Not equivalent to genomic verification — see audit log for the documented basis.'
+                : 'Genomic verification confirmed. Fingerprint data on record.'
+            }
+          >
+            {strainData.code} · v{specimen.strain_chain_seq ?? 0} ·
+            {strainStatus === 'unverified' ? 'Unverified' :
+             strainStatus === 'claimed' ? 'Claimed' :
+             strainStatus === 'confirmed_manual' ? '⚠ Manual ID' : '✓ Genomic'}
+          </button>
+          {#if strainStatus === 'unverified'}
+            <button
+              class="strain-claim-link"
+              title="Open strain status update — mark this strain as Claimed"
+              onclick={() => { selectedStrainId.set(specimen.strain_id); navigateTo('taxonomy'); }}
+            >Mark as Claimed →</button>
+          {/if}
         {/if}
       {/if}
     </div>
@@ -1961,5 +2023,41 @@ ${complianceSection}
   :global(.dark) .split-contam-warning { background: #450a0a; border-color: #7f1d1d; color: #fca5a5; }
   .split-contam-notes { font-size: 12px; color: #7f1d1d; font-weight: 400; }
   :global(.dark) .split-contam-notes { color: #fca5a5; }
+
+  /* Strain pill in specimen header */
+  .strain-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: opacity 0.15s;
+  }
+  .strain-pill:hover { opacity: 0.8; }
+  .strain-pill-unverified { background: #f1f5f9; color: #475569; }
+  .strain-pill-claimed { background: #dbeafe; color: #1e40af; }
+  .strain-pill-confirmed_manual { background: #fef3c7; color: #92400e; }
+  .strain-pill-confirmed_genomic { background: #dcfce7; color: #166534; }
+
+  .strain-claim-link {
+    background: none;
+    border: none;
+    color: #6b7280;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 0 2px;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .strain-claim-link:hover { color: #2563eb; }
+
+  :global(.dark) .strain-pill-unverified { background: #334155; color: #94a3b8; }
+  :global(.dark) .strain-pill-confirmed_manual { background: #78350f; color: #fde68a; }
+  :global(.dark) .strain-pill-confirmed_genomic { background: #166534; color: #dcfce7; }
+  :global(.dark) .strain-pill-claimed { background: #1e40af; color: #dbeafe; }
 
 </style>

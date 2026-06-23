@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { createSpecimen, listSpecies, listMedia, listStages, listPropagationMethods } from '../api';
+  import { createSpecimen, listSpecies, listMedia, listStages, listPropagationMethods, listStrainsBySpecies } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
   import { effectiveHealth } from '../utils';
   import Tooltip from './Tooltip.svelte';
@@ -10,6 +10,11 @@
   let species = $state<any[]>([]);
   let mediaBatches = $state<any[]>([]);
   let loading = $state(false);
+
+  // Strain selector
+  let strains = $state<any[]>([]);
+  let strainsLoading = $state(false);
+  let selectedStrainId = $state('');
 
   // Health status slider (0=Dead … 4=Healthy, -1=Unknown/Awaiting)
   let healthUnknown = $state(localStorage.getItem('spec_lastHealthUnknown') === 'true');
@@ -51,6 +56,20 @@
     listPropagationMethods().then(m => propagationMethods = m).catch((e: any) => addNotification(e.message, 'error'));
   });
 
+  // Lazy-load strains when species changes
+  $effect(() => {
+    const spId = form.species_id;
+    if (!spId) { strains = []; selectedStrainId = ''; return; }
+    strainsLoading = true;
+    listStrainsBySpecies(spId)
+      .then(s => { strains = s; })
+      .catch(() => { strains = []; })
+      .finally(() => { strainsLoading = false; });
+    selectedStrainId = '';
+  });
+
+  let selectedStrain = $derived(strains.find(s => s.id === selectedStrainId) ?? null);
+
   function composeLocation(): string {
     const parts: string[] = [];
     if (locRoom) parts.push(`Room ${locRoom}`);
@@ -91,6 +110,7 @@
     try {
       await createSpecimen({
         species_id: form.species_id,
+        strain_id: selectedStrainId || undefined,
         stage: form.stage,
         initiation_date: form.initiation_date,
         provenance: form.provenance || undefined,
@@ -153,6 +173,34 @@
       </select>
     </div>
   </div>
+
+  <!-- Strain selector (lazy-loads after species is selected) -->
+  {#if form.species_id}
+    <div class="form-group">
+      <label for="strain">Strain <Tooltip text="Optionally assign this specimen to a known strain. Strains are managed in the Taxonomy view." /></label>
+      {#if strainsLoading}
+        <select id="strain" disabled><option>Loading strains…</option></select>
+      {:else}
+        <select id="strain" bind:value={selectedStrainId} title="Assign this specimen to a strain — leave blank if strain is unknown">
+          <option value="">No strain assigned</option>
+          {#each strains as s}
+            <option value={s.id}>
+              {s.code} — {s.name}
+              {#if s.status === 'unverified'}(Unverified){:else if s.status === 'claimed'}(Claimed){:else if s.status === 'confirmed_manual'}(⚠ Manual ID){:else if s.status === 'confirmed_genomic'}(✓ Genomic){/if}
+            </option>
+          {/each}
+        </select>
+      {/if}
+      {#if selectedStrain}
+        <div class="strain-status-hint strain-status-hint-{selectedStrain.status}">
+          {#if selectedStrain.status === 'unverified'}
+            <span class="strain-hint-icon">ℹ</span>
+            This strain's identity has not been asserted yet. Consider updating its status to Claimed if you believe this is the correct strain.
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {/if}
 
   <div class="form-row">
     <div class="form-group">
@@ -383,4 +431,21 @@
     font-weight: 700;
     margin-top: 2px;
   }
+
+  .strain-status-hint {
+    margin-top: 6px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    line-height: 1.5;
+  }
+  .strain-status-hint-unverified {
+    background: #f8fafc;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+  }
+  .strain-hint-icon { flex-shrink: 0; opacity: 0.6; }
 </style>
