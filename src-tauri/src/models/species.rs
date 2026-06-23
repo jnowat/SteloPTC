@@ -9,6 +9,8 @@ pub struct Species {
     pub species_code: String,
     pub default_subculture_interval_days: Option<i32>,
     pub notes: Option<String>,
+    pub taxon_path: Option<String>,
+    pub ncbi_taxon_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
 }

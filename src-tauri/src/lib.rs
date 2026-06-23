@@ -144,6 +144,12 @@ pub fn run() {
             commands::strains::archive_strain,
             commands::strains::update_strain_status,
             commands::strains::create_hybridization_event,
+            // Taxa (WP-35)
+            commands::taxa::create_taxon,
+            commands::taxa::get_taxon,
+            commands::taxa::update_taxon,
+            commands::taxa::list_taxa_by_rank,
+            commands::taxa::get_taxon_descendants,
             // Error Logs
             commands::error_logs::log_error,
             commands::error_logs::list_error_logs,

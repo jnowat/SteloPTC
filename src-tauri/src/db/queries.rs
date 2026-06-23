@@ -2,6 +2,7 @@
 use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
 use super::{DbError, DbResult};
+use crate::models::taxon::{SpeciesNodeSummary, Taxon};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
 pub const ZERO_HASH: &str =
@@ -698,6 +699,96 @@ impl Default for PaginationParams {
     fn default() -> Self {
         Self { page: 1, per_page: 50 }
     }
+}
+
+// ── Taxon helpers (WP-35) ─────────────────────────────────────────────────────
+// These functions are classification helpers only; they perform no audit-chain
+// writes.  Taxa records above Species are never hash-chained.
+
+/// Load a single taxon record by its ID.
+pub fn load_taxon(conn: &Connection, id: &str) -> DbResult<Taxon> {
+    let taxon = conn.query_row(
+        "SELECT id, rank, name, parent_id, ncbi_taxon_id, ncbi_updated_at,
+                local_override, taxon_path, created_at, updated_at
+         FROM taxa WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(Taxon {
+                id: row.get("id")?,
+                rank: row.get("rank")?,
+                name: row.get("name")?,
+                parent_id: row.get("parent_id")?,
+                ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+                ncbi_updated_at: row.get("ncbi_updated_at")?,
+                local_override: row.get::<_, i64>("local_override")? != 0,
+                taxon_path: row.get("taxon_path")?,
+                created_at: row.get("created_at")?,
+                updated_at: row.get("updated_at")?,
+            })
+        },
+    )?;
+    Ok(taxon)
+}
+
+/// Return all direct children of a taxon (taxa whose parent_id equals the given id).
+pub fn get_child_taxa(conn: &Connection, parent_id: &str) -> DbResult<Vec<Taxon>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, rank, name, parent_id, ncbi_taxon_id, ncbi_updated_at,
+                local_override, taxon_path, created_at, updated_at
+         FROM taxa WHERE parent_id = ?1 ORDER BY name",
+    )?;
+    let rows = stmt.query_map(params![parent_id], |row| {
+        Ok(Taxon {
+            id: row.get("id")?,
+            rank: row.get("rank")?,
+            name: row.get("name")?,
+            parent_id: row.get("parent_id")?,
+            ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+            ncbi_updated_at: row.get("ncbi_updated_at")?,
+            local_override: row.get::<_, i64>("local_override")? != 0,
+            taxon_path: row.get("taxon_path")?,
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
+        })
+    })?;
+    let taxa: Result<Vec<_>, _> = rows.collect();
+    Ok(taxa?)
+}
+
+/// Return species whose most-specific ancestor (last element of taxon_path) is
+/// the given taxon_id, together with aggregate strain and specimen counts.
+///
+/// Taxon IDs are UUIDs (hex digits + hyphens only), making the LIKE pattern
+/// unambiguous — no need for full JSON parsing at the SQL layer.
+pub fn get_species_for_taxon(
+    conn: &Connection,
+    taxon_id: &str,
+) -> DbResult<Vec<SpeciesNodeSummary>> {
+    let pattern = format!("%\"{}\"]", taxon_id);
+    let mut stmt = conn.prepare(
+        "SELECT sp.id, sp.genus, sp.species_name, sp.common_name, sp.species_code,
+                COUNT(DISTINCT st.id)   AS strain_count,
+                COUNT(DISTINCT spec.id) AS specimen_count
+         FROM species sp
+         LEFT JOIN strains  st   ON st.species_id   = sp.id AND st.is_archived   = 0
+         LEFT JOIN specimens spec ON spec.species_id = sp.id AND spec.is_archived = 0
+         WHERE sp.taxon_path LIKE ?1
+         GROUP BY sp.id, sp.genus, sp.species_name, sp.common_name, sp.species_code
+         ORDER BY sp.genus, sp.species_name",
+    )?;
+    let rows = stmt.query_map(params![pattern], |row| {
+        Ok(SpeciesNodeSummary {
+            id: row.get(0)?,
+            genus: row.get(1)?,
+            species_name: row.get(2)?,
+            common_name: row.get(3)?,
+            species_code: row.get(4)?,
+            strain_count: row.get(5)?,
+            specimen_count: row.get(6)?,
+        })
+    })?;
+    let summaries: Result<Vec<_>, _> = rows.collect();
+    Ok(summaries?)
 }
 
 #[cfg(test)]

@@ -108,6 +108,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (19)", [])?;
     }
 
+    if current < 20 {
+        migration_020_expanded_taxonomy(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (20)", [])?;
+    }
+
     Ok(())
 }
 
@@ -1502,6 +1507,90 @@ fn migration_019_strain_model(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
+fn migration_020_expanded_taxonomy(conn: &Connection) -> DbResult<()> {
+    // WP-35: hierarchical taxonomy backbone (Genus → Kingdom).
+    // Taxa records are classification-only — no hash chain involvement.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS taxa (
+            id              TEXT    PRIMARY KEY,
+            rank            TEXT    NOT NULL
+                                CHECK(rank IN ('kingdom','phylum','class','order','family','genus')),
+            name            TEXT    NOT NULL,
+            parent_id       TEXT    REFERENCES taxa(id),
+            ncbi_taxon_id   INTEGER,
+            ncbi_updated_at TEXT,
+            local_override  INTEGER NOT NULL DEFAULT 0,
+            taxon_path      TEXT,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_taxa_parent ON taxa(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_taxa_rank   ON taxa(rank);
+        CREATE INDEX IF NOT EXISTS idx_taxa_name   ON taxa(name);
+    ")?;
+
+    // Additive columns on species — nullable so existing rows are unaffected.
+    // Safe to run on any database at schema version 1–19.
+    conn.execute_batch("
+        ALTER TABLE species ADD COLUMN taxon_path    TEXT;
+        ALTER TABLE species ADD COLUMN ncbi_taxon_id INTEGER;
+    ")?;
+
+    // Back-fill genus taxa from existing species data.
+    backfill_genus_taxa(conn)?;
+
+    Ok(())
+}
+
+/// Extracts distinct genus values from the species table, creates a `taxa` row
+/// for each genus that does not already have one, and then updates
+/// `species.taxon_path` for any species whose path is not yet set.
+///
+/// Safe to call multiple times — idempotent by design.
+pub fn backfill_genus_taxa(conn: &Connection) -> DbResult<()> {
+    let genera: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT DISTINCT genus FROM species ORDER BY genus")?;
+        let rows = stmt.query_map([], |row| row.get(0))?;
+        rows.filter_map(|r| r.ok()).collect()
+    };
+
+    for genus in genera {
+        // Check for an existing genus taxon so re-runs are safe.
+        let existing_id: Option<String> = conn
+            .query_row(
+                "SELECT id FROM taxa WHERE rank = 'genus' AND name = ?1",
+                rusqlite::params![genus],
+                |r| r.get(0),
+            )
+            .ok();
+
+        let taxon_id = if let Some(id) = existing_id {
+            id
+        } else {
+            let id = uuid::Uuid::new_v4().to_string();
+            // taxon_path for a root genus (no ancestors yet) is a JSON array
+            // containing only its own ID: ["<id>"].  UUID chars are safe in JSON.
+            let path = format!("[\"{}\"]", id);
+            conn.execute(
+                "INSERT INTO taxa (id, rank, name, parent_id, local_override, taxon_path)
+                 VALUES (?1, 'genus', ?2, NULL, 0, ?3)",
+                rusqlite::params![id, genus, path],
+            )?;
+            id
+        };
+
+        // Update species that do not yet have a taxon_path.
+        let path = format!("[\"{}\"]", taxon_id);
+        conn.execute(
+            "UPDATE species SET taxon_path = ?1 WHERE genus = ?2 AND taxon_path IS NULL",
+            rusqlite::params![path, genus],
+        )?;
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1848,5 +1937,150 @@ mod tests {
             )
             .unwrap();
         assert!(strain_id.is_none(), "strain_id must default to NULL for existing specimens");
+    }
+
+    // ── migration 020 (WP-35) ──────────────────────────────────────────────────
+
+    #[test]
+    fn taxa_table_exists_after_migration_020() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM taxa", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "taxa table must exist and be empty on a fresh DB");
+    }
+
+    #[test]
+    fn taxa_rank_check_constraint_rejects_invalid_rank() {
+        let conn = migrated_db();
+        let result = conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('t1', 'species', 'Test')",
+            [],
+        );
+        assert!(result.is_err(), "rank 'species' must be rejected by the CHECK constraint");
+    }
+
+    #[test]
+    fn taxa_rank_check_constraint_accepts_valid_ranks() {
+        let conn = migrated_db();
+        for (i, rank) in ["kingdom", "phylum", "class", "order", "family", "genus"]
+            .iter()
+            .enumerate()
+        {
+            conn.execute(
+                "INSERT INTO taxa (id, rank, name) VALUES (?1, ?2, ?3)",
+                rusqlite::params![format!("t{}", i), rank, format!("Test {}", rank)],
+            )
+            .unwrap_or_else(|e| panic!("rank '{}' should be accepted: {}", rank, e));
+        }
+    }
+
+    #[test]
+    fn species_has_taxon_path_and_ncbi_columns_after_migration_020() {
+        let conn = migrated_db();
+        // Columns must exist and accept NULL values.
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path, ncbi_taxon_id) \
+             VALUES ('sp1', 'Testus', 'exampleus', 'TST-01', NULL, NULL)",
+            [],
+        )
+        .expect("species insert with new nullable columns must succeed");
+        let tp: Option<String> = conn
+            .query_row("SELECT taxon_path FROM species WHERE id = 'sp1'", [], |r| r.get(0))
+            .unwrap();
+        assert!(tp.is_none(), "taxon_path must default to NULL");
+    }
+
+    #[test]
+    fn backfill_creates_genus_taxon_for_existing_species() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-TST')",
+            [],
+        )
+        .unwrap();
+
+        backfill_genus_taxa(&conn).expect("backfill must succeed");
+
+        let taxon_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM taxa WHERE rank = 'genus' AND name = 'Citrus'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(taxon_count, 1, "one genus taxon must be created for 'Citrus'");
+
+        let taxon_path: Option<String> = conn
+            .query_row(
+                "SELECT taxon_path FROM species WHERE id = 'sp1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            taxon_path.is_some(),
+            "species.taxon_path must be populated after backfill"
+        );
+    }
+
+    #[test]
+    fn backfill_is_idempotent() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Nandina', 'domestica', 'NAN-TST')",
+            [],
+        )
+        .unwrap();
+
+        backfill_genus_taxa(&conn).expect("first backfill must succeed");
+        backfill_genus_taxa(&conn).expect("second backfill must succeed");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM taxa WHERE rank = 'genus' AND name = 'Nandina'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "backfill must not create duplicate taxa on re-run");
+    }
+
+    #[test]
+    fn backfill_groups_multiple_species_under_same_genus_taxon() {
+        let conn = migrated_db();
+        for (id, sp) in [("sp1", "sinensis"), ("sp2", "limon"), ("sp3", "paradisi")] {
+            conn.execute(
+                "INSERT INTO species (id, genus, species_name, species_code) \
+                 VALUES (?1, 'Citrus', ?2, ?3)",
+                rusqlite::params![id, sp, format!("CIT-{}", sp)],
+            )
+            .unwrap();
+        }
+
+        backfill_genus_taxa(&conn).expect("backfill must succeed");
+
+        let taxon_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM taxa WHERE rank = 'genus' AND name = 'Citrus'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(taxon_count, 1, "three Citrus species must share a single genus taxon");
+
+        let species_with_path: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM species WHERE genus = 'Citrus' AND taxon_path IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            species_with_path, 3,
+            "all three Citrus species must have taxon_path set"
+        );
     }
 }
