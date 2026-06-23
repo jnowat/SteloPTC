@@ -5,6 +5,61 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-06-23
+
+### Added — WP-29: Strain Management UI, Hybrid Wizard & Taxonomy Navigator
+
+- **`StrainManager.svelte`** (new) — Per-species strain management panel:
+  - Filterable table showing strain name, code, type, status badge, specimen count, and created date.
+  - Status badges with strict visual rules: grey `Unverified`, blue `Claimed`, amber `⚠ Manual ID` for `confirmed_manual`, green `✓ Genomic` for `confirmed_genomic`. The word "Confirmed" never appears alone.
+  - Nudge behavior: `unverified` strains show a "Mark as Claimed" text link; strains unverified for more than 30 days show a pulsing amber indicator.
+  - Full CRUD: Create, Edit, Archive, and Update Status modals.
+  - Status update form enforces forward-only progression (greyed-out / hidden downgrade options).
+  - **Blocking `confirmed_manual` acknowledgment modal** (non-dismissible — no close button, no click-outside, no Escape key): Title "Manual Identification Confirmed", body text from spec, single "I Acknowledge" button.
+  - Launches HybridWizard via "+ New Hybrid Strain" button.
+
+- **`HybridWizard.svelte`** (new) — 8-step guided wizard for creating hybrid strains:
+  1. Select species
+  2. Select Parent A + role (maternal / paternal / parent)
+  3. Select Parent B (same-species filter enforced with inline error for cross-species attempts)
+  4. Enter hybrid name, code, strain_type
+  5. Optionally record specific parent specimen accession numbers
+  6. Enter cross date and method
+  7. Visual ASCII pedigree preview showing both parents connected to the new hybrid
+  8. Final review and confirm — calls `create_hybridization_event`
+  - Captures and passes both parent `chain_seq` values via the backend's atomic transaction.
+  - Handles success (fires `oncreated` callback) and errors (logged via `addErrorWithContext`).
+
+- **`TaxonomyNavigator.svelte`** (new) — Two-column taxonomy browser (Phase TX-1):
+  - Left column: All species with a live search bar; selecting a species loads its strains.
+  - Right column: Strain grid with status badges and specimen counts; slide-in panel opens when a strain is clicked and lists all bound specimens.
+  - Status filter dropdown with exact options: All | Unverified | Claimed | Confirmed (Manual) | Confirmed (Genomic) | Confirmed (Any).
+  - "Manage Strains" button opens StrainManager inline for the selected species.
+  - Added as "Taxonomy" sidebar entry (&#129516; icon, between Species and Inventory).
+
+- **`SpecimenForm.svelte`** (updated) — Optional strain selector after species selector:
+  - Lazy-loads strains for the currently selected species when species changes.
+  - Displays status badge inline in each `<option>`.
+  - Default selection is "No strain assigned" — all existing behavior preserved.
+  - Shows a soft grey info row when an `unverified` strain is selected: *"This strain's identity has not been asserted yet. Consider updating its status to Claimed if you believe this is the correct strain."*
+  - No extra message for `claimed`, `confirmed_manual`, or `confirmed_genomic`.
+  - Passes `strain_id` to `createSpecimen` when a strain is selected.
+
+- **`SpecimenDetail.svelte`** (updated):
+  - Loads strain data via `getStrain()` when `specimen.strain_id` is present.
+  - Shows a **Strain pill** in the header: `[CODE · v{strain_chain_seq} · STATUS]` — version number makes the binding explicit and traceable.
+  - Pill colors match the exact status badge rules (grey/blue/amber/green).
+  - Status-specific tooltips on the pill.
+  - For `unverified` strains: an additional inline "Mark as Claimed →" text link navigates to the Taxonomy view.
+  - Clicking the pill navigates to the Taxonomy view with the strain pre-selected.
+  - **Print report footnotes**: `confirmed_manual` strains always render a `†` footnote; `unverified` strains render a `‡` footnote; `confirmed_genomic` and `claimed` strains render no footnote.
+
+- **`stores/app.ts`** (updated) — Added `'taxonomy'` to the `View` union type; added `selectedStrainId` writable store for cross-component strain navigation.
+
+- **`App.svelte`** (updated) — `taxonomy` route wired to `TaxonomyNavigator`.
+
+- **`Sidebar.svelte`** (updated) — "Taxonomy" nav item added (&#129516;, between Species and Inventory).
+
 ## [1.16.0] - 2026-06-22
 
 ### Added — WP-28: Strain/Cultivar Data Model & Backend

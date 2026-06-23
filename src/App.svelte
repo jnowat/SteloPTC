@@ -24,6 +24,7 @@
   import ImportManager from './lib/components/ImportManager.svelte';
   import WorkQueue from './lib/components/WorkQueue.svelte';
   import Settings from './lib/components/Settings.svelte';
+  import TaxonomyNavigator from './lib/components/TaxonomyNavigator.svelte';
 
   let startupError = '';
 
@@ -173,6 +174,8 @@
           <WorkQueue />
         {:else if $currentView === 'settings'}
           <Settings />
+        {:else if $currentView === 'taxonomy'}
+          <TaxonomyNavigator />
         {:else}
           <Dashboard />
         {/if}
