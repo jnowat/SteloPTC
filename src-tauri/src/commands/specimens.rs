@@ -171,6 +171,7 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 has_contamination: row.get::<_, i32>("has_contamination")? != 0,
                 strain_id: row.get("strain_id")?,
                 strain_chain_seq: row.get("strain_chain_seq")?,
+                cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
             })
         },
     ).map_err(|e| format!("Specimen not found: {}", e))
