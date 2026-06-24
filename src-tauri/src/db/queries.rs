@@ -1734,6 +1734,56 @@ pub fn export_strain_pedigree(
     })
 }
 
+// ── Passage-number lineage & doubling time (WP-31) ──────────────────────────
+
+/// Calculates doubling time in hours using the standard cell-culture formula:
+///
+///   DT = elapsed_hours × ln(2) / ln(harvest_count / seed_count)
+///
+/// Returns `None` when inputs are non-positive or when there is no net growth
+/// (harvest_count ≤ seed_count), in which case DT is infinite or undefined.
+pub fn calculate_doubling_time(
+    seed_count: f64,
+    harvest_count: f64,
+    elapsed_hours: f64,
+) -> Option<f64> {
+    if seed_count <= 0.0 || harvest_count <= 0.0 || elapsed_hours <= 0.0 {
+        return None;
+    }
+    let ratio = harvest_count / seed_count;
+    // ratio ≤ 1 means no net growth; DT would be ∞ or negative, so return None
+    if ratio <= 1.0 {
+        return None;
+    }
+    Some(elapsed_hours * f64::ln(2.0) / f64::ln(ratio))
+}
+
+/// Calculates population doubling level (PDL) gained from seed and harvest counts.
+///
+///   PDL = log₂(harvest_count / seed_count)
+///
+/// Negative PDL (cell decline) is a valid return value.
+/// Returns `None` for non-positive inputs.
+pub fn calculate_pdl_from_counts(seed_count: f64, harvest_count: f64) -> Option<f64> {
+    if seed_count <= 0.0 || harvest_count <= 0.0 {
+        return None;
+    }
+    Some(f64::log2(harvest_count / seed_count))
+}
+
+/// Calculates PDL gained from a split ratio when cell counts are unavailable.
+///
+///   PDL = log₂(split_ratio)
+///
+/// For example a 1:4 split (split_ratio = 4.0) yields 2 PDL.
+/// Returns `None` for non-positive inputs.
+pub fn calculate_pdl_from_ratio(split_ratio: f64) -> Option<f64> {
+    if split_ratio <= 0.0 {
+        return None;
+    }
+    Some(f64::log2(split_ratio))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3626,5 +3676,68 @@ mod tests {
         let conn = mem_conn_with_taxonomy_nav();
         let results = search_taxonomy(&conn, "zzznomatch").unwrap();
         assert!(results.is_empty(), "must return empty vec when nothing matches");
+    }
+
+    // ── WP-31: PDL & doubling time calculation tests ─────────────────────────
+
+    #[test]
+    fn doubling_time_typical_8x_growth_72h_gives_24h() {
+        // 1M → 8M cells in 72 h: log2(8) = 3 doublings, DT = 72 / 3 = 24 h
+        let dt = calculate_doubling_time(1_000_000.0, 8_000_000.0, 72.0).unwrap();
+        assert!((dt - 24.0).abs() < 0.001, "expected 24.0 h, got {}", dt);
+    }
+
+    #[test]
+    fn doubling_time_none_when_no_growth() {
+        assert_eq!(calculate_doubling_time(1_000_000.0, 500_000.0, 72.0), None);
+        assert_eq!(calculate_doubling_time(1_000_000.0, 1_000_000.0, 72.0), None);
+    }
+
+    #[test]
+    fn doubling_time_none_for_invalid_inputs() {
+        assert_eq!(calculate_doubling_time(0.0, 8_000_000.0, 72.0), None);
+        assert_eq!(calculate_doubling_time(1_000_000.0, 0.0, 72.0), None);
+        assert_eq!(calculate_doubling_time(1_000_000.0, 8_000_000.0, 0.0), None);
+        assert_eq!(calculate_doubling_time(-1.0, 8_000_000.0, 72.0), None);
+    }
+
+    #[test]
+    fn pdl_from_counts_8x_gives_3_pdl() {
+        // 1M → 8M = 3 population doublings
+        let pdl = calculate_pdl_from_counts(1_000_000.0, 8_000_000.0).unwrap();
+        assert!((pdl - 3.0).abs() < 0.001, "expected 3.0 PDL, got {}", pdl);
+    }
+
+    #[test]
+    fn pdl_from_counts_decline_gives_negative() {
+        // Cell decline: 1M → 500K = -1 PDL
+        let pdl = calculate_pdl_from_counts(1_000_000.0, 500_000.0).unwrap();
+        assert!((pdl - (-1.0)).abs() < 0.001, "expected -1.0 PDL, got {}", pdl);
+    }
+
+    #[test]
+    fn pdl_from_counts_none_for_invalid_inputs() {
+        assert_eq!(calculate_pdl_from_counts(0.0, 1_000_000.0), None);
+        assert_eq!(calculate_pdl_from_counts(1_000_000.0, 0.0), None);
+        assert_eq!(calculate_pdl_from_counts(-1.0, 1_000_000.0), None);
+    }
+
+    #[test]
+    fn pdl_from_ratio_4x_gives_2_pdl() {
+        // 1:4 split ratio → log2(4) = 2 PDL
+        let pdl = calculate_pdl_from_ratio(4.0).unwrap();
+        assert!((pdl - 2.0).abs() < 0.001, "expected 2.0 PDL, got {}", pdl);
+    }
+
+    #[test]
+    fn pdl_from_ratio_2x_gives_1_pdl() {
+        let pdl = calculate_pdl_from_ratio(2.0).unwrap();
+        assert!((pdl - 1.0).abs() < 0.001, "expected 1.0 PDL, got {}", pdl);
+    }
+
+    #[test]
+    fn pdl_from_ratio_none_for_invalid_inputs() {
+        assert_eq!(calculate_pdl_from_ratio(0.0), None);
+        assert_eq!(calculate_pdl_from_ratio(-2.0), None);
     }
 }

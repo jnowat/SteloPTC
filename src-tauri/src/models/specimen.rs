@@ -47,6 +47,10 @@ pub struct Specimen {
     pub has_contamination: bool,
     pub strain_id: Option<String>,
     pub strain_chain_seq: Option<i64>,
+    /// Cumulative population doubling level for this specimen, including PDL
+    /// inherited from ancestors and PDL gained through its own passages.
+    /// NULL when no cell-count data has ever been recorded on this lineage.
+    pub cumulative_pdl: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]

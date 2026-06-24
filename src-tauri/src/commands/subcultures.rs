@@ -131,6 +131,11 @@ fn row_to_subculture(row: &rusqlite::Row) -> rusqlite::Result<Subculture> {
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
         event_type: row.get("event_type").unwrap_or_else(|_| "passage".to_string()),
+        seed_cell_count: row.get("seed_cell_count").unwrap_or(None),
+        harvest_cell_count: row.get("harvest_cell_count").unwrap_or(None),
+        split_ratio: row.get("split_ratio").unwrap_or(None),
+        pdl_gained: row.get("pdl_gained").unwrap_or(None),
+        doubling_time_hours: row.get("doubling_time_hours").unwrap_or(None),
     })
 }
 
@@ -208,6 +213,40 @@ pub fn create_subculture(
     let id = uuid::Uuid::new_v4().to_string();
     let contamination_flag = request.contamination_flag.unwrap_or(false) as i32;
 
+    // ── WP-31: compute PDL gained and doubling time ──────────────────────────
+    // Fetch the previous passage date to calculate elapsed hours for doubling time.
+    let prev_date: Option<String> = db.conn.query_row(
+        "SELECT date FROM subcultures WHERE specimen_id = ?1 AND event_type != 'death'
+         ORDER BY passage_number DESC LIMIT 1",
+        params![request.specimen_id],
+        |r| r.get(0),
+    ).ok().flatten();
+
+    let elapsed_hours: Option<f64> = prev_date.as_deref().and_then(|prev| {
+        use chrono::NaiveDate;
+        let prev_d = NaiveDate::parse_from_str(prev, "%Y-%m-%d").ok()?;
+        let curr_d = NaiveDate::parse_from_str(&request.date, "%Y-%m-%d").ok()?;
+        let days = (curr_d - prev_d).num_days();
+        if days > 0 { Some(days as f64 * 24.0) } else { None }
+    });
+
+    // Prefer cell-count-based PDL; fall back to split ratio.
+    let pdl_gained: Option<f64> = match (request.seed_cell_count, request.harvest_cell_count) {
+        (Some(s), Some(h)) if s > 0.0 && h > 0.0 => {
+            queries::calculate_pdl_from_counts(s, h)
+        }
+        _ => request.split_ratio.and_then(queries::calculate_pdl_from_ratio),
+    };
+
+    let doubling_time_hours: Option<f64> = match (
+        request.seed_cell_count,
+        request.harvest_cell_count,
+        elapsed_hours,
+    ) {
+        (Some(s), Some(h), Some(et)) => queries::calculate_doubling_time(s, h, et),
+        _ => None,
+    };
+
     let tx = db.conn.unchecked_transaction()
         .map_err(|e| format!("Failed to begin transaction: {}", e))?;
 
@@ -218,8 +257,9 @@ pub fn create_subculture(
          location_from, location_to, temp_before, temp_after,
          humidity_before, humidity_after, light_before, light_after,
          exposure_duration_hours, notes, observations, performed_by, employee_id,
-         health_status, contamination_flag, contamination_notes)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)",
+         health_status, contamination_flag, contamination_notes,
+         seed_cell_count, harvest_cell_count, split_ratio, pdl_gained, doubling_time_hours)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35)",
         params![
             id, request.specimen_id, passage_number, request.date, request.media_batch_id,
             request.ph, request.temperature_c, request.light_cycle, request.light_intensity_lux,
@@ -230,18 +270,24 @@ pub fn create_subculture(
             request.light_after, request.exposure_duration_hours, request.notes,
             request.observations, user.id, request.employee_id, request.health_status,
             contamination_flag, request.contamination_notes,
+            request.seed_cell_count, request.harvest_cell_count, request.split_ratio,
+            pdl_gained, doubling_time_hours,
         ],
     ).map_err(|e| format!("Failed to create subculture: {}", e))?;
 
-    // Update specimen: subculture count, location (if transferred), health (if assessed)
+    // Update specimen: subculture count, location (if transferred), health (if assessed),
+    // and cumulative PDL (accumulated from all passages on this specimen).
     tx.execute(
         "UPDATE specimens SET
          subculture_count = ?1,
          location       = CASE WHEN ?2 IS NOT NULL THEN ?2 ELSE location       END,
          health_status  = CASE WHEN ?3 IS NOT NULL THEN ?3 ELSE health_status  END,
+         cumulative_pdl = CASE WHEN ?5 IS NOT NULL
+                               THEN COALESCE(cumulative_pdl, 0.0) + ?5
+                               ELSE cumulative_pdl END,
          updated_at     = datetime('now')
          WHERE id = ?4",
-        params![passage_number, request.location_to, request.health_status, request.specimen_id],
+        params![passage_number, request.location_to, request.health_status, request.specimen_id, pdl_gained],
     ).map_err(|e| format!("Failed to update specimen after passage: {}", e))?;
 
     // Audit passage on the SPECIMEN's chain so chain_seq increments for the specimen

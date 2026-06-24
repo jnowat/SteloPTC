@@ -93,6 +93,7 @@ pub fn list_specimens(
             has_contamination: row.get::<_, i32>("has_contamination")? != 0,
             strain_id: row.get("strain_id")?,
             strain_chain_seq: row.get("strain_chain_seq")?,
+            cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -170,6 +171,7 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 has_contamination: row.get::<_, i32>("has_contamination")? != 0,
                 strain_id: row.get("strain_id")?,
                 strain_chain_seq: row.get("strain_chain_seq")?,
+                cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
             })
         },
     ).map_err(|e| format!("Specimen not found: {}", e))
@@ -507,6 +509,7 @@ pub fn search_specimens(
             has_contamination: row.get::<_, i32>("has_contamination")? != 0,
             strain_id: row.get("strain_id")?,
             strain_chain_seq: row.get("strain_chain_seq")?,
+            cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -700,6 +703,13 @@ pub fn split_specimen(
         }
     }
 
+    // Fetch the parent's cumulative PDL so children can inherit it.
+    let parent_cumulative_pdl: Option<f64> = db.conn.query_row(
+        "SELECT cumulative_pdl FROM specimens WHERE id = ?1",
+        params![request.parent_specimen_id],
+        |r| r.get(0),
+    ).ok().flatten();
+
     // Compute genealogy values for children:
     //   generation             = parent + 1
     //   lineage_passage_offset = parent's total passage count + 1 (split itself is the next passage)
@@ -797,21 +807,23 @@ pub fn split_specimen(
             .filter(|s| !s.is_empty())
             .unwrap_or(default_note.as_str());
 
-        // Insert child specimen with genealogy fields and inherited contamination status
+        // Insert child specimen with genealogy fields, inherited contamination status,
+        // and inherited cumulative PDL from the parent (WP-31).
         tx.execute(
             "INSERT INTO specimens \
              (id, accession_number, species_id, stage, initiation_date, \
               location, health_status, qr_code_data, parent_specimen_id, \
               provenance, source_plant, notes, created_by, \
               generation, lineage_passage_offset, root_specimen_id, \
-              contamination_flag, contamination_notes) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+              contamination_flag, contamination_notes, cumulative_pdl) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![
                 child_id, accession, parent_species_id, child_stage, request.date,
                 child_location, child_health, qr_data, request.parent_specimen_id,
                 parent_provenance, parent_source_plant, child_notes, user.id,
                 child_generation, child_passage_offset, child_root_id,
                 child_contamination_flag_i32, child_contamination_notes,
+                parent_cumulative_pdl,
             ],
         ).map_err(|e| format!("Failed to create child specimen {}: {}", i + 1, e))?;
 

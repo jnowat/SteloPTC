@@ -177,6 +177,9 @@
     employee_id: '',
     contamination_flag: false,
     contamination_notes: '',
+    seed_cell_count: '',
+    harvest_cell_count: '',
+    split_ratio: '',
   });
 
   // Media date warning: show if selected media batch was prepared after the passage date
@@ -374,6 +377,7 @@
       ph: '', light_cycle: '', notes: '', observations: '',
       health_status: '', health_unknown: false, employee_id: '',
       contamination_flag: false, contamination_notes: '',
+      seed_cell_count: '', harvest_cell_count: '', split_ratio: '',
     };
   }
 
@@ -476,6 +480,9 @@
         employee_id: subcultureForm.employee_id || undefined,
         contamination_flag: subcultureForm.contamination_flag || undefined,
         contamination_notes: subcultureForm.contamination_notes || undefined,
+        seed_cell_count: subcultureForm.seed_cell_count ? parseFloat(subcultureForm.seed_cell_count) : undefined,
+        harvest_cell_count: subcultureForm.harvest_cell_count ? parseFloat(subcultureForm.harvest_cell_count) : undefined,
+        split_ratio: subcultureForm.split_ratio ? parseFloat(subcultureForm.split_ratio) : undefined,
       });
       localStorage.setItem('sc_lastRoom', locToRoom);
       localStorage.setItem('sc_lastRack', locToRack);
@@ -873,6 +880,12 @@ ${footnotesHtml}
             <span class="info-value">{specimen.subculture_count}</span>
           {/if}
         </div>
+        {#if specimen.cumulative_pdl != null}
+          <div class="info-item">
+            <span class="info-label" title="Cumulative population doubling level — total PDL accumulated across all passages in this lineage, including inherited PDL from ancestors">Cumulative PDL</span>
+            <span class="info-value">{specimen.cumulative_pdl.toFixed(2)} <span style="color:#6b7280;font-size:12px;">doublings</span></span>
+          </div>
+        {/if}
         <div class="info-item">
           <span class="info-label" title="Origin or history of this specimen (wild-collected, ex-situ, cultivar, etc.)">Provenance</span>
           <span class="info-value">{specimen.provenance || '—'}</span>
@@ -996,6 +1009,29 @@ ${footnotesHtml}
                   <input id="sc-light-cycle" type="text" title="Photoperiod applied during this passage — format: hours on / hours off (e.g. 16/8)" bind:value={subcultureForm.light_cycle} placeholder="16/8" />
                 </div>
               </div>
+
+              <!-- Cell Count & PDL (optional; used for doubling time and PDL calculations) -->
+              <div class="section-header">Cell Count & Doubling (Optional)</div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="sc-seed-count" title="Number of cells seeded at the start of this passage — used to calculate population doubling level and doubling time">Seed Cell Count</label>
+                  <input id="sc-seed-count" type="number" min="0" step="any" title="Cells seeded at the start of this passage" bind:value={subcultureForm.seed_cell_count} placeholder="e.g. 250000" />
+                </div>
+                <div class="form-group">
+                  <label for="sc-harvest-count" title="Number of cells harvested at the end of this passage — used together with seed count to calculate PDL and doubling time">Harvest Cell Count</label>
+                  <input id="sc-harvest-count" type="number" min="0" step="any" title="Cells harvested at the end of this passage" bind:value={subcultureForm.harvest_cell_count} placeholder="e.g. 2000000" />
+                </div>
+                <div class="form-group">
+                  <label for="sc-split-ratio" title="Split ratio used for this passage (e.g. 4 for a 1:4 split) — used to estimate PDL when cell counts are not available">Split Ratio</label>
+                  <input id="sc-split-ratio" type="number" min="0" step="0.1" title="Split ratio if cell counts are unavailable (e.g. 4 for 1:4)" bind:value={subcultureForm.split_ratio} placeholder="e.g. 4" />
+                </div>
+              </div>
+              {#if subcultureForm.seed_cell_count && subcultureForm.harvest_cell_count && parseFloat(subcultureForm.seed_cell_count) > 0 && parseFloat(subcultureForm.harvest_cell_count) > parseFloat(subcultureForm.seed_cell_count)}
+                {@const pdlPreview = Math.log2(parseFloat(subcultureForm.harvest_cell_count) / parseFloat(subcultureForm.seed_cell_count))}
+                <div style="font-size:12px;color:#0891b2;margin-top:-6px;margin-bottom:8px;">
+                  PDL this passage: ~{pdlPreview.toFixed(2)} doublings
+                </div>
+              {/if}
 
               <!-- Transfer To Location -->
               <div class="section-header">Transfer To Location</div>
