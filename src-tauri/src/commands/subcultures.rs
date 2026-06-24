@@ -235,7 +235,7 @@ pub fn create_subculture(
         (Some(s), Some(h)) if s > 0.0 && h > 0.0 => {
             queries::calculate_pdl_from_counts(s, h)
         }
-        _ => request.split_ratio.and_then(|r| queries::calculate_pdl_from_ratio(r)),
+        _ => request.split_ratio.and_then(queries::calculate_pdl_from_ratio),
     };
 
     let doubling_time_hours: Option<f64> = match (
