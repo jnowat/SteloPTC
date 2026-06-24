@@ -817,3 +817,82 @@ export async function exportStrainPedigree(strainId: string, maxDepth?: number) 
     maxDepth: maxDepth ?? null,
   });
 }
+
+// ── WP-32: Cryopreservation & LN2 Inventory ──────────────────────────────
+
+export interface FrozenVial {
+  id: string;
+  specimen_id: string | null;
+  species_id: string;
+  species_code: string | null;
+  species_name: string | null;
+  passage_number: number;
+  cumulative_pdl: number | null;
+  vial_count: number;
+  freeze_date: string;
+  freeze_medium: string;
+  location: string | null;
+  location_freezer: string | null;
+  location_tower: string | null;
+  location_box: string | null;
+  location_position: string | null;
+  status: 'active' | 'depleted' | 'discarded';
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ThawVialResult {
+  updated_vial: FrozenVial;
+  new_specimen_id: string;
+  new_specimen_accession: string;
+}
+
+export async function createFrozenVial(request: {
+  specimen_id?: string | null;
+  species_id: string;
+  passage_number: number;
+  cumulative_pdl?: number | null;
+  vial_count: number;
+  freeze_date: string;
+  freeze_medium: string;
+  location_freezer?: string | null;
+  location_tower?: string | null;
+  location_box?: string | null;
+  location_position?: string | null;
+  notes?: string | null;
+}) {
+  return call<FrozenVial>('create_frozen_vial', { request });
+}
+
+export async function listFrozenVials(params?: {
+  species_id?: string | null;
+  specimen_id?: string | null;
+  status?: string | null;
+  location_freezer?: string | null;
+}) {
+  return call<FrozenVial[]>('list_frozen_vials', { params: params ?? null });
+}
+
+export async function getFrozenVial(id: string) {
+  return call<FrozenVial>('get_frozen_vial', { id });
+}
+
+export async function thawVial(request: {
+  vial_id: string;
+  thaw_date: string;
+  vials_to_thaw?: number | null;
+  location?: string | null;
+  notes?: string | null;
+  employee_id?: string | null;
+}) {
+  return call<ThawVialResult>('thaw_vial', { request });
+}
+
+export async function discardFrozenVial(request: {
+  vial_id: string;
+  notes?: string | null;
+}) {
+  return call<FrozenVial>('discard_frozen_vial', { request });
+}

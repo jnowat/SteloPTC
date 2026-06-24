@@ -133,6 +133,50 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (24)", [])?;
     }
 
+    if current < 25 {
+        migration_025_frozen_vials(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (25)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_025_frozen_vials(conn: &Connection) -> DbResult<()> {
+    // WP-32: cryopreservation & LN2 inventory.
+    // Adds a first-class table for frozen vial lots with location, freeze details,
+    // and status.  Vial counts have a CHECK >= 0 to prevent negative inventory.
+    // Location fields mirror the Room/Rack/Shelf/Tray structure used on specimens,
+    // renamed to Freezer/Tower/Box/Position for cryo context.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS frozen_vials (
+            id                TEXT    PRIMARY KEY,
+            specimen_id       TEXT    REFERENCES specimens(id),
+            species_id        TEXT    NOT NULL REFERENCES species(id),
+            passage_number    INTEGER NOT NULL DEFAULT 0,
+            cumulative_pdl    REAL,
+            vial_count        INTEGER NOT NULL DEFAULT 1 CHECK(vial_count >= 0),
+            freeze_date       TEXT    NOT NULL,
+            freeze_medium     TEXT    NOT NULL,
+            location          TEXT,
+            location_freezer  TEXT,
+            location_tower    TEXT,
+            location_box      TEXT,
+            location_position TEXT,
+            status            TEXT    NOT NULL DEFAULT 'active'
+                                      CHECK(status IN ('active','depleted','discarded')),
+            notes             TEXT,
+            created_by        TEXT,
+            created_at        TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at        TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_frozen_vials_species
+            ON frozen_vials(species_id);
+        CREATE INDEX IF NOT EXISTS idx_frozen_vials_specimen
+            ON frozen_vials(specimen_id);
+        CREATE INDEX IF NOT EXISTS idx_frozen_vials_status
+            ON frozen_vials(status);
+    ")?;
     Ok(())
 }
 
@@ -2584,5 +2628,37 @@ mod tests {
             )
             .unwrap();
         assert_eq!(flag, 0, "is_cross_species must default to 0 for existing/new rows");
+    }
+
+    #[test]
+    fn frozen_vials_table_exists_after_migration_025() {
+        let conn = migrated_db();
+        // Table must exist.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM frozen_vials",
+                [],
+                |r| r.get(0),
+            )
+            .expect("frozen_vials table must exist after migration 025");
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn frozen_vials_rejects_negative_count() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Homo', 'sapiens', 'HEK')",
+            [],
+        )
+        .unwrap();
+        let result = conn.execute(
+            "INSERT INTO frozen_vials \
+             (id, species_id, passage_number, vial_count, freeze_date, freeze_medium) \
+             VALUES ('v1', 'sp1', 0, -1, '2026-01-01', '10% DMSO')",
+            [],
+        );
+        assert!(result.is_err(), "negative vial_count must be rejected by CHECK constraint");
     }
 }

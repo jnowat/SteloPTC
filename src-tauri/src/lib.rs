@@ -173,6 +173,12 @@ pub fn run() {
             commands::error_logs::get_unread_error_count,
             commands::error_logs::mark_errors_read,
             commands::error_logs::clear_error_logs,
+            // Cryopreservation (WP-32)
+            commands::cryo::create_frozen_vial,
+            commands::cryo::list_frozen_vials,
+            commands::cryo::get_frozen_vial,
+            commands::cryo::thaw_vial,
+            commands::cryo::discard_frozen_vial,
             // QR Scans
             commands::qr_scans::store_qr_scan,
             commands::qr_scans::list_qr_scans,

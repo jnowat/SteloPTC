@@ -5,6 +5,73 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.25.0] - 2026-06-24
+
+### Added — WP-32: Cryopreservation & LN2 Inventory
+
+- **Backend — `src-tauri/src/db/migrations.rs`** — migration 025 adds the `frozen_vials` table
+  with a `CHECK(vial_count >= 0)` constraint (prevents negative inventory) and a status column
+  constrained to `active | depleted | discarded`:
+  - `id`, `specimen_id` (optional FK to source specimen), `species_id` (required FK)
+  - `passage_number INTEGER` and `cumulative_pdl REAL` — lineage snapshot at freeze time,
+    inherited from WP-31 data when available
+  - `vial_count INTEGER CHECK(vial_count >= 0)` — enforced at DB level
+  - `freeze_date TEXT`, `freeze_medium TEXT`
+  - `location TEXT` (composed string), plus individual `location_freezer`, `location_tower`,
+    `location_box`, `location_position` columns mirroring the existing Specimen location
+    hierarchy (Room/Rack/Shelf/Tray → Freezer/Tower/Box/Position)
+  - `status TEXT CHECK(status IN ('active','depleted','discarded'))`, `notes`, `created_by`,
+    `created_at`, `updated_at`
+  - Three indexes: `idx_frozen_vials_species`, `idx_frozen_vials_specimen`,
+    `idx_frozen_vials_status`
+
+- **Backend — `src-tauri/src/models/cryo.rs`** (new file) — data types for the cryo subsystem:
+  - `FrozenVial` — full struct with joined `species_code` / `species_name`
+  - `CreateFrozenVialRequest`, `ListFrozenVialsParams`, `ThawVialRequest`,
+    `ThawVialResult`, `DiscardFrozenVialRequest`
+
+- **Backend — `src-tauri/src/db/queries.rs`** — five new public functions:
+  - `compose_cryo_location(freezer, tower, box, position) → Option<String>` — builds the
+    composed location string
+  - `create_frozen_vial(conn, req, created_by) → DbResult<String>` — inserts a lot, rejects
+    `vial_count <= 0` before hitting the DB
+  - `get_frozen_vial(conn, id) → DbResult<FrozenVial>` — single-row fetch with species join
+  - `list_frozen_vials(conn, params) → DbResult<Vec<FrozenVial>>` — filterable list using
+    dynamic positional parameters (species, specimen, status, freezer)
+  - `thaw_frozen_vial(conn, …) → DbResult<(String, String)>` — atomic transaction that:
+    decrements `vial_count`, sets `status = 'depleted'` when count reaches zero, creates a new
+    `specimens` row carrying forward `passage_number` (→ `lineage_passage_offset`) and
+    `cumulative_pdl`, and writes two audit entries (one on the vial lineage, one on the new
+    specimen forked from the source)
+  - `discard_frozen_vial(conn, id, notes) → DbResult<()>` — marks a lot as discarded
+  - **13 new unit tests** covering location composition, insert, zero-count rejection, thaw
+    decrement, depleted status, PDL/passage inheritance, overdraw rejection, discard, and
+    list filtering
+
+- **Backend — `src-tauri/src/commands/cryo.rs`** (new file) — five Tauri commands:
+  `create_frozen_vial`, `list_frozen_vials`, `get_frozen_vial`, `thaw_vial`, `discard_frozen_vial`
+
+- **Backend — `src-tauri/src/lib.rs`** — cryo commands registered in `invoke_handler!`
+
+- **Frontend — `src/lib/api.ts`** — `FrozenVial` and `ThawVialResult` TypeScript interfaces,
+  plus `createFrozenVial`, `listFrozenVials`, `getFrozenVial`, `thawVial`,
+  `discardFrozenVial` async wrappers
+
+- **Frontend — `src/lib/stores/app.ts`** — `'cryo'` added to the `View` union type
+
+- **Frontend — `src/lib/components/CryoManager.svelte`** (new file) — cryopreservation
+  inventory UI:
+  - Filterable table of frozen lots (status, freezer)
+  - "Record Vials" modal with Freezer/Tower/Box/Position location picker and live preview
+  - "Thaw" modal: validates vial count, calls `thaw_vial`, shows the newly created specimen
+    accession number on success
+  - "Discard" confirmation modal
+  - Low-vial-count highlighting (≤ 2 remaining shown in amber)
+
+- **Frontend — `src/lib/components/Sidebar.svelte`** — "Cryostorage" navigation entry (❄ icon)
+
+- **Frontend — `src/App.svelte`** — import and route for `CryoManager`
+
 ## [1.24.0] - 2026-06-24
 
 ### Added — WP-31: Passage-Number Lineage & Doubling Time

@@ -7,6 +7,7 @@ use crate::models::strain::{
     GenerationalStats, HybridizationEventRecord, PedigreeEdge, PedigreeExport, PedigreeNode,
     SpecimenSummary, StrainSpecimenTree, StrainSummary, SuggestGenerationLabelResponse,
 };
+use crate::models::cryo::{CreateFrozenVialRequest, FrozenVial, ListFrozenVialsParams};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
 pub const ZERO_HASH: &str =
@@ -1782,6 +1783,310 @@ pub fn calculate_pdl_from_ratio(split_ratio: f64) -> Option<f64> {
         return None;
     }
     Some(f64::log2(split_ratio))
+}
+
+// ── WP-32: Cryopreservation & LN2 inventory ──────────────────────────────
+
+/// Build the composed location string from individual freezer location fields,
+/// mirroring the "Room X / Rack Y / Shelf Z / Tray A" pattern on specimens.
+pub fn compose_cryo_location(
+    freezer: Option<&str>,
+    tower: Option<&str>,
+    box_: Option<&str>,
+    position: Option<&str>,
+) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(f) = freezer {
+        if !f.is_empty() {
+            parts.push(format!("Freezer {}", f));
+        }
+    }
+    if let Some(t) = tower {
+        if !t.is_empty() {
+            parts.push(format!("Tower {}", t));
+        }
+    }
+    if let Some(b) = box_ {
+        if !b.is_empty() {
+            parts.push(format!("Box {}", b));
+        }
+    }
+    if let Some(p) = position {
+        if !p.is_empty() {
+            parts.push(format!("Position {}", p));
+        }
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join(" / "))
+    }
+}
+
+fn row_to_frozen_vial(row: &rusqlite::Row) -> rusqlite::Result<FrozenVial> {
+    Ok(FrozenVial {
+        id: row.get("id")?,
+        specimen_id: row.get("specimen_id")?,
+        species_id: row.get("species_id")?,
+        species_code: row.get("species_code")?,
+        species_name: row.get("species_name")?,
+        passage_number: row.get("passage_number")?,
+        cumulative_pdl: row.get("cumulative_pdl")?,
+        vial_count: row.get("vial_count")?,
+        freeze_date: row.get("freeze_date")?,
+        freeze_medium: row.get("freeze_medium")?,
+        location: row.get("location")?,
+        location_freezer: row.get("location_freezer")?,
+        location_tower: row.get("location_tower")?,
+        location_box: row.get("location_box")?,
+        location_position: row.get("location_position")?,
+        status: row.get("status")?,
+        notes: row.get("notes")?,
+        created_by: row.get("created_by")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+    })
+}
+
+const FROZEN_VIAL_SELECT: &str = "
+    SELECT fv.*,
+           sp.species_code,
+           sp.genus || ' ' || sp.species_name AS species_name
+    FROM   frozen_vials fv
+    LEFT JOIN species sp ON fv.species_id = sp.id
+";
+
+/// Insert a new frozen vial lot and return its generated UUID.
+pub fn create_frozen_vial(
+    conn: &Connection,
+    req: &CreateFrozenVialRequest,
+    created_by: Option<&str>,
+) -> DbResult<String> {
+    if req.vial_count <= 0 {
+        return Err(DbError::Constraint("vial_count must be greater than zero".into()));
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    let location = compose_cryo_location(
+        req.location_freezer.as_deref(),
+        req.location_tower.as_deref(),
+        req.location_box.as_deref(),
+        req.location_position.as_deref(),
+    );
+    conn.execute(
+        "INSERT INTO frozen_vials
+         (id, specimen_id, species_id, passage_number, cumulative_pdl,
+          vial_count, freeze_date, freeze_medium, location,
+          location_freezer, location_tower, location_box, location_position,
+          status, notes, created_by)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'active',?14,?15)",
+        params![
+            id,
+            req.specimen_id,
+            req.species_id,
+            req.passage_number,
+            req.cumulative_pdl,
+            req.vial_count,
+            req.freeze_date,
+            req.freeze_medium,
+            location,
+            req.location_freezer,
+            req.location_tower,
+            req.location_box,
+            req.location_position,
+            req.notes,
+            created_by,
+        ],
+    )?;
+    Ok(id)
+}
+
+/// Fetch a single frozen vial by id, joining species for display fields.
+pub fn get_frozen_vial(conn: &Connection, id: &str) -> DbResult<FrozenVial> {
+    let sql = format!("{} WHERE fv.id = ?1", FROZEN_VIAL_SELECT);
+    let vial = conn.query_row(&sql, params![id], row_to_frozen_vial)
+        .map_err(|_| DbError::Constraint(format!("Frozen vial not found: {}", id)))?;
+    Ok(vial)
+}
+
+/// List frozen vials with optional filters.
+pub fn list_frozen_vials(
+    conn: &Connection,
+    params_in: &ListFrozenVialsParams,
+) -> DbResult<Vec<FrozenVial>> {
+    // Build SQL and a parallel Vec of boxed ToSql values using positional ?N
+    // parameters so that only the parameters actually present in the query are
+    // bound (named-param binding rejects names that don't appear in the SQL).
+    let mut sql = format!("{} WHERE 1=1", FROZEN_VIAL_SELECT);
+    let mut bound: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(ref v) = params_in.species_id {
+        bound.push(Box::new(v.clone()));
+        sql.push_str(&format!(" AND fv.species_id = ?{}", bound.len()));
+    }
+    if let Some(ref v) = params_in.specimen_id {
+        bound.push(Box::new(v.clone()));
+        sql.push_str(&format!(" AND fv.specimen_id = ?{}", bound.len()));
+    }
+    if let Some(ref v) = params_in.status {
+        bound.push(Box::new(v.clone()));
+        sql.push_str(&format!(" AND fv.status = ?{}", bound.len()));
+    }
+    if let Some(ref v) = params_in.location_freezer {
+        bound.push(Box::new(v.clone()));
+        sql.push_str(&format!(" AND fv.location_freezer = ?{}", bound.len()));
+    }
+    sql.push_str(" ORDER BY fv.freeze_date DESC, fv.created_at DESC");
+
+    let mut stmt = conn.prepare(&sql)?;
+    let refs: Vec<&dyn rusqlite::types::ToSql> = bound.iter().map(|b| b.as_ref()).collect();
+    let rows = stmt.query_map(refs.as_slice(), row_to_frozen_vial)?;
+    let vials: Vec<FrozenVial> = rows.filter_map(|r| r.ok()).collect();
+    Ok(vials)
+}
+
+/// Decrement `vials_to_thaw` from the lot and create a new active specimen,
+/// inheriting passage number and cumulative PDL from the frozen vial.
+///
+/// All writes happen inside a single transaction for atomicity.
+/// Returns `(new_specimen_id, new_accession_number)`.
+#[allow(clippy::too_many_arguments)]
+pub fn thaw_frozen_vial(
+    conn: &Connection,
+    vial_id: &str,
+    thaw_date: &str,
+    vials_to_thaw: i32,
+    location: Option<&str>,
+    notes: Option<&str>,
+    employee_id: Option<&str>,
+    created_by: Option<&str>,
+) -> DbResult<(String, String)> {
+    if vials_to_thaw <= 0 {
+        return Err(DbError::Constraint("vials_to_thaw must be at least 1".into()));
+    }
+
+    // Read current vial state before opening the transaction.
+    let vial = get_frozen_vial(conn, vial_id)?;
+
+    if vial.status != "active" {
+        return Err(DbError::Constraint(format!(
+            "Cannot thaw: vial status is '{}'", vial.status
+        )));
+    }
+    if vial.vial_count < vials_to_thaw {
+        return Err(DbError::Constraint(format!(
+            "Cannot thaw {} vials: only {} available", vials_to_thaw, vial.vial_count
+        )));
+    }
+
+    let new_count = vial.vial_count - vials_to_thaw;
+    let new_status = if new_count == 0 { "depleted" } else { "active" };
+
+    let species_code: String = conn.query_row(
+        "SELECT species_code FROM species WHERE id = ?1",
+        params![vial.species_id],
+        |row| row.get(0),
+    ).map_err(|_| DbError::Constraint("Species not found".into()))?;
+
+    let accession = generate_accession_number(conn, &species_code, thaw_date)?;
+    let specimen_id = uuid::Uuid::new_v4().to_string();
+    let qr_data = format!("STELO:{}", accession);
+
+    // Resolve generation and root from the source specimen, if present.
+    let (parent_gen, parent_root): (i32, Option<String>) = if let Some(ref src_id) = vial.specimen_id {
+        conn.query_row(
+            "SELECT generation, root_specimen_id FROM specimens WHERE id = ?1",
+            params![src_id],
+            |r| Ok((r.get::<_, i32>(0)?, r.get::<_, Option<String>>(1)?)),
+        ).unwrap_or((0, None))
+    } else {
+        (0, None)
+    };
+
+    let child_generation = if vial.specimen_id.is_some() { parent_gen + 1 } else { 0 };
+    let child_root = parent_root.or_else(|| vial.specimen_id.clone());
+
+    let tx = conn.unchecked_transaction()
+        .map_err(|e| DbError::Constraint(format!("Transaction start failed: {}", e)))?;
+
+    // Decrement vial inventory.
+    tx.execute(
+        "UPDATE frozen_vials
+         SET vial_count = ?1, status = ?2, updated_at = datetime('now')
+         WHERE id = ?3",
+        params![new_count, new_status, vial_id],
+    )?;
+
+    // Create the thawed specimen.
+    tx.execute(
+        "INSERT INTO specimens
+         (id, accession_number, species_id, stage, initiation_date,
+          location, parent_specimen_id, root_specimen_id, generation,
+          lineage_passage_offset, cumulative_pdl, qr_code_data,
+          notes, employee_id, created_by)
+         VALUES (?1,?2,?3,'thaw_recovery',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+        params![
+            specimen_id,
+            accession,
+            vial.species_id,
+            thaw_date,
+            location,
+            vial.specimen_id,
+            child_root,
+            child_generation,
+            vial.passage_number,
+            vial.cumulative_pdl,
+            qr_data,
+            notes,
+            employee_id,
+            created_by,
+        ],
+    )?;
+
+    // Audit the thaw on the vial lineage.
+    log_audit(
+        &tx, created_by, "thaw", "frozen_vial", Some(vial_id),
+        Some(&vial.vial_count.to_string()), Some(&new_count.to_string()),
+        Some(&format!("Thawed {} vial(s); specimen {}", vials_to_thaw, accession)),
+    ).ok();
+
+    // Audit the new specimen.  Fork from source specimen if one exists.
+    if let Some(ref src_id) = vial.specimen_id {
+        log_audit_for_child(
+            &tx, created_by, "create", "specimen", Some(&specimen_id),
+            None, Some(&accession), Some("Specimen created (thawed from cryo)"),
+            src_id,
+        ).ok();
+    } else {
+        log_audit_seeded_by_species(
+            &tx, created_by, "create", "specimen", Some(&specimen_id),
+            None, Some(&accession), Some("Specimen created (thawed from cryo)"),
+            &vial.species_id,
+        ).ok();
+    }
+
+    tx.commit()
+        .map_err(|e| DbError::Constraint(format!("Transaction commit failed: {}", e)))?;
+
+    Ok((specimen_id, accession))
+}
+
+/// Mark a frozen vial lot as discarded (e.g. contaminated, damaged).
+/// Updates status and optional notes; does not alter vial_count.
+pub fn discard_frozen_vial(
+    conn: &Connection,
+    vial_id: &str,
+    notes: Option<&str>,
+) -> DbResult<()> {
+    let rows = conn.execute(
+        "UPDATE frozen_vials
+         SET status = 'discarded', notes = COALESCE(?1, notes), updated_at = datetime('now')
+         WHERE id = ?2",
+        params![notes, vial_id],
+    )?;
+    if rows == 0 {
+        return Err(DbError::Constraint(format!("Frozen vial not found: {}", vial_id)));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -3739,5 +4044,311 @@ mod tests {
     fn pdl_from_ratio_none_for_invalid_inputs() {
         assert_eq!(calculate_pdl_from_ratio(0.0), None);
         assert_eq!(calculate_pdl_from_ratio(-2.0), None);
+    }
+
+    // ── WP-32: Cryopreservation tests ────────────────────────────────────────
+
+    fn cryo_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        conn.execute_batch("
+            CREATE TABLE species (
+                id TEXT PRIMARY KEY,
+                species_code TEXT NOT NULL,
+                genus TEXT NOT NULL DEFAULT '',
+                species_name TEXT NOT NULL DEFAULT ''
+            );
+            CREATE TABLE specimens (
+                id TEXT PRIMARY KEY,
+                accession_number TEXT NOT NULL UNIQUE,
+                species_id TEXT NOT NULL,
+                stage TEXT NOT NULL DEFAULT 'explant',
+                initiation_date TEXT NOT NULL,
+                location TEXT,
+                parent_specimen_id TEXT,
+                root_specimen_id TEXT,
+                generation INTEGER NOT NULL DEFAULT 0,
+                lineage_passage_offset INTEGER NOT NULL DEFAULT 0,
+                cumulative_pdl REAL,
+                qr_code_data TEXT,
+                notes TEXT,
+                employee_id TEXT,
+                created_by TEXT,
+                subculture_count INTEGER NOT NULL DEFAULT 0,
+                is_archived INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE frozen_vials (
+                id TEXT PRIMARY KEY,
+                specimen_id TEXT,
+                species_id TEXT NOT NULL,
+                passage_number INTEGER NOT NULL DEFAULT 0,
+                cumulative_pdl REAL,
+                vial_count INTEGER NOT NULL DEFAULT 1 CHECK(vial_count >= 0),
+                freeze_date TEXT NOT NULL,
+                freeze_medium TEXT NOT NULL,
+                location TEXT,
+                location_freezer TEXT,
+                location_tower TEXT,
+                location_box TEXT,
+                location_position TEXT,
+                status TEXT NOT NULL DEFAULT 'active',
+                notes TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE audit_log (
+                id TEXT PRIMARY KEY,
+                user_id TEXT,
+                action TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT,
+                old_value TEXT,
+                new_value TEXT,
+                details TEXT,
+                created_at TEXT NOT NULL,
+                lineage_id TEXT,
+                chain_seq INTEGER,
+                prev_hash TEXT,
+                entry_hash TEXT
+            );
+            CREATE INDEX idx_audit_lineage ON audit_log(lineage_id, chain_seq);
+            INSERT INTO species (id, species_code, genus, species_name)
+                VALUES ('sp1', 'HEK-293', 'Homo', 'sapiens');
+        ").expect("cryo_test_db setup");
+        conn
+    }
+
+    #[test]
+    fn compose_cryo_location_all_fields() {
+        let loc = compose_cryo_location(Some("LN2-A"), Some("T2"), Some("B3"), Some("A1"));
+        assert_eq!(loc, Some("Freezer LN2-A / Tower T2 / Box B3 / Position A1".to_string()));
+    }
+
+    #[test]
+    fn compose_cryo_location_partial_fields() {
+        let loc = compose_cryo_location(Some("LN2-A"), None, Some("B3"), None);
+        assert_eq!(loc, Some("Freezer LN2-A / Box B3".to_string()));
+    }
+
+    #[test]
+    fn compose_cryo_location_all_empty() {
+        let loc = compose_cryo_location(None, None, None, None);
+        assert_eq!(loc, None);
+    }
+
+    #[test]
+    fn create_frozen_vial_inserts_row() {
+        use crate::models::cryo::CreateFrozenVialRequest;
+        let conn = cryo_test_db();
+        let req = CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: "sp1".to_string(),
+            passage_number: 5,
+            cumulative_pdl: Some(10.0),
+            vial_count: 3,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: Some("LN2-A".to_string()),
+            location_tower: Some("T1".to_string()),
+            location_box: Some("B2".to_string()),
+            location_position: Some("A3".to_string()),
+            notes: None,
+        };
+        let id = create_frozen_vial(&conn, &req, Some("user1")).expect("create");
+        let vial = get_frozen_vial(&conn, &id).expect("get");
+        assert_eq!(vial.vial_count, 3);
+        assert_eq!(vial.passage_number, 5);
+        assert_eq!(vial.status, "active");
+        assert_eq!(vial.location, Some("Freezer LN2-A / Tower T1 / Box B2 / Position A3".to_string()));
+    }
+
+    #[test]
+    fn create_frozen_vial_rejects_zero_count() {
+        use crate::models::cryo::CreateFrozenVialRequest;
+        let conn = cryo_test_db();
+        let req = CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: "sp1".to_string(),
+            passage_number: 0,
+            cumulative_pdl: None,
+            vial_count: 0,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: None,
+            location_tower: None,
+            location_box: None,
+            location_position: None,
+            notes: None,
+        };
+        assert!(create_frozen_vial(&conn, &req, None).is_err());
+    }
+
+    #[test]
+    fn thaw_decrements_vial_count() {
+        use crate::models::cryo::CreateFrozenVialRequest;
+        let conn = cryo_test_db();
+        let req = CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: "sp1".to_string(),
+            passage_number: 3,
+            cumulative_pdl: Some(6.0),
+            vial_count: 5,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: None,
+            location_tower: None,
+            location_box: None,
+            location_position: None,
+            notes: None,
+        };
+        let vial_id = create_frozen_vial(&conn, &req, None).expect("create");
+        let (spec_id, _acc) = thaw_frozen_vial(&conn, &vial_id, "2026-06-24", 2, None, None, None, None)
+            .expect("thaw");
+        let vial = get_frozen_vial(&conn, &vial_id).expect("get");
+        assert_eq!(vial.vial_count, 3);
+        assert_eq!(vial.status, "active");
+        // New specimen should exist
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM specimens WHERE id = ?1", params![spec_id], |r| r.get(0)
+        ).unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn thaw_last_vial_marks_depleted() {
+        use crate::models::cryo::CreateFrozenVialRequest;
+        let conn = cryo_test_db();
+        let req = CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: "sp1".to_string(),
+            passage_number: 0,
+            cumulative_pdl: None,
+            vial_count: 1,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: None,
+            location_tower: None,
+            location_box: None,
+            location_position: None,
+            notes: None,
+        };
+        let vial_id = create_frozen_vial(&conn, &req, None).expect("create");
+        thaw_frozen_vial(&conn, &vial_id, "2026-06-24", 1, None, None, None, None)
+            .expect("thaw");
+        let vial = get_frozen_vial(&conn, &vial_id).expect("get");
+        assert_eq!(vial.vial_count, 0);
+        assert_eq!(vial.status, "depleted");
+    }
+
+    #[test]
+    fn thaw_inherits_passage_and_pdl() {
+        use crate::models::cryo::CreateFrozenVialRequest;
+        let conn = cryo_test_db();
+        let req = CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: "sp1".to_string(),
+            passage_number: 7,
+            cumulative_pdl: Some(14.5),
+            vial_count: 2,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: None,
+            location_tower: None,
+            location_box: None,
+            location_position: None,
+            notes: None,
+        };
+        let vial_id = create_frozen_vial(&conn, &req, None).expect("create");
+        let (spec_id, _acc) = thaw_frozen_vial(&conn, &vial_id, "2026-06-24", 1, None, None, None, None)
+            .expect("thaw");
+        let (lpo, pdl): (i32, Option<f64>) = conn.query_row(
+            "SELECT lineage_passage_offset, cumulative_pdl FROM specimens WHERE id = ?1",
+            params![spec_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!(lpo, 7);
+        assert!((pdl.unwrap() - 14.5).abs() < 0.001);
+    }
+
+    #[test]
+    fn thaw_rejects_overdraw() {
+        use crate::models::cryo::CreateFrozenVialRequest;
+        let conn = cryo_test_db();
+        let req = CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: "sp1".to_string(),
+            passage_number: 0,
+            cumulative_pdl: None,
+            vial_count: 2,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: None,
+            location_tower: None,
+            location_box: None,
+            location_position: None,
+            notes: None,
+        };
+        let vial_id = create_frozen_vial(&conn, &req, None).expect("create");
+        let result = thaw_frozen_vial(&conn, &vial_id, "2026-06-24", 5, None, None, None, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn discard_sets_status() {
+        use crate::models::cryo::CreateFrozenVialRequest;
+        let conn = cryo_test_db();
+        let req = CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: "sp1".to_string(),
+            passage_number: 0,
+            cumulative_pdl: None,
+            vial_count: 3,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: None,
+            location_tower: None,
+            location_box: None,
+            location_position: None,
+            notes: None,
+        };
+        let vial_id = create_frozen_vial(&conn, &req, None).expect("create");
+        discard_frozen_vial(&conn, &vial_id, Some("Contaminated")).expect("discard");
+        let vial = get_frozen_vial(&conn, &vial_id).expect("get");
+        assert_eq!(vial.status, "discarded");
+    }
+
+    #[test]
+    fn list_frozen_vials_filters_by_species() {
+        use crate::models::cryo::{CreateFrozenVialRequest, ListFrozenVialsParams};
+        let conn = cryo_test_db();
+        conn.execute(
+            "INSERT INTO species (id, species_code) VALUES ('sp2', 'CHO')",
+            [],
+        ).unwrap();
+        let make_req = |species_id: &str, count: i32| CreateFrozenVialRequest {
+            specimen_id: None,
+            species_id: species_id.to_string(),
+            passage_number: 0,
+            cumulative_pdl: None,
+            vial_count: count,
+            freeze_date: "2026-06-01".to_string(),
+            freeze_medium: "10% DMSO".to_string(),
+            location_freezer: None,
+            location_tower: None,
+            location_box: None,
+            location_position: None,
+            notes: None,
+        };
+        create_frozen_vial(&conn, &make_req("sp1", 2), None).unwrap();
+        create_frozen_vial(&conn, &make_req("sp2", 3), None).unwrap();
+        let params = ListFrozenVialsParams {
+            species_id: Some("sp1".to_string()),
+            specimen_id: None,
+            status: None,
+            location_freezer: None,
+        };
+        let vials = list_frozen_vials(&conn, &params).expect("list");
+        assert_eq!(vials.len(), 1);
+        assert_eq!(vials[0].species_id, "sp1");
     }
 }
