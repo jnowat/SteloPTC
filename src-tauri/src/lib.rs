@@ -144,6 +144,11 @@ pub fn run() {
             commands::strains::archive_strain,
             commands::strains::update_strain_status,
             commands::strains::create_hybridization_event,
+            // Pedigree (WP-37)
+            commands::strains::get_strain_ancestry,
+            commands::strains::get_strain_descendants,
+            commands::strains::get_strain_specimen_tree,
+            commands::strains::export_strain_pedigree,
             // Taxa (WP-35)
             commands::taxa::create_taxon,
             commands::taxa::get_taxon,

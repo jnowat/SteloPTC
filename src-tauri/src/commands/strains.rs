@@ -1,8 +1,8 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::strain::{
-    CreateHybridizationEventRequest, CreateStrainRequest, HybridizationResult, Strain,
-    UpdateStrainRequest, UpdateStrainStatusRequest,
+    CreateHybridizationEventRequest, CreateStrainRequest, HybridizationResult, PedigreeExport,
+    PedigreeNode, Strain, StrainSpecimenTree, UpdateStrainRequest, UpdateStrainStatusRequest,
 };
 use crate::AppState;
 use rusqlite::params;
@@ -513,5 +513,67 @@ pub fn create_hybridization_event(
         hybrid_strain_id: hybrid_id,
         event_id,
     })
+}
+
+// ── Pedigree commands (WP-37) ─────────────────────────────────────────────────
+
+/// Return the full ancestry tree of a strain, walking upward through
+/// `strain_parents`.  `max_depth` defaults to 5 and is capped at 10.
+#[tauri::command]
+pub fn get_strain_ancestry(
+    state: State<AppState>,
+    token: String,
+    strain_id: String,
+    max_depth: Option<u32>,
+) -> Result<PedigreeNode, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let depth = max_depth.unwrap_or(5).min(10);
+    queries::get_strain_ancestry(&db.conn, &strain_id, depth).map_err(|e| e.to_string())
+}
+
+/// Return the full descendant tree of a strain, walking downward through
+/// `strain_parents`.  `max_depth` defaults to 5 and is capped at 10.
+#[tauri::command]
+pub fn get_strain_descendants(
+    state: State<AppState>,
+    token: String,
+    strain_id: String,
+    max_depth: Option<u32>,
+) -> Result<PedigreeNode, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let depth = max_depth.unwrap_or(5).min(10);
+    queries::get_strain_descendants(&db.conn, &strain_id, depth).map_err(|e| e.to_string())
+}
+
+/// Return all live specimens bound to a strain.  When `include_descendants` is
+/// true, specimens bound to descendant hybrid strains are also included.
+#[tauri::command]
+pub fn get_strain_specimen_tree(
+    state: State<AppState>,
+    token: String,
+    strain_id: String,
+    include_descendants: bool,
+) -> Result<StrainSpecimenTree, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::get_strain_specimen_tree(&db.conn, &strain_id, include_descendants)
+        .map_err(|e| e.to_string())
+}
+
+/// Export the full pedigree of a strain as a portable JSON bundle containing
+/// all reachable strains and hybridization events.
+#[tauri::command]
+pub fn export_strain_pedigree(
+    state: State<AppState>,
+    token: String,
+    strain_id: String,
+    max_depth: Option<u32>,
+) -> Result<PedigreeExport, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let depth = max_depth.unwrap_or(5).min(10);
+    queries::export_strain_pedigree(&db.conn, &strain_id, depth).map_err(|e| e.to_string())
 }
 
