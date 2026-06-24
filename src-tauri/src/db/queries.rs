@@ -4,8 +4,8 @@ use sha2::{Sha256, Digest};
 use super::{DbError, DbResult};
 use crate::models::taxon::{NcbiSyncLog, SpeciesNodeSummary, Taxon};
 use crate::models::strain::{
-    HybridizationEventRecord, PedigreeEdge, PedigreeExport, PedigreeNode, SpecimenSummary,
-    StrainSpecimenTree, StrainSummary,
+    GenerationalStats, HybridizationEventRecord, PedigreeEdge, PedigreeExport, PedigreeNode,
+    SpecimenSummary, StrainSpecimenTree, StrainSummary, SuggestGenerationLabelResponse,
 };
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
@@ -1275,6 +1275,194 @@ fn get_strain_specimen_tree_impl(
     })
 }
 
+// ── WP-38: generation labeling and backcross helpers ─────────────────────────
+
+/// Return the generation label stored on the hybridization event that created
+/// `strain_id`, or `None` if the strain has no hybridization record or the
+/// label was not set.
+pub fn get_strain_generation_label(conn: &Connection, strain_id: &str) -> Option<String> {
+    conn.query_row(
+        "SELECT generation_label FROM hybridization_events \
+         WHERE hybrid_strain_id = ?1 LIMIT 1",
+        params![strain_id],
+        |r| r.get::<_, Option<String>>(0),
+    )
+    .ok()
+    .flatten()
+}
+
+/// Suggest a generation label based on the known labels of two parent strains.
+///
+/// Rules (simple filial notation):
+/// - Both parents unlabeled (None) → `F1`
+/// - Both labeled `F1` → `F2`
+/// - Both labeled `F2` → `F3`
+/// - Both labeled `F3` → `F4`
+/// - All other combinations → `None` (user should specify explicitly)
+///
+/// Backcross notation (`BC{n}F1`) is returned by the command layer after the
+/// pedigree is checked with `detect_backcross`; this function handles only the
+/// symmetric, non-backcross case.
+pub fn suggest_generation_label(
+    parent_a_label: Option<&str>,
+    parent_b_label: Option<&str>,
+) -> Option<String> {
+    match (parent_a_label, parent_b_label) {
+        (None, None) => Some("F1".to_string()),
+        (Some("F1"), Some("F1")) => Some("F2".to_string()),
+        (Some("F2"), Some("F2")) => Some("F3".to_string()),
+        (Some("F3"), Some("F3")) => Some("F4".to_string()),
+        _ => None,
+    }
+}
+
+/// Walk upward through `strain_parents` to find the depth at which
+/// `candidate_ancestor` appears in `of_strain`'s lineage.
+///
+/// Returns `Some(depth)` (1-based) if found within `max_depth` levels, or
+/// `None` if the candidate is not an ancestor or if a cycle guard fires.
+fn find_ancestor_depth_impl(
+    conn: &Connection,
+    candidate_ancestor: &str,
+    of_strain: &str,
+    current_depth: u32,
+    max_depth: u32,
+    visited: &mut Vec<String>,
+) -> Option<u32> {
+    if current_depth > max_depth {
+        return None;
+    }
+    if visited.iter().any(|v| v == of_strain) {
+        return None;
+    }
+    visited.push(of_strain.to_string());
+
+    let mut stmt = match conn.prepare(
+        "SELECT parent_strain_id FROM strain_parents WHERE strain_id = ?1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return None,
+    };
+    let parents: Vec<String> = match stmt.query_map(params![of_strain], |r| r.get(0)) {
+        Ok(rows) => rows.filter_map(|r| r.ok()).collect(),
+        Err(_) => return None,
+    };
+
+    for parent_id in parents {
+        if parent_id == candidate_ancestor {
+            return Some(current_depth + 1);
+        }
+        if let Some(d) = find_ancestor_depth_impl(
+            conn,
+            candidate_ancestor,
+            &parent_id,
+            current_depth + 1,
+            max_depth,
+            visited,
+        ) {
+            return Some(d);
+        }
+    }
+    None
+}
+
+/// Detect a backcross relationship between two prospective parents.
+///
+/// A backcross exists when one parent is an ancestor of the other.  Returns
+/// `Some((ancestor_id, depth))` where `depth` is the number of pedigree levels
+/// separating the ancestor from the other parent (1 = direct parent).
+///
+/// Returns `None` when neither parent is an ancestor of the other.
+pub fn detect_backcross(
+    conn: &Connection,
+    parent_a_id: &str,
+    parent_b_id: &str,
+) -> Option<(String, u32)> {
+    let mut visited = Vec::new();
+    if let Some(depth) =
+        find_ancestor_depth_impl(conn, parent_a_id, parent_b_id, 0, 10, &mut visited)
+    {
+        return Some((parent_a_id.to_string(), depth));
+    }
+    let mut visited = Vec::new();
+    if let Some(depth) =
+        find_ancestor_depth_impl(conn, parent_b_id, parent_a_id, 0, 10, &mut visited)
+    {
+        return Some((parent_b_id.to_string(), depth));
+    }
+    None
+}
+
+/// Suggest a generation label and detect backcross for two prospective parents.
+///
+/// This is the single entry point used by the `suggest_generation_label`
+/// Tauri command; it runs `detect_backcross` first (which takes priority over
+/// the symmetric label rules) and falls back to `suggest_generation_label`.
+pub fn suggest_generation_label_for_parents(
+    conn: &Connection,
+    parent_a_id: &str,
+    parent_b_id: &str,
+) -> SuggestGenerationLabelResponse {
+    let backcross = detect_backcross(conn, parent_a_id, parent_b_id);
+    if let Some((ancestor_id, depth)) = backcross {
+        let label = format!("BC{}F1", depth);
+        return SuggestGenerationLabelResponse {
+            suggested_label: Some(label),
+            is_backcross: true,
+            backcross_depth: Some(depth),
+            backcross_ancestor_id: Some(ancestor_id),
+        };
+    }
+    let label_a = get_strain_generation_label(conn, parent_a_id);
+    let label_b = get_strain_generation_label(conn, parent_b_id);
+    let suggested = suggest_generation_label(label_a.as_deref(), label_b.as_deref());
+    SuggestGenerationLabelResponse {
+        suggested_label: suggested,
+        is_backcross: false,
+        backcross_depth: None,
+        backcross_ancestor_id: None,
+    }
+}
+
+/// Return per-generation specimen statistics for the direct hybrid descendants
+/// of `strain_id`.
+///
+/// Each row in the result corresponds to one distinct `generation_label` value
+/// (or `"unlabeled"` for hybrids with no label set) and contains the total
+/// specimen count plus a breakdown of healthy vs. problematic specimens.
+pub fn get_generational_stats(
+    conn: &Connection,
+    strain_id: &str,
+) -> DbResult<Vec<GenerationalStats>> {
+    let mut stmt = conn.prepare(
+        "SELECT \
+            COALESCE(he.generation_label, 'unlabeled') AS gen_label, \
+            COUNT(DISTINCT sp.id) AS specimen_count, \
+            COALESCE(SUM(CASE WHEN sp.health_status IN ('healthy', 'excellent') \
+                              THEN 1 ELSE 0 END), 0) AS healthy_count, \
+            COALESCE(SUM(CASE WHEN sp.health_status IS NOT NULL \
+                              AND sp.health_status NOT IN ('healthy', 'excellent') \
+                              THEN 1 ELSE 0 END), 0) AS problem_count \
+         FROM strain_parents lnk \
+         JOIN strains child ON child.id = lnk.strain_id \
+         LEFT JOIN hybridization_events he ON he.hybrid_strain_id = child.id \
+         LEFT JOIN specimens sp ON sp.strain_id = child.id AND sp.is_archived = 0 \
+         WHERE lnk.parent_strain_id = ?1 \
+         GROUP BY gen_label \
+         ORDER BY gen_label ASC",
+    )?;
+    let rows = stmt.query_map(params![strain_id], |row| {
+        Ok(GenerationalStats {
+            generation_label: row.get(0)?,
+            specimen_count: row.get::<_, Option<i64>>(1)?.unwrap_or(0),
+            healthy_count: row.get::<_, Option<i64>>(2)?.unwrap_or(0),
+            problem_count: row.get::<_, Option<i64>>(3)?.unwrap_or(0),
+        })
+    })?;
+    let results: Vec<GenerationalStats> = rows.filter_map(|r| r.ok()).collect();
+    Ok(results)
+}
+
 /// Export the full pedigree of a strain as a portable bundle.
 ///
 /// Collects all unique strains reachable within `max_depth` in both ancestry and
@@ -1302,7 +1490,8 @@ pub fn export_strain_pedigree(
     for sid in &strain_ids {
         let mut stmt = conn.prepare(
             "SELECT id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
-                    parent_a_chain_seq, parent_b_chain_seq, notes, created_at \
+                    parent_a_chain_seq, parent_b_chain_seq, notes, \
+                    generation_label, backcross_depth, created_at \
              FROM hybridization_events WHERE hybrid_strain_id = ?1",
         )?;
         let rows = stmt.query_map(params![sid], |row| {
@@ -1314,6 +1503,8 @@ pub fn export_strain_pedigree(
                 parent_a_chain_seq: row.get("parent_a_chain_seq")?,
                 parent_b_chain_seq: row.get("parent_b_chain_seq")?,
                 notes: row.get("notes")?,
+                generation_label: row.get("generation_label")?,
+                backcross_depth: row.get("backcross_depth")?,
                 created_at: row.get("created_at")?,
             })
         })?;
@@ -2081,6 +2272,7 @@ mod tests {
                 genomic_fingerprint TEXT,
                 is_hybrid INTEGER NOT NULL DEFAULT 0,
                 is_archived INTEGER NOT NULL DEFAULT 0,
+                is_cross_species INTEGER NOT NULL DEFAULT 0,
                 archived_at TEXT,
                 created_by TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -2497,6 +2689,8 @@ mod tests {
                 parent_a_chain_seq INTEGER NOT NULL DEFAULT 0,
                 parent_b_chain_seq INTEGER NOT NULL DEFAULT 0,
                 notes TEXT,
+                generation_label TEXT,
+                backcross_depth INTEGER,
                 created_by TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
@@ -2505,6 +2699,7 @@ mod tests {
                 accession_number TEXT NOT NULL,
                 stage TEXT NOT NULL DEFAULT 'initiation',
                 location TEXT,
+                health_status TEXT DEFAULT 'healthy',
                 is_archived INTEGER NOT NULL DEFAULT 0,
                 strain_id TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -2815,5 +3010,142 @@ mod tests {
         assert!(result.is_err(), "cycle must be detected in specimen tree traversal");
         let msg = result.unwrap_err().to_string();
         assert!(msg.contains("Circular pedigree"), "error must mention circular pedigree: {msg}");
+    }
+
+    // ── WP-38: generation labeling and backcross helpers ─────────────────────
+
+    #[test]
+    fn suggest_generation_label_both_unlabeled_gives_f1() {
+        assert_eq!(suggest_generation_label(None, None), Some("F1".to_string()));
+    }
+
+    #[test]
+    fn suggest_generation_label_both_f1_gives_f2() {
+        assert_eq!(
+            suggest_generation_label(Some("F1"), Some("F1")),
+            Some("F2".to_string())
+        );
+    }
+
+    #[test]
+    fn suggest_generation_label_both_f2_gives_f3() {
+        assert_eq!(
+            suggest_generation_label(Some("F2"), Some("F2")),
+            Some("F3".to_string())
+        );
+    }
+
+    #[test]
+    fn suggest_generation_label_mixed_returns_none() {
+        assert_eq!(suggest_generation_label(Some("F1"), None), None);
+        assert_eq!(suggest_generation_label(None, Some("F2")), None);
+        assert_eq!(suggest_generation_label(Some("F1"), Some("F2")), None);
+    }
+
+    #[test]
+    fn detect_backcross_returns_none_for_unrelated_parents() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+
+        let result = detect_backcross(&conn, "st-A", "st-B");
+        assert!(result.is_none(), "unrelated parents must not produce a backcross");
+    }
+
+    #[test]
+    fn detect_backcross_finds_direct_ancestor() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H", "st-A", "st-B", "sp-001", "HH01");
+
+        // st-A is a direct parent of st-H, so crossing st-H × st-A is a backcross
+        let result = detect_backcross(&conn, "st-A", "st-H");
+        assert!(result.is_some(), "crossing parent with its own hybrid must be detected as backcross");
+        let (ancestor_id, depth) = result.unwrap();
+        assert_eq!(ancestor_id, "st-A");
+        assert_eq!(depth, 1, "direct parent is at depth 1");
+    }
+
+    #[test]
+    fn detect_backcross_finds_grandparent_ancestor() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-G1", "sp-001", "G001");
+        insert_test_strain(&conn, "st-G2", "sp-001", "G002");
+        insert_hybrid(&conn, "st-P", "st-G1", "st-G2", "sp-001", "P001");
+        insert_test_strain(&conn, "st-X", "sp-001", "X001");
+        insert_hybrid(&conn, "st-H", "st-P", "st-X", "sp-001", "H001");
+
+        // st-G1 is a grandparent of st-H; crossing st-H × st-G1 is a backcross at depth 2
+        let result = detect_backcross(&conn, "st-G1", "st-H");
+        assert!(result.is_some(), "grandparent backcross must be detected");
+        let (ancestor_id, depth) = result.unwrap();
+        assert_eq!(ancestor_id, "st-G1");
+        assert_eq!(depth, 2, "grandparent is at depth 2");
+    }
+
+    #[test]
+    fn suggest_generation_label_for_parents_backcross_overrides_label_rules() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H", "st-A", "st-B", "sp-001", "HH01");
+
+        let resp = suggest_generation_label_for_parents(&conn, "st-A", "st-H");
+        assert!(resp.is_backcross, "must be flagged as backcross");
+        assert_eq!(resp.suggested_label, Some("BC1F1".to_string()));
+        assert_eq!(resp.backcross_depth, Some(1));
+    }
+
+    #[test]
+    fn get_generational_stats_returns_stats_per_label() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H1", "st-A", "st-B", "sp-001", "HH01");
+        insert_hybrid(&conn, "st-H2", "st-A", "st-B", "sp-001", "HH02");
+
+        // Assign F1 label to st-H1
+        conn.execute(
+            "INSERT INTO hybridization_events \
+             (id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, generation_label) \
+             VALUES ('evt-h1', 'st-H1', 'st-A', 'st-B', 'F1')",
+            [],
+        ).unwrap();
+        // st-H2 has no label → will appear as "unlabeled"
+        conn.execute(
+            "INSERT INTO hybridization_events \
+             (id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id) \
+             VALUES ('evt-h2', 'st-H2', 'st-A', 'st-B')",
+            [],
+        ).unwrap();
+
+        insert_specimen_for_strain(&conn, "sp-f1-1", "st-H1", "F1-001");
+        insert_specimen_for_strain(&conn, "sp-f1-2", "st-H1", "F1-002");
+        insert_specimen_for_strain(&conn, "sp-un-1", "st-H2", "UN-001");
+
+        let stats = get_generational_stats(&conn, "st-A").unwrap();
+        assert_eq!(stats.len(), 2, "must return rows for F1 and unlabeled");
+
+        let f1 = stats.iter().find(|s| s.generation_label == "F1").expect("F1 row must exist");
+        assert_eq!(f1.specimen_count, 2, "F1 must have 2 specimens");
+
+        let unl = stats.iter().find(|s| s.generation_label == "unlabeled").expect("unlabeled row must exist");
+        assert_eq!(unl.specimen_count, 1, "unlabeled must have 1 specimen");
+    }
+
+    #[test]
+    fn get_generational_stats_empty_when_no_descendants() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-wt", "sp-001", "WT01");
+
+        let stats = get_generational_stats(&conn, "st-wt").unwrap();
+        assert!(stats.is_empty(), "strain with no hybrid children must return empty stats");
     }
 }

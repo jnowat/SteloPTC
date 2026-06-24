@@ -1,6 +1,6 @@
 [package]
 name = "stelo-ptc"
-version = "1.20.0"
+version = "1.21.0"
 description = "Plant Tissue Culture Specimen Tracking System"
 authors = ["SteloPTC"]
 edition = "2021"

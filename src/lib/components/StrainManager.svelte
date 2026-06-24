@@ -3,6 +3,7 @@
   import { listStrainsBySpecies, createStrain, updateStrain, archiveStrain, updateStrainStatus } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
   import HybridWizard from './HybridWizard.svelte';
+  import StrainDetail from './StrainDetail.svelte';
 
   let { speciesId, speciesName = '' }: { speciesId: string; speciesName?: string } = $props();
 
@@ -36,6 +37,9 @@
 
   // Hybrid wizard
   let showHybridWizard = $state(false);
+
+  // Strain detail slide-over
+  let detailStrainId = $state<string | null>(null);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -244,9 +248,14 @@
           {#each filtered as s}
             <tr class:archived={s.is_archived}>
               <td>
-                {s.name}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span class="strain-name-link" onclick={() => (detailStrainId = s.id)} title="View strain details">{s.name}</span>
                 {#if s.is_hybrid}
                   <span class="hybrid-chip" title="Hybrid strain — created via hybridization event">&#128300; Hybrid</span>
+                {/if}
+                {#if s.is_cross_species}
+                  <span class="cross-species-chip" title="Cross-species hybrid — permanent audit warning on record">&#9888; Cross-sp.</span>
                 {/if}
                 {#if s.status === 'unverified' && isOlderThan30Days(s.created_at)}
                   <span class="pulse-dot" title="This strain has been unverified for more than 30 days"></span>
@@ -508,6 +517,11 @@
   />
 {/if}
 
+<!-- ── Strain Detail Slide-over ── -->
+{#if detailStrainId}
+  <StrainDetail strainId={detailStrainId} onclose={() => (detailStrainId = null)} />
+{/if}
+
 <style>
   .strain-manager { display: flex; flex-direction: column; gap: 16px; }
   .sm-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
@@ -557,6 +571,14 @@
     50% { opacity: 0.5; transform: scale(1.3); }
   }
 
+  .strain-name-link {
+    cursor: pointer;
+    color: #2563eb;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .strain-name-link:hover { text-decoration: underline; }
+
   .hybrid-chip {
     display: inline-block;
     font-size: 10px;
@@ -565,6 +587,17 @@
     border-radius: 10px;
     padding: 1px 6px;
     margin-left: 4px;
+  }
+
+  .cross-species-chip {
+    display: inline-block;
+    font-size: 10px;
+    background: #fef2f2;
+    color: #dc2626;
+    border-radius: 10px;
+    padding: 1px 6px;
+    margin-left: 4px;
+    font-weight: 600;
   }
 
   .strain-code {

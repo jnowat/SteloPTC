@@ -5,6 +5,83 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.0] - 2026-06-24
+
+### Added — WP-38: Advanced Hybridisation Tools
+
+- **Migration 022** — three additive `ALTER TABLE ADD COLUMN` statements:
+  - `hybridization_events.generation_label TEXT` — stores the F/BC generation label for the cross.
+  - `hybridization_events.backcross_depth INTEGER` — records the backcross depth when one parent is
+    an ancestor of the other.
+  - `strains.is_cross_species INTEGER NOT NULL DEFAULT 0` — flags strains produced by a cross-species
+    hybridisation event with an admin override.
+
+- **`src-tauri/src/db/queries.rs`** — six new pure helper functions (all unit-tested):
+  - `get_strain_generation_label(conn, strain_id)` — looks up the generation label stored on the
+    most recent hybridisation event that produced a given strain.
+  - `suggest_generation_label(parent_a_label, parent_b_label)` — pure function: derives the next
+    generation label (F1→F2→F3→F4) from both parents' labels; returns `None` if labels are mixed
+    or absent.
+  - `find_ancestor_depth_impl(conn, target_id, current_id, depth, visited)` — private DFS helper
+    that walks `strain_parents` to find the minimum path depth from `current_id` to `target_id`.
+  - `detect_backcross(conn, parent_a_id, parent_b_id)` — checks both directions; returns
+    `Some((ancestor_id, depth))` if one parent is an ancestor of the other, `None` otherwise.
+  - `suggest_generation_label_for_parents(conn, parent_a_id, parent_b_id)` — composes backcross
+    detection with label rules; backcross overrides the filial label (e.g. depth 1 → `BC1F1`).
+  - `get_generational_stats(conn, strain_id)` — returns per-generation specimen counts with healthy
+    / problem breakdown for all descendants that carry a generation label.
+  - **9 new unit tests** covering: label inference for all same-generation pairs (F1/F2/F3), mixed
+    parent labels, unrelated parent backcross detection, direct ancestor backcross, grandparent
+    ancestor, backcross label override, per-generation stats, and empty stats for non-hybrid strains.
+
+- **`src-tauri/src/models/strain.rs`** — three new model types:
+  - `SuggestGenerationLabelResponse` — carries `suggested_label`, `is_backcross`, `backcross_depth`,
+    and `backcross_ancestor_id`.
+  - `GenerationalStats` — one row per generation label: `specimen_count`, `healthy_count`,
+    `problem_count`.
+  - Extended `CreateHybridizationEventRequest` with `generation_label`, `admin_override_cross_species`,
+    and `admin_override_reason` fields.
+  - Extended `HybridizationEventRecord` with `generation_label` and `backcross_depth`.
+  - Added `is_cross_species: bool` to `Strain`.
+
+- **`src-tauri/src/commands/strains.rs`** — `create_hybridization_event` fully rewritten:
+  - Detects cross-species pairings from `species_id` on both parent strains.
+  - Blocks non-admin callers with a clear error when species differ.
+  - Admin callers may supply `admin_override_cross_species: true` with a non-empty
+    `admin_override_reason`; the backend writes a **permanent, non-removable** `cross_species_override`
+    audit entry and sets `is_cross_species = 1` on the resulting strain.
+  - Resolves the generation label: explicit label from request → backcross suggestion →
+    parent-label suggestion → null.
+  - Stores `generation_label` and `backcross_depth` in `hybridization_events`.
+  - Two new Tauri commands registered: `suggest_generation_label` and `get_generational_stats`.
+
+- **`src/lib/api.ts`** — `createHybridizationEvent` request type extended; new interfaces
+  `SuggestGenerationLabelResponse` and `GenerationalStats`; new async helpers
+  `suggestGenerationLabel` and `getGenerationalStats`.
+
+- **`src/lib/components/HybridWizard.svelte`** — wizard extended from 8 to 9 steps:
+  - **Step 3 (Parent B)** — non-admin users are hard-blocked on cross-species selection;
+    admin users see an override panel with a mandatory scientific justification textarea and
+    an explicit acknowledgement checkbox before they can advance.
+  - **Step 5 (Generation Label)** — new step showing the backend suggestion (green for filial,
+    amber for backcross), a quick-select dropdown of common labels, and a free-text field for
+    custom notation.  Suggestion is fetched asynchronously when the user leaves Step 3.
+  - Steps 6–9 renumbered from the previous 5–8.
+  - Step 9 (Review & Confirm) shows cross-species override warning if active.
+
+- **`src/lib/components/StrainDetail.svelte`** — new slide-over panel opened by clicking any
+  strain name in the Strain Manager table:
+  - **Permanent cross-species banner** displayed in red at the top of any strain where
+    `is_cross_species` is set; cannot be dismissed or hidden.
+  - **Overview tab** — strain metadata, identification status, hybridisation event notes, and
+    generation label badge (blue for filial, amber for backcross).
+  - **Generations tab** (hybrid strains only) — summary totals and per-generation table with
+    specimen count, healthy count, problem count, and an inline health-percentage bar.
+  - **Pedigree tab** (hybrid strains only) — ancestor list up to 3 levels deep.
+
+- **`src/lib/components/StrainManager.svelte`** — strain names are now clickable links that
+  open the `StrainDetail` slide-over; cross-species hybrids display a red ⚠ chip in the table.
+
 ## [1.20.0] - 2026-06-24
 
 ### Added — WP-37: Multi-generational Pedigree Tools

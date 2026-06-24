@@ -118,6 +118,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (21)", [])?;
     }
 
+    if current < 22 {
+        migration_022_hybrid_generation_labels(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (22)", [])?;
+    }
+
     Ok(())
 }
 
@@ -1630,6 +1635,18 @@ fn migration_021_ncbi_sync_log(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
+fn migration_022_hybrid_generation_labels(conn: &Connection) -> DbResult<()> {
+    // WP-38: additive columns for generation labeling, backcross depth, and
+    // cross-species override flag.  All nullable / have defaults so existing
+    // rows are unaffected; no table rebuild required.
+    conn.execute_batch(
+        "ALTER TABLE hybridization_events ADD COLUMN generation_label TEXT;
+         ALTER TABLE hybridization_events ADD COLUMN backcross_depth INTEGER;
+         ALTER TABLE strains ADD COLUMN is_cross_species INTEGER NOT NULL DEFAULT 0;",
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2216,5 +2233,100 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stored, details, "conflict_details JSON must round-trip correctly");
+    }
+
+    // ── migration 022 (WP-38) ──────────────────────────────────────────────────
+
+    #[test]
+    fn hybridization_events_has_generation_label_after_migration_022() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Testus', 'exampleus', 'TST-01')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) VALUES ('s1', 'sp1', 'Parent A', 'PA')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) VALUES ('s2', 'sp1', 'Parent B', 'PB')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code, is_hybrid) \
+             VALUES ('h1', 'sp1', 'Hybrid', 'HY', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO hybridization_events \
+             (id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
+              parent_a_chain_seq, parent_b_chain_seq, generation_label, backcross_depth) \
+             VALUES ('evt1', 'h1', 's1', 's2', 0, 0, 'F1', NULL)",
+            [],
+        )
+        .expect("hybridization_events must accept generation_label and backcross_depth");
+        let label: Option<String> = conn
+            .query_row(
+                "SELECT generation_label FROM hybridization_events WHERE id = 'evt1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(label, Some("F1".to_string()), "generation_label must round-trip");
+    }
+
+    #[test]
+    fn strains_has_is_cross_species_after_migration_022() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Testus', 'exampleus', 'TST-01')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code, is_cross_species) \
+             VALUES ('s1', 'sp1', 'CrossHybrid', 'CH', 1)",
+            [],
+        )
+        .expect("strains must accept is_cross_species = 1");
+        let flag: i32 = conn
+            .query_row(
+                "SELECT is_cross_species FROM strains WHERE id = 's1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(flag, 1, "is_cross_species must round-trip");
+    }
+
+    #[test]
+    fn strains_is_cross_species_defaults_to_zero() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Testus', 'exampleus', 'TST-01')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) \
+             VALUES ('s2', 'sp1', 'Normal', 'NM')",
+            [],
+        )
+        .unwrap();
+        let flag: i32 = conn
+            .query_row(
+                "SELECT is_cross_species FROM strains WHERE id = 's2'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(flag, 0, "is_cross_species must default to 0 for existing/new rows");
     }
 }
