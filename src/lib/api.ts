@@ -685,7 +685,7 @@ export async function syncNcbiTaxon(record: NcbiTaxonRecord) {
 
 export async function listNcbiSyncLog(pendingOnly: boolean, limit?: number) {
   return call<NcbiSyncLog[]>('list_ncbi_sync_log', {
-    pending_only: pendingOnly,
+    pendingOnly,
     limit: limit ?? null,
   });
 }
