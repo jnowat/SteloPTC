@@ -5,6 +5,48 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-06-23
+
+### Added — WP-35: Expanded Taxonomy Backbone (Genus → Kingdom)
+
+- **`taxa` table** (migration 020) — hierarchical classification records for all
+  ranks above Species: `kingdom`, `phylum`, `class`, `order`, `family`, `genus`.
+  - Columns: `id`, `rank`, `name`, `parent_id` (self-referential FK), `ncbi_taxon_id`,
+    `ncbi_updated_at`, `local_override`, `taxon_path` (JSON array of ancestor IDs from
+    kingdom → current node), `created_at`, `updated_at`.
+  - Indexes on `parent_id`, `rank`, and `name` for efficient navigation.
+  - `CHECK(rank IN ('kingdom','phylum','class','order','family','genus'))` enforced.
+  - **No hash-chain / audit-log involvement** — taxa are classification data only.
+
+- **`species.taxon_path`** and **`species.ncbi_taxon_id`** (migration 020) — two new
+  nullable columns added to the existing `species` table via `ALTER TABLE`.
+
+- **Data backfill** (`backfill_genus_taxa`) — idempotent function that extracts unique
+  genus values from existing species records, creates corresponding genus `taxa` rows,
+  and populates `species.taxon_path` for every species whose path was previously NULL.
+  Runs automatically as part of migration 020; safe to call repeatedly.
+
+- **`src-tauri/src/models/taxon.rs`** (new) — `Taxon`, `CreateTaxonRequest`,
+  `UpdateTaxonRequest`, `SpeciesNodeSummary`, and `TaxonNode` types.
+
+- **`src-tauri/src/commands/taxa.rs`** (new) — five Tauri commands:
+  - `create_taxon` — create a new taxon at any supported rank; computes `taxon_path`
+    from the parent's path automatically.
+  - `get_taxon` — fetch a single taxon by ID.
+  - `update_taxon` — update name, parent, NCBI fields, or local-override flag.
+  - `list_taxa_by_rank` — return all taxa of a given rank, ordered by name.
+  - `get_taxon_descendants` — return a `TaxonNode` tree rooted at the given taxon,
+    with aggregate `strain_count` and `specimen_count` at every level.  Designed
+    for the Taxonomy Navigator (WP-39).
+
+- **`src-tauri/src/db/queries.rs`** — three new public helpers: `load_taxon`,
+  `get_child_taxa`, and `get_species_for_taxon` (counts strains and specimens per
+  species node). All helpers bind `query_map` results to local variables to satisfy
+  the borrow checker.
+
+- **`src/lib/api.ts`** — typed exports for all five taxa commands plus `Taxon`,
+  `TaxonRank`, `SpeciesNodeSummary`, and `TaxonNode` TypeScript interfaces.
+
 ## [1.17.0] - 2026-06-23
 
 ### Added — WP-29: Strain Management UI, Hybrid Wizard & Taxonomy Navigator

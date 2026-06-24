@@ -531,3 +531,72 @@ export async function createHybridizationEvent(request: {
 }) {
   return call<{ hybrid_strain_id: string; event_id: string }>('create_hybridization_event', { request });
 }
+
+// Taxa (WP-35) — hierarchical taxonomy backbone (Genus → Kingdom).
+// Taxa records are classification-only and carry no audit-chain data.
+
+export type TaxonRank = 'kingdom' | 'phylum' | 'class' | 'order' | 'family' | 'genus';
+
+export interface Taxon {
+  id: string;
+  rank: TaxonRank;
+  name: string;
+  parent_id: string | null;
+  ncbi_taxon_id: number | null;
+  ncbi_updated_at: string | null;
+  local_override: boolean;
+  taxon_path: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SpeciesNodeSummary {
+  id: string;
+  genus: string;
+  species_name: string;
+  common_name: string | null;
+  species_code: string;
+  strain_count: number;
+  specimen_count: number;
+}
+
+export interface TaxonNode {
+  taxon: Taxon;
+  strain_count: number;
+  specimen_count: number;
+  species: SpeciesNodeSummary[];
+  children: TaxonNode[];
+}
+
+export async function createTaxon(request: {
+  rank: TaxonRank;
+  name: string;
+  parent_id?: string;
+  ncbi_taxon_id?: number;
+  local_override?: boolean;
+}) {
+  return call<Taxon>('create_taxon', { request });
+}
+
+export async function getTaxon(id: string) {
+  return call<Taxon>('get_taxon', { id });
+}
+
+export async function updateTaxon(request: {
+  id: string;
+  name?: string;
+  parent_id?: string;
+  ncbi_taxon_id?: number;
+  ncbi_updated_at?: string;
+  local_override?: boolean;
+}) {
+  return call<void>('update_taxon', { request });
+}
+
+export async function listTaxaByRank(rank: TaxonRank) {
+  return call<Taxon[]>('list_taxa_by_rank', { rank });
+}
+
+export async function getTaxonDescendants(id: string) {
+  return call<TaxonNode>('get_taxon_descendants', { id });
+}

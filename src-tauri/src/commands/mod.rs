@@ -17,3 +17,4 @@ pub mod work_queue;
 pub mod import;
 pub mod vocabulary;
 pub mod strains;
+pub mod taxa;
