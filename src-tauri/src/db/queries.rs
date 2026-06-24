@@ -1237,14 +1237,32 @@ pub fn get_strain_specimen_tree(
     strain_id: &str,
     include_descendants: bool,
 ) -> DbResult<StrainSpecimenTree> {
+    let mut path = vec![strain_id.to_string()];
+    get_strain_specimen_tree_impl(conn, strain_id, include_descendants, &mut path)
+}
+
+fn get_strain_specimen_tree_impl(
+    conn: &Connection,
+    strain_id: &str,
+    include_descendants: bool,
+    path: &mut Vec<String>,
+) -> DbResult<StrainSpecimenTree> {
     let strain = load_strain_summary(conn, strain_id)?;
     let specimens = load_specimens_for_strain(conn, strain_id)?;
     let descendant_trees = if include_descendants {
         let child_entries = load_child_entries(conn, strain_id)?;
         let mut trees = Vec::new();
         for (child_summary, _edge) in child_entries {
-            let child_tree = get_strain_specimen_tree(conn, &child_summary.id, true)?;
-            trees.push(child_tree);
+            let child_id = child_summary.id.clone();
+            if path.contains(&child_id) {
+                return Err(DbError::Constraint(format!(
+                    "Circular pedigree detected: strain '{}' is its own descendant",
+                    child_id
+                )));
+            }
+            path.push(child_id.clone());
+            trees.push(get_strain_specimen_tree_impl(conn, &child_id, true, path)?);
+            path.pop();
         }
         trees
     } else {
@@ -2776,5 +2794,26 @@ mod tests {
 
         assert_eq!(export.hybridization_events.len(), 1, "export must include the hybridization event");
         assert_eq!(export.hybridization_events[0].id, "evt-1");
+    }
+
+    #[test]
+    fn pedigree_specimen_tree_detects_cycle() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        // Manually create a 2-cycle: A → child B, B → child A
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) VALUES ('cyc-ab', 'st-B', 'st-A', NULL)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) VALUES ('cyc-ba', 'st-A', 'st-B', NULL)",
+            [],
+        ).unwrap();
+        let result = get_strain_specimen_tree(&conn, "st-A", true);
+        assert!(result.is_err(), "cycle must be detected in specimen tree traversal");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("Circular pedigree"), "error must mention circular pedigree: {msg}");
     }
 }
