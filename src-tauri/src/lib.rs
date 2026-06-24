@@ -158,6 +158,10 @@ pub fn run() {
             commands::taxa::update_taxon,
             commands::taxa::list_taxa_by_rank,
             commands::taxa::get_taxon_descendants,
+            // Advanced taxonomy navigator (WP-39)
+            commands::taxa::get_taxon_column,
+            commands::taxa::list_species_for_taxon,
+            commands::taxa::search_taxonomy,
             // NCBI Taxonomy (WP-36)
             commands::ncbi::import_ncbi_taxonomy,
             commands::ncbi::resolve_ncbi_conflict,

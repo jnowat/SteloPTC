@@ -2,7 +2,7 @@
 use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
 use super::{DbError, DbResult};
-use crate::models::taxon::{NcbiSyncLog, SpeciesNodeSummary, Taxon};
+use crate::models::taxon::{NcbiSyncLog, SpeciesNodeSummary, Taxon, TaxonColumnItem, TaxonomySearchResult};
 use crate::models::strain::{
     GenerationalStats, HybridizationEventRecord, PedigreeEdge, PedigreeExport, PedigreeNode,
     SpecimenSummary, StrainSpecimenTree, StrainSummary, SuggestGenerationLabelResponse,
@@ -793,6 +793,215 @@ pub fn get_species_for_taxon(
     })?;
     let summaries: Result<Vec<_>, _> = rows.collect();
     Ok(summaries?)
+}
+
+// ── WP-39: Advanced taxonomy navigator helpers ─────────────────────────────────
+
+/// Parse a JSON taxon_path array stored as TEXT in the database.
+/// Returns an empty vec when the value is NULL or unparseable.
+fn parse_taxon_path(path: &Option<String>) -> Vec<String> {
+    path.as_deref()
+        .and_then(|p| serde_json::from_str::<Vec<String>>(p).ok())
+        .unwrap_or_default()
+}
+
+/// Return immediate children of a taxon (or all root-level taxa when
+/// `parent_id` is `None`), each annotated with the total count of strains
+/// and non-archived specimens under all descendant species.
+///
+/// Counts use correlated sub-queries with a LIKE pattern on the JSON
+/// `taxon_path` column.  Taxon IDs are UUIDs (hex + hyphens only) so the
+/// pattern `%"<id>"%` is unambiguous — no special LIKE characters.
+pub fn get_taxon_column_items(
+    conn: &Connection,
+    parent_id: Option<&str>,
+) -> DbResult<Vec<TaxonColumnItem>> {
+    let row_mapper = |row: &rusqlite::Row<'_>| -> rusqlite::Result<TaxonColumnItem> {
+        Ok(TaxonColumnItem {
+            id: row.get(0)?,
+            rank: row.get(1)?,
+            name: row.get(2)?,
+            parent_id: row.get(3)?,
+            ncbi_taxon_id: row.get(4)?,
+            local_override: row.get::<_, i64>(5)? != 0,
+            strain_count: row.get(6)?,
+            specimen_count: row.get(7)?,
+        })
+    };
+
+    let items = if let Some(pid) = parent_id {
+        let mut stmt = conn.prepare(
+            r#"SELECT t.id, t.rank, t.name, t.parent_id, t.ncbi_taxon_id, t.local_override,
+                      (SELECT COUNT(DISTINCT st.id) FROM strains st
+                       JOIN species sp ON st.species_id = sp.id
+                       WHERE sp.taxon_path LIKE '%"' || t.id || '"%' AND st.is_archived = 0
+                      ) AS strain_count,
+                      (SELECT COUNT(DISTINCT s.id) FROM specimens s
+                       JOIN species sp ON s.species_id = sp.id
+                       WHERE sp.taxon_path LIKE '%"' || t.id || '"%' AND s.is_archived = 0
+                      ) AS specimen_count
+               FROM taxa t WHERE t.parent_id = ?1 ORDER BY t.name"#,
+        )?;
+        let rows = stmt.query_map(params![pid], row_mapper)?;
+        let v: Result<Vec<_>, _> = rows.collect();
+        v?
+    } else {
+        let mut stmt = conn.prepare(
+            r#"SELECT t.id, t.rank, t.name, t.parent_id, t.ncbi_taxon_id, t.local_override,
+                      (SELECT COUNT(DISTINCT st.id) FROM strains st
+                       JOIN species sp ON st.species_id = sp.id
+                       WHERE sp.taxon_path LIKE '%"' || t.id || '"%' AND st.is_archived = 0
+                      ) AS strain_count,
+                      (SELECT COUNT(DISTINCT s.id) FROM specimens s
+                       JOIN species sp ON s.species_id = sp.id
+                       WHERE sp.taxon_path LIKE '%"' || t.id || '"%' AND s.is_archived = 0
+                      ) AS specimen_count
+               FROM taxa t WHERE t.parent_id IS NULL ORDER BY t.name"#,
+        )?;
+        let rows = stmt.query_map([], row_mapper)?;
+        let v: Result<Vec<_>, _> = rows.collect();
+        v?
+    };
+
+    Ok(items)
+}
+
+/// Search across taxa, species, strains, and specimens.
+/// Returns up to 10 results per entity type grouped in a single flat Vec.
+/// The caller should enforce a minimum query length (e.g. 2 characters).
+pub fn search_taxonomy(conn: &Connection, query: &str) -> DbResult<Vec<TaxonomySearchResult>> {
+    let like_q = format!("%{}%", query);
+    let mut results: Vec<TaxonomySearchResult> = Vec::new();
+
+    // Taxa
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, rank, name, taxon_path FROM taxa WHERE name LIKE ?1 ORDER BY name LIMIT 10",
+        )?;
+        let rows = stmt.query_map(params![like_q], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })?;
+        let items: Result<Vec<_>, _> = rows.collect();
+        for (id, rank, name, taxon_path) in items? {
+            let taxon_ids = parse_taxon_path(&taxon_path);
+            results.push(TaxonomySearchResult {
+                result_type: "taxon".to_string(),
+                id,
+                display_name: name,
+                secondary: rank,
+                taxon_ids,
+                species_id: None,
+                strain_id: None,
+            });
+        }
+    }
+
+    // Species (search genus+name concatenation, code, and common_name)
+    {
+        let mut stmt = conn.prepare(
+            "SELECT id, genus, species_name, species_code, taxon_path FROM species \
+             WHERE genus || ' ' || species_name LIKE ?1 \
+                OR species_name LIKE ?1 \
+                OR species_code LIKE ?1 \
+                OR common_name LIKE ?1 \
+             ORDER BY genus, species_name LIMIT 10",
+        )?;
+        let rows = stmt.query_map(params![like_q], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        let items: Result<Vec<_>, _> = rows.collect();
+        for (id, genus, species_name, species_code, taxon_path) in items? {
+            let taxon_ids = parse_taxon_path(&taxon_path);
+            results.push(TaxonomySearchResult {
+                result_type: "species".to_string(),
+                id: id.clone(),
+                display_name: format!("{} {}", genus, species_name),
+                secondary: species_code,
+                taxon_ids,
+                species_id: Some(id),
+                strain_id: None,
+            });
+        }
+    }
+
+    // Strains
+    {
+        let mut stmt = conn.prepare(
+            "SELECT st.id, st.name, st.code, st.species_id, sp.taxon_path \
+             FROM strains st JOIN species sp ON st.species_id = sp.id \
+             WHERE (st.name LIKE ?1 OR st.code LIKE ?1) AND st.is_archived = 0 \
+             ORDER BY st.code LIMIT 10",
+        )?;
+        let rows = stmt.query_map(params![like_q], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ))
+        })?;
+        let items: Result<Vec<_>, _> = rows.collect();
+        for (id, name, code, species_id, taxon_path) in items? {
+            let taxon_ids = parse_taxon_path(&taxon_path);
+            results.push(TaxonomySearchResult {
+                result_type: "strain".to_string(),
+                id: id.clone(),
+                display_name: name,
+                secondary: code,
+                taxon_ids,
+                species_id: Some(species_id),
+                strain_id: Some(id),
+            });
+        }
+    }
+
+    // Specimens
+    {
+        let mut stmt = conn.prepare(
+            "SELECT spec.id, spec.accession_number, spec.strain_id, spec.species_id, \
+                    sp.taxon_path, spec.stage \
+             FROM specimens spec JOIN species sp ON spec.species_id = sp.id \
+             WHERE spec.accession_number LIKE ?1 AND spec.is_archived = 0 \
+             ORDER BY spec.accession_number LIMIT 10",
+        )?;
+        let rows = stmt.query_map(params![like_q], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+            ))
+        })?;
+        let items: Result<Vec<_>, _> = rows.collect();
+        for (id, accession, strain_id, species_id, taxon_path, stage) in items? {
+            let taxon_ids = parse_taxon_path(&taxon_path);
+            results.push(TaxonomySearchResult {
+                result_type: "specimen".to_string(),
+                id,
+                display_name: accession,
+                secondary: stage.unwrap_or_default(),
+                taxon_ids,
+                species_id: Some(species_id),
+                strain_id,
+            });
+        }
+    }
+
+    Ok(results)
 }
 
 // ── NCBI Taxonomy helpers (WP-36) ─────────────────────────────────────────────
@@ -3147,5 +3356,275 @@ mod tests {
 
         let stats = get_generational_stats(&conn, "st-wt").unwrap();
         assert!(stats.is_empty(), "strain with no hybrid children must return empty stats");
+    }
+
+    // ── WP-39: taxonomy navigator helpers ─────────────────────────────────────
+
+    fn mem_conn_with_taxonomy_nav() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        conn.execute_batch(
+            "CREATE TABLE taxa (
+                id TEXT PRIMARY KEY,
+                rank TEXT NOT NULL,
+                name TEXT NOT NULL,
+                parent_id TEXT,
+                ncbi_taxon_id INTEGER,
+                local_override INTEGER NOT NULL DEFAULT 0,
+                taxon_path TEXT
+            );
+            CREATE TABLE species (
+                id TEXT PRIMARY KEY,
+                genus TEXT NOT NULL,
+                species_name TEXT NOT NULL,
+                common_name TEXT,
+                species_code TEXT NOT NULL,
+                taxon_path TEXT
+            );
+            CREATE TABLE strains (
+                id TEXT PRIMARY KEY,
+                species_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                code TEXT NOT NULL,
+                is_archived INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE specimens (
+                id TEXT PRIMARY KEY,
+                accession_number TEXT NOT NULL,
+                species_id TEXT,
+                strain_id TEXT,
+                stage TEXT,
+                is_archived INTEGER NOT NULL DEFAULT 0
+            );",
+        )
+        .expect("create taxonomy nav tables");
+        conn
+    }
+
+    #[test]
+    fn taxon_column_roots_returns_kingdoms() {
+        let conn = mem_conn_with_taxonomy_nav();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('k1', 'kingdom', 'Plantae')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('k2', 'kingdom', 'Fungi')",
+            [],
+        )
+        .unwrap();
+
+        let items = get_taxon_column_items(&conn, None).unwrap();
+        assert_eq!(items.len(), 2, "must return both kingdoms");
+        assert_eq!(items[0].name, "Fungi", "must be sorted by name");
+        assert_eq!(items[1].name, "Plantae");
+        assert_eq!(items[0].rank, "kingdom");
+    }
+
+    #[test]
+    fn taxon_column_children_returns_phyla_under_kingdom() {
+        let conn = mem_conn_with_taxonomy_nav();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('k1', 'kingdom', 'Plantae')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, parent_id) VALUES ('p1', 'phylum', 'Angiospermae', 'k1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, parent_id) VALUES ('p2', 'phylum', 'Gymnospermae', 'k1')",
+            [],
+        )
+        .unwrap();
+
+        let items = get_taxon_column_items(&conn, Some("k1")).unwrap();
+        assert_eq!(items.len(), 2, "must return both phyla under kingdom k1");
+        assert_eq!(items[0].name, "Angiospermae");
+        assert_eq!(items[0].parent_id.as_deref(), Some("k1"));
+    }
+
+    #[test]
+    fn taxon_column_aggregates_descendant_counts() {
+        let conn = mem_conn_with_taxonomy_nav();
+        // Kingdom → Genus hierarchy
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('k1', 'kingdom', 'Plantae')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, parent_id, taxon_path) \
+             VALUES ('g1', 'genus', 'Citrus', 'k1', '[\"k1\",\"g1\"]')",
+            [],
+        )
+        .unwrap();
+        // Species under genus
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path) \
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-SIN', '[\"k1\",\"g1\"]')",
+            [],
+        )
+        .unwrap();
+        // 2 strains
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) VALUES ('st1', 'sp1', 'A', 'AA')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) VALUES ('st2', 'sp1', 'B', 'BB')",
+            [],
+        )
+        .unwrap();
+        // 3 specimens
+        for i in 1..=3u8 {
+            conn.execute(
+                &format!(
+                    "INSERT INTO specimens (id, accession_number, species_id) \
+                     VALUES ('spec{i}', '2026-CIT-00{i}', 'sp1')"
+                ),
+                [],
+            )
+            .unwrap();
+        }
+
+        // Querying kingdoms: k1 must aggregate counts from descendant genus g1
+        let items = get_taxon_column_items(&conn, None).unwrap();
+        assert_eq!(items.len(), 1);
+        let k1 = &items[0];
+        assert_eq!(k1.strain_count, 2, "kingdom must aggregate 2 strains from descendant genus");
+        assert_eq!(k1.specimen_count, 3, "kingdom must aggregate 3 specimens");
+    }
+
+    #[test]
+    fn taxon_column_excludes_archived_from_counts() {
+        let conn = mem_conn_with_taxonomy_nav();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('k1', 'kingdom', 'Plantae')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path) \
+             VALUES ('sp1', 'G', 'spp', 'G-SP', '[\"k1\"]')",
+            [],
+        )
+        .unwrap();
+        // 1 active + 1 archived strain
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code, is_archived) \
+             VALUES ('st-active', 'sp1', 'Active', 'AC', 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code, is_archived) \
+             VALUES ('st-arch', 'sp1', 'Archived', 'AR', 1)",
+            [],
+        )
+        .unwrap();
+
+        let items = get_taxon_column_items(&conn, None).unwrap();
+        assert_eq!(items[0].strain_count, 1, "archived strain must be excluded from count");
+    }
+
+    #[test]
+    fn search_taxonomy_finds_taxon_by_name() {
+        let conn = mem_conn_with_taxonomy_nav();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, taxon_path) \
+             VALUES ('k1', 'kingdom', 'Plantae', '[\"k1\"]')",
+            [],
+        )
+        .unwrap();
+
+        let results = search_taxonomy(&conn, "Plant").unwrap();
+        assert!(!results.is_empty(), "must find Plantae when searching 'Plant'");
+        let hit = &results[0];
+        assert_eq!(hit.result_type, "taxon");
+        assert_eq!(hit.id, "k1");
+        assert_eq!(hit.display_name, "Plantae");
+        assert_eq!(hit.secondary, "kingdom");
+        assert_eq!(hit.taxon_ids, vec!["k1"]);
+    }
+
+    #[test]
+    fn search_taxonomy_finds_species_by_genus_name() {
+        let conn = mem_conn_with_taxonomy_nav();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path) \
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-SIN', '[\"k1\",\"g1\"]')",
+            [],
+        )
+        .unwrap();
+
+        let results = search_taxonomy(&conn, "Citrus").unwrap();
+        let hit = results.iter().find(|r| r.result_type == "species").expect("must find species");
+        assert_eq!(hit.id, "sp1");
+        assert_eq!(hit.display_name, "Citrus sinensis");
+        assert_eq!(hit.secondary, "CIT-SIN");
+        assert_eq!(hit.taxon_ids, vec!["k1", "g1"]);
+        assert_eq!(hit.species_id.as_deref(), Some("sp1"));
+    }
+
+    #[test]
+    fn search_taxonomy_finds_strain_by_code() {
+        let conn = mem_conn_with_taxonomy_nav();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path) \
+             VALUES ('sp1', 'G', 'sp', 'G-SP', '[\"k1\",\"g1\"]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) \
+             VALUES ('st1', 'sp1', 'Gold Nugget', 'GN-01')",
+            [],
+        )
+        .unwrap();
+
+        let results = search_taxonomy(&conn, "GN-01").unwrap();
+        let hit = results.iter().find(|r| r.result_type == "strain").expect("must find strain");
+        assert_eq!(hit.id, "st1");
+        assert_eq!(hit.display_name, "Gold Nugget");
+        assert_eq!(hit.secondary, "GN-01");
+        assert_eq!(hit.strain_id.as_deref(), Some("st1"));
+        assert_eq!(hit.species_id.as_deref(), Some("sp1"));
+    }
+
+    #[test]
+    fn search_taxonomy_finds_specimen_by_accession() {
+        let conn = mem_conn_with_taxonomy_nav();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path) \
+             VALUES ('sp1', 'G', 'sp', 'G-SP', '[\"k1\"]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage) \
+             VALUES ('spec1', '2026-06-G-SP-001', 'sp1', 'multiplication')",
+            [],
+        )
+        .unwrap();
+
+        let results = search_taxonomy(&conn, "2026-06-G-SP").unwrap();
+        let hit = results
+            .iter()
+            .find(|r| r.result_type == "specimen")
+            .expect("must find specimen");
+        assert_eq!(hit.id, "spec1");
+        assert_eq!(hit.display_name, "2026-06-G-SP-001");
+        assert_eq!(hit.secondary, "multiplication");
+    }
+
+    #[test]
+    fn search_taxonomy_returns_empty_for_no_match() {
+        let conn = mem_conn_with_taxonomy_nav();
+        let results = search_taxonomy(&conn, "zzznomatch").unwrap();
+        assert!(results.is_empty(), "must return empty vec when nothing matches");
     }
 }
