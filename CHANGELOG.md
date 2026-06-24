@@ -5,6 +5,31 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.23.0] - 2026-06-24
+
+### Added — WP-30: Cell Culture Profile Vocabulary
+
+- **Backend — `src-tauri/src/db/migrations.rs`** — migration 023 expands the `cell_culture`
+  vocabulary tables seeded by migration 018 with additional lifecycle-state and technique terms.
+  All inserts use `INSERT OR IGNORE` — purely additive and idempotent; all `plant_tissue_culture`
+  rows are untouched.
+  - **Stages** (8 new — total 20): `thawed`, `adherent`, `suspension` (Suspension Culture),
+    `confluent`, `passaged`, `cryopreserved` are non-terminal; `contaminated` and `discarded`
+    are terminal. Terminal set: archived · contaminated · discarded; non-terminal: 17.
+  - **Propagation methods** (4 new — total 11): `trypsinization`, `mechanical_dissociation`
+    (Mechanical Dissociation), `dilution` (Dilution Passaging), `subculturing`.
+  - **Hormone types** (2 new — total 6): `serum_supplement` (Serum Supplement),
+    `vitamin_supplement` (Vitamin Supplement).
+  - **Compliance record types** (2 new — total 11): `gmp_batch_record` (GMP Batch Record),
+    `cell_line_identity` (Cell Line Identity Report).
+  - **Compliance agencies** (2 new — total 6): `EMA` (EMA — European Medicines Agency),
+    `ICH` (ICH Guidelines).
+  - **Inventory categories** (2 new — total 9): `disposables` (Plasticware & Disposables),
+    `antibiotics` (Antibiotics & Antimycotics).
+  - **9 new unit tests** — presence checks for each new code, terminal/non-terminal assertions,
+    idempotency re-run, and a PTC-unchanged guard. Existing migration 018 count-based tests
+    updated to reflect the new totals.
+
 ## [1.22.0] - 2026-06-24
 
 ### Added — WP-39: Advanced Taxonomy Navigator

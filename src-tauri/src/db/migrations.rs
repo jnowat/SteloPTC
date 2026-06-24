@@ -123,6 +123,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (22)", [])?;
     }
 
+    if current < 23 {
+        migration_023_cell_culture_vocabulary(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (23)", [])?;
+    }
+
     Ok(())
 }
 
@@ -1647,6 +1652,61 @@ fn migration_022_hybrid_generation_labels(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
+fn migration_023_cell_culture_vocabulary(conn: &Connection) -> DbResult<()> {
+    // WP-30: expand the cell_culture vocabulary with additional lifecycle-state
+    // stages, common propagation techniques, supplement types, and biomanufacturing
+    // compliance / inventory terms.  Migration 018 seeded a minimal base set;
+    // this migration is purely additive on top of it.
+    // INSERT OR IGNORE keeps the migration idempotent and leaves all
+    // plant_tissue_culture rows completely untouched.
+    conn.execute_batch("
+        BEGIN;
+
+        -- Lifecycle-state stages that complement the phase-based stages from migration 018.
+        -- contaminated and discarded are terminal: cells in these states cannot be
+        -- progressed further without remediation or replacement.
+        INSERT OR IGNORE INTO stages (profile, code, label, sort_order, is_terminal) VALUES
+            ('cell_culture', 'thawed',        'Thawed',             13, 0),
+            ('cell_culture', 'adherent',      'Adherent',           14, 0),
+            ('cell_culture', 'suspension',    'Suspension Culture', 15, 0),
+            ('cell_culture', 'confluent',     'Confluent',          16, 0),
+            ('cell_culture', 'passaged',      'Passaged',           17, 0),
+            ('cell_culture', 'cryopreserved', 'Cryopreserved',      18, 0),
+            ('cell_culture', 'contaminated',  'Contaminated',       19, 1),
+            ('cell_culture', 'discarded',     'Discarded',          20, 1);
+
+        -- Common propagation terminology used in standard cell culture protocols.
+        INSERT OR IGNORE INTO propagation_methods (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'trypsinization',         'Trypsinization',          8),
+            ('cell_culture', 'mechanical_dissociation','Mechanical Dissociation', 9),
+            ('cell_culture', 'dilution',               'Dilution Passaging',      10),
+            ('cell_culture', 'subculturing',           'Subculturing',            11);
+
+        -- Media supplement types not covered by the growth-factor / cytokine categories.
+        INSERT OR IGNORE INTO hormone_types (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'serum_supplement',  'Serum Supplement',  5),
+            ('cell_culture', 'vitamin_supplement','Vitamin Supplement', 6);
+
+        -- Biomanufacturing compliance record types.
+        INSERT OR IGNORE INTO compliance_record_types (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'gmp_batch_record',  'GMP Batch Record',           10),
+            ('cell_culture', 'cell_line_identity','Cell Line Identity Report',  11);
+
+        -- International regulatory agencies relevant to cell culture / biomanufacturing.
+        INSERT OR IGNORE INTO compliance_agencies (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'EMA', 'EMA (European Medicines Agency)', 5),
+            ('cell_culture', 'ICH', 'ICH Guidelines',                  6);
+
+        -- Additional consumable categories for cell culture labs.
+        INSERT OR IGNORE INTO inventory_categories (profile, code, label, sort_order) VALUES
+            ('cell_culture', 'disposables', 'Plasticware & Disposables',  8),
+            ('cell_culture', 'antibiotics', 'Antibiotics & Antimycotics', 9);
+
+        COMMIT;
+    ")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1781,17 +1841,19 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 12, "expected 12 cell_culture stage entries from seed data");
+        // 12 from migration 018 + 8 lifecycle-state stages from migration 023.
+        assert_eq!(count, 20, "expected 20 cell_culture stage entries after migrations 018+023");
     }
 
     #[test]
     fn cell_culture_only_archived_is_terminal() {
         let conn = migrated_db();
-        let terminal: Vec<String> = {
+        let mut terminal: Vec<String> = {
             let mut stmt = conn
                 .prepare(
                     "SELECT code FROM stages \
-                     WHERE profile = 'cell_culture' AND is_terminal = 1",
+                     WHERE profile = 'cell_culture' AND is_terminal = 1 \
+                     ORDER BY sort_order",
                 )
                 .unwrap();
             stmt.query_map([], |r| r.get(0))
@@ -1799,8 +1861,13 @@ mod tests {
                 .filter_map(|r| r.ok())
                 .collect()
         };
-        assert_eq!(terminal, vec!["archived"],
-            "exactly one cell_culture stage should be terminal, and it must be 'archived'");
+        terminal.sort();
+        // archived (migration 018) + contaminated + discarded (migration 023).
+        assert_eq!(
+            terminal,
+            vec!["archived", "contaminated", "discarded"],
+            "cell_culture terminal stages must be archived, contaminated, and discarded"
+        );
     }
 
     #[test]
@@ -1814,8 +1881,9 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 11,
-            "11 non-terminal cell_culture stages should be available for selection");
+        // 11 from migration 018 + 6 non-terminal lifecycle stages from migration 023.
+        assert_eq!(count, 17,
+            "17 non-terminal cell_culture stages should be available for selection");
     }
 
     #[test]
@@ -1828,7 +1896,8 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 7);
+        // 7 from migration 018 + 4 from migration 023.
+        assert_eq!(count, 11);
     }
 
     #[test]
@@ -1841,7 +1910,8 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 4);
+        // 4 from migration 018 + 2 from migration 023.
+        assert_eq!(count, 6);
     }
 
     #[test]
@@ -1854,7 +1924,8 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 9);
+        // 9 from migration 018 + 2 from migration 023.
+        assert_eq!(count, 11);
     }
 
     #[test]
@@ -1867,7 +1938,8 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 4);
+        // 4 from migration 018 + 2 from migration 023.
+        assert_eq!(count, 6);
     }
 
     #[test]
@@ -1880,13 +1952,14 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(count, 7);
+        // 7 from migration 018 + 2 from migration 023.
+        assert_eq!(count, 9);
     }
 
     #[test]
     fn cell_culture_vocabulary_does_not_affect_ptc() {
         let conn = migrated_db();
-        // PTC stage count must remain exactly 15 after migration 018.
+        // PTC stage count must remain exactly 15 after migrations 018 and 023.
         let ptc_stages: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM stages WHERE profile = 'plant_tissue_culture'",
@@ -1908,6 +1981,168 @@ mod tests {
             .unwrap();
         assert_eq!(ptc_props, 7,
             "PTC propagation method count must be unchanged after cell_culture seeding");
+    }
+
+    // ── migration 023 (WP-30) ──────────────────────────────────────────────────
+
+    #[test]
+    fn cell_culture_lifecycle_state_stages_present() {
+        let conn = migrated_db();
+        let codes_expected = [
+            "thawed", "adherent", "suspension", "confluent",
+            "passaged", "cryopreserved", "contaminated", "discarded",
+        ];
+        for code in &codes_expected {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM stages \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "cell_culture stage '{}' must be present", code);
+        }
+    }
+
+    #[test]
+    fn cell_culture_contaminated_and_discarded_are_terminal() {
+        let conn = migrated_db();
+        for code in &["contaminated", "discarded"] {
+            let is_terminal: i64 = conn
+                .query_row(
+                    "SELECT is_terminal FROM stages \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(is_terminal, 1, "cell_culture stage '{}' must be terminal", code);
+        }
+    }
+
+    #[test]
+    fn cell_culture_lifecycle_stages_are_non_terminal() {
+        let conn = migrated_db();
+        for code in &["thawed", "adherent", "suspension", "confluent", "passaged", "cryopreserved"] {
+            let is_terminal: i64 = conn
+                .query_row(
+                    "SELECT is_terminal FROM stages \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(is_terminal, 0, "cell_culture stage '{}' must be non-terminal", code);
+        }
+    }
+
+    #[test]
+    fn cell_culture_propagation_methods_023_present() {
+        let conn = migrated_db();
+        let codes_expected = [
+            "trypsinization", "mechanical_dissociation", "dilution", "subculturing",
+        ];
+        for code in &codes_expected {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM propagation_methods \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "cell_culture propagation method '{}' must be present", code);
+        }
+    }
+
+    #[test]
+    fn cell_culture_hormone_types_023_present() {
+        let conn = migrated_db();
+        for code in &["serum_supplement", "vitamin_supplement"] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM hormone_types \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "cell_culture hormone_type '{}' must be present", code);
+        }
+    }
+
+    #[test]
+    fn cell_culture_compliance_023_present() {
+        let conn = migrated_db();
+        for code in &["gmp_batch_record", "cell_line_identity"] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM compliance_record_types \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "cell_culture compliance_record_type '{}' must be present", code);
+        }
+        for code in &["EMA", "ICH"] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM compliance_agencies \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "cell_culture compliance_agency '{}' must be present", code);
+        }
+    }
+
+    #[test]
+    fn cell_culture_inventory_categories_023_present() {
+        let conn = migrated_db();
+        for code in &["disposables", "antibiotics"] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM inventory_categories \
+                     WHERE profile = 'cell_culture' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "cell_culture inventory_category '{}' must be present", code);
+        }
+    }
+
+    #[test]
+    fn cell_culture_vocabulary_023_idempotent() {
+        let conn = migrated_db();
+        // Running the migration a second time must not add duplicate rows.
+        migration_023_cell_culture_vocabulary(&conn)
+            .expect("re-running migration 023 must succeed");
+        let stage_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stage_count, 20, "re-run must not duplicate cell_culture stage rows");
+    }
+
+    #[test]
+    fn cell_culture_vocabulary_023_ptc_unchanged() {
+        let conn = migrated_db();
+        let ptc_stages: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ptc_stages, 15,
+            "migration 023 must not alter plant_tissue_culture stage count");
     }
 
     #[test]
