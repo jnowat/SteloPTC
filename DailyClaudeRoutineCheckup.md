@@ -1,9 +1,9 @@
 # SteloPTC — Daily Claude Routine Checkup
 
-**Date:** 2026-06-23
-**Branch reviewed:** `master` (HEAD: `c00103d`)
+**Date:** 2026-06-24
+**Branch reviewed:** `master` (HEAD: `cbe4b6f`)
 **Reviewed by:** Claude (automated routine)
-**Current version:** `v1.17.0` (confirmed in `package.json`, `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`)
+**Current version:** `v1.18.0` (confirmed in `package.json`, `src-tauri/Cargo.toml` — **`tauri.conf.json` was at `1.17.0` and fixed this session**)
 
 ---
 
@@ -11,20 +11,20 @@
 
 | Area | Status | Notes |
 |---|---|---|
-| Version alignment | ✅ Clean | All three manifests at `1.17.0` |
-| Version display in app | ✅ Dynamic | Sidebar uses `getVersion()` from `@tauri-apps/api/app` (fixed in v1.13.0; confirmed still correct) |
+| Version alignment | ✅ Fixed this session | `tauri.conf.json` was stuck at `1.17.0` while others were `1.18.0`; bumped to `1.18.0` |
+| Version display in app | ✅ Now correct | Sidebar uses `getVersion()` from `@tauri-apps/api/app` — reads `tauri.conf.json`; was showing `v1.17.0` in the running app, now shows `v1.18.0` |
 | CI / test pipeline | ✅ Passing (expected) | test.yml (3 jobs), build-windows.yml, build-android.yml |
-| Test suite | ✅ Growing | 124 Rust test functions across 8 modules · ~107 frontend assertions across 4 files (WP-29 is UI-only; no new Rust tests) |
-| Stale branches | ✅ None | `master` only after PR #81 merges; `claude/gifted-hopper-jnhgju` merged as PR #82 (WP-29) |
-| CHANGELOG freshness | ✅ Current | v1.17.0 entry written at time of PR #82 |
-| ROADMAP freshness | ✅ Fixed this session | Updated for v1.17.0: WP-29 "As built" section added; Phase TX-1 section marked fully shipped; versioning table v1.17.0 row updated; header/footer bumped to v1.17.0 |
-| README freshness | ✅ Fixed this session | Phase TX-1 planned section converted to shipped [x] items; Species Registry subsection updated; Automated Tests version list includes v1.17.0 |
-| UserManual freshness | ✅ Fixed this session | Header updated to v1.17.0; scope note updated; sections 5 & 6 updated from "planned/target" to "shipped" |
-| Large-component debt | ⚠️ Worsened | `SpecimenDetail.svelte` grew by ~106 lines in WP-29 (strain pill, footnotes); now approximately ~95 KB — splitting remains future work |
+| Test suite | ✅ Growing | 131 Rust test functions across 8 modules · ~107 frontend assertions across 4 files |
+| Stale branches | ✅ None | Only `master` and active session branch `claude/hopeful-bell-4kmvfa` |
+| CHANGELOG freshness | ✅ Current | v1.18.0 entry present (WP-35 taxa backbone) |
+| ROADMAP freshness | ✅ Fixed this session | Header updated to v1.18.0/20 migrations; "In progress" line updated; WP-35 marked ✅ with "As built" section; Phase TX-2 header updated; versioning table has v1.18.0 row; footer grounded at v1.18.0/20 migrations |
+| README freshness | ✅ Fixed this session | Rust test count updated (105 → 131); `db::migrations` test row updated (23 → 30 + WP-35 taxa tests); file tree migration count updated (17 → 20); v1.18.0 WP-35 checked [x] in version history; Phase TX-2 remaining split from WP-35 |
+| UserManual freshness | ✅ Fixed this session | Header updated to v1.18.0; scope note updated to mention WP-35; Section 6 title updated to reflect v1.18.0 backbone shipped |
+| Large-component debt | ⚠️ Unchanged | `SpecimenDetail.svelte` remains ~95 KB; splitting is future work |
 | Dependency health | ✅ Good | No CVEs; `rand 0.8` still one major behind (0.9), non-urgent |
-| Roadmap progress | ✅ **Phase TX-1 complete** | Phase C fully complete (WP-22–27); Phase TX-1 fully complete (WP-28 v1.16.0 + WP-29 v1.17.0); next focus: Phase TX-2 (Genus → Kingdom backbone, WP-35) |
+| Roadmap progress | ✅ Phase TX-2 begun | WP-35 shipped (v1.18.0) — `taxa` table, `get_taxon_descendants`, genus backfill; next: WP-36 (NCBI sync), WP-39 (advanced navigator) |
 
-**Overall health: EXCELLENT.** Four versions shipped since last checkup: v1.14.0 (lab profile switcher), v1.15.0 (cell_culture vocabulary), v1.16.0 (Strain/Cultivar backend), v1.17.0 (Phase TX-1 UI — Strain Manager, Hybrid Wizard, Taxonomy Navigator). Primary fix this session was documentation drift and ensuring the PR #81 branch was current after WP-29 (PR #82) merged to master while the docs PR was in flight.
+**Overall health: EXCELLENT.** Primary issue this session was a `tauri.conf.json` version freeze at `1.17.0` while all other manifests advanced to `1.18.0`, causing the in-app version display to show the wrong version. Fixed along with full documentation congruence pass for v1.18.0 (WP-35 expanded taxonomy backbone).
 
 ---
 
@@ -32,12 +32,12 @@
 
 | File | Version | Status |
 |---|---|---|
-| `package.json` | `1.17.0` | ✅ |
-| `src-tauri/Cargo.toml` | `1.17.0` | ✅ |
-| `src-tauri/tauri.conf.json` | `1.17.0` | ✅ |
-| `Sidebar.svelte` displayed version | Dynamic via `getVersion()` | ✅ (confirmed; CHANGELOG v1.14.0 entry also manually corrected sidebar to v1.14.0 as belt-and-suspenders) |
+| `package.json` | `1.18.0` | ✅ |
+| `src-tauri/Cargo.toml` | `1.18.0` | ✅ |
+| `src-tauri/tauri.conf.json` | `1.18.0` | ✅ Fixed this session (was `1.17.0`) |
+| `Sidebar.svelte` displayed version | Dynamic via `getVersion()` | ✅ Now correct (reads `tauri.conf.json`) |
 
-**Clean.**
+**Clean after fix.**
 
 ---
 
@@ -45,32 +45,28 @@
 
 | SHA | Message |
 |---|---|
-| `c00103d` | Merge pull request #82 from jnowat/claude/gifted-hopper-jnhgju (WP-29) |
-| `8fed97d` | refactor(taxonomy): use $derived.by() for filteredStrains |
-| `cb694cf` | chore: update Cargo.lock for v1.17.0 version bump |
-| `83a4509` | feat: WP-29 strain management UI, hybrid wizard & taxonomy navigator (v1.17.0) |
-| `c5af43e` | Merge pull request #80 (WP-28 fix — `is_ancestor` type error + `update_strain` transaction) |
-| `b9232f2` | fix(strains): correct type error in is_ancestor and wrap update_strain in transaction |
-| `3104d6d` | feat: WP-28 strain/cultivar data model and backend (v1.16.0) |
-| `7f35e31` | Merge pull request #79 (WP-27 — cell_culture vocabulary seed) |
-| `4a270bb` | feat(WP-27): seed minimal usable cell_culture profile vocabulary (v1.15.0) |
-| `ebf597e` | Merge pull request #77 (v1.13.0 congruence pass / session docs) |
-| `b108218` | Merge branch 'master' into claude/hopeful-bell-tyucu3 |
-| `0150f6d` | Merge pull request #78 (WP-26 — lab profile switcher in Settings) |
-| `7251dac` | polish(WP-26): smart empty-lab UX and global profile load on session restore |
-| `52416d7` | fix(Settings): call loadLabProfile on mount so current profile is read from db |
-| `486b570` | docs: v1.13.0 congruence pass — fix sidebar version display and align all docs |
-| `9c9abfe` | feat(WP-26): add lab profile switcher in Settings (v1.14.0) |
-| `cb805d3` | Merge pull request #76 (WP-25 profile-aware dashboard stats) |
-| `e21b9e6` | chore: update Cargo.lock after dependency resolution |
-| `198b201` | WP-25 polish: scope all aggregate counts to active profile, update tooltips |
-| `055757c` | feat(dashboard): make statistics profile-aware via vocabulary tables (WP-25) |
-| `a1e0661` | Merge pull request #75 (WP-23/24 stabilization) |
-| `d056540` | Fix E0597 borrow-checker errors in commands/vocabulary.rs |
-| `af7617f` | feat(WP-23/24): stabilization — tests, DB-backed validation, docs |
-| `6d9d806` | fix(WP-23/24): resolve all issues found during code review |
+| `cbe4b6f` | Merge pull request #83 from jnowat/claude/lucid-newton-lbcfwm |
+| `97ad36d` | fix(taxa): add missing taxon_path/ncbi_taxon_id to create_species initializer |
+| `dff1121` | feat(taxa): WP-35 expanded taxonomy backbone (Genus → Kingdom) — v1.18.0 |
+| `078c2c9` | Merge pull request #81 from jnowat/claude/hopeful-bell-u30m3p |
+| `4c02006` | docs: extend congruence pass to v1.17.0 (Phase TX-1 complete) |
+| `03cf8da` | Merge pull request #29 from jnowat/claude/general-fixes-improvements-sYF4g |
+| `56536e9` | Fix bugs and add UX improvements across compliance, specimens, reminders, and inventory |
+| `1c8b7c8` | Fix several bugs across backend commands and frontend |
+| `d3939fb` | Merge pull request #28 from jnowat/claude/add-qr-labels-Zqtfh |
+| `6221b91` | merge: bring in docs/roadmap changes from claude/update-docs-roadmap-r5DAN |
+| `a0a88c6` | fix: trigger Android APK build on all claude/* branches and master |
+| `792f267` | feat: photo attachments per specimen with gallery and lightbox (v0.1.19) |
+| `e35585e` | feat: Excel multi-sheet workbook export and dedicated Export Data page (v0.1.18) |
+| `a98b8a5` | feat: PDF report generation via browser print API (v0.1.17) |
+| `5cdb2f8` | chore: update Cargo.lock for v0.1.16 version bump |
+| `6963353` | feat: batch operations on Specimens list (v0.1.16) |
+| `448278a` | docs: rewrite README and CHANGELOG to reflect v0.1.15 accurately |
+| `b0bd776` | Merge pull request #27 from jnowat/claude/add-qr-labels-o6J8N |
+| `bb1002a` | feat: add Tooltip component with '?' indicator, improved QR label (v0.1.15) |
+| `50983fc` | Merge pull request #26 from jnowat/claude/contamination-subculture-features-5VlAG |
 
-**Assessment:** Four PRs (#78–#82) since the last checkup. Phase C WP-26 and WP-27 completed as reprioritized deliverables (profile switcher UI and cell_culture vocabulary, respectively). Phase TX-1 WP-28 backend shipped in v1.16.0 — `strains`, `strain_parents`, `hybridization_events` tables, strict status machine, and fully atomic `create_hybridization_event`. WP-29 UI shipped in v1.17.0 — `StrainManager.svelte`, `HybridWizard.svelte`, `TaxonomyNavigator.svelte`, strain pill on `SpecimenDetail`, `confirmed_manual` blocking modal, Taxonomy sidebar nav entry. **Phase TX-1 is now fully complete.**
+**Assessment:** Since the last checkup (2026-06-23), PR #83 merged WP-35 — the expanded taxonomy backbone (Genus → Kingdom `taxa` table + `get_taxon_descendants`) as v1.18.0. A hotfix commit (`97ad36d`) followed immediately to patch a missing initializer. The older commits in the list are from earlier development cycles (v0.1.x era). Active development velocity remains high.
 
 ---
 
@@ -89,24 +85,24 @@
 │   ├── merkle-proofs.md           ← WP-21 proof format + Python verifier
 │   └── vocabulary-system.md       ← Phase C vocabulary tables reference
 ├── src/                           ← Svelte 5 + TypeScript frontend
-│   ├── App.svelte                 ← ~14 KB — root layout, router (includes Settings route)
+│   ├── App.svelte                 ← ~14 KB — root layout, router
 │   └── lib/
 │       ├── components/            ← 30+ .svelte files
-│       │   ├── SpecimenDetail.svelte          ← ~95 KB (⚠️ grew ~106 lines in WP-29 for strain pill + footnotes)
-│       │   ├── StrainManager.svelte           ← NEW v1.17.0 — per-species strain CRUD + status machine UI (~687 lines)
-│       │   ├── HybridWizard.svelte            ← NEW v1.17.0 — 8-step hybrid creation wizard (~544 lines)
-│       │   ├── TaxonomyNavigator.svelte       ← NEW v1.17.0 — two-column Species → Strains → Specimens browser (~472 lines)
+│       │   ├── SpecimenDetail.svelte          ← ~95 KB (⚠️ still the largest; split is future work)
+│       │   ├── StrainManager.svelte           ← v1.17.0 — per-species strain CRUD (~687 lines)
+│       │   ├── HybridWizard.svelte            ← v1.17.0 — 8-step hybrid creation wizard (~544 lines)
+│       │   ├── TaxonomyNavigator.svelte       ← v1.17.0 — two-column Species → Strains → Specimens browser (~472 lines)
 │       │   ├── SpecimenPassageTimeline.svelte ← 35 KB
 │       │   ├── AuditLog.svelte                ← 33 KB
 │       │   ├── MediaList.svelte               ← 45 KB
 │       │   ├── SpecimenList.svelte            ← 43 KB
 │       │   ├── InventoryManager.svelte        ← 40 KB
 │       │   ├── Dashboard.svelte               ← 29 KB
-│       │   ├── Settings.svelte                ← NEW v1.14.0 — lab profile switcher
+│       │   ├── Settings.svelte                ← v1.14.0 — lab profile switcher
 │       │   └── [other components]
-│       ├── stores/app.ts          ← View union + selectedStrainId store (updated v1.17.0)
-│       ├── profile.ts             ← Svelte store + lab profile loader (WP-22)
-│       ├── api.ts                 ← Tauri IPC layer; includes strain/vocabulary/settings types (NEW v1.12.0–v1.17.0)
+│       ├── stores/app.ts          ← View union + selectedStrainId store
+│       ├── profile.ts             ← Svelte store + lab profile loader
+│       ├── api.ts                 ← Tauri IPC layer; includes Taxon/TaxonNode types (NEW v1.18.0)
 │       ├── utils.ts               ← Pure utility functions
 │       ├── exportUtils.ts         ← Export row builders
 │       ├── importUtils.ts         ← Import helpers
@@ -114,31 +110,33 @@
 ├── src-tauri/                     ← Tauri 2 + Rust backend
 │   └── src/
 │       ├── lib.rs                 ← Entry point, command registration
-│       ├── commands/              ← 20 Rust modules
-│       │   ├── specimens.rs       ← split_specimen, record_specimen_death, get_specimen_stats (delegated); CreateSpecimenRequest now accepts optional strain_id
-│       │   ├── strains.rs         ← NEW v1.16.0 — create_strain, list_strains_by_species, update_strain_status, create_hybridization_event, etc.
-│       │   ├── subcultures.rs     ← contamination_stats, schedule (delegated to db::dashboard)
+│       ├── commands/              ← 21 Rust modules
+│       │   ├── taxa.rs            ← NEW v1.18.0 — create_taxon, get_taxon, update_taxon, list_taxa_by_rank, get_taxon_descendants
+│       │   ├── strains.rs         ← v1.16.0 — strain CRUD + status machine + create_hybridization_event
+│       │   ├── specimens.rs       ← split_specimen, record_specimen_death, get_specimen_stats; CreateSpecimenRequest accepts optional strain_id
 │       │   ├── audit.rs           ← Full Trust Layer: verify, checkpoint, Merkle proofs
-│       │   ├── admin.rs           ← get_lab_profile / set_lab_profile (now with check_profile_change_allowed)
-│       │   ├── vocabulary.rs      ← list_stages, list_propagation_methods, list_hormone_types, etc. (v1.12.0)
+│       │   ├── admin.rs           ← get_lab_profile / set_lab_profile
+│       │   ├── vocabulary.rs      ← list_stages, list_propagation_methods, list_hormone_types, etc.
 │       │   └── [other modules]
 │       ├── db/
-│       │   ├── migrations.rs      ← 19 migrations (019 latest)
-│       │   ├── queries.rs         ← build_merkle_root, auto_checkpoint_lineages, log_audit_strain_genesis, validate_strain_status_transition (v1.16.0)
-│       │   ├── dashboard.rs       ← profile-aware specimen/contamination/schedule queries (v1.13.0)
-│       │   └── vocabulary.rs      ← vocab table query helpers (v1.12.0)
+│       │   ├── migrations.rs      ← 20 migrations (020 latest — taxa table)
+│       │   ├── queries.rs         ← build_merkle_root, auto_checkpoint_lineages, log_audit_strain_genesis; load_taxon, get_child_taxa, get_species_for_taxon (NEW v1.18.0)
+│       │   ├── dashboard.rs       ← profile-aware specimen/contamination/schedule queries
+│       │   └── vocabulary.rs      ← vocab table query helpers
 │       ├── models/
+│       │   ├── taxon.rs           ← NEW v1.18.0 — Taxon, CreateTaxonRequest, UpdateTaxonRequest, SpeciesNodeSummary, TaxonNode
+│       │   └── [other models]
 │       └── auth/
-├── ROADMAP.md                     ← Updated this session: v1.17.0; WP-26/27/28/29 "As built" sections; Phase TX-1 fully shipped; versioning table rebuilt; footer updated
-├── CHANGELOG.md                   ← Current: v1.17.0 entry present
-├── README.md                      ← Updated this session: Phase TX-1 planned section → shipped [x] items; Species Registry subsection updated; Automated Tests version list includes v1.17.0
-├── UserManual.md                  ← Updated this session: header updated to v1.17.0; sections 5 & 6 updated from planned to shipped
+├── ROADMAP.md                     ← Updated this session: v1.18.0; 20 migrations; WP-35 "As built" section; Phase TX-2 header; versioning table v1.18.0 row; footer
+├── CHANGELOG.md                   ← Current: v1.18.0 entry present
+├── README.md                      ← Updated this session: Rust test count 105→131; migrations module 23→30; file tree 17→20; v1.18.0 WP-35 checked [x]; Phase TX-2 remaining split
+├── UserManual.md                  ← Updated this session: header v1.18.0; scope note; Section 6 title/note updated
 └── DailyClaudeRoutineCheckup.md   ← This file
 ```
 
 ---
 
-## 5. Database Schema — 19 Migrations
+## 5. Database Schema — 20 Migrations
 
 | Migration | Applied in | Description |
 |---|---|---|
@@ -159,10 +157,11 @@
 | `015_death_events_and_lab_profile` | v1.11.0 | `event_type` on `subcultures`; `app_config` single-row table with `lab_profile` |
 | `016_vocabulary_tables` | v1.12.0 | `stages` lookup table (profile-scoped, 15 PTC seeds); rebuilds `specimens` to drop `CHECK(stage IN (...))` |
 | `017_remaining_vocabularies` | v1.12.0 | `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` tables; rebuilds `media_hormones`, `compliance_records`, `inventory_items` to drop CHECK constraints |
-| `018_cell_culture_vocabulary` | v1.15.0 | `INSERT OR IGNORE` seeds `cell_culture` profile into all six vocabulary tables — 12 stages, 7 propagation methods, 4 hormone types, 9 compliance record types, 4 agencies, 7 inventory categories; no schema changes |
+| `018_cell_culture_vocabulary` | v1.15.0 | `INSERT OR IGNORE` seeds `cell_culture` profile into all six vocabulary tables |
 | `019_strain_model` | v1.16.0 | `strains`, `strain_parents`, `hybridization_events` tables; nullable `strain_id`/`strain_chain_seq` on `specimens`; 6 covering indexes — purely additive |
+| `020_taxa` | v1.18.0 | `taxa` table (`id`, `rank`, `name`, `parent_id`, `ncbi_taxon_id`, `ncbi_updated_at`, `local_override`, `taxon_path`, timestamps); `taxon_path`/`ncbi_taxon_id` columns added to `species` via `ALTER TABLE`; genus backfill; purely additive |
 
-**22+ core tables. No orphaned or dead-code tables detected.**
+**23+ core tables. No orphaned or dead-code tables detected.**
 
 ---
 
@@ -185,14 +184,14 @@
 | `utils.test.ts` | ~58 | `escHtml`, `healthLabel`, `stageFmt`, `composeLocation`, `formatAccessionNumber`, `computeStockAdjustment`, `datestamp`, `ageDays`, `fmtAge`, `healthNum`, `effectiveHealth` |
 | `exportUtils.test.ts` | ~28 | `specimenRows`, `subcultureRows`, `mediaRows`, `inventoryRows`, `complianceRows`, `prepSolutionRows` |
 | `importUtils.test.ts` | ~15 | `REQUIRED_SHEET_NAMES`, `findMissingSheets` |
-| `profile.test.ts` | ~6 | `labProfile` store default/reactivity, `currentLabProfile()`, `LAB_PROFILE_LABELS` completeness (NEW v1.14.0) |
+| `profile.test.ts` | ~6 | `labProfile` store default/reactivity, `currentLabProfile()`, `LAB_PROFILE_LABELS` completeness (v1.14.0) |
 
-### Rust — 124 test functions across 8 modules
+### Rust — 131 test functions across 8 modules
 
 | Module | Test Count | Coverage |
 |---|---|---|
-| `db::queries` | 54 | Accession format/sequences; hash-chain invariants (per-lineage seq, child seeding, split siblings share prev_hash, determinism); Merkle checkpoint tests; `check_profile_change_allowed` (7 tests); **strain hash-chain seeding** (14 new tests: genesis prev_hash, specimen seeding from strain, strain_chain_seq at creation, status transition rules, hybridization cross-species guard, bidirectional used_as_parent, fork invariant with strain) |
-| `db::migrations` | 23 | Migration fixture correctness; **cell_culture vocabulary** (9 tests: stage count 12, terminal stage, propagation method count 7, hormone type count 4, compliance record type count 9, agency count 4, inventory category count 7, isolation from PTC) |
+| `db::queries` | 54 | Accession format/sequences; hash-chain invariants (per-lineage seq, child seeding, split siblings share prev_hash, determinism); Merkle checkpoint tests; `check_profile_change_allowed` (7 tests); strain hash-chain seeding (14 tests: genesis prev_hash, specimen seeding from strain, strain_chain_seq at creation, status transition rules, hybridization cross-species guard, bidirectional used_as_parent, fork invariant with strain) |
+| `db::migrations` | 30 | Migration fixture correctness; cell_culture vocabulary (9 tests); **taxa backbone** (7 tests: taxa table columns, rank CHECK constraint, backfill idempotency, ncbi_taxon_id nullable, taxon_path JSON) |
 | `db::dashboard` | 12 | Profile-aware stats: vocabulary labels returned for PTC, cross-profile stage exclusion, empty result for unseeded profile, database-wide aggregates, contamination scoping/rate, vessel-type breakdown, schedule filtering |
 | `db::vocabulary` | 9 | Stage list count/order for active profile; vocabulary isolation between profiles |
 | `commands::compliance` | 9 | Expired permit, quarantine, positive-not-quarantined, citrus HLB, archive exemption |
@@ -202,11 +201,11 @@
 
 ### Remaining Gaps
 
-- Zero Svelte component tests (form validation, reactive state)
+- Zero Svelte component tests (form validation, reactive state) — including new taxa/strain UI
 - No end-to-end integration tests (create → split → audit → export → import round-trip)
 - `generate_split_accession_numbers` edge cases (letter exhaustion, taken-letter skipping) untested
-- No tests for `preview_split_accessions` command
-- No Svelte component tests for strain UI shipped in WP-29 (StrainManager, HybridWizard, TaxonomyNavigator)
+- No tests for `commands/taxa.rs` (the five taxon commands are untested at the command layer — only at the migration fixture level)
+- No Svelte component tests for WP-29 strain UI (StrainManager, HybridWizard, TaxonomyNavigator)
 
 ---
 
@@ -214,9 +213,8 @@
 
 | Branch | Status |
 |---|---|
-| `claude/hopeful-bell-u30m3p` | ✅ Active — current session work branch (PR #81, docs congruence pass) |
-| `claude/gifted-hopper-jnhgju` | ✅ Merged — PR #82 merged to master as v1.17.0 (WP-29 Phase TX-1 complete) |
-| `master` (remote) | ✅ Present — receives PRs from claude/* branches; currently at v1.17.0 (`c00103d`) |
+| `claude/hopeful-bell-4kmvfa` | ✅ Active — current session work branch (this checkup + fixes) |
+| `master` (remote) | ✅ Present — HEAD `cbe4b6f` = v1.18.0 (PR #83 merged WP-35) |
 
 ---
 
@@ -261,34 +259,29 @@
 | CSP | ✅ Locked | `script-src 'self'`; no `unsafe-eval`; `worker-src blob:` for QR camera only |
 | Authentication | ✅ Strong | bcrypt, session tokens, RBAC (Admin/Supervisor/Tech/Guest), forced first-login password change |
 | Audit trail | ✅ Immutable + Verifiable | SHA-256 per-lineage hash chain; Merkle checkpoints; portable proof export; standalone verifier |
-| SQL injection | ✅ Prevented | `rusqlite` parameterized bindings throughout (including all new strain commands) |
-| Dead specimen | ✅ Guarded | `record_specimen_death` requires auth; archived specimens block further passage recording |
+| SQL injection | ✅ Prevented | `rusqlite` parameterized bindings throughout (including all new taxa commands) |
 | Lab profile lock | ✅ Guarded | Admin-only write; `check_profile_change_allowed` enforces `"CHANGE PROFILE"` confirmation when specimens exist |
-| Split operation | ✅ Atomic | All split children, reminders, and audit entries in one SQLite transaction |
-| Backup / restore | ✅ Guarded | Admin-only; two confirmations; WAL checkpoint + auto-checkpoint before copy |
-| Vocabulary tables | ✅ Profile-scoped | All five lookup tables enforce profile scoping at query level; no cross-profile data leakage |
-| Strain status machine | ✅ Enforced in backend | `validate_strain_status_transition()` pure function; downgrades permanently rejected at command layer |
+| Strain status machine | ✅ Enforced in backend | `validate_strain_status_transition()` pure function; downgrades permanently rejected |
 | Hybridization guard | ✅ Enforced | `create_hybridization_event` rejects cross-species parents; cycle detection before persisting |
+| Taxa classification | ✅ No hash chains | `taxa` records carry no audit lineages by design — reclassification-safe |
 
 ---
 
 ## 11. Roadmap Progress
 
-### What Shipped Since Last Checkup (2026-06-22 → 2026-06-23)
+### What Shipped Since Last Checkup (2026-06-23 → 2026-06-24)
 
 | Version / PR | Feature |
 |---|---|
-| PR #78 (v1.14.0) | WP-26 as built: `Settings.svelte` lab profile switcher; `check_profile_change_allowed` helper; 7 Rust tests + 6 TypeScript tests; empty-lab smart UX |
-| PR #79 (v1.15.0) | WP-27 as built: migration 018 — cell_culture vocabulary seeded into all 6 tables; 9 new Rust tests verifying isolation from PTC |
-| PR #80 (v1.16.0) | WP-28: migration 019 — `strains`, `strain_parents`, `hybridization_events` tables + strain_id/strain_chain_seq on specimens; hash chain seeding from species; `commands/strains.rs`; 14 new Rust tests |
-| PR #82 (v1.17.0) | WP-29: `StrainManager.svelte`, `HybridWizard.svelte`, `TaxonomyNavigator.svelte`; strain pill on `SpecimenDetail`; `confirmed_manual` blocking modal; Taxonomy sidebar nav entry — **Phase TX-1 complete** |
+| PR #83 (v1.18.0) | WP-35 as built: migration 020 — `taxa` table (Kingdom→Genus hierarchy); `taxon_path`/`ncbi_taxon_id` on `species`; `backfill_genus_taxa`; `commands/taxa.rs` (5 commands); `models/taxon.rs`; TypeScript interfaces; 7 new Rust tests in `db::migrations` |
 
 ### Phase TX Horizon
 
 | Phase | Scope | Target |
 |---|---|---|
 | Phase TX-1 — WP-28–29 | ✅ **Complete** — backend (v1.16.0) + UI (v1.17.0) | Shipped |
-| Phase TX-2 — WP-35–39 | Expanded taxonomy backbone (Genus→Kingdom), NCBI Taxonomy import, multi-generational pedigree, advanced hybridization, full taxonomy navigator | v2.x |
+| Phase TX-2 — WP-35 | ✅ **Shipped** — taxonomy backbone (Genus → Kingdom, `get_taxon_descendants`) | v1.18.0 |
+| Phase TX-2 — WP-36–39 | NCBI import/sync, multi-generational pedigree, hybridization tools, advanced Taxonomy Navigator | v1.x → v2.x |
 | Phase D SteloCC | Cell Culture vertical (vocabulary already seeded in v1.15.0; WP-30–34) | v2.1.0 |
 | Phase E SteloMyco | Mycology vertical | v2.2.0 |
 
@@ -298,71 +291,69 @@
 
 | Category | Issue | Severity | Delta vs. Prior |
 |---|---|---|---|
-| **SpecimenDetail.svelte size** | ~95 KB after WP-29 added strain pill, status badges, footnote logic (+~106 lines); extraction remains unscheduled | Medium | ↓ Worsened — WP-29 landed without extraction as expected |
+| **`tauri.conf.json` version freeze** | Was stuck at `1.17.0` when all other manifests advanced to `1.18.0`; caused sidebar to show wrong version via `getVersion()` | High | ✅ **Fixed this session** |
+| **SpecimenDetail.svelte size** | ~95 KB after WP-29 added strain pill, status badges, footnote logic; extraction remains unscheduled | Medium | Unchanged |
 | **No tests for split accession generation** | `generate_split_accession_numbers` edge cases (letter exhaustion at 26, taken-letter skip, recursive suffix) untested | Medium | Unchanged |
+| **No command-layer tests for `commands/taxa.rs`** | Five new taxa commands have no unit tests at the command layer (only coverage via `db::migrations` fixture tests) | Medium | New — introduced with WP-35 |
 | **Component tests missing** | Zero Vitest tests for Svelte components | Medium | Unchanged |
 | **Integration tests missing** | No end-to-end tests for create → split → death → audit → export → import | Medium | Unchanged |
 | **Legacy peer deps** | `--legacy-peer-deps` masks npm conflict; blocks clean `npm audit` | Low | Unchanged |
 | **Rust error context** | Generic `map_err(\|e\| e.to_string())` throughout command handlers | Low | Unchanged |
-| **Schema documentation** | No ER diagram or human-readable schema reference. Now 19 migrations / 22+ tables — increasingly important with strain model added | Low | ↓ Slight regression (3 new tables) |
+| **Schema documentation** | No ER diagram or human-readable schema reference. Now 20 migrations / 23+ tables — the `taxa` hierarchy adds meaningful complexity before Phase TX-2 UI arrives | Low | ↓ Slight regression (1 new table) |
 | **rand 0.8** | One major behind (0.9 released); non-breaking migration | Low | Unchanged |
-| **WP-26 compliance rule engine** | Original scope (profile-gated compliance rules) deferred; existing four PTC rules remain ungated in `commands/compliance.rs` | Low | New — introduced by scope reprioritization |
+| **WP-26 compliance rule engine** | Profile-gated compliance rules deferred; existing four PTC rules remain ungated in `commands/compliance.rs` | Low | Unchanged |
 
-**Items resolved this session (v1.16.0 pass, now extended to v1.17.0):**
-- ✅ ROADMAP header stuck at v1.13.0/17 migrations — updated to v1.17.0/19 migrations
-- ✅ ROADMAP "In progress" line — updated to reflect Phase TX-1 fully complete (WP-28/29 shipped)
-- ✅ ROADMAP WP-26: no "As built" section, still showed original compliance-rule-engine plan — added full "As built"
-- ✅ ROADMAP WP-27: no "As built" section, still showed original build-time-app-identity plan — added full "As built"
-- ✅ ROADMAP WP-28: no "As built" section, stale v2.0.0 target — added full "As built" + "✅ Delivered in v1.16.0" marker
-- ✅ ROADMAP WP-29: no "As built" section, "in progress" status — added full "As built" + "✅ Delivered in v1.17.0" marker
-- ✅ ROADMAP Phase TX-1 section header: marked "Fully shipped (WP-28 v1.16.0 · WP-29 v1.17.0)"
-- ✅ ROADMAP WP-29 bump line: said "v1.9.0" — corrected to v1.17.0
-- ✅ ROADMAP versioning table: v1.14.0–v1.17.0 all updated to ✅ shipped
-- ✅ ROADMAP footer: grounded at v1.13.0/17 migrations → updated to v1.17.0/19 migrations
-- ✅ README migration table: missing rows 018 and 019 — added
-- ✅ README schema table: missing `strains`, `strain_parents`, `hybridization_events` — added
-- ✅ README testing: "~101 assertions across 3 test files" → "~107 across 4"; "90 Rust test functions" → 124; v1.17.0 added to version list
-- ✅ README profile.test.ts section missing — added
-- ✅ README Rust test table: missing db::vocabulary (9), db::migrations (23), commands::audit (4); db::queries strain coverage added
-- ✅ README Phase TX-1 planned section: all [ ] items converted to [x]; section retitled to "shipped v1.16.0–v1.17.0"
-- ✅ README Species Registry subsection: "Phase TX-1 · v1.9.0 target" → "shipped v1.16.0–v1.17.0"
-- ✅ UserManual header: v1.13.0 → v1.17.0; scope note, sections 5 & 6 updated from planned to shipped
+**Items resolved this session:**
+- ✅ `tauri.conf.json` stuck at `1.17.0` — bumped to `1.18.0`
+- ✅ ROADMAP header: `v1.17.0` / 19 migrations → `v1.18.0` / 20 migrations
+- ✅ ROADMAP "In progress" line: added WP-35 shipped notice
+- ✅ ROADMAP WP-35: marked `✅ Delivered in v1.18.0` + added full "As built" section
+- ✅ ROADMAP Phase TX-2 header: updated from "planned" to "In progress (WP-35 shipped v1.18.0)"
+- ✅ ROADMAP versioning table: new `v1.18.0` row between v1.17.0 and v2.x
+- ✅ ROADMAP footer: `v1.17.0` / 19 migrations → `v1.18.0` / 20 migrations
+- ✅ README Rust test count: `105` → `131`
+- ✅ README `db::migrations` row: 23 tests (v1.15.0) → 30 tests (v1.18.0) with WP-35 taxa tests listed
+- ✅ README file tree `migrations.rs`: `# 17 schema migrations` → `# 20 schema migrations`
+- ✅ README version history: WP-35 item converted from `[ ]` to `[x]`; Phase TX-2 remaining split into separate unchecked item
+- ✅ UserManual header: `v1.17.0` → `v1.18.0`
+- ✅ UserManual scope note: added WP-35 shipped mention
+- ✅ UserManual Section 6 title/note: updated to reflect v1.18.0 backbone shipped
 
 ---
 
 ## 13. Top 5 Actionable Recommendations
 
-### 1. Extract SplitWorkflow and DeathDialog out of SpecimenDetail.svelte (1–2 hrs, medium priority)
-`SpecimenDetail.svelte` is now ~95 KB after WP-29 added the strain pill, status badges, and footnote logic. Extracting `SplitWorkflow.svelte` and `DeathConfirmDialog.svelte` would bring the core component below 60 KB and make both features independently testable. The strain-related additions (StrainPill, footnotes) are already naturally isolated and could move to a `StrainPill.svelte` in a follow-up.
+### 1. Add command-layer unit tests for `commands/taxa.rs` (1–2 hrs, medium priority)
+Five new taxon commands shipped in WP-35 with no command-layer unit tests (only migration fixture coverage). At minimum: `create_taxon` → `get_taxon` round-trip, `list_taxa_by_rank` returns the correct set, `get_taxon_descendants` returns a `TaxonNode` tree with correct aggregate counts, and `update_taxon` persists fields correctly. These are ~45 minutes to add alongside existing `db::queries` tests.
 
-### 2. Add Rust unit tests for split accession generation edge cases
+### 2. Extract SplitWorkflow and DeathDialog out of SpecimenDetail.svelte (1–2 hrs, medium priority)
+`SpecimenDetail.svelte` is now ~95 KB. Extracting `SplitWorkflow.svelte` and `DeathConfirmDialog.svelte` would bring the core component below 60 KB and make both features independently testable. The strain-related additions (StrainPill, footnotes) are already naturally isolated and could move to a `StrainPill.svelte` in a follow-up.
+
+### 3. Add Rust unit tests for split accession generation edge cases
 `generate_split_accession_numbers` covers three non-trivial paths: (a) skip letters already taken by siblings, (b) error when all 26 are exhausted, (c) recursive suffix chaining (`001A` → `001AA`). None are currently tested. These are ~30 minutes to add alongside the existing hash-chain tests in `queries.rs`.
 
-### 3. Resolve npm peer-dependency conflict
+### 4. Resolve npm peer-dependency conflict
 Identify and pin the conflicting packages. This removes `--legacy-peer-deps` from CI, unblocks clean `npm audit` for CVE reporting, and ensures future Svelte/Vite upgrades are safe. `npm ls --all 2>&1 | grep UNMET` in a dev environment identifies the conflict root.
 
-### 4. Write an ER diagram for the schema
-At 19 migrations and 22+ tables — now including the new strain/pedigree graph (`strains`, `strain_parents`, `hybridization_events`) — the schema is complex enough that a simple ER diagram in `docs/schema.md` would be genuinely useful. Especially critical before Phase TX-2 adds `taxa`, `ncbi_sync_log`, and more.
-
-### 5. Add a CI check that enforces version bump + CHANGELOG entry when migrations change
-A simple check comparing the `CHANGELOG.md` latest `## [x.x.x]` header against `package.json` would catch documentation drift at merge time. The recurring "docs three versions behind" pattern costs a full checkup session to correct. Could be a simple `grep` step in `test.yml`.
+### 5. Write an ER diagram for the schema
+At 20 migrations and 23+ tables — now including the `taxa` hierarchy (self-referential `parent_id`, `taxon_path` JSON) and the strain/pedigree graph (`strains`, `strain_parents`, `hybridization_events`) — a `docs/schema.md` ER diagram is genuinely useful for onboarding and for WP-36/WP-39 implementation planning. Critical before Phase TX-2 adds `ncbi_sync_log`.
 
 ---
 
 ## 14. Documentation Quality
 
-| Document | Size | Status |
-|---|---|---|
-| `ROADMAP.md` | ~115 KB | ✅ Updated this session — v1.17.0, 19 migrations; WP-26/27/28/29 "As built" sections; Phase TX-1 fully shipped; versioning table rebuilt; footer updated |
-| `CHANGELOG.md` | ~80 KB | ✅ Current — v1.17.0 entry present |
-| `README.md` | ~55 KB | ✅ Updated this session — Phase TX-1 planned → shipped; Species Registry subsection updated; v1.17.0 in test version list |
-| `UserManual.md` | ~17 KB | ✅ Updated this session — header v1.17.0; sections 5 & 6 reflect shipped Phase TX-1 |
-| `.github/SIGNING.md` | Present | ✅ Covers release keystore generation |
-| `docs/merkle-checkpoints.md` | Present | ✅ WP-20 spec (v1.9.0) |
-| `docs/merkle-proofs.md` | Present | ✅ WP-21 proof format + Python verifier (v1.10.0) |
-| `docs/vocabulary-system.md` | Present | ✅ Phase C vocabulary tables reference |
+| Document | Status |
+|---|---|
+| `ROADMAP.md` | ✅ Updated this session — v1.18.0; 20 migrations; WP-35 "As built"; Phase TX-2 in progress; versioning table; footer |
+| `CHANGELOG.md` | ✅ Current — v1.18.0 entry present |
+| `README.md` | ✅ Updated this session — 131 Rust tests; migrations module 30 tests; file tree 20 migrations; v1.18.0 WP-35 [x] |
+| `UserManual.md` | ✅ Updated this session — header v1.18.0; scope note; Section 6 note |
+| `.github/SIGNING.md` | ✅ Covers release keystore generation |
+| `docs/merkle-checkpoints.md` | ✅ WP-20 spec (v1.9.0) |
+| `docs/merkle-proofs.md` | ✅ WP-21 proof format + Python verifier (v1.10.0) |
+| `docs/vocabulary-system.md` | ✅ Phase C vocabulary tables reference |
 
-**Structural gap:** No ER diagram or schema reference. With 19 migrations and 22+ tables — now including a relational strain/pedigree graph — this is becoming an increasingly meaningful omission.
+**Structural gap:** No ER diagram or schema reference. With 20 migrations, 23+ tables, a self-referential taxa hierarchy, and a hybrid pedigree graph, this is a meaningful omission — especially as Phase TX-2 adds NCBI sync infrastructure.
 
 ---
 
@@ -370,15 +361,15 @@ A simple check comparing the `CHANGELOG.md` latest `## [x.x.x]` header against `
 
 | Dimension | Score | Delta | Notes |
 |---|---|---|---|
-| Version alignment | ✅ 10/10 | → | All three manifests at 1.17.0; sidebar dynamic |
-| Code organization | ⚠️ 7/10 | ↓ | SpecimenDetail grew to ~95 KB in WP-29; 3 new large Svelte components added (StrainManager ~687 lines, HybridWizard ~544 lines, TaxonomyNavigator ~472 lines) — well-structured but no extraction of SpecimenDetail yet |
-| Security posture | ✅ 10/10 | → | Strain status machine backend-enforced; hybridization guard, cycle detection, `confirmed_manual` non-dismissible modal all in place |
-| Test coverage | ✅ 9/10 | → | 124 Rust tests (unchanged — WP-29 is UI-only); 107 frontend assertions; 8 modules covered; no new Svelte component tests for WP-29 |
-| Performance | ✅ 10/10 | → | No N+1; all 6 strain indexes from migration 019 in place; TaxonomyNavigator lazy-loads strains on species select |
-| Documentation | ✅ 10/10 | ↑ | All four docs aligned to v1.17.0 this session; ROADMAP "As built" sections for WP-26/27/28/29 |
+| Version alignment | ✅ 10/10 | ↑ | Fixed `tauri.conf.json` freeze; all three manifests at 1.18.0; sidebar dynamic `getVersion()` now correct |
+| Code organization | ⚠️ 7/10 | → | SpecimenDetail still ~95 KB; `commands/taxa.rs` adds a clean new module with 5 well-structured commands |
+| Security posture | ✅ 10/10 | → | No new surface area; taxa carry no audit chains by design |
+| Test coverage | ⚠️ 8/10 | ↓ | 131 Rust tests total (+7 taxa in migrations); `commands/taxa.rs` has zero command-layer tests — new gap |
+| Performance | ✅ 10/10 | → | `taxa` indexes on `parent_id`, `rank`, `name`; `get_taxon_descendants` built for WP-39 navigator |
+| Documentation | ✅ 10/10 | ↑ | All four docs aligned to v1.18.0; ROADMAP WP-35 "As built" written; README test counts corrected |
 | CI/CD | ✅ 10/10 | → | Lint + test jobs pass; Clippy zero-warning enforced |
-| Technical debt | ⚠️ 7/10 | ↓ | SpecimenDetail grew further; 3 new large UI components; split accession tests still missing; WP-26 compliance rule engine deferred |
-| Development velocity | ✅ 10/10 | → | 4 PRs since last checkup; Phase C complete; Phase TX-1 complete |
-| Roadmap clarity | ✅ 10/10 | → | Versioning table fully up to date; WP-26/27/28/29 "As built" sections written; Phase TX-2 is the clear next target |
+| Technical debt | ⚠️ 7/10 | → | SpecimenDetail unchanged; new gap: no command-layer tests for `commands/taxa.rs` |
+| Development velocity | ✅ 10/10 | → | PR #83 merged WP-35 since last checkup; Phase TX-2 begun |
+| Roadmap clarity | ✅ 10/10 | ↑ | WP-35 "As built" section added; Phase TX-2 clearly in progress with WP-35 shipped |
 
-**Verdict:** Production-ready and executing at high velocity. Phase C is fully complete. **Phase TX-1 is now fully complete** — the entire Strain/Cultivar Registry, Hybrid Wizard, and Taxonomy Navigator have shipped. The most impactful fix this session was ROADMAP drift plus ensuring the docs PR was current after WP-29 merged to master while the PR was in flight. Next priority: Phase TX-2 (Genus → Kingdom taxonomy backbone, WP-35).
+**Verdict:** Production-ready and executing at high velocity. **Critical fix this session:** `tauri.conf.json` was frozen at `1.17.0` while the rest of the codebase advanced to `1.18.0` — the in-app version display (via `getVersion()`) was showing the wrong version to users. Fixed. Full documentation congruence pass completed for v1.18.0 (WP-35 taxonomy backbone). Next priority: add command-layer tests for `commands/taxa.rs`, then continue Phase TX-2 with WP-36 (NCBI import/sync) or WP-39 (advanced Taxonomy Navigator UI).
