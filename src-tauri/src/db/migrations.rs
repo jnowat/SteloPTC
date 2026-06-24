@@ -113,6 +113,11 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (20)", [])?;
     }
 
+    if current < 21 {
+        migration_021_ncbi_sync_log(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (21)", [])?;
+    }
+
     Ok(())
 }
 
@@ -1591,6 +1596,40 @@ pub fn backfill_genus_taxa(conn: &Connection) -> DbResult<()> {
     Ok(())
 }
 
+fn migration_021_ncbi_sync_log(conn: &Connection) -> DbResult<()> {
+    // WP-36: NCBI Taxonomy import and ongoing sync support.
+    // ncbi_sync_log records every import, update, and conflict detected during
+    // NCBI sync operations, and tracks admin-driven conflict resolutions.
+    // Resolution CHECK uses IS NULL so that unresolved rows (NULL) are always
+    // valid without needing NULL in the IN list.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS ncbi_sync_log (
+            id               TEXT    PRIMARY KEY,
+            sync_type        TEXT    NOT NULL
+                                 CHECK(sync_type IN ('import','update','conflict')),
+            taxon_id         TEXT,
+            ncbi_taxon_id    INTEGER,
+            conflict_details TEXT,
+            resolved_at      TEXT,
+            resolved_by      TEXT,
+            resolution       TEXT
+                                 CHECK(resolution IS NULL OR
+                                       resolution IN ('kept_local','accepted_ncbi','merged')),
+            created_at       TEXT    NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_ncbi_sync_log_taxon
+            ON ncbi_sync_log(taxon_id);
+        CREATE INDEX IF NOT EXISTS idx_ncbi_sync_log_ncbi_id
+            ON ncbi_sync_log(ncbi_taxon_id);
+        CREATE INDEX IF NOT EXISTS idx_ncbi_sync_log_type
+            ON ncbi_sync_log(sync_type);
+        CREATE INDEX IF NOT EXISTS idx_ncbi_sync_log_created
+            ON ncbi_sync_log(created_at DESC);
+    ")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2082,5 +2121,100 @@ mod tests {
             species_with_path, 3,
             "all three Citrus species must have taxon_path set"
         );
+    }
+
+    // ── migration 021 (WP-36) ──────────────────────────────────────────────────
+
+    #[test]
+    fn ncbi_sync_log_table_exists_after_migration_021() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM ncbi_sync_log", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "ncbi_sync_log must exist and be empty on fresh DB");
+    }
+
+    #[test]
+    fn ncbi_sync_log_type_check_accepts_valid_values() {
+        let conn = migrated_db();
+        let now = "2026-01-01T00:00:00.000Z";
+        for sync_type in ["import", "update", "conflict"] {
+            let id = uuid::Uuid::new_v4().to_string();
+            conn.execute(
+                "INSERT INTO ncbi_sync_log (id, sync_type, created_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![id, sync_type, now],
+            )
+            .unwrap_or_else(|e| panic!("sync_type '{}' should be accepted: {}", sync_type, e));
+        }
+    }
+
+    #[test]
+    fn ncbi_sync_log_type_check_rejects_invalid_value() {
+        let conn = migrated_db();
+        let result = conn.execute(
+            "INSERT INTO ncbi_sync_log (id, sync_type, created_at) \
+             VALUES ('bad', 'delete', '2026-01-01')",
+            [],
+        );
+        assert!(result.is_err(), "sync_type 'delete' must be rejected by CHECK constraint");
+    }
+
+    #[test]
+    fn ncbi_sync_log_resolution_check_accepts_valid_values() {
+        let conn = migrated_db();
+        let now = "2026-01-01T00:00:00.000Z";
+        for (i, res) in ["kept_local", "accepted_ncbi", "merged"].iter().enumerate() {
+            let id = format!("log-{}", i);
+            conn.execute(
+                "INSERT INTO ncbi_sync_log (id, sync_type, resolution, created_at) \
+                 VALUES (?1, 'conflict', ?2, ?3)",
+                rusqlite::params![id, res, now],
+            )
+            .unwrap_or_else(|e| panic!("resolution '{}' should be accepted: {}", res, e));
+        }
+    }
+
+    #[test]
+    fn ncbi_sync_log_resolution_check_rejects_invalid_value() {
+        let conn = migrated_db();
+        let result = conn.execute(
+            "INSERT INTO ncbi_sync_log (id, sync_type, resolution, created_at) \
+             VALUES ('bad', 'conflict', 'delete_local', '2026-01-01')",
+            [],
+        );
+        assert!(result.is_err(), "resolution 'delete_local' must be rejected by CHECK");
+    }
+
+    #[test]
+    fn ncbi_sync_log_resolution_null_is_always_valid() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO ncbi_sync_log (id, sync_type, resolution, created_at) \
+             VALUES ('log-null', 'conflict', NULL, '2026-01-01')",
+            [],
+        )
+        .expect("NULL resolution must always be valid for unresolved conflicts");
+    }
+
+    #[test]
+    fn ncbi_sync_log_stores_conflict_details_json() {
+        let conn = migrated_db();
+        let details = r#"{"name":{"local":"Foo","ncbi":"Bar"}}"#;
+        conn.execute(
+            "INSERT INTO ncbi_sync_log (id, sync_type, taxon_id, ncbi_taxon_id, \
+             conflict_details, created_at) \
+             VALUES ('log-cd', 'conflict', 'taxon-1', 12345, ?1, '2026-01-01')",
+            rusqlite::params![details],
+        )
+        .unwrap();
+
+        let stored: String = conn
+            .query_row(
+                "SELECT conflict_details FROM ncbi_sync_log WHERE id = 'log-cd'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, details, "conflict_details JSON must round-trip correctly");
     }
 }

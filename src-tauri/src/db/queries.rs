@@ -2,7 +2,7 @@
 use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
 use super::{DbError, DbResult};
-use crate::models::taxon::{SpeciesNodeSummary, Taxon};
+use crate::models::taxon::{NcbiSyncLog, SpeciesNodeSummary, Taxon};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
 pub const ZERO_HASH: &str =
@@ -789,6 +789,183 @@ pub fn get_species_for_taxon(
     })?;
     let summaries: Result<Vec<_>, _> = rows.collect();
     Ok(summaries?)
+}
+
+// ── NCBI Taxonomy helpers (WP-36) ─────────────────────────────────────────────
+// These helpers operate on the ncbi_sync_log table and the taxa table for NCBI
+// import/sync operations.  No audit-chain writes — taxa remain classification-only.
+
+/// Map an NCBI rank string to one of our internal rank values.
+/// Returns None for ranks we don't support (species, subspecies, variety, etc.).
+pub fn normalize_ncbi_rank(ncbi_rank: &str) -> Option<&'static str> {
+    match ncbi_rank.to_lowercase().as_str() {
+        "kingdom" | "superkingdom" => Some("kingdom"),
+        "phylum" | "division" => Some("phylum"),
+        "class" => Some("class"),
+        "order" => Some("order"),
+        "family" => Some("family"),
+        "genus" => Some("genus"),
+        _ => None,
+    }
+}
+
+/// Find a taxon by its NCBI taxon ID.  Returns None when no match exists.
+pub fn find_taxon_by_ncbi_id(conn: &Connection, ncbi_taxon_id: i64) -> DbResult<Option<Taxon>> {
+    let result = conn.query_row(
+        "SELECT id, rank, name, parent_id, ncbi_taxon_id, ncbi_updated_at,
+                local_override, taxon_path, created_at, updated_at
+         FROM taxa WHERE ncbi_taxon_id = ?1",
+        params![ncbi_taxon_id],
+        |row| {
+            Ok(Taxon {
+                id: row.get("id")?,
+                rank: row.get("rank")?,
+                name: row.get("name")?,
+                parent_id: row.get("parent_id")?,
+                ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+                ncbi_updated_at: row.get("ncbi_updated_at")?,
+                local_override: row.get::<_, i64>("local_override")? != 0,
+                taxon_path: row.get("taxon_path")?,
+                created_at: row.get("created_at")?,
+                updated_at: row.get("updated_at")?,
+            })
+        },
+    );
+    match result {
+        Ok(t) => Ok(Some(t)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(DbError::Sqlite(e)),
+    }
+}
+
+/// Find a taxon by exact name and rank.  Returns the first match or None.
+pub fn find_taxon_by_name_rank(
+    conn: &Connection,
+    name: &str,
+    rank: &str,
+) -> DbResult<Option<Taxon>> {
+    let result = conn.query_row(
+        "SELECT id, rank, name, parent_id, ncbi_taxon_id, ncbi_updated_at,
+                local_override, taxon_path, created_at, updated_at
+         FROM taxa WHERE name = ?1 AND rank = ?2 LIMIT 1",
+        params![name, rank],
+        |row| {
+            Ok(Taxon {
+                id: row.get("id")?,
+                rank: row.get("rank")?,
+                name: row.get("name")?,
+                parent_id: row.get("parent_id")?,
+                ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+                ncbi_updated_at: row.get("ncbi_updated_at")?,
+                local_override: row.get::<_, i64>("local_override")? != 0,
+                taxon_path: row.get("taxon_path")?,
+                created_at: row.get("created_at")?,
+                updated_at: row.get("updated_at")?,
+            })
+        },
+    );
+    match result {
+        Ok(t) => Ok(Some(t)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(DbError::Sqlite(e)),
+    }
+}
+
+/// Compare a local taxon against incoming NCBI data.
+///
+/// Returns a JSON string describing the field-level differences when the data
+/// diverges, or None when no tracked fields differ.  Only `name` and `rank`
+/// are compared — parent hierarchy changes are handled separately.
+pub fn detect_ncbi_conflict(local: &Taxon, ncbi_name: &str, ncbi_rank: &str) -> Option<String> {
+    let mut diffs = serde_json::Map::new();
+    if local.name.trim() != ncbi_name.trim() {
+        diffs.insert(
+            "name".to_string(),
+            serde_json::json!({"local": local.name.trim(), "ncbi": ncbi_name.trim()}),
+        );
+    }
+    if local.rank.as_str() != ncbi_rank {
+        diffs.insert(
+            "rank".to_string(),
+            serde_json::json!({"local": local.rank, "ncbi": ncbi_rank}),
+        );
+    }
+    if diffs.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&serde_json::Value::Object(diffs)).ok()
+    }
+}
+
+/// Insert a row into `ncbi_sync_log`.
+pub fn insert_ncbi_sync_log(
+    conn: &Connection,
+    id: &str,
+    sync_type: &str,
+    taxon_id: Option<&str>,
+    ncbi_taxon_id: Option<i64>,
+    conflict_details: Option<&str>,
+    created_at: &str,
+) -> DbResult<()> {
+    conn.execute(
+        "INSERT INTO ncbi_sync_log \
+         (id, sync_type, taxon_id, ncbi_taxon_id, conflict_details, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, sync_type, taxon_id, ncbi_taxon_id, conflict_details, created_at],
+    )?;
+    Ok(())
+}
+
+/// List all unresolved conflict entries from `ncbi_sync_log`, newest first.
+pub fn list_pending_ncbi_conflicts(conn: &Connection) -> DbResult<Vec<NcbiSyncLog>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, sync_type, taxon_id, ncbi_taxon_id, conflict_details,
+                resolved_at, resolved_by, resolution, created_at
+         FROM ncbi_sync_log
+         WHERE sync_type = 'conflict' AND resolved_at IS NULL
+         ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(NcbiSyncLog {
+            id: row.get("id")?,
+            sync_type: row.get("sync_type")?,
+            taxon_id: row.get("taxon_id")?,
+            ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+            conflict_details: row.get("conflict_details")?,
+            resolved_at: row.get("resolved_at")?,
+            resolved_by: row.get("resolved_by")?,
+            resolution: row.get("resolution")?,
+            created_at: row.get("created_at")?,
+        })
+    })?;
+    let logs: Result<Vec<_>, _> = rows.collect();
+    Ok(logs?)
+}
+
+/// List recent entries from `ncbi_sync_log`, newest first, up to `limit` rows.
+pub fn list_ncbi_sync_log(conn: &Connection, limit: i64) -> DbResult<Vec<NcbiSyncLog>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, sync_type, taxon_id, ncbi_taxon_id, conflict_details,
+                resolved_at, resolved_by, resolution, created_at
+         FROM ncbi_sync_log
+         ORDER BY created_at DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit], |row| {
+        Ok(NcbiSyncLog {
+            id: row.get("id")?,
+            sync_type: row.get("sync_type")?,
+            taxon_id: row.get("taxon_id")?,
+            ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+            conflict_details: row.get("conflict_details")?,
+            resolved_at: row.get("resolved_at")?,
+            resolved_by: row.get("resolved_by")?,
+            resolution: row.get("resolution")?,
+            created_at: row.get("created_at")?,
+        })
+    })?;
+    let logs: Result<Vec<_>, _> = rows.collect();
+    Ok(logs?)
 }
 
 #[cfg(test)]
@@ -1739,5 +1916,205 @@ mod tests {
 
         assert_eq!(prev_a, prev_b,
             "siblings sharing a strain must share the same prev_hash (fork invariant)");
+    }
+
+    // ── WP-36: NCBI query helpers ─────────────────────────────────────────────
+
+    fn mem_conn_with_taxa() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        conn.execute_batch(
+            "CREATE TABLE taxa (
+                id              TEXT PRIMARY KEY,
+                rank            TEXT NOT NULL,
+                name            TEXT NOT NULL,
+                parent_id       TEXT,
+                ncbi_taxon_id   INTEGER,
+                ncbi_updated_at TEXT,
+                local_override  INTEGER NOT NULL DEFAULT 0,
+                taxon_path      TEXT,
+                created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE ncbi_sync_log (
+                id               TEXT PRIMARY KEY,
+                sync_type        TEXT NOT NULL,
+                taxon_id         TEXT,
+                ncbi_taxon_id    INTEGER,
+                conflict_details TEXT,
+                resolved_at      TEXT,
+                resolved_by      TEXT,
+                resolution       TEXT,
+                created_at       TEXT NOT NULL
+            );",
+        ).expect("create taxa and ncbi_sync_log tables");
+        conn
+    }
+
+    #[test]
+    fn normalize_ncbi_rank_maps_known_values() {
+        assert_eq!(normalize_ncbi_rank("genus"), Some("genus"));
+        assert_eq!(normalize_ncbi_rank("Genus"), Some("genus"));
+        assert_eq!(normalize_ncbi_rank("family"), Some("family"));
+        assert_eq!(normalize_ncbi_rank("order"), Some("order"));
+        assert_eq!(normalize_ncbi_rank("class"), Some("class"));
+        assert_eq!(normalize_ncbi_rank("phylum"), Some("phylum"));
+        assert_eq!(normalize_ncbi_rank("division"), Some("phylum"));
+        assert_eq!(normalize_ncbi_rank("kingdom"), Some("kingdom"));
+        assert_eq!(normalize_ncbi_rank("superkingdom"), Some("kingdom"));
+    }
+
+    #[test]
+    fn normalize_ncbi_rank_returns_none_for_unsupported() {
+        assert_eq!(normalize_ncbi_rank("species"), None);
+        assert_eq!(normalize_ncbi_rank("subspecies"), None);
+        assert_eq!(normalize_ncbi_rank("variety"), None);
+        assert_eq!(normalize_ncbi_rank("forma"), None);
+        assert_eq!(normalize_ncbi_rank("no rank"), None);
+    }
+
+    #[test]
+    fn find_taxon_by_ncbi_id_returns_some_when_found() {
+        let conn = mem_conn_with_taxa();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, ncbi_taxon_id, local_override) \
+             VALUES ('t1', 'genus', 'Citrus', 4751, 0)",
+            [],
+        ).unwrap();
+
+        let result = find_taxon_by_ncbi_id(&conn, 4751).unwrap();
+        assert!(result.is_some(), "must find taxon by NCBI ID 4751");
+        let taxon = result.unwrap();
+        assert_eq!(taxon.id, "t1");
+        assert_eq!(taxon.name, "Citrus");
+    }
+
+    #[test]
+    fn find_taxon_by_ncbi_id_returns_none_when_missing() {
+        let conn = mem_conn_with_taxa();
+        let result = find_taxon_by_ncbi_id(&conn, 9999).unwrap();
+        assert!(result.is_none(), "must return None for unknown NCBI ID");
+    }
+
+    #[test]
+    fn find_taxon_by_name_rank_returns_match() {
+        let conn = mem_conn_with_taxa();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, local_override) \
+             VALUES ('t2', 'genus', 'Nandina', 0)",
+            [],
+        ).unwrap();
+
+        let result = find_taxon_by_name_rank(&conn, "Nandina", "genus").unwrap();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, "t2");
+    }
+
+    #[test]
+    fn find_taxon_by_name_rank_returns_none_for_wrong_rank() {
+        let conn = mem_conn_with_taxa();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, local_override) \
+             VALUES ('t3', 'genus', 'Rutaceae', 0)",
+            [],
+        ).unwrap();
+
+        let result = find_taxon_by_name_rank(&conn, "Rutaceae", "family").unwrap();
+        assert!(result.is_none(), "name match with wrong rank must return None");
+    }
+
+    #[test]
+    fn detect_ncbi_conflict_returns_none_when_data_matches() {
+        let taxon = Taxon {
+            id: "t1".to_string(),
+            rank: "genus".to_string(),
+            name: "Citrus".to_string(),
+            parent_id: None,
+            ncbi_taxon_id: Some(4751),
+            ncbi_updated_at: None,
+            local_override: false,
+            taxon_path: None,
+            created_at: "2026-01-01".to_string(),
+            updated_at: "2026-01-01".to_string(),
+        };
+        assert!(
+            detect_ncbi_conflict(&taxon, "Citrus", "genus").is_none(),
+            "identical name and rank must not produce a conflict"
+        );
+    }
+
+    #[test]
+    fn detect_ncbi_conflict_detects_name_change() {
+        let taxon = Taxon {
+            id: "t1".to_string(),
+            rank: "genus".to_string(),
+            name: "Citrus".to_string(),
+            parent_id: None,
+            ncbi_taxon_id: Some(4751),
+            ncbi_updated_at: None,
+            local_override: false,
+            taxon_path: None,
+            created_at: "2026-01-01".to_string(),
+            updated_at: "2026-01-01".to_string(),
+        };
+        let details = detect_ncbi_conflict(&taxon, "Hesperellus", "genus");
+        assert!(details.is_some(), "name change must produce a conflict");
+        let json = details.unwrap();
+        assert!(json.contains("name"), "conflict JSON must include 'name' key");
+        assert!(json.contains("Citrus"), "conflict JSON must include local name");
+        assert!(json.contains("Hesperellus"), "conflict JSON must include NCBI name");
+    }
+
+    #[test]
+    fn detect_ncbi_conflict_detects_rank_change() {
+        let taxon = Taxon {
+            id: "t1".to_string(),
+            rank: "genus".to_string(),
+            name: "Aurantioideae".to_string(),
+            parent_id: None,
+            ncbi_taxon_id: Some(1000),
+            ncbi_updated_at: None,
+            local_override: false,
+            taxon_path: None,
+            created_at: "2026-01-01".to_string(),
+            updated_at: "2026-01-01".to_string(),
+        };
+        let details = detect_ncbi_conflict(&taxon, "Aurantioideae", "family");
+        assert!(details.is_some(), "rank change must produce a conflict");
+        let json = details.unwrap();
+        assert!(json.contains("rank"), "conflict JSON must include 'rank' key");
+    }
+
+    #[test]
+    fn insert_and_list_ncbi_sync_log_works() {
+        let conn = mem_conn_with_taxa();
+        let now = "2026-01-01T00:00:00.000Z";
+        insert_ncbi_sync_log(&conn, "log-1", "conflict", Some("t1"), Some(4751),
+            Some(r#"{"name":{"local":"X","ncbi":"Y"}}"#), now).unwrap();
+        insert_ncbi_sync_log(&conn, "log-2", "import", Some("t2"), Some(4752), None, now).unwrap();
+
+        let pending = list_pending_ncbi_conflicts(&conn).unwrap();
+        assert_eq!(pending.len(), 1, "only conflict-type unresolved rows are returned");
+        assert_eq!(pending[0].id, "log-1");
+
+        let all = list_ncbi_sync_log(&conn, 100).unwrap();
+        assert_eq!(all.len(), 2, "list_ncbi_sync_log must return all entries");
+    }
+
+    #[test]
+    fn list_pending_ncbi_conflicts_excludes_resolved() {
+        let conn = mem_conn_with_taxa();
+        let now = "2026-01-01T00:00:00.000Z";
+        insert_ncbi_sync_log(&conn, "c1", "conflict", Some("t1"), Some(1), None, now).unwrap();
+        insert_ncbi_sync_log(&conn, "c2", "conflict", Some("t2"), Some(2), None, now).unwrap();
+
+        // Resolve c1
+        conn.execute(
+            "UPDATE ncbi_sync_log SET resolved_at = ?1, resolution = 'kept_local' WHERE id = 'c1'",
+            rusqlite::params![now],
+        ).unwrap();
+
+        let pending = list_pending_ncbi_conflicts(&conn).unwrap();
+        assert_eq!(pending.len(), 1, "resolved conflicts must not appear in pending list");
+        assert_eq!(pending[0].id, "c2");
     }
 }

@@ -547,6 +547,8 @@ SQLite, stored at:
 | 017 | v1.12.0 | Created `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` lookup tables (profile-scoped, seeded with PTC values); rebuilt `media_hormones`, `compliance_records`, `inventory_items` to drop their respective `CHECK` constraints |
 | 018 | v1.15.0 | Seeded `cell_culture` profile vocabulary into all six lookup tables via `INSERT OR IGNORE` — 12 stages, 7 propagation methods, 4 hormone types, 9 compliance record types, 4 compliance agencies, 7 inventory categories; no schema changes, no table rebuilds |
 | 019 | v1.16.0 | Created `strains`, `strain_parents`, and `hybridization_events` tables; added `strain_id` (FK, nullable) and `strain_chain_seq` (nullable) to `specimens`; six covering indexes; purely additive — existing specimen rows receive `NULL` for both new columns |
+| 020 | v1.18.0 | Created `taxa` hierarchical classification table (ranks: kingdom–genus) with self-referential `parent_id`, `ncbi_taxon_id`, `local_override`, and `taxon_path` columns; added `taxon_path` and `ncbi_taxon_id` to `species`; idempotent genus backfill (`backfill_genus_taxa`) runs automatically |
+| 021 | v1.19.0 | Created `ncbi_sync_log` table to record NCBI taxonomy import events, data updates, and name/rank conflicts; four indexes for fast conflict and type queries; `resolution` constrained to `kept_local \| accepted_ncbi \| merged` (nullable) |
 
 ### Backup
 

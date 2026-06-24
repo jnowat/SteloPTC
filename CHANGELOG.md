@@ -5,6 +5,54 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-06-24
+
+### Added — WP-36: NCBI Taxonomy Import & Ongoing Sync
+
+- **`ncbi_sync_log` table** (migration 021) — records every NCBI taxonomy import
+  event, data update, and name/rank conflict.  Columns: `id`, `sync_type`
+  (`import | update | conflict`), `taxon_id`, `ncbi_taxon_id`, `conflict_details`
+  (JSON), `resolved_at`, `resolved_by`, `resolution`
+  (`kept_local | accepted_ncbi | merged`, nullable), `created_at`.
+  Four indexes for fast conflict and type queries.
+
+- **`src-tauri/src/models/taxon.rs`** — six new types: `NcbiTaxonRecord`,
+  `NcbiSyncLog`, `ImportNcbiTaxonomyRequest`, `NcbiConflictSummary`,
+  `ImportNcbiTaxonomyResult`, `ResolveNcbiConflictRequest`.
+
+- **`src-tauri/src/commands/ncbi.rs`** (new) — four Tauri commands:
+  - `import_ncbi_taxonomy` (admin) — two-phase import with dry-run support.
+    Phase 1 classifies each record (new import, update, conflict, or skip due to
+    `local_override`).  Phase 2 applies writes inside an atomic transaction.
+    Dry-run returns counts and conflict summaries without touching the DB.
+  - `resolve_ncbi_conflict` (admin) — marks a logged conflict as resolved with
+    one of `kept_local`, `accepted_ncbi`, or `merged`; when `accepted_ncbi` is
+    chosen the local taxon is updated to match.
+  - `sync_ncbi_taxon` (admin) — upsert a single NCBI taxon record; returns the
+    local taxon ID.
+  - `list_ncbi_sync_log` (any authenticated user) — paginated log with optional
+    `pending_only` filter for unresolved conflicts.
+
+- **`src-tauri/src/db/queries.rs`** — seven new pure helpers (testable without
+  Tauri): `normalize_ncbi_rank`, `find_taxon_by_ncbi_id`, `find_taxon_by_name_rank`,
+  `detect_ncbi_conflict`, `insert_ncbi_sync_log`, `list_pending_ncbi_conflicts`,
+  `list_ncbi_sync_log`.  All `query_map` results are bound to local variables before
+  `.collect()` to satisfy the borrow checker.
+
+- **`src/lib/api.ts`** — `NcbiTaxonRecord`, `NcbiSyncLog`, `NcbiConflictSummary`,
+  and `ImportNcbiTaxonomyResult` TypeScript interfaces; `importNcbiTaxonomy`,
+  `resolveNcbiConflict`, `syncNcbiTaxon`, and `listNcbiSyncLog` async functions.
+
+- **`src/lib/components/NcbiSyncPanel.svelte`** (new) — admin-only panel with:
+  - JSON textarea for pasting NCBI taxon records.
+  - **Dry Run** button: shows what would be imported/updated/skipped/conflicted
+    without writing to the DB.
+  - **Confirm Import** button: appears only after a successful dry run; performs
+    the real import in one atomic transaction.
+  - Pending conflicts list with **Keep Local**, **Accept NCBI**, and **Merged**
+    resolution buttons.
+  - Recent sync log table (last 50 entries).
+
 ## [1.18.0] - 2026-06-23
 
 ### Added — WP-35: Expanded Taxonomy Backbone (Genus → Kingdom)

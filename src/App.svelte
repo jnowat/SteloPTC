@@ -25,6 +25,7 @@
   import WorkQueue from './lib/components/WorkQueue.svelte';
   import Settings from './lib/components/Settings.svelte';
   import TaxonomyNavigator from './lib/components/TaxonomyNavigator.svelte';
+  import NcbiSyncPanel from './lib/components/NcbiSyncPanel.svelte';
 
   let startupError = '';
 
@@ -176,6 +177,8 @@
           <Settings />
         {:else if $currentView === 'taxonomy'}
           <TaxonomyNavigator />
+        {:else if $currentView === 'ncbi-sync'}
+          <NcbiSyncPanel />
         {:else}
           <Dashboard />
         {/if}
