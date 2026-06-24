@@ -21,6 +21,8 @@ pub struct Strain {
     pub updated_at: String,
     /// Populated only in list queries (list_strains_by_species).
     pub specimen_count: Option<i64>,
+    /// True when created via the admin cross-species override path.
+    pub is_cross_species: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,12 +58,37 @@ pub struct CreateHybridizationEventRequest {
     pub name: String,
     pub code: String,
     pub notes: Option<String>,
+    /// Generation label (e.g. "F1", "F2", "BC1F1").  When absent, the backend
+    /// auto-suggests one based on parent labels and backcross detection.
+    pub generation_label: Option<String>,
+    /// Set to true (admin only) to override the cross-species guard.
+    pub admin_override_cross_species: Option<bool>,
+    /// Required when admin_override_cross_species is true.
+    pub admin_override_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct HybridizationResult {
     pub hybrid_strain_id: String,
     pub event_id: String,
+}
+
+/// Suggested generation label response, including backcross metadata.
+#[derive(Debug, Serialize)]
+pub struct SuggestGenerationLabelResponse {
+    pub suggested_label: Option<String>,
+    pub is_backcross: bool,
+    pub backcross_depth: Option<u32>,
+    pub backcross_ancestor_id: Option<String>,
+}
+
+/// Per-generation specimen statistics for hybrid descendants of a strain.
+#[derive(Debug, Serialize)]
+pub struct GenerationalStats {
+    pub generation_label: String,
+    pub specimen_count: i64,
+    pub healthy_count: i64,
+    pub problem_count: i64,
 }
 
 // ── Pedigree types (WP-37) ────────────────────────────────────────────────────
@@ -133,6 +160,8 @@ pub struct HybridizationEventRecord {
     pub parent_a_chain_seq: i64,
     pub parent_b_chain_seq: i64,
     pub notes: Option<String>,
+    pub generation_label: Option<String>,
+    pub backcross_depth: Option<i64>,
     pub created_at: String,
 }
 

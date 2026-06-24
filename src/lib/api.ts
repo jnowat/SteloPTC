@@ -528,8 +528,33 @@ export async function createHybridizationEvent(request: {
   name: string;
   code: string;
   notes?: string;
+  generation_label?: string;
+  admin_override_cross_species?: boolean;
+  admin_override_reason?: string;
 }) {
   return call<{ hybrid_strain_id: string; event_id: string }>('create_hybridization_event', { request });
+}
+
+export interface SuggestGenerationLabelResponse {
+  suggested_label: string | null;
+  is_backcross: boolean;
+  backcross_depth: number | null;
+  backcross_ancestor_id: string | null;
+}
+
+export async function suggestGenerationLabel(parentAId: string, parentBId: string) {
+  return call<SuggestGenerationLabelResponse>('suggest_generation_label', { parentAId, parentBId });
+}
+
+export interface GenerationalStats {
+  generation_label: string;
+  specimen_count: number;
+  healthy_count: number;
+  problem_count: number;
+}
+
+export async function getGenerationalStats(strainId: string) {
+  return call<GenerationalStats[]>('get_generational_stats', { strainId });
 }
 
 // Taxa (WP-35) — hierarchical taxonomy backbone (Genus → Kingdom).
@@ -660,7 +685,7 @@ export async function syncNcbiTaxon(record: NcbiTaxonRecord) {
 
 export async function listNcbiSyncLog(pendingOnly: boolean, limit?: number) {
   return call<NcbiSyncLog[]>('list_ncbi_sync_log', {
-    pending_only: pendingOnly,
+    pendingOnly,
     limit: limit ?? null,
   });
 }

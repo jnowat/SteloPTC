@@ -1,8 +1,9 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::strain::{
-    CreateHybridizationEventRequest, CreateStrainRequest, HybridizationResult, PedigreeExport,
-    PedigreeNode, Strain, StrainSpecimenTree, UpdateStrainRequest, UpdateStrainStatusRequest,
+    CreateHybridizationEventRequest, CreateStrainRequest, GenerationalStats, HybridizationResult,
+    PedigreeExport, PedigreeNode, Strain, StrainSpecimenTree, SuggestGenerationLabelResponse,
+    UpdateStrainRequest, UpdateStrainStatusRequest,
 };
 use crate::AppState;
 use rusqlite::params;
@@ -37,6 +38,7 @@ fn row_to_strain(row: &rusqlite::Row<'_>) -> rusqlite::Result<Strain> {
         genomic_fingerprint: row.get("genomic_fingerprint")?,
         is_hybrid: row.get::<_, i32>("is_hybrid")? != 0,
         is_archived: row.get::<_, i32>("is_archived")? != 0,
+        is_cross_species: row.get::<_, Option<i32>>("is_cross_species")?.unwrap_or(0) != 0,
         archived_at: row.get("archived_at")?,
         created_by: row.get("created_by")?,
         created_at: row.get("created_at")?,
@@ -371,16 +373,69 @@ pub fn create_hybridization_event(
     let parent_a = load_strain(&db.conn, &request.parent_a_id)?;
     let parent_b = load_strain(&db.conn, &request.parent_b_id)?;
 
-    if parent_a.species_id != parent_b.species_id {
-        return Err(
-            "Cross-species hybridization is not permitted: parent strains must belong to the same species"
-                .to_string(),
-        );
+    let is_cross_species = parent_a.species_id != parent_b.species_id;
+
+    if is_cross_species {
+        // Guard: cross-species hybridization requires an explicit admin override.
+        if !request.admin_override_cross_species.unwrap_or(false) {
+            return Err(
+                "Cross-species hybridization is not permitted: parent strains must belong to the same species"
+                    .to_string(),
+            );
+        }
+        if !user.role.is_admin() {
+            return Err(
+                "Cross-species hybridization override requires administrator privileges"
+                    .to_string(),
+            );
+        }
+        let reason = request
+            .admin_override_reason
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if reason.is_empty() {
+            return Err(
+                "Cross-species override requires a documented reason".to_string(),
+            );
+        }
     }
 
     // Cycle detection before any writes.
     check_no_cycle(&db.conn, &request.parent_a_id, &request.parent_b_id)?;
 
+    // Detect backcross (one parent is an ancestor of the other).
+    let backcross = queries::detect_backcross(
+        &db.conn,
+        &request.parent_a_id,
+        &request.parent_b_id,
+    );
+    let backcross_depth: Option<i64> = backcross.as_ref().map(|(_, d)| i64::from(*d));
+
+    // Resolve generation label: explicit > backcross suggestion > parent-label suggestion.
+    let generation_label: Option<String> = {
+        let explicit = request
+            .generation_label
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string);
+        if explicit.is_some() {
+            explicit
+        } else if let Some((_, depth)) = &backcross {
+            Some(format!("BC{}F1", depth))
+        } else {
+            let label_a =
+                queries::get_strain_generation_label(&db.conn, &request.parent_a_id);
+            let label_b =
+                queries::get_strain_generation_label(&db.conn, &request.parent_b_id);
+            queries::suggest_generation_label(label_a.as_deref(), label_b.as_deref())
+        }
+    };
+
+    // Use parent_a's species for the hybrid record (for cross-species hybrids, the
+    // is_cross_species flag makes the origin unambiguous).
     let species_id = parent_a.species_id.clone();
 
     // Snapshot parent chain_seqs (before the transaction writes anything).
@@ -417,9 +472,16 @@ pub fn create_hybridization_event(
     // 1. Create hybrid strain record.
     tx.execute(
         "INSERT INTO strains \
-         (id, species_id, name, code, strain_type, is_hybrid, created_by) \
-         VALUES (?1, ?2, ?3, ?4, 'hybrid', 1, ?5)",
-        params![hybrid_id, species_id, request.name, request.code, user.id],
+         (id, species_id, name, code, strain_type, is_hybrid, is_cross_species, created_by) \
+         VALUES (?1, ?2, ?3, ?4, 'hybrid', 1, ?5, ?6)",
+        params![
+            hybrid_id,
+            species_id,
+            request.name,
+            request.code,
+            if is_cross_species { 1i32 } else { 0i32 },
+            user.id
+        ],
     )
     .map_err(|e| format!("Failed to create hybrid strain: {}", e))?;
 
@@ -438,6 +500,10 @@ pub fn create_hybridization_event(
     .map_err(|e| format!("Failed to write hybrid genesis audit: {}", e))?;
 
     // 3. Hybrid "hybridize" audit entry (chain_seq = 1).
+    let gen_label_detail = generation_label
+        .as_deref()
+        .map(|l| format!("Hybridization event recorded [{}]", l))
+        .unwrap_or_else(|| "Hybridization event recorded".to_string());
     queries::log_audit(
         &tx,
         Some(&user.id),
@@ -446,9 +512,32 @@ pub fn create_hybridization_event(
         Some(&hybrid_id),
         None,
         None,
-        Some("Hybridization event recorded"),
+        Some(&gen_label_detail),
     )
     .map_err(|e| format!("Failed to write hybridize audit: {}", e))?;
+
+    // 3a. Permanent cross-species override warning in the audit log.
+    if is_cross_species {
+        let reason = request
+            .admin_override_reason
+            .as_deref()
+            .unwrap_or("no reason provided");
+        let warning = format!(
+            "CROSS-SPECIES OVERRIDE: admin '{}' authorised cross-species hybridization. Reason: {}",
+            user.username, reason
+        );
+        queries::log_audit(
+            &tx,
+            Some(&user.id),
+            "cross_species_override",
+            "strain",
+            Some(&hybrid_id),
+            None,
+            None,
+            Some(&warning),
+        )
+        .map_err(|e| format!("Failed to write cross-species override audit: {}", e))?;
+    }
 
     // 4. Two strain_parents records.
     let sp_a_id = uuid::Uuid::new_v4().to_string();
@@ -467,15 +556,23 @@ pub fn create_hybridization_event(
     )
     .map_err(|e| format!("Failed to insert strain_parent B: {}", e))?;
 
-    // 5. hybridization_events record.
+    // 5. hybridization_events record (now with generation_label and backcross_depth).
     tx.execute(
         "INSERT INTO hybridization_events \
          (id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
-          parent_a_chain_seq, parent_b_chain_seq, notes, created_by) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+          parent_a_chain_seq, parent_b_chain_seq, notes, generation_label, backcross_depth, created_by) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
-            event_id, hybrid_id, parent_a_id, parent_b_id,
-            parent_a_chain_seq, parent_b_chain_seq, request.notes, user.id
+            event_id,
+            hybrid_id,
+            parent_a_id,
+            parent_b_id,
+            parent_a_chain_seq,
+            parent_b_chain_seq,
+            request.notes,
+            generation_label,
+            backcross_depth,
+            user.id
         ],
     )
     .map_err(|e| format!("Failed to create hybridization event: {}", e))?;
@@ -513,6 +610,39 @@ pub fn create_hybridization_event(
         hybrid_strain_id: hybrid_id,
         event_id,
     })
+}
+
+/// Suggest a generation label for two prospective parents.
+///
+/// Runs backcross detection (which takes priority) and falls back to
+/// symmetric parent-label rules.  Returns immediately without writes.
+#[tauri::command]
+pub fn suggest_generation_label(
+    state: State<AppState>,
+    token: String,
+    parent_a_id: String,
+    parent_b_id: String,
+) -> Result<SuggestGenerationLabelResponse, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    Ok(queries::suggest_generation_label_for_parents(
+        &db.conn,
+        &parent_a_id,
+        &parent_b_id,
+    ))
+}
+
+/// Return per-generation specimen statistics for direct hybrid descendants of
+/// a strain, grouped by generation label.
+#[tauri::command]
+pub fn get_generational_stats(
+    state: State<AppState>,
+    token: String,
+    strain_id: String,
+) -> Result<Vec<GenerationalStats>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::get_generational_stats(&db.conn, &strain_id).map_err(|e| e.to_string())
 }
 
 // ── Pedigree commands (WP-37) ─────────────────────────────────────────────────
