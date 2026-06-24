@@ -128,6 +128,27 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (23)", [])?;
     }
 
+    if current < 24 {
+        migration_024_pdl_fields(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (24)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_024_pdl_fields(conn: &Connection) -> DbResult<()> {
+    // WP-31: passage-number lineage & doubling time.
+    // Adds cumulative PDL tracking on specimens and per-passage cell count /
+    // doubling time columns on subcultures.  All columns are nullable so
+    // existing rows continue to work without backfill.
+    conn.execute_batch("
+        ALTER TABLE specimens  ADD COLUMN cumulative_pdl       REAL;
+        ALTER TABLE subcultures ADD COLUMN seed_cell_count     REAL;
+        ALTER TABLE subcultures ADD COLUMN harvest_cell_count  REAL;
+        ALTER TABLE subcultures ADD COLUMN split_ratio         REAL;
+        ALTER TABLE subcultures ADD COLUMN pdl_gained          REAL;
+        ALTER TABLE subcultures ADD COLUMN doubling_time_hours REAL;
+    ")?;
     Ok(())
 }
 

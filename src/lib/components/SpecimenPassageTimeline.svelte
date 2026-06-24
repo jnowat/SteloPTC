@@ -499,6 +499,40 @@
                       <p class="tl-detail-p">{sc.notes}</p>
                     </div>
                   {/if}
+                  {#if sc.pdl_gained != null || sc.doubling_time_hours != null || sc.seed_cell_count != null}
+                    <div class="tl-pdl-block">
+                      {#if sc.seed_cell_count != null}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label">Seed Count</span>
+                          <span class="tl-detail-value">{sc.seed_cell_count.toLocaleString()} cells</span>
+                        </div>
+                      {/if}
+                      {#if sc.harvest_cell_count != null}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label">Harvest Count</span>
+                          <span class="tl-detail-value">{sc.harvest_cell_count.toLocaleString()} cells</span>
+                        </div>
+                      {/if}
+                      {#if sc.split_ratio != null && sc.seed_cell_count == null}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label">Split Ratio</span>
+                          <span class="tl-detail-value">1:{sc.split_ratio}</span>
+                        </div>
+                      {/if}
+                      {#if sc.pdl_gained != null}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label" title="Population doublings gained during this passage">PDL Gained</span>
+                          <span class="tl-detail-value tl-pdl-value">+{sc.pdl_gained.toFixed(2)} PDL</span>
+                        </div>
+                      {/if}
+                      {#if sc.doubling_time_hours != null}
+                        <div class="tl-detail-item">
+                          <span class="tl-detail-label" title="Calculated doubling time: DT = elapsed × ln(2) / ln(harvest / seed)">Doubling Time</span>
+                          <span class="tl-detail-value tl-pdl-value">{sc.doubling_time_hours.toFixed(1)} h</span>
+                        </div>
+                      {/if}
+                    </div>
+                  {/if}
                 {/if}
               </div>
             {/if}
@@ -510,6 +544,13 @@
 {/if}
 
 <style>
+  .tl-pdl-block {
+    display: flex; flex-wrap: wrap; gap: 6px 14px;
+    margin-top: 10px; padding: 8px 10px;
+    background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px;
+  }
+  .tl-pdl-value { color: #0891b2; font-weight: 600; }
+
   .form-row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
   .form-row .form-group { flex: 1; min-width: 120px; margin-bottom: 0; }
 

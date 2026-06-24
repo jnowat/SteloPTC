@@ -38,6 +38,17 @@ pub struct Subculture {
     pub updated_at: String,
     /// "passage" for normal subculture events; "death" for terminal death recordings.
     pub event_type: String,
+    // ── WP-31: passage lineage & doubling time ───────────────────────────────
+    /// Number of cells seeded at the start of this passage (for PDL / DT calc).
+    pub seed_cell_count: Option<f64>,
+    /// Number of cells harvested at the end of this passage (for PDL / DT calc).
+    pub harvest_cell_count: Option<f64>,
+    /// Split ratio used when cell counts are unavailable (e.g. 4.0 for a 1:4 split).
+    pub split_ratio: Option<f64>,
+    /// Population doublings gained during this passage (log₂(harvest/seed) or log₂(ratio)).
+    pub pdl_gained: Option<f64>,
+    /// Doubling time in hours, calculated from seed/harvest counts and elapsed time.
+    pub doubling_time_hours: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -69,6 +80,10 @@ pub struct CreateSubcultureRequest {
     pub health_status: Option<String>,
     pub contamination_flag: Option<bool>,
     pub contamination_notes: Option<String>,
+    // ── WP-31: passage lineage & doubling time ───────────────────────────────
+    pub seed_cell_count: Option<f64>,
+    pub harvest_cell_count: Option<f64>,
+    pub split_ratio: Option<f64>,
 }
 
 /// Payload for the "Record Death & Archive" terminal event.

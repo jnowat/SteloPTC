@@ -5,6 +5,72 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-06-24
+
+### Added — WP-31: Passage-Number Lineage & Doubling Time
+
+- **Backend — `src-tauri/src/db/migrations.rs`** — migration 024 adds nullable columns to two
+  tables (additive, no backfill required; all existing rows remain valid):
+  - `specimens.cumulative_pdl REAL` — running total of population doubling level accumulated
+    across the entire lineage: inherited from ancestors at split time, then incremented by each
+    passage's `pdl_gained`.
+  - `subcultures.seed_cell_count REAL`, `harvest_cell_count REAL`, `split_ratio REAL` — inputs
+    for PDL and doubling time calculations.
+  - `subcultures.pdl_gained REAL` — population doublings gained in this passage
+    (`log₂(harvest / seed)` or `log₂(split_ratio)` when counts are unavailable).
+  - `subcultures.doubling_time_hours REAL` — doubling time calculated automatically when both
+    cell counts and elapsed time (since previous passage) are available.
+
+- **Backend — `src-tauri/src/db/queries.rs`** — three pure calculation helpers:
+  - `calculate_doubling_time(seed, harvest, elapsed_hours) → Option<f64>` — standard formula:
+    `DT = elapsed × ln(2) / ln(harvest / seed)`; returns `None` for invalid inputs or
+    when there is no net growth.
+  - `calculate_pdl_from_counts(seed, harvest) → Option<f64>` — `log₂(harvest / seed)`;
+    negative PDL (cell decline) is valid.
+  - `calculate_pdl_from_ratio(split_ratio) → Option<f64>` — `log₂(ratio)` for passages where
+    cell counts are not available.
+  - **9 new unit tests** covering typical growth, decline, no-growth, and invalid-input cases.
+
+- **Backend — `src-tauri/src/models/specimen.rs`** — `cumulative_pdl: Option<f64>` added to
+  `Specimen`.
+
+- **Backend — `src-tauri/src/models/subculture.rs`** — `seed_cell_count`, `harvest_cell_count`,
+  `split_ratio`, `pdl_gained`, `doubling_time_hours` added to both `Subculture` and
+  `CreateSubcultureRequest`.
+
+- **Backend — `src-tauri/src/commands/subcultures.rs`**:
+  - `create_subculture` now calculates `pdl_gained` (preferring cell counts; falls back to split
+    ratio) and `doubling_time_hours` (requires both cell counts and elapsed time since last
+    passage), stores them on the subculture record, and accumulates `cumulative_pdl` on the
+    specimen atomically in the same transaction.
+  - `row_to_subculture` maps all five new columns.
+
+- **Backend — `src-tauri/src/commands/specimens.rs`**:
+  - `split_specimen` reads the parent's `cumulative_pdl` before opening the transaction and
+    writes it to each child specimen — children therefore inherit the lineage's accumulated PDL
+    and continue from that baseline.
+  - All `Specimen` row mappings (`list_specimens`, `get_specimen`, `search_specimens`) include
+    `cumulative_pdl`.
+
+- **Frontend — `src/lib/components/SpecimenDetail.svelte`**:
+  - Passage form gains three optional fields: **Seed Cell Count**, **Harvest Cell Count**, and
+    **Split Ratio** (under a "Cell Count & Doubling" section). A live PDL preview is shown when
+    valid seed/harvest counts are entered.
+  - Specimen info card shows **Cumulative PDL** when the specimen has accumulated PDL data.
+  - All three new fields are passed to `createSubculture`.
+
+- **Frontend — `src/lib/components/SpecimenPassageTimeline.svelte`**:
+  - Expanded normal passage cards now show a **PDL block** (tinted blue) when any of
+    `seed_cell_count`, `harvest_cell_count`, `split_ratio`, `pdl_gained`, or
+    `doubling_time_hours` are present — displays seed/harvest counts, split ratio, PDL gained,
+    and doubling time in a compact grid.
+
+### Changed
+
+- Passage-number display in the lineage banner already correctly showed cumulative `P{n}`
+  numbers via `lineage_passage_offset + subculture_count`. No change to passage-numbering logic
+  was required; WP-31 extends it with PDL tracking without altering the existing formula.
+
 ## [1.23.0] - 2026-06-24
 
 ### Added — WP-30: Cell Culture Profile Vocabulary
