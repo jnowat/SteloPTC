@@ -150,6 +150,11 @@ pub fn run() {
             commands::taxa::update_taxon,
             commands::taxa::list_taxa_by_rank,
             commands::taxa::get_taxon_descendants,
+            // NCBI Taxonomy (WP-36)
+            commands::ncbi::import_ncbi_taxonomy,
+            commands::ncbi::resolve_ncbi_conflict,
+            commands::ncbi::sync_ncbi_taxon,
+            commands::ncbi::list_ncbi_sync_log,
             // Error Logs
             commands::error_logs::log_error,
             commands::error_logs::list_error_logs,

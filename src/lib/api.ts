@@ -600,3 +600,67 @@ export async function listTaxaByRank(rank: TaxonRank) {
 export async function getTaxonDescendants(id: string) {
   return call<TaxonNode>('get_taxon_descendants', { id });
 }
+
+// NCBI Taxonomy (WP-36) — import & ongoing sync.
+
+export interface NcbiTaxonRecord {
+  ncbi_taxon_id: number;
+  name: string;
+  rank: string;
+  parent_ncbi_id: number | null;
+}
+
+export interface NcbiSyncLog {
+  id: string;
+  sync_type: 'import' | 'update' | 'conflict';
+  taxon_id: string | null;
+  ncbi_taxon_id: number | null;
+  conflict_details: string | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution: 'kept_local' | 'accepted_ncbi' | 'merged' | null;
+  created_at: string;
+}
+
+export interface NcbiConflictSummary {
+  sync_log_id: string | null;
+  taxon_id: string | null;
+  ncbi_taxon_id: number;
+  local_name: string | null;
+  ncbi_name: string;
+  conflict_details: string;
+}
+
+export interface ImportNcbiTaxonomyResult {
+  imported: number;
+  updated: number;
+  skipped_overrides: number;
+  conflicts: NcbiConflictSummary[];
+  dry_run: boolean;
+}
+
+export async function importNcbiTaxonomy(taxa: NcbiTaxonRecord[], dryRun: boolean) {
+  return call<ImportNcbiTaxonomyResult>('import_ncbi_taxonomy', {
+    request: { taxa, dry_run: dryRun },
+  });
+}
+
+export async function resolveNcbiConflict(
+  syncLogId: string,
+  resolution: 'kept_local' | 'accepted_ncbi' | 'merged'
+) {
+  return call<void>('resolve_ncbi_conflict', {
+    request: { sync_log_id: syncLogId, resolution },
+  });
+}
+
+export async function syncNcbiTaxon(record: NcbiTaxonRecord) {
+  return call<string>('sync_ncbi_taxon', { record });
+}
+
+export async function listNcbiSyncLog(pendingOnly: boolean, limit?: number) {
+  return call<NcbiSyncLog[]>('list_ncbi_sync_log', {
+    pending_only: pendingOnly,
+    limit: limit ?? null,
+  });
+}

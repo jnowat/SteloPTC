@@ -18,3 +18,4 @@ pub mod import;
 pub mod vocabulary;
 pub mod strains;
 pub mod taxa;
+pub mod ncbi;
