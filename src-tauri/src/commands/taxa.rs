@@ -1,7 +1,8 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::taxon::{
-    CreateTaxonRequest, Taxon, TaxonNode, UpdateTaxonRequest,
+    CreateTaxonRequest, SpeciesNodeSummary, Taxon, TaxonColumnItem, TaxonNode,
+    TaxonomySearchResult, UpdateTaxonRequest,
 };
 use crate::AppState;
 use rusqlite::params;
@@ -214,4 +215,50 @@ pub fn get_taxon_descendants(
 
     let taxon = queries::load_taxon(&db.conn, &id).map_err(|e| e.to_string())?;
     build_taxon_node(&db.conn, taxon)
+}
+
+/// WP-39: Return immediate children of a taxon (or all kingdom-level taxa when
+/// `parent_id` is `None`), each with aggregated descendant counts.
+#[tauri::command]
+pub fn get_taxon_column(
+    state: State<AppState>,
+    token: String,
+    parent_id: Option<String>,
+) -> Result<Vec<TaxonColumnItem>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::get_taxon_column_items(&db.conn, parent_id.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+/// WP-39: Return species whose most-specific ancestor is the given taxon.
+/// Reuses the existing `get_species_for_taxon` helper (which matches the last
+/// element of taxon_path) so genus-level navigation returns only the species
+/// directly classified under that genus.
+#[tauri::command]
+pub fn list_species_for_taxon(
+    state: State<AppState>,
+    token: String,
+    taxon_id: String,
+) -> Result<Vec<SpeciesNodeSummary>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::get_species_for_taxon(&db.conn, &taxon_id).map_err(|e| e.to_string())
+}
+
+/// WP-39: Search taxa, species, strains, and specimens by name / code /
+/// accession. Returns up to 10 hits per entity type. Queries shorter than
+/// 2 characters return an empty result without hitting the database.
+#[tauri::command]
+pub fn search_taxonomy(
+    state: State<AppState>,
+    token: String,
+    query: String,
+) -> Result<Vec<TaxonomySearchResult>, String> {
+    if query.len() < 2 {
+        return Ok(vec![]);
+    }
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::search_taxonomy(&db.conn, &query).map_err(|e| e.to_string())
 }

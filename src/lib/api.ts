@@ -626,6 +626,41 @@ export async function getTaxonDescendants(id: string) {
   return call<TaxonNode>('get_taxon_descendants', { id });
 }
 
+// WP-39 — Advanced taxonomy navigator
+
+export interface TaxonColumnItem {
+  id: string;
+  rank: string;
+  name: string;
+  parent_id: string | null;
+  ncbi_taxon_id: number | null;
+  local_override: boolean;
+  strain_count: number;
+  specimen_count: number;
+}
+
+export interface TaxonomySearchResult {
+  result_type: 'taxon' | 'species' | 'strain' | 'specimen';
+  id: string;
+  display_name: string;
+  secondary: string;
+  taxon_ids: string[];
+  species_id: string | null;
+  strain_id: string | null;
+}
+
+export async function getTaxonColumn(parentId?: string) {
+  return call<TaxonColumnItem[]>('get_taxon_column', { parentId: parentId ?? null });
+}
+
+export async function listSpeciesForTaxon(taxonId: string) {
+  return call<SpeciesNodeSummary[]>('list_species_for_taxon', { taxonId });
+}
+
+export async function searchTaxonomy(query: string) {
+  return call<TaxonomySearchResult[]>('search_taxonomy', { query });
+}
+
 // NCBI Taxonomy (WP-36) — import & ongoing sync.
 
 export interface NcbiTaxonRecord {

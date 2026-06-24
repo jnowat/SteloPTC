@@ -5,6 +5,55 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.22.0] - 2026-06-24
+
+### Added — WP-39: Advanced Taxonomy Navigator
+
+- **Backend — `src-tauri/src/db/queries.rs`**:
+  - `get_taxon_column_items(conn, parent_id)` — returns immediate children of a taxon (or all
+    kingdom-level roots when `parent_id` is `None`), each decorated with aggregated `strain_count`
+    and `specimen_count` using correlated SQL subqueries over `taxon_path` (UUID-safe LIKE pattern).
+  - `search_taxonomy(conn, query)` — searches taxa, species, strains, and specimen accessions; returns
+    up to 10 hits per entity type with `result_type`, `display_name`, breadcrumb ids, and linked
+    `species_id`/`strain_id` for direct navigation.
+  - **8 new unit tests**: `taxon_column_roots_returns_kingdoms`,
+    `taxon_column_children_returns_phyla_under_kingdom`,
+    `taxon_column_aggregates_descendant_counts`, `taxon_column_excludes_archived_from_counts`,
+    `search_taxonomy_finds_taxon_by_name`, `search_taxonomy_finds_species_by_genus_name`,
+    `search_taxonomy_finds_strain_by_code`, `search_taxonomy_finds_specimen_by_accession`.
+
+- **Backend — `src-tauri/src/models/taxon.rs`** — two new model types:
+  - `TaxonColumnItem` — lightweight taxon projection with `strain_count` and `specimen_count`.
+  - `TaxonomySearchResult` — unified search hit with `result_type`, `taxon_ids` breadcrumb path,
+    `species_id`, and `strain_id`.
+
+- **Backend — `src-tauri/src/commands/taxa.rs`** — three new Tauri commands:
+  - `get_taxon_column` — lazy-loads one column of the navigator tree.
+  - `list_species_for_taxon` — returns species directly classified under a given taxon node.
+  - `search_taxonomy` — thin shell over the query helper; rejects queries shorter than 2 characters.
+
+- **Frontend — `src/lib/api.ts`** — `TaxonColumnItem` and `TaxonomySearchResult` TypeScript
+  interfaces; `getTaxonColumn`, `listSpeciesForTaxon`, and `searchTaxonomy` async helpers.
+
+- **Frontend — `src/lib/components/TaxonomyNavigator.svelte`** — complete rewrite implementing:
+  - **Multi-column browser**: Kingdom → Phylum → Class → Order → Family → Genus → Species → Strains,
+    each column independently scrollable; 5–6 columns visible on desktop, horizontal-scroll on mobile.
+  - **Breadcrumb trail** derived reactively from column state (`$derived`).
+  - **Descendant counts** (`N strains · M specimens`) on every taxon and species node, aggregated
+    from the deepest level via backend correlated subqueries.
+  - **Strain filter panel**: filter by strain status (active / archived / all), with per-kingdom
+    quick-jump buttons.
+  - **Global search** with 300 ms debounce; dropdown groups results by entity type (taxa, species,
+    strains, specimens); navigating a result jumps the column stack directly to that node.
+  - **Keyboard navigation**: Arrow keys move focus across and within columns; Enter selects; Escape
+    closes panel or resets columns; `/` focuses the search box from anywhere.
+  - **Strain quick-action panel**: selecting a strain opens an inline panel showing live specimen
+    rows (stage, health, accession) with click-through to `SpecimenDetail`.
+  - **StrainDetail slide-over** integration: opening full details from the panel triggers the
+    existing `StrainDetail` component without breaking `StrainManager` or `HybridWizard`.
+  - **`localStorage` path persistence**: selected taxon/species/strain ids are saved under key
+    `stelo_taxonomy_path` and restored on next mount.
+
 ## [1.21.0] - 2026-06-24
 
 ### Added — WP-38: Advanced Hybridisation Tools

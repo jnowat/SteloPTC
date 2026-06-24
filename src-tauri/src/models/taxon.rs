@@ -116,6 +116,39 @@ pub struct ImportNcbiTaxonomyResult {
     pub dry_run: bool,
 }
 
+// ── WP-39: Advanced taxonomy navigator models ──────────────────────────────────
+
+/// Flat taxon summary with aggregated descendant strain and specimen counts.
+/// Returned by `get_taxon_column` for lazy column loading in the navigator.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaxonColumnItem {
+    pub id: String,
+    pub rank: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+    pub ncbi_taxon_id: Option<i64>,
+    pub local_override: bool,
+    pub strain_count: i64,
+    pub specimen_count: i64,
+}
+
+/// A single hit from the global taxonomy search.
+/// Contains enough context for the frontend to navigate to the item.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaxonomySearchResult {
+    /// One of: "taxon" | "species" | "strain" | "specimen"
+    pub result_type: String,
+    pub id: String,
+    pub display_name: String,
+    /// Secondary label: rank for taxa, species_code for species,
+    /// strain code for strains, stage for specimens.
+    pub secondary: String,
+    /// Ordered taxon IDs from kingdom down to genus (parsed from taxon_path).
+    pub taxon_ids: Vec<String>,
+    pub species_id: Option<String>,
+    pub strain_id: Option<String>,
+}
+
 /// Request payload for `resolve_ncbi_conflict`.
 #[derive(Debug, Deserialize)]
 pub struct ResolveNcbiConflictRequest {
