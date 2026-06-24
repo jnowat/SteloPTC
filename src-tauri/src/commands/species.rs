@@ -81,6 +81,8 @@ pub fn create_species(
                 species_code: row.get("species_code")?,
                 default_subculture_interval_days: row.get("default_subculture_interval_days")?,
                 notes: row.get("notes")?,
+                taxon_path: row.get("taxon_path")?,
+                ncbi_taxon_id: row.get("ncbi_taxon_id")?,
                 created_at: row.get("created_at")?,
                 updated_at: row.get("updated_at")?,
             })
