@@ -3,6 +3,10 @@ use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
 use super::{DbError, DbResult};
 use crate::models::taxon::{NcbiSyncLog, SpeciesNodeSummary, Taxon};
+use crate::models::strain::{
+    HybridizationEventRecord, PedigreeEdge, PedigreeExport, PedigreeNode, SpecimenSummary,
+    StrainSpecimenTree, StrainSummary,
+};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
 pub const ZERO_HASH: &str =
@@ -966,6 +970,368 @@ pub fn list_ncbi_sync_log(conn: &Connection, limit: i64) -> DbResult<Vec<NcbiSyn
     })?;
     let logs: Result<Vec<_>, _> = rows.collect();
     Ok(logs?)
+}
+
+// ── Pedigree helpers (WP-37) ─────────────────────────────────────────────────
+// Walk the strain hybridization graph (strain_parents) upward (ancestry) or
+// downward (descendants).  These helpers operate on strain_parents and
+// hybridization_events only — they never touch specimens.parent_specimen_id.
+
+fn load_strain_summary(conn: &Connection, id: &str) -> DbResult<StrainSummary> {
+    let s = conn.query_row(
+        "SELECT s.id, s.name, s.code, s.strain_type, s.status, s.is_hybrid, s.is_archived, \
+                COALESCE((SELECT COUNT(*) FROM specimens sp \
+                          WHERE sp.strain_id = s.id AND sp.is_archived = 0), 0) AS specimen_count \
+         FROM strains s WHERE s.id = ?1",
+        params![id],
+        |row| {
+            Ok(StrainSummary {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                code: row.get("code")?,
+                strain_type: row.get("strain_type")?,
+                status: row.get("status")?,
+                is_hybrid: row.get::<_, i32>("is_hybrid")? != 0,
+                is_archived: row.get::<_, i32>("is_archived")? != 0,
+                specimen_count: row.get("specimen_count")?,
+            })
+        },
+    )?;
+    Ok(s)
+}
+
+fn load_parent_entries(
+    conn: &Connection,
+    strain_id: &str,
+) -> DbResult<Vec<(StrainSummary, PedigreeEdge)>> {
+    let mut stmt = conn.prepare(
+        "SELECT sp.parent_strain_id, sp.parent_role, sp.parent_chain_seq_at_creation, \
+                (SELECT he.id FROM hybridization_events he \
+                 WHERE he.hybrid_strain_id = sp.strain_id LIMIT 1) AS event_id, \
+                (SELECT he.notes FROM hybridization_events he \
+                 WHERE he.hybrid_strain_id = sp.strain_id LIMIT 1) AS event_notes, \
+                s.id, s.name, s.code, s.strain_type, s.status, s.is_hybrid, s.is_archived, \
+                COALESCE((SELECT COUNT(*) FROM specimens spec \
+                          WHERE spec.strain_id = s.id AND spec.is_archived = 0), 0) AS specimen_count \
+         FROM strain_parents sp \
+         JOIN strains s ON s.id = sp.parent_strain_id \
+         WHERE sp.strain_id = ?1 \
+         ORDER BY sp.parent_role",
+    )?;
+    let rows = stmt.query_map(params![strain_id], |row| {
+        Ok((
+            StrainSummary {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                code: row.get("code")?,
+                strain_type: row.get("strain_type")?,
+                status: row.get("status")?,
+                is_hybrid: row.get::<_, i32>("is_hybrid")? != 0,
+                is_archived: row.get::<_, i32>("is_archived")? != 0,
+                specimen_count: row.get("specimen_count")?,
+            },
+            PedigreeEdge {
+                parent_strain_id: row.get("parent_strain_id")?,
+                parent_role: row.get("parent_role")?,
+                parent_chain_seq_at_creation: row.get("parent_chain_seq_at_creation")?,
+                event_id: row.get("event_id")?,
+                event_notes: row.get("event_notes")?,
+            },
+        ))
+    })?;
+    let results: Result<Vec<_>, _> = rows.collect();
+    Ok(results?)
+}
+
+fn load_child_entries(
+    conn: &Connection,
+    strain_id: &str,
+) -> DbResult<Vec<(StrainSummary, PedigreeEdge)>> {
+    let mut stmt = conn.prepare(
+        "SELECT sp.parent_strain_id, sp.parent_role, sp.parent_chain_seq_at_creation, \
+                (SELECT he.id FROM hybridization_events he \
+                 WHERE he.hybrid_strain_id = sp.strain_id LIMIT 1) AS event_id, \
+                (SELECT he.notes FROM hybridization_events he \
+                 WHERE he.hybrid_strain_id = sp.strain_id LIMIT 1) AS event_notes, \
+                s.id, s.name, s.code, s.strain_type, s.status, s.is_hybrid, s.is_archived, \
+                COALESCE((SELECT COUNT(*) FROM specimens spec \
+                          WHERE spec.strain_id = s.id AND spec.is_archived = 0), 0) AS specimen_count \
+         FROM strain_parents sp \
+         JOIN strains s ON s.id = sp.strain_id \
+         WHERE sp.parent_strain_id = ?1 \
+         ORDER BY sp.parent_role",
+    )?;
+    let rows = stmt.query_map(params![strain_id], |row| {
+        Ok((
+            StrainSummary {
+                id: row.get("id")?,
+                name: row.get("name")?,
+                code: row.get("code")?,
+                strain_type: row.get("strain_type")?,
+                status: row.get("status")?,
+                is_hybrid: row.get::<_, i32>("is_hybrid")? != 0,
+                is_archived: row.get::<_, i32>("is_archived")? != 0,
+                specimen_count: row.get("specimen_count")?,
+            },
+            PedigreeEdge {
+                parent_strain_id: row.get("parent_strain_id")?,
+                parent_role: row.get("parent_role")?,
+                parent_chain_seq_at_creation: row.get("parent_chain_seq_at_creation")?,
+                event_id: row.get("event_id")?,
+                event_notes: row.get("event_notes")?,
+            },
+        ))
+    })?;
+    let results: Result<Vec<_>, _> = rows.collect();
+    Ok(results?)
+}
+
+fn get_parents_recursive(
+    conn: &Connection,
+    strain_id: &str,
+    depth: u32,
+    max_depth: u32,
+    path: &mut Vec<String>,
+) -> DbResult<Vec<PedigreeNode>> {
+    if depth > max_depth {
+        return Ok(Vec::new());
+    }
+    let entries = load_parent_entries(conn, strain_id)?;
+    let mut nodes = Vec::new();
+    for (summary, edge) in entries {
+        let parent_id = summary.id.clone();
+        if path.contains(&parent_id) {
+            return Err(DbError::Constraint(format!(
+                "Circular pedigree detected: strain '{}' is its own ancestor",
+                parent_id
+            )));
+        }
+        path.push(parent_id.clone());
+        let sub_parents = get_parents_recursive(conn, &parent_id, depth + 1, max_depth, path)?;
+        path.pop();
+        nodes.push(PedigreeNode {
+            strain: summary,
+            depth,
+            edge: Some(edge),
+            parents: sub_parents,
+            children: Vec::new(),
+        });
+    }
+    Ok(nodes)
+}
+
+fn get_children_recursive(
+    conn: &Connection,
+    strain_id: &str,
+    depth: u32,
+    max_depth: u32,
+    path: &mut Vec<String>,
+) -> DbResult<Vec<PedigreeNode>> {
+    if depth > max_depth {
+        return Ok(Vec::new());
+    }
+    let entries = load_child_entries(conn, strain_id)?;
+    let mut nodes = Vec::new();
+    for (summary, edge) in entries {
+        let child_id = summary.id.clone();
+        if path.contains(&child_id) {
+            return Err(DbError::Constraint(format!(
+                "Circular pedigree detected: strain '{}' is its own descendant",
+                child_id
+            )));
+        }
+        path.push(child_id.clone());
+        let sub_children = get_children_recursive(conn, &child_id, depth + 1, max_depth, path)?;
+        path.pop();
+        nodes.push(PedigreeNode {
+            strain: summary,
+            depth,
+            edge: Some(edge),
+            parents: Vec::new(),
+            children: sub_children,
+        });
+    }
+    Ok(nodes)
+}
+
+fn load_specimens_for_strain(conn: &Connection, strain_id: &str) -> DbResult<Vec<SpecimenSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, accession_number, stage, location, is_archived, strain_id, created_at \
+         FROM specimens WHERE strain_id = ?1 AND is_archived = 0 \
+         ORDER BY created_at ASC",
+    )?;
+    let rows = stmt.query_map(params![strain_id], |row| {
+        Ok(SpecimenSummary {
+            id: row.get("id")?,
+            accession_number: row.get("accession_number")?,
+            stage: row.get("stage")?,
+            location: row.get("location")?,
+            is_archived: row.get::<_, i32>("is_archived")? != 0,
+            strain_id: row.get("strain_id")?,
+            created_at: row.get("created_at")?,
+        })
+    })?;
+    let results: Result<Vec<_>, _> = rows.collect();
+    Ok(results?)
+}
+
+fn collect_pedigree_ids(node: &PedigreeNode, ids: &mut std::collections::HashSet<String>) {
+    ids.insert(node.strain.id.clone());
+    for parent in &node.parents {
+        collect_pedigree_ids(parent, ids);
+    }
+    for child in &node.children {
+        collect_pedigree_ids(child, ids);
+    }
+}
+
+/// Walk upward through `strain_parents` to find all ancestors of `strain_id`.
+///
+/// Returns a `PedigreeNode` rooted at the given strain, with `parents` populated
+/// recursively up to `max_depth` levels.  Returns `Err` if a cycle is detected.
+pub fn get_strain_ancestry(
+    conn: &Connection,
+    strain_id: &str,
+    max_depth: u32,
+) -> DbResult<PedigreeNode> {
+    let root = load_strain_summary(conn, strain_id)?;
+    let mut path = vec![strain_id.to_string()];
+    let parents = get_parents_recursive(conn, strain_id, 1, max_depth, &mut path)?;
+    Ok(PedigreeNode {
+        strain: root,
+        depth: 0,
+        edge: None,
+        parents,
+        children: Vec::new(),
+    })
+}
+
+/// Walk downward through `strain_parents` to find all descendant hybrid strains.
+///
+/// Returns a `PedigreeNode` rooted at the given strain, with `children` populated
+/// recursively up to `max_depth` levels.  Returns `Err` if a cycle is detected.
+pub fn get_strain_descendants(
+    conn: &Connection,
+    strain_id: &str,
+    max_depth: u32,
+) -> DbResult<PedigreeNode> {
+    let root = load_strain_summary(conn, strain_id)?;
+    let mut path = vec![strain_id.to_string()];
+    let children = get_children_recursive(conn, strain_id, 1, max_depth, &mut path)?;
+    Ok(PedigreeNode {
+        strain: root,
+        depth: 0,
+        edge: None,
+        parents: Vec::new(),
+        children,
+    })
+}
+
+/// Return all live specimens bound to a strain, optionally including specimens
+/// bound to descendant hybrid strains.
+///
+/// When `include_descendants = false`, only specimens directly bound to
+/// `strain_id` are returned and `descendant_trees` is empty.
+pub fn get_strain_specimen_tree(
+    conn: &Connection,
+    strain_id: &str,
+    include_descendants: bool,
+) -> DbResult<StrainSpecimenTree> {
+    let mut path = vec![strain_id.to_string()];
+    get_strain_specimen_tree_impl(conn, strain_id, include_descendants, &mut path)
+}
+
+fn get_strain_specimen_tree_impl(
+    conn: &Connection,
+    strain_id: &str,
+    include_descendants: bool,
+    path: &mut Vec<String>,
+) -> DbResult<StrainSpecimenTree> {
+    let strain = load_strain_summary(conn, strain_id)?;
+    let specimens = load_specimens_for_strain(conn, strain_id)?;
+    let descendant_trees = if include_descendants {
+        let child_entries = load_child_entries(conn, strain_id)?;
+        let mut trees = Vec::new();
+        for (child_summary, _edge) in child_entries {
+            let child_id = child_summary.id.clone();
+            if path.contains(&child_id) {
+                return Err(DbError::Constraint(format!(
+                    "Circular pedigree detected: strain '{}' is its own descendant",
+                    child_id
+                )));
+            }
+            path.push(child_id.clone());
+            trees.push(get_strain_specimen_tree_impl(conn, &child_id, true, path)?);
+            path.pop();
+        }
+        trees
+    } else {
+        Vec::new()
+    };
+    Ok(StrainSpecimenTree {
+        strain,
+        specimens,
+        descendant_trees,
+    })
+}
+
+/// Export the full pedigree of a strain as a portable bundle.
+///
+/// Collects all unique strains reachable within `max_depth` in both ancestry and
+/// descendant directions, plus all relevant hybridization event records.
+pub fn export_strain_pedigree(
+    conn: &Connection,
+    strain_id: &str,
+    max_depth: u32,
+) -> DbResult<PedigreeExport> {
+    let ancestry = get_strain_ancestry(conn, strain_id, max_depth)?;
+    let descendants = get_strain_descendants(conn, strain_id, max_depth)?;
+
+    let mut strain_ids = std::collections::HashSet::new();
+    collect_pedigree_ids(&ancestry, &mut strain_ids);
+    collect_pedigree_ids(&descendants, &mut strain_ids);
+
+    let mut strains: Vec<StrainSummary> = strain_ids
+        .iter()
+        .filter_map(|sid| load_strain_summary(conn, sid).ok())
+        .collect();
+    strains.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let mut seen_event_ids = std::collections::HashSet::new();
+    let mut events: Vec<HybridizationEventRecord> = Vec::new();
+    for sid in &strain_ids {
+        let mut stmt = conn.prepare(
+            "SELECT id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
+                    parent_a_chain_seq, parent_b_chain_seq, notes, created_at \
+             FROM hybridization_events WHERE hybrid_strain_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![sid], |row| {
+            Ok(HybridizationEventRecord {
+                id: row.get("id")?,
+                hybrid_strain_id: row.get("hybrid_strain_id")?,
+                parent_a_strain_id: row.get("parent_a_strain_id")?,
+                parent_b_strain_id: row.get("parent_b_strain_id")?,
+                parent_a_chain_seq: row.get("parent_a_chain_seq")?,
+                parent_b_chain_seq: row.get("parent_b_chain_seq")?,
+                notes: row.get("notes")?,
+                created_at: row.get("created_at")?,
+            })
+        })?;
+        let batch: Result<Vec<_>, _> = rows.collect();
+        for event in batch? {
+            if seen_event_ids.insert(event.id.clone()) {
+                events.push(event);
+            }
+        }
+    }
+    events.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+
+    Ok(PedigreeExport {
+        root_strain_id: strain_id.to_string(),
+        exported_at: chrono::Utc::now().to_rfc3339(),
+        strains,
+        hybridization_events: events,
+    })
 }
 
 #[cfg(test)]
@@ -2116,5 +2482,338 @@ mod tests {
         let pending = list_pending_ncbi_conflicts(&conn).unwrap();
         assert_eq!(pending.len(), 1, "resolved conflicts must not appear in pending list");
         assert_eq!(pending[0].id, "c2");
+    }
+
+    // ── WP-37: pedigree helpers ───────────────────────────────────────────────
+
+    fn mem_conn_with_pedigree() -> Connection {
+        let conn = mem_conn_with_strains();
+        conn.execute_batch(
+            "CREATE TABLE hybridization_events (
+                id TEXT PRIMARY KEY,
+                hybrid_strain_id TEXT NOT NULL,
+                parent_a_strain_id TEXT NOT NULL,
+                parent_b_strain_id TEXT NOT NULL,
+                parent_a_chain_seq INTEGER NOT NULL DEFAULT 0,
+                parent_b_chain_seq INTEGER NOT NULL DEFAULT 0,
+                notes TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE specimens (
+                id TEXT PRIMARY KEY,
+                accession_number TEXT NOT NULL,
+                stage TEXT NOT NULL DEFAULT 'initiation',
+                location TEXT,
+                is_archived INTEGER NOT NULL DEFAULT 0,
+                strain_id TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        ).expect("create pedigree extra tables");
+        conn
+    }
+
+    fn insert_hybrid(
+        conn: &Connection,
+        hybrid_id: &str,
+        parent_a: &str,
+        parent_b: &str,
+        species_id: &str,
+        code: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code, strain_type, is_hybrid) \
+             VALUES (?1, ?2, ?3, ?4, 'hybrid', 1)",
+            params![hybrid_id, species_id, format!("Hybrid {code}"), code],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) \
+             VALUES (?1, ?2, ?3, 'parent_a')",
+            params![format!("{hybrid_id}-sp-a"), hybrid_id, parent_a],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) \
+             VALUES (?1, ?2, ?3, 'parent_b')",
+            params![format!("{hybrid_id}-sp-b"), hybrid_id, parent_b],
+        ).unwrap();
+    }
+
+    fn insert_hybridization_event(
+        conn: &Connection,
+        event_id: &str,
+        hybrid_id: &str,
+        parent_a: &str,
+        parent_b: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO hybridization_events \
+             (id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id) \
+             VALUES (?1, ?2, ?3, ?4)",
+            params![event_id, hybrid_id, parent_a, parent_b],
+        ).unwrap();
+    }
+
+    fn insert_specimen_for_strain(
+        conn: &Connection,
+        id: &str,
+        strain_id: &str,
+        accession: &str,
+    ) {
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, stage, strain_id) \
+             VALUES (?1, ?2, 'initiation', ?3)",
+            params![id, accession, strain_id],
+        ).unwrap();
+    }
+
+    #[test]
+    fn pedigree_ancestry_wildtype_has_no_parents() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-wt", "sp-001", "WT01");
+
+        let node = get_strain_ancestry(&conn, "st-wt", 5).unwrap();
+        assert_eq!(node.strain.id, "st-wt");
+        assert!(node.parents.is_empty(), "wildtype strain must have no parents");
+    }
+
+    #[test]
+    fn pedigree_ancestry_finds_direct_parents() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H", "st-A", "st-B", "sp-001", "HH01");
+
+        let node = get_strain_ancestry(&conn, "st-H", 5).unwrap();
+        assert_eq!(node.strain.id, "st-H");
+        assert_eq!(node.parents.len(), 2, "hybrid must have exactly 2 parents");
+        let parent_ids: Vec<&str> = node.parents.iter().map(|p| p.strain.id.as_str()).collect();
+        assert!(parent_ids.contains(&"st-A"), "parent A must be found");
+        assert!(parent_ids.contains(&"st-B"), "parent B must be found");
+    }
+
+    #[test]
+    fn pedigree_ancestry_finds_grandparents() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-G1", "sp-001", "G001");
+        insert_test_strain(&conn, "st-G2", "sp-001", "G002");
+        insert_test_strain(&conn, "st-G3", "sp-001", "G003");
+        insert_test_strain(&conn, "st-G4", "sp-001", "G004");
+        insert_hybrid(&conn, "st-P1", "st-G1", "st-G2", "sp-001", "P001");
+        insert_hybrid(&conn, "st-P2", "st-G3", "st-G4", "sp-001", "P002");
+        insert_hybrid(&conn, "st-H", "st-P1", "st-P2", "sp-001", "H001");
+
+        let node = get_strain_ancestry(&conn, "st-H", 5).unwrap();
+        assert_eq!(node.depth, 0);
+        assert_eq!(node.parents.len(), 2, "hybrid must have 2 parents");
+        for parent in &node.parents {
+            assert_eq!(parent.depth, 1);
+            assert_eq!(parent.parents.len(), 2, "each parent must have 2 grandparents");
+            for grandparent in &parent.parents {
+                assert_eq!(grandparent.depth, 2);
+                assert!(grandparent.parents.is_empty(), "grandparents have no parents");
+            }
+        }
+    }
+
+    #[test]
+    fn pedigree_ancestry_stops_at_max_depth() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-G1", "sp-001", "G001");
+        insert_test_strain(&conn, "st-G2", "sp-001", "G002");
+        insert_hybrid(&conn, "st-P", "st-G1", "st-G2", "sp-001", "P001");
+        insert_test_strain(&conn, "st-G3", "sp-001", "G003");
+        insert_hybrid(&conn, "st-H", "st-P", "st-G3", "sp-001", "H001");
+
+        // max_depth=1 — show parents but not grandparents
+        let node = get_strain_ancestry(&conn, "st-H", 1).unwrap();
+        assert_eq!(node.parents.len(), 2);
+        for parent in &node.parents {
+            assert!(parent.parents.is_empty(), "max_depth=1 must not load grandparents");
+        }
+    }
+
+    #[test]
+    fn pedigree_ancestry_detects_cycle() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+
+        // Create a 2-cycle: A is parent of B, B is parent of A
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) \
+             VALUES ('cyc-1', 'st-B', 'st-A', 'parent_a')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) \
+             VALUES ('cyc-2', 'st-A', 'st-B', 'parent_a')",
+            [],
+        ).unwrap();
+
+        let result = get_strain_ancestry(&conn, "st-A", 5);
+        assert!(result.is_err(), "cycle must be detected and rejected");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("Circular pedigree"), "error must mention circular pedigree: {msg}");
+    }
+
+    #[test]
+    fn pedigree_descendants_wildtype_has_no_children() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-wt", "sp-001", "WT01");
+
+        let node = get_strain_descendants(&conn, "st-wt", 5).unwrap();
+        assert_eq!(node.strain.id, "st-wt");
+        assert!(node.children.is_empty(), "wildtype with no hybrids must have no descendants");
+    }
+
+    #[test]
+    fn pedigree_descendants_finds_direct_children() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H1", "st-A", "st-B", "sp-001", "HH01");
+        insert_hybrid(&conn, "st-H2", "st-A", "st-B", "sp-001", "HH02");
+
+        let node = get_strain_descendants(&conn, "st-A", 5).unwrap();
+        assert_eq!(node.strain.id, "st-A");
+        assert_eq!(node.children.len(), 2, "parent A used in 2 hybridizations must have 2 child nodes");
+    }
+
+    #[test]
+    fn pedigree_descendants_finds_grandchildren() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H1", "st-A", "st-B", "sp-001", "HH01");
+        insert_test_strain(&conn, "st-C", "sp-001", "CC01");
+        insert_hybrid(&conn, "st-H2", "st-H1", "st-C", "sp-001", "HH02");
+
+        let node = get_strain_descendants(&conn, "st-A", 5).unwrap();
+        assert_eq!(node.children.len(), 1);
+        assert_eq!(node.children[0].strain.id, "st-H1");
+        assert_eq!(node.children[0].children.len(), 1, "H1 must have H2 as a child");
+        assert_eq!(node.children[0].children[0].strain.id, "st-H2");
+    }
+
+    #[test]
+    fn pedigree_descendants_detects_cycle() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+
+        // Create a 2-cycle: B is a "child" of A, and A is a "child" of B
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) \
+             VALUES ('cyc-1', 'st-B', 'st-A', 'parent_a')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) \
+             VALUES ('cyc-2', 'st-A', 'st-B', 'parent_a')",
+            [],
+        ).unwrap();
+
+        let result = get_strain_descendants(&conn, "st-A", 5);
+        assert!(result.is_err(), "descendant cycle must be detected");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("Circular pedigree"), "error must mention circular pedigree: {msg}");
+    }
+
+    #[test]
+    fn pedigree_specimen_tree_empty_when_no_specimens() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-wt", "sp-001", "WT01");
+
+        let tree = get_strain_specimen_tree(&conn, "st-wt", false).unwrap();
+        assert_eq!(tree.strain.id, "st-wt");
+        assert!(tree.specimens.is_empty(), "strain with no specimens must return empty list");
+        assert!(tree.descendant_trees.is_empty());
+    }
+
+    #[test]
+    fn pedigree_specimen_tree_finds_bound_specimens() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-wt", "sp-001", "WT01");
+        insert_specimen_for_strain(&conn, "spec-1", "st-wt", "2026-01-WT-001");
+        insert_specimen_for_strain(&conn, "spec-2", "st-wt", "2026-01-WT-002");
+
+        let tree = get_strain_specimen_tree(&conn, "st-wt", false).unwrap();
+        assert_eq!(tree.specimens.len(), 2, "both specimens must be returned");
+    }
+
+    #[test]
+    fn pedigree_specimen_tree_includes_descendant_specimens_when_requested() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H", "st-A", "st-B", "sp-001", "HH01");
+        insert_specimen_for_strain(&conn, "spec-root", "st-A", "2026-01-AA-001");
+        insert_specimen_for_strain(&conn, "spec-hybrid", "st-H", "2026-01-HH-001");
+
+        // Without descendants
+        let tree_no_desc = get_strain_specimen_tree(&conn, "st-A", false).unwrap();
+        assert_eq!(tree_no_desc.specimens.len(), 1);
+        assert!(tree_no_desc.descendant_trees.is_empty());
+
+        // With descendants
+        let tree_with_desc = get_strain_specimen_tree(&conn, "st-A", true).unwrap();
+        assert_eq!(tree_with_desc.specimens.len(), 1, "st-A must have 1 direct specimen");
+        assert_eq!(tree_with_desc.descendant_trees.len(), 1, "st-A must have 1 descendant (st-H via parent_a)");
+        let hybrid_tree = &tree_with_desc.descendant_trees[0];
+        assert_eq!(hybrid_tree.specimens.len(), 1, "st-H must have 1 specimen");
+    }
+
+    #[test]
+    fn pedigree_export_bundles_root_ancestors_and_events() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        insert_hybrid(&conn, "st-H", "st-A", "st-B", "sp-001", "HH01");
+        insert_hybridization_event(&conn, "evt-1", "st-H", "st-A", "st-B");
+
+        let export = export_strain_pedigree(&conn, "st-H", 5).unwrap();
+        assert_eq!(export.root_strain_id, "st-H");
+
+        let strain_ids: Vec<&str> = export.strains.iter().map(|s| s.id.as_str()).collect();
+        assert!(strain_ids.contains(&"st-H"), "export must include root");
+        assert!(strain_ids.contains(&"st-A"), "export must include parent A");
+        assert!(strain_ids.contains(&"st-B"), "export must include parent B");
+
+        assert_eq!(export.hybridization_events.len(), 1, "export must include the hybridization event");
+        assert_eq!(export.hybridization_events[0].id, "evt-1");
+    }
+
+    #[test]
+    fn pedigree_specimen_tree_detects_cycle() {
+        let conn = mem_conn_with_pedigree();
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-A", "sp-001", "AA01");
+        insert_test_strain(&conn, "st-B", "sp-001", "BB01");
+        // Manually create a 2-cycle: A → child B, B → child A
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) VALUES ('cyc-ab', 'st-B', 'st-A', NULL)",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO strain_parents (id, strain_id, parent_strain_id, parent_role) VALUES ('cyc-ba', 'st-A', 'st-B', NULL)",
+            [],
+        ).unwrap();
+        let result = get_strain_specimen_tree(&conn, "st-A", true);
+        assert!(result.is_err(), "cycle must be detected in specimen tree traversal");
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("Circular pedigree"), "error must mention circular pedigree: {msg}");
     }
 }

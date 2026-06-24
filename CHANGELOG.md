@@ -5,6 +5,73 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-06-24
+
+### Added — WP-37: Multi-generational Pedigree Tools
+
+- **`src-tauri/src/models/strain.rs`** — seven new model types for pedigree views:
+  `StrainSummary` (lightweight strain projection with live specimen count),
+  `PedigreeEdge` (directed hybridization edge with parent role, audit chain seq at
+  creation, event ID, and notes), `PedigreeNode` (recursive tree node with separate
+  `parents` / `children` lists), `SpecimenSummary` (lightweight specimen projection),
+  `StrainSpecimenTree` (strain + its specimens + optional descendant sub-trees),
+  `HybridizationEventRecord` (flat hybridization event for export), and `PedigreeExport`
+  (portable bundle: strains + events).
+
+- **`src-tauri/src/db/queries.rs`** — eight new pure pedigree helpers (all testable
+  without Tauri):
+  - `get_strain_ancestry(conn, strain_id, max_depth)` — walks upward through
+    `strain_parents` up to `max_depth` levels and returns a `PedigreeNode` tree with
+    `parents` populated.  Detects and rejects circular references.
+  - `get_strain_descendants(conn, strain_id, max_depth)` — walks downward through
+    `strain_parents` and returns a `PedigreeNode` tree with `children` populated.
+    Detects and rejects circular references.
+  - `get_strain_specimen_tree(conn, strain_id, include_descendants)` — returns all
+    live specimens bound to a strain.  When `include_descendants = true`, recurses
+    into descendant hybrid strains via `load_child_entries`.
+  - `export_strain_pedigree(conn, strain_id, max_depth)` — assembles a portable
+    `PedigreeExport` bundle containing all unique strains and hybridization events
+    reachable within `max_depth` in both directions.
+  - Four private helpers: `load_strain_summary`, `load_parent_entries`,
+    `load_child_entries`, `load_specimens_for_strain`, `collect_pedigree_ids`.
+  - **Cycle detection:** both ancestry and descendant traversals maintain a DFS path
+    stack and return `DbError::Constraint` on the first repeated node.
+  - **13 new unit tests** covering: wildtype with no parents/children, 2- and 3-
+    generation ancestry, 2- and 3-generation descendants, max_depth capping, cycle
+    detection in both directions, specimen tree with and without descendants, and
+    export bundle integrity.
+
+- **`src-tauri/src/commands/strains.rs`** — four new Tauri commands:
+  - `get_strain_ancestry` — auth-gated; `max_depth` defaults to 5, capped at 10.
+  - `get_strain_descendants` — auth-gated; same depth defaults.
+  - `get_strain_specimen_tree` — auth-gated; `include_descendants: bool` flag.
+  - `export_strain_pedigree` — auth-gated; returns a serialized `PedigreeExport`.
+
+- **`src/lib/api.ts`** — seven new TypeScript interfaces (`StrainSummary`,
+  `PedigreeEdge`, `PedigreeNode`, `SpecimenSummary`, `StrainSpecimenTree`,
+  `HybridizationEventRecord`, `PedigreeExport`) and four async wrapper functions
+  (`getStrainAncestry`, `getStrainDescendants`, `getStrainSpecimenTree`,
+  `exportStrainPedigree`).
+
+- **`src/lib/components/PedigreeChart.svelte`** (new) — reusable pedigree
+  visualization component:
+  - Fetches both ancestry and descendants in parallel on mount (default depth 5).
+  - **Ancestors / Descendants toggle** with live node counts in each tab badge.
+  - Pre-order DFS flattening renders the tree as an indented list with connector
+    glyphs, requiring no SVG or canvas.
+  - Each node card shows: strain name, code, status badge (colour-coded:
+    gray/blue/amber/green), Hybrid badge when applicable, live specimen count, and
+    parent role badge (`parent_a` / `parent_b`) on non-root nodes.
+  - Root node is visually distinguished with a primary-colour border.
+  - Clicking any node calls the `onstrainclick` callback with the strain ID.
+  - **Export JSON** button downloads the full pedigree bundle as
+    `pedigree-{strainId}.json` via `exportStrainPedigree`.
+  - Full dark-mode support via `[data-theme="dark"]` selectors.
+
+**Important conceptual distinction preserved:** this packet walks only the
+`strain_parents` hybridization graph.  It never reads `specimens.parent_specimen_id`
+(the separate specimen culture lineage).
+
 ## [1.19.0] - 2026-06-24
 
 ### Added — WP-36: NCBI Taxonomy Import & Ongoing Sync

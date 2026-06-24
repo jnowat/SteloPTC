@@ -664,3 +664,96 @@ export async function listNcbiSyncLog(pendingOnly: boolean, limit?: number) {
     limit: limit ?? null,
   });
 }
+
+// Pedigree (WP-37) — multi-generational strain ancestry and descendant trees.
+// These functions walk the strain hybridization graph (strain_parents) only.
+// They do NOT traverse specimen culture lineage (specimens.parent_specimen_id).
+
+export interface StrainSummary {
+  id: string;
+  name: string;
+  code: string;
+  strain_type: string;
+  status: string;
+  is_hybrid: boolean;
+  is_archived: boolean;
+  specimen_count: number;
+}
+
+export interface PedigreeEdge {
+  parent_strain_id: string;
+  parent_role: string | null;
+  parent_chain_seq_at_creation: number | null;
+  event_id: string | null;
+  event_notes: string | null;
+}
+
+export interface PedigreeNode {
+  strain: StrainSummary;
+  depth: number;
+  edge: PedigreeEdge | null;
+  parents: PedigreeNode[];
+  children: PedigreeNode[];
+}
+
+export interface SpecimenSummary {
+  id: string;
+  accession_number: string;
+  stage: string;
+  location: string | null;
+  is_archived: boolean;
+  strain_id: string;
+  created_at: string;
+}
+
+export interface StrainSpecimenTree {
+  strain: StrainSummary;
+  specimens: SpecimenSummary[];
+  descendant_trees: StrainSpecimenTree[];
+}
+
+export interface HybridizationEventRecord {
+  id: string;
+  hybrid_strain_id: string;
+  parent_a_strain_id: string;
+  parent_b_strain_id: string;
+  parent_a_chain_seq: number;
+  parent_b_chain_seq: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface PedigreeExport {
+  root_strain_id: string;
+  exported_at: string;
+  strains: StrainSummary[];
+  hybridization_events: HybridizationEventRecord[];
+}
+
+export async function getStrainAncestry(strainId: string, maxDepth?: number) {
+  return call<PedigreeNode>('get_strain_ancestry', {
+    strainId,
+    maxDepth: maxDepth ?? null,
+  });
+}
+
+export async function getStrainDescendants(strainId: string, maxDepth?: number) {
+  return call<PedigreeNode>('get_strain_descendants', {
+    strainId,
+    maxDepth: maxDepth ?? null,
+  });
+}
+
+export async function getStrainSpecimenTree(strainId: string, includeDescendants?: boolean) {
+  return call<StrainSpecimenTree>('get_strain_specimen_tree', {
+    strainId,
+    includeDescendants: includeDescendants ?? false,
+  });
+}
+
+export async function exportStrainPedigree(strainId: string, maxDepth?: number) {
+  return call<PedigreeExport>('export_strain_pedigree', {
+    strainId,
+    maxDepth: maxDepth ?? null,
+  });
+}
