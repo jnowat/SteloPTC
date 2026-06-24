@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import { currentUser } from '../stores/auth';
   import { addNotification } from '../stores/app';
   import {
@@ -122,8 +123,6 @@
     try { return JSON.parse(raw); } catch { return null; }
   }
 
-  // Load log on mount
-  import { onMount } from 'svelte';
   onMount(refreshLogs);
 </script>
 

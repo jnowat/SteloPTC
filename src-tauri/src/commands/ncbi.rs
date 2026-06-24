@@ -47,6 +47,8 @@ pub fn import_ncbi_taxonomy(
         kind: ActionKind,
         record: NcbiTaxonRecord,
         taxon_id: Option<String>,
+        /// Local taxon name captured during Phase 1 (used in conflict summaries).
+        local_name: Option<String>,
         log_id: String,
         conflict_details: Option<String>,
     }
@@ -74,6 +76,7 @@ pub fn import_ncbi_taxonomy(
                 actions.push(Action {
                     kind: ActionKind::Skip,
                     taxon_id: Some(local.id),
+                    local_name: None,
                     log_id: String::new(),
                     conflict_details: None,
                     record,
@@ -85,6 +88,7 @@ pub fn import_ncbi_taxonomy(
                 actions.push(Action {
                     kind: ActionKind::Conflict,
                     taxon_id: Some(local.id),
+                    local_name: Some(local.name),
                     log_id: uuid::Uuid::new_v4().to_string(),
                     conflict_details: Some(details),
                     record,
@@ -93,6 +97,7 @@ pub fn import_ncbi_taxonomy(
                 actions.push(Action {
                     kind: ActionKind::Update,
                     taxon_id: Some(local.id),
+                    local_name: None,
                     log_id: uuid::Uuid::new_v4().to_string(),
                     conflict_details: None,
                     record,
@@ -110,6 +115,7 @@ pub fn import_ncbi_taxonomy(
                 actions.push(Action {
                     kind: ActionKind::Skip,
                     taxon_id: Some(local.id),
+                    local_name: None,
                     log_id: String::new(),
                     conflict_details: None,
                     record,
@@ -119,6 +125,7 @@ pub fn import_ncbi_taxonomy(
             actions.push(Action {
                 kind: ActionKind::Update,
                 taxon_id: Some(local.id),
+                local_name: None,
                 log_id: uuid::Uuid::new_v4().to_string(),
                 conflict_details: None,
                 record,
@@ -130,6 +137,7 @@ pub fn import_ncbi_taxonomy(
         actions.push(Action {
             kind: ActionKind::Import,
             taxon_id: Some(uuid::Uuid::new_v4().to_string()),
+            local_name: None,
             log_id: uuid::Uuid::new_v4().to_string(),
             conflict_details: None,
             record,
@@ -221,7 +229,7 @@ pub fn import_ncbi_taxonomy(
                         sync_log_id: Some(action.log_id.clone()),
                         taxon_id: action.taxon_id.clone(),
                         ncbi_taxon_id: action.record.ncbi_taxon_id,
-                        local_name: action.taxon_id.as_ref().map(|_| action.record.name.clone()),
+                        local_name: action.local_name.clone(),
                         ncbi_name: action.record.name.clone(),
                         conflict_details: action
                             .conflict_details
