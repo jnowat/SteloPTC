@@ -51,6 +51,9 @@ pub struct Specimen {
     /// inherited from ancestors and PDL gained through its own passages.
     /// NULL when no cell-count data has ever been recorded on this lineage.
     pub cumulative_pdl: Option<f64>,
+    /// Biosafety containment level for cell culture lines (BSL-1 through BSL-3).
+    /// NULL means unclassified.
+    pub biosafety_level: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,6 +102,7 @@ pub struct UpdateSpecimenRequest {
     pub ip_notes: Option<String>,
     pub environmental_notes: Option<String>,
     pub notes: Option<String>,
+    pub biosafety_level: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

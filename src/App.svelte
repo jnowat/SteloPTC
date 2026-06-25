@@ -26,6 +26,7 @@
   import Settings from './lib/components/Settings.svelte';
   import TaxonomyNavigator from './lib/components/TaxonomyNavigator.svelte';
   import NcbiSyncPanel from './lib/components/NcbiSyncPanel.svelte';
+  import CryoManager from './lib/components/CryoManager.svelte';
 
   let startupError = '';
 
@@ -179,6 +180,8 @@
           <TaxonomyNavigator />
         {:else if $currentView === 'ncbi-sync'}
           <NcbiSyncPanel />
+        {:else if $currentView === 'cryo'}
+          <CryoManager />
         {:else}
           <Dashboard />
         {/if}

@@ -10,6 +10,7 @@ pub mod inventory;
 pub mod error_log;
 pub mod strain;
 pub mod taxon;
+pub mod cryo;
 
 // Re-export common types
 pub use specimen::*;

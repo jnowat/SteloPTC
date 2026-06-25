@@ -28,6 +28,7 @@
     { id: 'taxonomy', label: 'Taxonomy', icon: '&#129516;' },
     { id: 'ncbi-sync', label: 'NCBI Sync', icon: '&#128202;', roles: ['admin'] },
     { id: 'inventory', label: 'Inventory', icon: '&#128230;' },
+    { id: 'cryo', label: 'Cryostorage', icon: '&#10052;' },
     { id: 'users', label: 'Users', icon: '&#128101;', roles: ['admin'] },
     { id: 'settings', label: 'Settings', icon: '&#9881;', roles: ['admin'] },
     { id: 'audit', label: 'Audit Log', icon: '&#128220;', roles: ['admin', 'supervisor'] },
@@ -96,6 +97,7 @@
             item.id === 'taxonomy' ? 'Taxonomy — browse species and strains, manage strain identities' :
             item.id === 'ncbi-sync' ? 'NCBI Sync — import and sync taxonomy data from NCBI (admin only)' :
             item.id === 'inventory' ? 'Inventory — track stock levels and supply usage' :
+            item.id === 'cryo' ? 'Cryostorage — manage frozen vial inventory in LN₂ and −80°C' :
             item.id === 'users' ? 'Users — manage user accounts and roles (admin only)' :
             item.id === 'settings' ? 'Settings — configure lab profile and system options (admin only)' :
             item.id === 'audit' ? 'Audit Log — view system-wide change history (admin/supervisor)' :
@@ -115,6 +117,7 @@
             item.id === 'taxonomy' ? 'Go to Taxonomy — browse species and strains, manage strain identities' :
             item.id === 'ncbi-sync' ? 'Go to NCBI Sync — import and sync taxonomy data from NCBI' :
             item.id === 'inventory' ? 'Go to Inventory — track stock levels and supply usage' :
+            item.id === 'cryo' ? 'Go to Cryostorage — manage frozen vial inventory in LN₂ and −80°C' :
             item.id === 'users' ? 'Go to Users — manage user accounts and roles (admin only)' :
             item.id === 'settings' ? 'Go to Settings — configure lab profile and system options' :
             item.id === 'audit' ? 'Go to Audit Log — view system-wide change history (admin/supervisor)' :

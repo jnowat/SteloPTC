@@ -94,6 +94,7 @@ pub fn list_specimens(
             strain_id: row.get("strain_id")?,
             strain_chain_seq: row.get("strain_chain_seq")?,
             cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
+            biosafety_level: row.get("biosafety_level").unwrap_or(None),
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -172,6 +173,7 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 strain_id: row.get("strain_id")?,
                 strain_chain_seq: row.get("strain_chain_seq")?,
                 cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
+                biosafety_level: row.get("biosafety_level").unwrap_or(None),
             })
         },
     ).map_err(|e| format!("Specimen not found: {}", e))
@@ -323,6 +325,10 @@ pub fn update_specimen(
     if let Some(ipf) = request.ip_flag {
         updates.push(format!("ip_flag = ?{}", values.len() + 1));
         values.push(Box::new(ipf as i32));
+    }
+    if let Some(ref bsl) = request.biosafety_level {
+        updates.push(format!("biosafety_level = ?{}", values.len() + 1));
+        values.push(Box::new(bsl.clone()));
     }
 
     if updates.is_empty() {
@@ -510,6 +516,7 @@ pub fn search_specimens(
             strain_id: row.get("strain_id")?,
             strain_chain_seq: row.get("strain_chain_seq")?,
             cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
+            biosafety_level: row.get("biosafety_level").unwrap_or(None),
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())

@@ -180,6 +180,7 @@
                 <th title="Species code of the flagged specimen">Species</th>
                 <th title="Type of compliance issue detected">Flag</th>
                 <th title="Details about the compliance issue">Message</th>
+                <th title="Date of the most recent relevant test, if any">Last Test</th>
               </tr>
             </thead>
             <tbody>
@@ -190,6 +191,7 @@
                   <td>{f.species_code}</td>
                   <td>{f.flag_type.replace(/_/g, ' ')}</td>
                   <td>{f.message}</td>
+                  <td>{f.last_test_date ?? '—'}</td>
                 </tr>
               {/each}
             </tbody>

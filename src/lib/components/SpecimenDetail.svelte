@@ -886,6 +886,14 @@ ${footnotesHtml}
             <span class="info-value">{specimen.cumulative_pdl.toFixed(2)} <span style="color:#6b7280;font-size:12px;">doublings</span></span>
           </div>
         {/if}
+        {#if specimen.biosafety_level}
+          <div class="info-item">
+            <span class="info-label" title="Biosafety containment level required for this cell culture line">Biosafety Level</span>
+            <span class="info-value">
+              <span class="badge {specimen.biosafety_level === 'BSL-3' ? 'badge-red' : specimen.biosafety_level === 'BSL-2+' ? 'badge-red' : specimen.biosafety_level === 'BSL-2' ? 'badge-yellow' : 'badge-blue'}" title="Biosafety level: {specimen.biosafety_level}">{specimen.biosafety_level}</span>
+            </span>
+          </div>
+        {/if}
         <div class="info-item">
           <span class="info-label" title="Origin or history of this specimen (wild-collected, ex-situ, cultivar, etc.)">Provenance</span>
           <span class="info-value">{specimen.provenance || '—'}</span>
