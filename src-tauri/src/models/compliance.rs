@@ -51,6 +51,15 @@ pub struct UpdateComplianceRequest {
 }
 
 #[derive(Debug, Serialize)]
+pub struct MycoplasmaStatus {
+    pub specimen_id: String,
+    pub accession_number: String,
+    pub species_code: String,
+    pub last_test_date: Option<String>,
+    pub last_test_result: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ComplianceFlag {
     pub specimen_id: String,
     pub accession_number: String,
@@ -58,4 +67,5 @@ pub struct ComplianceFlag {
     pub flag_type: String,
     pub message: String,
     pub severity: String,
+    pub last_test_date: Option<String>,
 }

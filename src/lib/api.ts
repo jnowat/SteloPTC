@@ -232,6 +232,10 @@ export async function getComplianceFlags() {
   return call<any[]>('get_compliance_flags');
 }
 
+export async function getMycoplasmaStatus() {
+  return call<any[]>('get_mycoplasma_status');
+}
+
 // Species
 export async function listSpecies() {
   return call<any[]>('list_species');

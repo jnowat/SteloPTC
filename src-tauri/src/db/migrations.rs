@@ -138,6 +138,23 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (25)", [])?;
     }
 
+    if current < 26 {
+        migration_026_biosafety_level(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (26)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_026_biosafety_level(conn: &Connection) -> DbResult<()> {
+    // WP-33: mycoplasma & contamination testing compliance.
+    // Adds a nullable biosafety_level column to specimens so that cell culture
+    // lines can be classified as BSL-1 through BSL-3.  A CHECK constraint
+    // enforces the allowed values; NULL means "not classified".
+    conn.execute_batch(
+        "ALTER TABLE specimens ADD COLUMN biosafety_level TEXT
+         CHECK(biosafety_level IN ('BSL-1','BSL-2','BSL-2+','BSL-3'));",
+    )?;
     Ok(())
 }
 
@@ -2660,5 +2677,89 @@ mod tests {
             [],
         );
         assert!(result.is_err(), "negative vial_count must be rejected by CHECK constraint");
+    }
+
+    // ── migration 026 (WP-33) ─────────────────────────────────────────────────
+
+    #[test]
+    fn biosafety_level_column_exists_after_migration_026() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Homo', 'sapiens', 'HEK')",
+            [],
+        )
+        .unwrap();
+        let now = "2026-01-01";
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, \
+              quarantine_flag, ip_flag, subculture_count, is_archived, contamination_flag, \
+              generation, lineage_passage_offset, biosafety_level, created_at, updated_at) \
+             VALUES ('s1', '2026-01-01-HEK-001', 'sp1', 'culture', ?1, \
+                     0, 0, 0, 0, 0, 0, 0, 'BSL-2', ?1, ?1)",
+            [now],
+        )
+        .expect("biosafety_level column must accept valid BSL value after migration 026");
+        let bsl: Option<String> = conn
+            .query_row(
+                "SELECT biosafety_level FROM specimens WHERE id = 's1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(bsl.as_deref(), Some("BSL-2"));
+    }
+
+    #[test]
+    fn biosafety_level_rejects_invalid_value() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Homo', 'sapiens', 'HEK')",
+            [],
+        )
+        .unwrap();
+        let now = "2026-01-01";
+        let result = conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, \
+              quarantine_flag, ip_flag, subculture_count, is_archived, contamination_flag, \
+              generation, lineage_passage_offset, biosafety_level, created_at, updated_at) \
+             VALUES ('s2', '2026-01-01-HEK-002', 'sp1', 'culture', ?1, \
+                     0, 0, 0, 0, 0, 0, 0, 'BSL-99', ?1, ?1)",
+            [now],
+        );
+        assert!(result.is_err(), "invalid biosafety_level must be rejected by CHECK constraint");
+    }
+
+    #[test]
+    fn biosafety_level_defaults_to_null() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1', 'Homo', 'sapiens', 'HEK')",
+            [],
+        )
+        .unwrap();
+        let now = "2026-01-01";
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, \
+              quarantine_flag, ip_flag, subculture_count, is_archived, contamination_flag, \
+              generation, lineage_passage_offset, created_at, updated_at) \
+             VALUES ('s3', '2026-01-01-HEK-003', 'sp1', 'culture', ?1, \
+                     0, 0, 0, 0, 0, 0, 0, ?1, ?1)",
+            [now],
+        )
+        .unwrap();
+        let bsl: Option<String> = conn
+            .query_row(
+                "SELECT biosafety_level FROM specimens WHERE id = 's3'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(bsl.is_none(), "biosafety_level must default to NULL for existing specimens");
     }
 }

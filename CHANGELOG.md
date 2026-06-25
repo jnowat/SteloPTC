@@ -5,6 +5,52 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-06-25
+
+### Added — WP-33: Mycoplasma & Contamination Testing Compliance
+
+- **Backend — `src-tauri/src/db/migrations.rs`** — migration 026 adds a nullable
+  `biosafety_level TEXT CHECK(biosafety_level IN ('BSL-1','BSL-2','BSL-2+','BSL-3'))` column
+  to the `specimens` table; existing rows default to NULL (unclassified). Includes 3 new
+  migration tests.
+
+- **Backend — `src-tauri/src/models/compliance.rs`** — new `MycoplasmaStatus` struct
+  (`specimen_id`, `accession_number`, `species_code`, `last_test_date`, `last_test_result`).
+  `ComplianceFlag` gains a `last_test_date: Option<String>` field so the UI can display the
+  most recent relevant test date for each flag.
+
+- **Backend — `src-tauri/src/models/specimen.rs`** — `Specimen` struct and
+  `UpdateSpecimenRequest` gain `biosafety_level: Option<String>`.
+
+- **Backend — `src-tauri/src/db/queries.rs`** — new `list_mycoplasma_status(conn)` query
+  helper returning the latest mycoplasma test date and result for every non-archived specimen.
+  Includes 4 new unit tests.
+
+- **Backend — `src-tauri/src/commands/compliance.rs`** — `get_compliance_flags` gains a new
+  **mycoplasma compliance rule** block: when the lab profile is `cell_culture`, every
+  non-archived specimen without a mycoplasma test result within the configurable interval
+  (default 90 days, read from `app_settings.mycoplasma_test_interval_days`) is flagged as
+  `missing_mycoplasma_test / severity: high`. The flag message includes the last test date when
+  one exists. New `get_mycoplasma_status` Tauri command exposes per-specimen mycoplasma status.
+  Includes 3 new compliance rule tests.
+
+- **Backend — `src-tauri/src/commands/specimens.rs`** — `list_specimens`, `get_specimen`, and
+  `search_specimens` SELECT queries return `biosafety_level`. `update_specimen` accepts a
+  `biosafety_level` patch.
+
+- **Backend — `src-tauri/src/lib.rs`** — `get_mycoplasma_status` registered in the Tauri
+  invoke handler.
+
+- **Frontend — `src/lib/api.ts`** — `getMycoplasmaStatus()` async wrapper.
+
+- **Frontend — `src/lib/components/ComplianceView.svelte`** — flags table gains a "Last Test"
+  column showing `last_test_date` for each flag (populated for mycoplasma flags; `—` for
+  others).
+
+- **Frontend — `src/lib/components/SpecimenDetail.svelte`** — specimen info card displays a
+  colour-coded BSL badge when `biosafety_level` is set (BSL-1: blue, BSL-2: yellow,
+  BSL-2+/BSL-3: red).
+
 ## [1.25.0] - 2026-06-24
 
 ### Added — WP-32: Cryopreservation & LN2 Inventory

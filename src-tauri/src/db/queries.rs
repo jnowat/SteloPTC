@@ -7,6 +7,7 @@ use crate::models::strain::{
     GenerationalStats, HybridizationEventRecord, PedigreeEdge, PedigreeExport, PedigreeNode,
     SpecimenSummary, StrainSpecimenTree, StrainSummary, SuggestGenerationLabelResponse,
 };
+use crate::models::compliance::MycoplasmaStatus;
 use crate::models::cryo::{CreateFrozenVialRequest, FrozenVial, ListFrozenVialsParams};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
@@ -2068,6 +2069,39 @@ pub fn thaw_frozen_vial(
         .map_err(|e| DbError::Constraint(format!("Transaction commit failed: {}", e)))?;
 
     Ok((specimen_id, accession))
+}
+
+/// Return the latest mycoplasma test date and result for every non-archived specimen.
+/// Rows with no mycoplasma compliance record at all are included with NULL fields.
+pub fn list_mycoplasma_status(conn: &Connection) -> DbResult<Vec<MycoplasmaStatus>> {
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.accession_number, sp.species_code,
+         (SELECT cr.test_date FROM compliance_records cr
+          WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+          AND cr.test_result IS NOT NULL
+          ORDER BY cr.test_date DESC LIMIT 1) as last_test_date,
+         (SELECT cr.test_result FROM compliance_records cr
+          WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+          AND cr.test_result IS NOT NULL
+          ORDER BY cr.test_date DESC LIMIT 1) as last_test_result
+         FROM specimens s
+         JOIN species sp ON s.species_id = sp.id
+         WHERE s.is_archived = 0
+         ORDER BY s.accession_number",
+    )?;
+    let items = stmt
+        .query_map([], |row| {
+            Ok(MycoplasmaStatus {
+                specimen_id: row.get(0)?,
+                accession_number: row.get(1)?,
+                species_code: row.get(2)?,
+                last_test_date: row.get(3)?,
+                last_test_result: row.get(4)?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(items)
 }
 
 /// Mark a frozen vial lot as discarded (e.g. contaminated, damaged).
@@ -4350,5 +4384,116 @@ mod tests {
         let vials = list_frozen_vials(&conn, &params).expect("list");
         assert_eq!(vials.len(), 1);
         assert_eq!(vials[0].species_id, "sp1");
+    }
+
+    // ── list_mycoplasma_status ────────────────────────────────────────────────
+
+    fn myco_test_db() -> Connection {
+        let conn = Connection::open_in_memory().expect("in-memory DB");
+        conn.execute_batch(
+            "CREATE TABLE species (
+                id TEXT PRIMARY KEY,
+                genus TEXT NOT NULL,
+                species_name TEXT NOT NULL,
+                species_code TEXT NOT NULL UNIQUE
+            );
+            CREATE TABLE specimens (
+                id TEXT PRIMARY KEY,
+                accession_number TEXT NOT NULL UNIQUE,
+                species_id TEXT NOT NULL REFERENCES species(id),
+                is_archived INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE compliance_records (
+                id TEXT PRIMARY KEY,
+                specimen_id TEXT NOT NULL REFERENCES specimens(id),
+                test_type TEXT,
+                test_date TEXT,
+                test_result TEXT
+            );",
+        )
+        .expect("create tables");
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) VALUES ('sp1','Homo','sapiens','HEK')",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn mycoplasma_status_returns_all_active_specimens() {
+        let conn = myco_test_db();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id) VALUES ('s1','ACC-001','sp1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, is_archived) \
+             VALUES ('s2','ACC-002','sp1',1)",
+            [],
+        )
+        .unwrap();
+        let status = list_mycoplasma_status(&conn).expect("query");
+        assert_eq!(status.len(), 1, "archived specimens must be excluded");
+        assert_eq!(status[0].specimen_id, "s1");
+    }
+
+    #[test]
+    fn mycoplasma_status_returns_last_test_date() {
+        let conn = myco_test_db();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id) VALUES ('s1','ACC-001','sp1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_type,test_date,test_result) \
+             VALUES ('cr1','s1','mycoplasma','2026-01-01','negative')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_type,test_date,test_result) \
+             VALUES ('cr2','s1','mycoplasma','2026-03-01','negative')",
+            [],
+        )
+        .unwrap();
+        let status = list_mycoplasma_status(&conn).expect("query");
+        assert_eq!(status[0].last_test_date.as_deref(), Some("2026-03-01"),
+            "must return the most recent test date");
+        assert_eq!(status[0].last_test_result.as_deref(), Some("negative"));
+    }
+
+    #[test]
+    fn mycoplasma_status_null_when_no_test_recorded() {
+        let conn = myco_test_db();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id) VALUES ('s1','ACC-001','sp1')",
+            [],
+        )
+        .unwrap();
+        let status = list_mycoplasma_status(&conn).expect("query");
+        assert!(status[0].last_test_date.is_none(), "last_test_date must be NULL when no test exists");
+        assert!(status[0].last_test_result.is_none());
+    }
+
+    #[test]
+    fn mycoplasma_status_ignores_non_mycoplasma_records() {
+        let conn = myco_test_db();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id) VALUES ('s1','ACC-001','sp1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_type,test_date,test_result) \
+             VALUES ('cr1','s1','HLB','2026-01-01','negative')",
+            [],
+        )
+        .unwrap();
+        let status = list_mycoplasma_status(&conn).expect("query");
+        assert!(status[0].last_test_date.is_none(),
+            "non-mycoplasma test records must not affect mycoplasma status");
     }
 }

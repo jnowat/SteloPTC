@@ -1,6 +1,9 @@
 use crate::auth as auth_service;
 use crate::db::queries;
-use crate::models::compliance::*;
+use crate::models::compliance::{
+    ComplianceFlag, ComplianceRecord, CreateComplianceRequest, MycoplasmaStatus,
+    UpdateComplianceRequest,
+};
 use crate::models::specimen::PaginatedResponse;
 use crate::AppState;
 use rusqlite::params;
@@ -244,6 +247,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
                 flag_type: "expired_permit".to_string(),
                 message: "Permit has expired".to_string(),
                 severity: "critical".to_string(),
+                last_test_date: None,
             })
         }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
         flags.extend(expired);
@@ -272,6 +276,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
                 flag_type: "missing_hlb_test".to_string(),
                 message: "Citrus specimen missing HLB test in last 12 months".to_string(),
                 severity: "critical".to_string(),
+                last_test_date: None,
             })
         }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
         flags.extend(missing_hlb);
@@ -295,6 +300,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
                 flag_type: "quarantine_no_release".to_string(),
                 message: "Quarantined specimen has no scheduled release date".to_string(),
                 severity: "high".to_string(),
+                last_test_date: None,
             })
         }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
         flags.extend(quarantine);
@@ -319,12 +325,74 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
                 flag_type: "positive_not_quarantined".to_string(),
                 message: "Specimen has positive disease test but is not quarantined".to_string(),
                 severity: "critical".to_string(),
+                last_test_date: None,
             })
         }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
         flags.extend(positive_no_quarantine);
     }
 
+    // Flag: Cell culture lines with no recent mycoplasma test (configurable interval)
+    {
+        let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
+        if profile == "cell_culture" {
+            let interval_str = queries::read_setting(&db.conn, "mycoplasma_test_interval_days", "90");
+            let interval_days: i64 = interval_str.parse().unwrap_or(90);
+            let sql = format!(
+                "SELECT s.id, s.accession_number, sp.species_code, \
+                 (SELECT MAX(cr.test_date) FROM compliance_records cr \
+                  WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma' \
+                  AND cr.test_result IS NOT NULL) as last_test_date \
+                 FROM specimens s \
+                 JOIN species sp ON s.species_id = sp.id \
+                 WHERE s.is_archived = 0 \
+                 AND ( \
+                     (SELECT MAX(cr.test_date) FROM compliance_records cr \
+                      WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma' \
+                      AND cr.test_result IS NOT NULL) IS NULL \
+                     OR (SELECT MAX(cr.test_date) FROM compliance_records cr \
+                         WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma' \
+                         AND cr.test_result IS NOT NULL) < date('now', '-{} days') \
+                 )",
+                interval_days
+            );
+            let mut stmt = db.conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let missing_myco: Vec<ComplianceFlag> = stmt.query_map([], |row| {
+                let last_date: Option<String> = row.get(3)?;
+                let msg = match &last_date {
+                    Some(d) => format!(
+                        "Last mycoplasma test ({}) exceeds {}-day interval",
+                        d, interval_days
+                    ),
+                    None => format!(
+                        "No mycoplasma test on record (required every {} days)",
+                        interval_days
+                    ),
+                };
+                Ok(ComplianceFlag {
+                    specimen_id: row.get(0)?,
+                    accession_number: row.get(1)?,
+                    species_code: row.get(2)?,
+                    flag_type: "missing_mycoplasma_test".to_string(),
+                    message: msg,
+                    severity: "high".to_string(),
+                    last_test_date: last_date,
+                })
+            }).map_err(|e| e.to_string())?.filter_map(|r| r.ok()).collect();
+            flags.extend(missing_myco);
+        }
+    }
+
     Ok(flags)
+}
+
+#[tauri::command]
+pub fn get_mycoplasma_status(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<MycoplasmaStatus>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::list_mycoplasma_status(&db.conn).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -600,5 +668,89 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0);
+    }
+
+    // ── Mycoplasma flag (WP-33) ───────────────────────────────────────────────
+
+    #[test]
+    fn flag_mycoplasma_no_test_on_record() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "HEK-293");
+        insert_specimen(&conn, "s1", "sp1", "ACC-001");
+        // No mycoplasma compliance record → should be flagged (interval 90 days).
+        let interval_days: i64 = 90;
+        let sql = format!(
+            "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+             WHERE s.is_archived = 0
+             AND (
+                 (SELECT MAX(cr.test_date) FROM compliance_records cr
+                  WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+                  AND cr.test_result IS NOT NULL) IS NULL
+                 OR (SELECT MAX(cr.test_date) FROM compliance_records cr
+                     WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+                     AND cr.test_result IS NOT NULL) < date('now', '-{} days')
+             )",
+            interval_days
+        );
+        let count: i64 = conn.query_row(&sql, [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "specimen with no mycoplasma test must be flagged");
+    }
+
+    #[test]
+    fn flag_mycoplasma_recent_test_not_flagged() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "HEK-293");
+        insert_specimen(&conn, "s1", "sp1", "ACC-001");
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_type,test_date,test_result)
+             VALUES ('cr1','s1','mycoplasma',date('now','-30 days'),'negative')",
+            [],
+        )
+        .unwrap();
+        let interval_days: i64 = 90;
+        let sql = format!(
+            "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+             WHERE s.is_archived = 0
+             AND (
+                 (SELECT MAX(cr.test_date) FROM compliance_records cr
+                  WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+                  AND cr.test_result IS NOT NULL) IS NULL
+                 OR (SELECT MAX(cr.test_date) FROM compliance_records cr
+                     WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+                     AND cr.test_result IS NOT NULL) < date('now', '-{} days')
+             )",
+            interval_days
+        );
+        let count: i64 = conn.query_row(&sql, [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0, "specimen with recent mycoplasma test must not be flagged");
+    }
+
+    #[test]
+    fn flag_mycoplasma_stale_test_is_flagged() {
+        let conn = setup_db();
+        insert_species(&conn, "sp1", "HEK-293");
+        insert_specimen(&conn, "s1", "sp1", "ACC-001");
+        conn.execute(
+            "INSERT INTO compliance_records (id,specimen_id,test_type,test_date,test_result)
+             VALUES ('cr1','s1','mycoplasma','2024-01-01','negative')",
+            [],
+        )
+        .unwrap();
+        let interval_days: i64 = 90;
+        let sql = format!(
+            "SELECT COUNT(*) FROM specimens s JOIN species sp ON s.species_id=sp.id
+             WHERE s.is_archived = 0
+             AND (
+                 (SELECT MAX(cr.test_date) FROM compliance_records cr
+                  WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+                  AND cr.test_result IS NOT NULL) IS NULL
+                 OR (SELECT MAX(cr.test_date) FROM compliance_records cr
+                     WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma'
+                     AND cr.test_result IS NOT NULL) < date('now', '-{} days')
+             )",
+            interval_days
+        );
+        let count: i64 = conn.query_row(&sql, [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "specimen with stale mycoplasma test must be flagged");
     }
 }

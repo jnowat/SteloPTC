@@ -86,6 +86,7 @@ pub fn run() {
             commands::compliance::create_compliance_record,
             commands::compliance::update_compliance_record,
             commands::compliance::get_compliance_flags,
+            commands::compliance::get_mycoplasma_status,
             // Species
             commands::species::list_species,
             commands::species::create_species,
