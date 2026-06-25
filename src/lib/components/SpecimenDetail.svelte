@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, type ColonizationEntry } from '../api';
+  import { labProfile } from '../profile';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
   import SpecimenComplianceTable from './SpecimenComplianceTable.svelte';
@@ -20,6 +21,7 @@
   let showQrScanner = $state(false);
   let subcultures = $state<any[]>([]);
   let mediaBatches = $state<any[]>([]);
+  let colonizationHistory = $state<ColonizationEntry[]>([]);
   let complianceRecords = $state<any[]>([]);
   let parentSpecimen = $state<any>(null);
   let childSpecimens = $state<any[]>([]);
@@ -177,9 +179,11 @@
     employee_id: '',
     contamination_flag: false,
     contamination_notes: '',
+    contaminant_type: '',
     seed_cell_count: '',
     harvest_cell_count: '',
     split_ratio: '',
+    colonization_pct: '',
   });
 
   // Media date warning: show if selected media batch was prepared after the passage date
@@ -356,6 +360,13 @@
       }
 
       subcultures = timelineItems;
+
+      // Load colonization history for mycology specimens
+      if (get(labProfile) === 'mycology') {
+        colonizationHistory = await getColonizationHistory(id).catch(() => []);
+      } else {
+        colonizationHistory = [];
+      }
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -376,8 +387,9 @@
       media_batch_id: '', vessel_type: '', temperature_c: '',
       ph: '', light_cycle: '', notes: '', observations: '',
       health_status: '', health_unknown: false, employee_id: '',
-      contamination_flag: false, contamination_notes: '',
+      contamination_flag: false, contamination_notes: '', contaminant_type: '',
       seed_cell_count: '', harvest_cell_count: '', split_ratio: '',
+      colonization_pct: '',
     };
   }
 
@@ -480,9 +492,11 @@
         employee_id: subcultureForm.employee_id || undefined,
         contamination_flag: subcultureForm.contamination_flag || undefined,
         contamination_notes: subcultureForm.contamination_notes || undefined,
+        contaminant_type: subcultureForm.contaminant_type || undefined,
         seed_cell_count: subcultureForm.seed_cell_count ? parseFloat(subcultureForm.seed_cell_count) : undefined,
         harvest_cell_count: subcultureForm.harvest_cell_count ? parseFloat(subcultureForm.harvest_cell_count) : undefined,
         split_ratio: subcultureForm.split_ratio ? parseFloat(subcultureForm.split_ratio) : undefined,
+        colonization_pct: subcultureForm.colonization_pct ? parseFloat(subcultureForm.colonization_pct) : undefined,
       });
       localStorage.setItem('sc_lastRoom', locToRoom);
       localStorage.setItem('sc_lastRack', locToRack);
@@ -1132,6 +1146,23 @@ ${footnotesHtml}
               <input id="sc-employee-id" type="text" title="ID or badge number of the technician who performed this passage (for traceability)" bind:value={subcultureForm.employee_id} placeholder="e.g., EMP-042" />
             </div>
 
+            <!-- Colonization % (mycology only) -->
+            {#if $labProfile === 'mycology'}
+              <div class="form-group">
+                <label for="sc-colonization-pct" title="Percentage of substrate colonized by mycelium (0–100%)">Colonization %</label>
+                <input
+                  id="sc-colonization-pct"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  title="Percentage of substrate colonized by mycelium"
+                  bind:value={subcultureForm.colonization_pct}
+                  placeholder="0–100"
+                />
+              </div>
+            {/if}
+
             <!-- Contamination -->
             <div class="contamination-row" class:active={subcultureForm.contamination_flag}>
               <label class="contam-toggle-label" title="Flag this vessel as contaminated (bacterial, fungal, yeast, or other)">
@@ -1139,6 +1170,20 @@ ${footnotesHtml}
                 <span class="contam-toggle-text">Contamination detected in this vessel</span>
               </label>
               {#if subcultureForm.contamination_flag}
+                {#if $labProfile === 'mycology'}
+                  <div class="form-group" style="margin-top:8px;">
+                    <label for="sc-contaminant-type" title="Identify the contaminant type">Contaminant Type</label>
+                    <select id="sc-contaminant-type" bind:value={subcultureForm.contaminant_type}>
+                      <option value="">— select type —</option>
+                      <option value="trich">Trichoderma (Trich)</option>
+                      <option value="wet_rot">Wet Rot / Bacterial</option>
+                      <option value="cobweb">Cobweb Mold</option>
+                      <option value="pin_mold">Pin Mold (Mucor / Rhizopus)</option>
+                      <option value="mycelium_abort">Mycelium Abort</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                {/if}
                 <div class="form-group" style="margin-top:8px;">
                   <label for="sc-contam-notes" title="Describe the contamination observed — type (bacterial, fungal, yeast), extent, and corrective action taken">Contamination Notes</label>
                   <textarea
@@ -1413,6 +1458,27 @@ ${footnotesHtml}
           onreload={() => loadAll($selectedSpecimenId!)}
           onnavigate={navigateToSpecimen}
         />
+
+        <!-- Colonization Progress (mycology only) -->
+        {#if $labProfile === 'mycology' && colonizationHistory.length > 0}
+          <div class="colonization-history" style="margin-top:24px;">
+            <h4 style="font-size:14px;margin-bottom:10px;color:var(--text-secondary);">Colonization Progress</h4>
+            <div class="colonization-bars">
+              {#each colonizationHistory as entry}
+                <div class="colonization-bar-row" title="P{entry.passage_number} — {entry.date}: {entry.colonization_pct}%{entry.notes ? ' | ' + entry.notes : ''}">
+                  <span class="colonization-bar-label">P{entry.passage_number}</span>
+                  <div class="colonization-bar-track">
+                    <div
+                      class="colonization-bar-fill"
+                      style="width:{entry.colonization_pct}%;background:{entry.colonization_pct >= 80 ? '#16a34a' : entry.colonization_pct >= 50 ? '#ca8a04' : '#dc2626'};"
+                    ></div>
+                  </div>
+                  <span class="colonization-bar-pct">{entry.colonization_pct}%</span>
+                </div>
+              {/each}
+            </div>
+          </div>
+        {/if}
       </div>
 
     <!-- ── Photos Tab ── -->
@@ -2103,5 +2169,24 @@ ${footnotesHtml}
   :global(.dark) .strain-pill-confirmed_manual { background: #78350f; color: #fde68a; }
   :global(.dark) .strain-pill-confirmed_genomic { background: #166534; color: #dcfce7; }
   :global(.dark) .strain-pill-claimed { background: #1e40af; color: #dbeafe; }
+
+  /* ── Colonization progress bars (mycology) ────────────────────────────── */
+  .colonization-bars { display: flex; flex-direction: column; gap: 6px; }
+  .colonization-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: default;
+  }
+  .colonization-bar-label { font-size: 11px; width: 28px; flex-shrink: 0; color: var(--text-secondary); }
+  .colonization-bar-track {
+    flex: 1;
+    height: 10px;
+    background: var(--border-color, #e5e7eb);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .colonization-bar-fill { height: 100%; border-radius: 5px; transition: width 0.3s ease; }
+  .colonization-bar-pct { font-size: 11px; width: 34px; text-align: right; flex-shrink: 0; color: var(--text-secondary); }
 
 </style>

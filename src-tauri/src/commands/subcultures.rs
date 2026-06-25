@@ -136,6 +136,8 @@ fn row_to_subculture(row: &rusqlite::Row) -> rusqlite::Result<Subculture> {
         split_ratio: row.get("split_ratio").unwrap_or(None),
         pdl_gained: row.get("pdl_gained").unwrap_or(None),
         doubling_time_hours: row.get("doubling_time_hours").unwrap_or(None),
+        colonization_pct: row.get("colonization_pct").unwrap_or(None),
+        contaminant_type: row.get("contaminant_type").unwrap_or(None),
     })
 }
 
@@ -258,8 +260,9 @@ pub fn create_subculture(
          humidity_before, humidity_after, light_before, light_after,
          exposure_duration_hours, notes, observations, performed_by, employee_id,
          health_status, contamination_flag, contamination_notes,
-         seed_cell_count, harvest_cell_count, split_ratio, pdl_gained, doubling_time_hours)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35)",
+         seed_cell_count, harvest_cell_count, split_ratio, pdl_gained, doubling_time_hours,
+         colonization_pct, contaminant_type)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36,?37)",
         params![
             id, request.specimen_id, passage_number, request.date, request.media_batch_id,
             request.ph, request.temperature_c, request.light_cycle, request.light_intensity_lux,
@@ -272,6 +275,7 @@ pub fn create_subculture(
             contamination_flag, request.contamination_notes,
             request.seed_cell_count, request.harvest_cell_count, request.split_ratio,
             pdl_gained, doubling_time_hours,
+            request.colonization_pct, request.contaminant_type,
         ],
     ).map_err(|e| format!("Failed to create subculture: {}", e))?;
 
@@ -348,6 +352,14 @@ pub fn update_subculture(
         updates.push(format!("contamination_notes = ?{}", values.len() + 1));
         values.push(Box::new(cn.clone()));
     }
+    if let Some(pct) = request.colonization_pct {
+        updates.push(format!("colonization_pct = ?{}", values.len() + 1));
+        values.push(Box::new(pct));
+    }
+    if let Some(ref ct) = request.contaminant_type {
+        updates.push(format!("contaminant_type = ?{}", values.len() + 1));
+        values.push(Box::new(ct.clone()));
+    }
 
     if updates.is_empty() {
         return Err("No fields to update".to_string());
@@ -397,6 +409,34 @@ pub fn list_all_subcultures(
         .collect();
 
     Ok(subcultures)
+}
+
+// ── Colonization History ─────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn get_colonization_history(
+    state: State<AppState>,
+    token: String,
+    specimen_id: String,
+) -> Result<Vec<ColonizationEntry>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let mut stmt = db.conn.prepare(
+        "SELECT id, date, colonization_pct, passage_number, notes
+         FROM subcultures
+         WHERE specimen_id = ?1 AND colonization_pct IS NOT NULL
+         ORDER BY date ASC, passage_number ASC",
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map(params![specimen_id], |row| {
+        Ok(ColonizationEntry {
+            subculture_id: row.get("id")?,
+            date: row.get("date")?,
+            colonization_pct: row.get("colonization_pct")?,
+            passage_number: row.get("passage_number")?,
+            notes: row.get("notes")?,
+        })
+    }).map_err(|e| e.to_string())?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 // ── Contamination Stats ──────────────────────────────────────────────────────

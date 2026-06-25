@@ -190,6 +190,18 @@ export async function getContaminationStats() {
   return call<any>('get_contamination_stats');
 }
 
+export interface ColonizationEntry {
+  subculture_id: string;
+  date: string;
+  colonization_pct: number;
+  passage_number: number;
+  notes?: string | null;
+}
+
+export async function getColonizationHistory(specimenId: string): Promise<ColonizationEntry[]> {
+  return call<ColonizationEntry[]>('get_colonization_history', { specimenId });
+}
+
 export async function getSubcultureSchedule() {
   return call<any[]>('get_subculture_schedule');
 }
