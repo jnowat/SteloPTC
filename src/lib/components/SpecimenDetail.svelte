@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, type ColonizationEntry } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, type ColonizationEntry } from '../api';
   import { labProfile } from '../profile';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
@@ -556,6 +556,17 @@
     }
   }
 
+  async function toggleBestPerformer() {
+    if (!specimen) return;
+    const newValue = !specimen.is_best_performer;
+    try {
+      specimen = await updateSpecimen({ id: specimen.id, is_best_performer: newValue });
+      addNotification(newValue ? 'Marked as best performer' : 'Best performer flag cleared', 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    }
+  }
+
   function printCultureReport() {
     if (!specimen) return;
     const user = get(currentUser);
@@ -905,6 +916,36 @@ ${footnotesHtml}
             <span class="info-label" title="Biosafety containment level required for this cell culture line">Biosafety Level</span>
             <span class="info-value">
               <span class="badge {specimen.biosafety_level === 'BSL-3' ? 'badge-red' : specimen.biosafety_level === 'BSL-2+' ? 'badge-red' : specimen.biosafety_level === 'BSL-2' ? 'badge-yellow' : 'badge-blue'}" title="Biosafety level: {specimen.biosafety_level}">{specimen.biosafety_level}</span>
+            </span>
+          </div>
+        {/if}
+        {#if $labProfile === 'mycology' && specimen.origin_type}
+          <div class="info-item">
+            <span class="info-label" title="How this culture was originally established from source material">Culture Origin</span>
+            <span class="info-value">
+              {#if specimen.origin_type === 'multi_spore'}
+                <span class="badge badge-blue" title="Culture originated from a multi-spore print">Multi-Spore</span>
+              {:else if specimen.origin_type === 'isolated_dikaryon'}
+                <span class="badge badge-purple" title="Culture originated from an isolated dikaryon (single spore pair germination)">Isolated Dikaryon</span>
+              {:else if specimen.origin_type === 'tissue_clone'}
+                <span class="badge badge-green" title="Culture originated from fruit body tissue cloning">Tissue Clone</span>
+              {:else}
+                <span class="badge badge-gray">{specimen.origin_type}</span>
+              {/if}
+            </span>
+          </div>
+        {/if}
+        {#if $labProfile === 'mycology'}
+          <div class="info-item">
+            <span class="info-label" title="Mark this culture as the top performer in its generation for strain improvement selection">Best Performer</span>
+            <span class="info-value">
+              <button
+                class="btn-best-performer {specimen.is_best_performer ? 'active' : ''}"
+                onclick={toggleBestPerformer}
+                title={specimen.is_best_performer ? 'Remove best performer flag' : 'Flag this culture as the best performer in its generation'}
+              >
+                {specimen.is_best_performer ? '★ Best Performer' : '☆ Mark as Best'}
+              </button>
             </span>
           </div>
         {/if}
@@ -1686,6 +1727,25 @@ ${footnotesHtml}
   :global(.dark) .contam-info-label { color: #fca5a5; }
   .contam-info-notes { margin: 4px 0 0; font-size: 13px; color: #7f1d1d; white-space: pre-wrap; line-height: 1.5; }
   :global(.dark) .contam-info-notes { color: #fca5a5; }
+
+  .btn-best-performer {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid #d1d5db;
+    background: #f9fafb;
+    color: #6b7280;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-best-performer:hover { border-color: #f59e0b; color: #b45309; background: #fffbeb; }
+  .btn-best-performer.active { border-color: #f59e0b; background: #fef3c7; color: #b45309; }
+  :global(.dark) .btn-best-performer { background: #1f2937; border-color: #374151; color: #9ca3af; }
+  :global(.dark) .btn-best-performer:hover, :global(.dark) .btn-best-performer.active { border-color: #f59e0b; background: #292524; color: #fbbf24; }
 
   .lineage-banner {
     background: linear-gradient(135deg, #eff6ff, #f0fdf4);

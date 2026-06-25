@@ -12,8 +12,8 @@ use tauri::State;
 // Tuple returned by the parent-specimen query in split_specimen.
 // Fields: (species_id, species_code, stage, provenance, source_plant, location,
 //          generation, lineage_passage_offset, subculture_count, root_specimen_id, accession_number,
-//          contamination_flag, contamination_notes)
-type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>, String, i32, Option<String>);
+//          contamination_flag, contamination_notes, origin_type)
+type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>, String, i32, Option<String>, Option<String>);
 
 #[tauri::command]
 pub fn list_specimens(
@@ -95,6 +95,8 @@ pub fn list_specimens(
             strain_chain_seq: row.get("strain_chain_seq")?,
             cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
             biosafety_level: row.get("biosafety_level").unwrap_or(None),
+            origin_type: row.get("origin_type").unwrap_or(None),
+            is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -174,6 +176,8 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 strain_chain_seq: row.get("strain_chain_seq")?,
                 cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
                 biosafety_level: row.get("biosafety_level").unwrap_or(None),
+                origin_type: row.get("origin_type").unwrap_or(None),
+                is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
             })
         },
     ).map_err(|e| format!("Specimen not found: {}", e))
@@ -234,9 +238,9 @@ pub fn create_specimen(
          propagation_method, acclimatization_status, health_status, disease_status,
          quarantine_flag, permit_number, permit_expiry, ip_flag, ip_notes,
          environmental_notes, parent_specimen_id, qr_code_data, notes, employee_id, created_by,
-         strain_id, strain_chain_seq)
+         strain_id, strain_chain_seq, origin_type)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28)",
+                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
         params![
             id, accession, request.species_id, request.project_id, request.stage, request.custom_stage,
             request.provenance, request.source_plant, request.initiation_date, request.location,
@@ -245,7 +249,7 @@ pub fn create_specimen(
             request.permit_number, request.permit_expiry, request.ip_flag.unwrap_or(false) as i32,
             request.ip_notes, request.environmental_notes, request.parent_specimen_id, qr_data,
             request.notes, request.employee_id, user.id,
-            request.strain_id, strain_chain_seq,
+            request.strain_id, strain_chain_seq, request.origin_type,
         ],
     ).map_err(|e| format!("Failed to create specimen: {}", e))?;
 
@@ -329,6 +333,11 @@ pub fn update_specimen(
     if let Some(ref bsl) = request.biosafety_level {
         updates.push(format!("biosafety_level = ?{}", values.len() + 1));
         values.push(Box::new(bsl.clone()));
+    }
+    add_update!(origin_type, "origin_type");
+    if let Some(ibp) = request.is_best_performer {
+        updates.push(format!("is_best_performer = ?{}", values.len() + 1));
+        values.push(Box::new(ibp as i32));
     }
 
     if updates.is_empty() {
@@ -433,6 +442,10 @@ pub fn search_specimens(
         conditions.push("s.quarantine_flag = 1".to_string());
     }
 
+    if params_input.best_performer_only.unwrap_or(false) {
+        conditions.push("s.is_best_performer = 1".to_string());
+    }
+
     let where_clause = if conditions.is_empty() {
         String::new()
     } else {
@@ -517,6 +530,8 @@ pub fn search_specimens(
             strain_chain_seq: row.get("strain_chain_seq")?,
             cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
             biosafety_level: row.get("biosafety_level").unwrap_or(None),
+            origin_type: row.get("origin_type").unwrap_or(None),
+            is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -637,12 +652,13 @@ pub fn split_specimen(
          parent_provenance, parent_source_plant, parent_location,
          parent_generation, parent_passage_offset, parent_subculture_count,
          parent_root_id, parent_accession,
-         parent_contamination_flag, parent_contamination_notes): ParentInfo = db.conn.query_row(
+         parent_contamination_flag, parent_contamination_notes,
+         parent_origin_type): ParentInfo = db.conn.query_row(
         "SELECT s.species_id, sp.species_code, s.stage,
                 s.provenance, s.source_plant, s.location,
                 s.generation, s.lineage_passage_offset, s.subculture_count,
                 s.root_specimen_id, s.accession_number,
-                s.contamination_flag, s.contamination_notes
+                s.contamination_flag, s.contamination_notes, s.origin_type
          FROM specimens s
          JOIN species sp ON s.species_id = sp.id
          WHERE s.id = ?1 AND s.is_archived = 0",
@@ -651,7 +667,7 @@ pub fn split_specimen(
             row.get(0)?, row.get(1)?, row.get(2)?,
             row.get(3)?, row.get(4)?, row.get(5)?,
             row.get(6)?, row.get(7)?, row.get(8)?, row.get(9)?, row.get(10)?,
-            row.get(11)?, row.get(12)?,
+            row.get(11)?, row.get(12)?, row.get(13)?,
         )),
     ).map_err(|_| "Parent specimen not found or already archived".to_string())?;
 
@@ -815,22 +831,23 @@ pub fn split_specimen(
             .unwrap_or(default_note.as_str());
 
         // Insert child specimen with genealogy fields, inherited contamination status,
-        // and inherited cumulative PDL from the parent (WP-31).
+        // inherited cumulative PDL from the parent (WP-31), and inherited origin_type (WP-42).
+        // is_best_performer resets to 0 for every child — selection is re-evaluated per generation.
         tx.execute(
             "INSERT INTO specimens \
              (id, accession_number, species_id, stage, initiation_date, \
               location, health_status, qr_code_data, parent_specimen_id, \
               provenance, source_plant, notes, created_by, \
               generation, lineage_passage_offset, root_specimen_id, \
-              contamination_flag, contamination_notes, cumulative_pdl) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+              contamination_flag, contamination_notes, cumulative_pdl, origin_type) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 child_id, accession, parent_species_id, child_stage, request.date,
                 child_location, child_health, qr_data, request.parent_specimen_id,
                 parent_provenance, parent_source_plant, child_notes, user.id,
                 child_generation, child_passage_offset, child_root_id,
                 child_contamination_flag_i32, child_contamination_notes,
-                parent_cumulative_pdl,
+                parent_cumulative_pdl, parent_origin_type,
             ],
         ).map_err(|e| format!("Failed to create child specimen {}: {}", i + 1, e))?;
 

@@ -54,6 +54,13 @@ pub struct Specimen {
     /// Biosafety containment level for cell culture lines (BSL-1 through BSL-3).
     /// NULL means unclassified.
     pub biosafety_level: Option<String>,
+    // ── WP-42: genetic lineage & strain isolation markers ────────────────────
+    /// Culture origin type: 'multi_spore', 'isolated_dikaryon', or 'tissue_clone'.
+    /// NULL when not specified (non-mycology or unknown origin).
+    pub origin_type: Option<String>,
+    /// Lightweight best-performer selection flag. True when this culture has been
+    /// marked as the top performer in its generation for strain improvement purposes.
+    pub is_best_performer: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -81,6 +88,8 @@ pub struct CreateSpecimenRequest {
     pub notes: Option<String>,
     pub employee_id: Option<String>,
     pub strain_id: Option<String>,
+    // ── WP-42 ────────────────────────────────────────────────────────────────
+    pub origin_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -103,6 +112,9 @@ pub struct UpdateSpecimenRequest {
     pub environmental_notes: Option<String>,
     pub notes: Option<String>,
     pub biosafety_level: Option<String>,
+    // ── WP-42 ────────────────────────────────────────────────────────────────
+    pub origin_type: Option<String>,
+    pub is_best_performer: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -115,6 +127,8 @@ pub struct SpecimenSearchParams {
     pub archived: Option<bool>,
     pub page: Option<u32>,
     pub per_page: Option<u32>,
+    /// When true, restrict results to specimens with is_best_performer = 1.
+    pub best_performer_only: Option<bool>,
 }
 
 #[derive(Debug, Serialize)]

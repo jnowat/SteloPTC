@@ -153,6 +153,29 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (28)", [])?;
     }
 
+    if current < 29 {
+        migration_029_genetic_lineage_markers(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (29)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_029_genetic_lineage_markers(conn: &Connection) -> DbResult<()> {
+    // WP-42: genetic lineage & strain isolation markers on specimens.
+    // origin_type: tracks whether a culture was started from multi-spore inoculation,
+    //   an isolated dikaryon (single pairing), or a vegetative tissue clone.
+    //   NULL means not specified or not applicable (non-mycology profiles).
+    //   A CHECK constraint enforces the allowed vocabulary.
+    // is_best_performer: lightweight selection flag (0/1) for strain selection workflows.
+    //   Defaults to 0 for all existing rows.
+    //   On split, children inherit origin_type but is_best_performer resets to 0.
+    conn.execute_batch(
+        "ALTER TABLE specimens ADD COLUMN origin_type TEXT \
+             CHECK(origin_type IS NULL \
+                   OR origin_type IN ('multi_spore','isolated_dikaryon','tissue_clone'));
+         ALTER TABLE specimens ADD COLUMN is_best_performer INTEGER NOT NULL DEFAULT 0;",
+    )?;
     Ok(())
 }
 
@@ -3189,5 +3212,109 @@ mod tests {
             .unwrap();
         assert!(cpct.is_none(), "colonization_pct must default to NULL");
         assert!(ctype.is_none(), "contaminant_type must default to NULL");
+    }
+
+    // ── Migration 029 tests ────────────────────────────────────────────────
+
+    #[test]
+    fn migration_029_origin_type_column_exists_and_accepts_valid_values() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        for ot in &["multi_spore", "isolated_dikaryon", "tissue_clone"] {
+            conn.execute(
+                "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                    generation, lineage_passage_offset, subculture_count, is_archived,
+                    contamination_flag, ip_flag, quarantine_flag, created_at, updated_at, origin_type)
+                 VALUES (?1, ?2, 'sp028-species', 'colonizing', '2026-01-01',
+                    0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01', ?3)",
+                rusqlite::params![format!("sp-029-{}", ot), format!("ACC-029-{}", ot), ot],
+            )
+            .unwrap_or_else(|e| panic!("origin_type '{}' must be accepted: {}", ot, e));
+        }
+    }
+
+    #[test]
+    fn migration_029_origin_type_check_rejects_invalid_value() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        let result = conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at, origin_type)
+             VALUES ('sp-029-bad', 'ACC-029-BAD', 'sp028-species', 'colonizing', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01', 'invalid_value')",
+            [],
+        );
+        assert!(result.is_err(), "origin_type CHECK must reject 'invalid_value'");
+    }
+
+    #[test]
+    fn migration_029_is_best_performer_defaults_to_zero() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at)
+             VALUES ('sp-029-perf', 'ACC-029-PERF', 'sp028-species', 'colonizing', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+        let flag: i32 = conn
+            .query_row(
+                "SELECT is_best_performer FROM specimens WHERE id = 'sp-029-perf'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(flag, 0, "is_best_performer must default to 0");
+    }
+
+    #[test]
+    fn migration_029_is_best_performer_can_be_set_to_one() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at,
+                is_best_performer)
+             VALUES ('sp-029-star', 'ACC-029-STAR', 'sp028-species', 'colonizing', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01', 1)",
+            [],
+        )
+        .unwrap();
+        let flag: i32 = conn
+            .query_row(
+                "SELECT is_best_performer FROM specimens WHERE id = 'sp-029-star'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(flag, 1, "is_best_performer must be storable as 1");
+    }
+
+    #[test]
+    fn migration_029_origin_type_nullable_for_non_mycology() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at)
+             VALUES ('sp-029-null', 'ACC-029-NULL', 'sp028-species', 'explant', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01')",
+            [],
+        )
+        .expect("origin_type must default to NULL for non-mycology specimens");
+        let ot: Option<String> = conn
+            .query_row(
+                "SELECT origin_type FROM specimens WHERE id = 'sp-029-null'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(ot.is_none(), "origin_type must be NULL when not specified");
     }
 }
