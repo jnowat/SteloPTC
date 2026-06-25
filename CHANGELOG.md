@@ -5,6 +5,39 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] - 2026-06-25
+
+### Added — WP-40: Mycology profile vocabulary
+
+- **Backend — `src-tauri/src/db/migrations.rs`** — new `migration_027_mycology_vocabulary`
+  function seeds all six profile-scoped vocabulary tables with terminology appropriate for
+  mushroom and fungal cultivation work. All inserts use `INSERT OR IGNORE` so the migration
+  is idempotent and safe to run on databases that already contain vocabulary from earlier
+  migrations. Existing `plant_tissue_culture` and `cell_culture` rows are completely
+  untouched.
+
+  Seeded vocabulary:
+  - **`stages`** (10 entries) — full mushroom lifecycle: `spore_clone`, `agar`,
+    `liquid_culture`, `grain_spawn`, `bulk_substrate`, `colonizing`, `fruiting`,
+    `senescent`, `contaminated` (terminal), `discarded` (terminal).
+  - **`propagation_methods`** (8 entries) — common transfer and inoculation techniques:
+    `agar_to_agar`, `agar_to_grain`, `grain_to_grain`, `grain_to_bulk`,
+    `liquid_inoculation`, `spore_syringe`, `culture_restart`, `other`.
+  - **`hormone_types`** (7 entries, reframed as substrate supplements) — `gypsum`, `bran`,
+    `calcium_carbonate`, `activated_carbon`, `coconut_coir`, `vermiculite`, `other`.
+  - **`compliance_record_types`** (6 entries) — `cultivation_permit`, `grow_log`,
+    `contamination_record`, `species_id`, `mushroom_permit`, `other`.
+  - **`compliance_agencies`** (4 entries) — `USDA_APHIS`, `state_ag_dept`,
+    `local_authority`, `other`.
+  - **`inventory_categories`** (10 entries) — `agar_media`, `grain_spawn`, `bulk_substrate`,
+    `liquid_culture`, `substrate_amendment`, `syringes_needles`, `vessel`, `consumable`,
+    `equipment`, `other`.
+
+  12 new unit tests in `db::migrations::tests` cover: stage count and terminal/non-terminal
+  split, all expected stage codes, propagation method count and codes, supplement type count,
+  compliance record type count, agency count, inventory category count, profile isolation
+  (PTC and cell_culture counts unchanged), and idempotency.
+
 ## [1.27.0] - 2026-06-25
 
 ### Added — WP-34: Cell-culture dashboard panels

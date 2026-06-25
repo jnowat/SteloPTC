@@ -143,6 +143,88 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (26)", [])?;
     }
 
+    if current < 27 {
+        migration_027_mycology_vocabulary(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (27)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_027_mycology_vocabulary(conn: &Connection) -> DbResult<()> {
+    // WP-40: seed vocabulary for the mycology profile.
+    // All six lookup tables already exist from migrations 016/017.
+    // This migration is purely additive — INSERT OR IGNORE keeps it idempotent
+    // and leaves all plant_tissue_culture and cell_culture rows untouched.
+    conn.execute_batch("
+        BEGIN;
+
+        -- Mushroom/fungal cultivation lifecycle stages.
+        -- contaminated and discarded are terminal; all others are selectable.
+        INSERT OR IGNORE INTO stages (profile, code, label, sort_order, is_terminal) VALUES
+            ('mycology', 'spore_clone',    'Spore / Clone',    1,  0),
+            ('mycology', 'agar',           'Agar Culture',     2,  0),
+            ('mycology', 'liquid_culture', 'Liquid Culture',   3,  0),
+            ('mycology', 'grain_spawn',    'Grain Spawn',      4,  0),
+            ('mycology', 'bulk_substrate', 'Bulk Substrate',   5,  0),
+            ('mycology', 'colonizing',     'Colonizing',       6,  0),
+            ('mycology', 'fruiting',       'Fruiting',         7,  0),
+            ('mycology', 'senescent',      'Senescent',        8,  0),
+            ('mycology', 'contaminated',   'Contaminated',     9,  1),
+            ('mycology', 'discarded',      'Discarded',        10, 1);
+
+        -- Common transfer/inoculation methods used in fungal cultivation.
+        INSERT OR IGNORE INTO propagation_methods (profile, code, label, sort_order) VALUES
+            ('mycology', 'agar_to_agar',       'Agar to Agar',       1),
+            ('mycology', 'agar_to_grain',      'Agar to Grain',      2),
+            ('mycology', 'grain_to_grain',     'Grain to Grain',     3),
+            ('mycology', 'grain_to_bulk',      'Grain to Bulk',      4),
+            ('mycology', 'liquid_inoculation', 'Liquid Inoculation', 5),
+            ('mycology', 'spore_syringe',      'Spore Syringe',      6),
+            ('mycology', 'culture_restart',    'Culture Restart',    7),
+            ('mycology', 'other',              'Other',              8);
+
+        -- Substrate supplements (reusing hormone_types table for supplement tracking).
+        INSERT OR IGNORE INTO hormone_types (profile, code, label, sort_order) VALUES
+            ('mycology', 'gypsum',            'Gypsum',             1),
+            ('mycology', 'bran',              'Bran (wheat/oat)',   2),
+            ('mycology', 'calcium_carbonate', 'Calcium Carbonate',  3),
+            ('mycology', 'activated_carbon',  'Activated Carbon',   4),
+            ('mycology', 'coconut_coir',      'Coconut Coir',       5),
+            ('mycology', 'vermiculite',       'Vermiculite',        6),
+            ('mycology', 'other',             'Other',              7);
+
+        -- Compliance record types relevant to mushroom cultivation.
+        INSERT OR IGNORE INTO compliance_record_types (profile, code, label, sort_order) VALUES
+            ('mycology', 'cultivation_permit',  'Cultivation Permit',   1),
+            ('mycology', 'grow_log',            'Grow Log',             2),
+            ('mycology', 'contamination_record','Contamination Record', 3),
+            ('mycology', 'species_id',          'Species ID Report',    4),
+            ('mycology', 'mushroom_permit',     'Mushroom/Fungi Permit',5),
+            ('mycology', 'other',               'Other',                6);
+
+        -- Agencies that may have jurisdiction over fungal cultivation operations.
+        INSERT OR IGNORE INTO compliance_agencies (profile, code, label, sort_order) VALUES
+            ('mycology', 'USDA_APHIS',     'USDA APHIS',            1),
+            ('mycology', 'state_ag_dept',  'State Dept. of Ag.',    2),
+            ('mycology', 'local_authority','Local Authority',        3),
+            ('mycology', 'other',          'Other',                  4);
+
+        -- Inventory categories for a mushroom / fungal cultivation lab.
+        INSERT OR IGNORE INTO inventory_categories (profile, code, label, sort_order) VALUES
+            ('mycology', 'agar_media',         'Agar Media',           1),
+            ('mycology', 'grain_spawn',        'Grain Spawn',          2),
+            ('mycology', 'bulk_substrate',     'Bulk Substrate',       3),
+            ('mycology', 'liquid_culture',     'Liquid Culture',       4),
+            ('mycology', 'substrate_amendment','Substrate Amendment',  5),
+            ('mycology', 'syringes_needles',   'Syringes & Needles',   6),
+            ('mycology', 'vessel',             'Vessel / Container',   7),
+            ('mycology', 'consumable',         'Consumable',           8),
+            ('mycology', 'equipment',          'Equipment',            9),
+            ('mycology', 'other',              'Other',                10);
+
+        COMMIT;
+    ")?;
     Ok(())
 }
 
@@ -2761,5 +2843,221 @@ mod tests {
             )
             .unwrap();
         assert!(bsl.is_none(), "biosafety_level must default to NULL for existing specimens");
+    }
+
+    // ── migration 027 (WP-40) — mycology vocabulary ───────────────────────────
+
+    #[test]
+    fn mycology_stages_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'mycology'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 10, "expected 10 mycology stage entries from seed data");
+    }
+
+    #[test]
+    fn mycology_terminal_stages_are_contaminated_and_discarded() {
+        let conn = migrated_db();
+        let mut terminal: Vec<String> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT code FROM stages \
+                     WHERE profile = 'mycology' AND is_terminal = 1 \
+                     ORDER BY code",
+                )
+                .unwrap();
+            stmt.query_map([], |r| r.get(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect()
+        };
+        terminal.sort();
+        assert_eq!(
+            terminal,
+            vec!["contaminated", "discarded"],
+            "mycology terminal stages must be contaminated and discarded"
+        );
+    }
+
+    #[test]
+    fn mycology_non_terminal_stages_count() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages \
+                 WHERE profile = 'mycology' AND is_terminal = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 8, "8 non-terminal mycology stages must be present");
+    }
+
+    #[test]
+    fn mycology_stages_expected_codes_present() {
+        let conn = migrated_db();
+        for code in &[
+            "spore_clone", "agar", "liquid_culture", "grain_spawn",
+            "bulk_substrate", "colonizing", "fruiting", "senescent",
+            "contaminated", "discarded",
+        ] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM stages WHERE profile = 'mycology' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "mycology stage '{}' must be present", code);
+        }
+    }
+
+    #[test]
+    fn mycology_propagation_methods_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM propagation_methods WHERE profile = 'mycology'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 8, "expected 8 mycology propagation methods");
+    }
+
+    #[test]
+    fn mycology_propagation_methods_expected_codes_present() {
+        let conn = migrated_db();
+        for code in &[
+            "agar_to_agar", "agar_to_grain", "grain_to_grain", "grain_to_bulk",
+            "liquid_inoculation", "spore_syringe", "culture_restart", "other",
+        ] {
+            let found: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM propagation_methods \
+                     WHERE profile = 'mycology' AND code = ?1",
+                    rusqlite::params![code],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(found, 1, "mycology propagation method '{}' must be present", code);
+        }
+    }
+
+    #[test]
+    fn mycology_hormone_types_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM hormone_types WHERE profile = 'mycology'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 7, "expected 7 mycology supplement types");
+    }
+
+    #[test]
+    fn mycology_compliance_record_types_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM compliance_record_types WHERE profile = 'mycology'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 6, "expected 6 mycology compliance record types");
+    }
+
+    #[test]
+    fn mycology_compliance_agencies_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM compliance_agencies WHERE profile = 'mycology'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 4, "expected 4 mycology compliance agencies");
+    }
+
+    #[test]
+    fn mycology_inventory_categories_seeded() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM inventory_categories WHERE profile = 'mycology'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 10, "expected 10 mycology inventory categories");
+    }
+
+    #[test]
+    fn mycology_vocabulary_does_not_affect_ptc_or_cell_culture() {
+        let conn = migrated_db();
+        let ptc_stages: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ptc_stages, 15,
+            "PTC stage count must be unchanged after mycology seeding");
+
+        let cc_stages: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cc_stages, 20,
+            "cell_culture stage count must be unchanged after mycology seeding");
+
+        let ptc_props: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM propagation_methods \
+                 WHERE profile = 'plant_tissue_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ptc_props, 7,
+            "PTC propagation method count must be unchanged after mycology seeding");
+
+        let cc_props: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM propagation_methods WHERE profile = 'cell_culture'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(cc_props, 11,
+            "cell_culture propagation method count must be unchanged after mycology seeding");
+    }
+
+    #[test]
+    fn mycology_vocabulary_027_idempotent() {
+        let conn = migrated_db();
+        migration_027_mycology_vocabulary(&conn)
+            .expect("re-running migration 027 must succeed");
+        let stage_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM stages WHERE profile = 'mycology'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stage_count, 10, "re-run must not duplicate mycology stage rows");
     }
 }
