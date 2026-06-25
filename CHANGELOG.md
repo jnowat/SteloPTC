@@ -5,6 +5,57 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.27.0] - 2026-06-25
+
+### Added — WP-34: Cell-culture dashboard panels
+
+- **Backend — `src-tauri/src/models/subculture.rs`** — two new structs for cell-culture
+  dashboard data:
+  - `VialLineSummary` — per-species frozen vial inventory summary (`species_id`,
+    `species_code`, `species_name`, `active_lots`, `total_vials`, `min_vials_in_lot`).
+  - `CultureMaintenanceAlert` — specimen in an active non-terminal stage not passaged in the
+    last 7 days (`specimen_id`, `accession_number`, `species_code`, `stage`, `stage_label`,
+    `last_passage_date`, `days_since_passage`); falls back to `created_at` when no passage
+    exists.
+
+- **Backend — `src-tauri/src/db/dashboard.rs`** — two new profile-aware query helpers:
+  - `query_vial_summary_by_line(conn)` — aggregates active `frozen_vials` rows by species;
+    ordered by `total_vials ASC` so low-stock lines appear first. Includes 4 new unit tests.
+  - `query_culture_maintenance_alerts(conn, profile)` — returns non-archived specimens in
+    non-terminal profile stages whose most recent passage (or `created_at` if never passaged)
+    is ≥ 7 days ago; ordered by `days_since_passage DESC`, capped at 20 rows. Includes 5 new
+    unit tests.
+
+- **Backend — `src-tauri/src/commands/cryo.rs`** — new `get_vial_summary_by_line` Tauri
+  command delegating to `dashboard::query_vial_summary_by_line`.
+
+- **Backend — `src-tauri/src/commands/subcultures.rs`** — new `get_culture_maintenance_alerts`
+  Tauri command; reads the active lab profile and delegates to
+  `dashboard::query_culture_maintenance_alerts`.
+
+- **Backend — `src-tauri/src/lib.rs`** — both new commands registered in the Tauri invoke
+  handler.
+
+- **Frontend — `src/lib/api.ts`** — `VialLineSummary` and `CultureMaintenanceAlert` TypeScript
+  interfaces; `getVialSummaryByLine()` and `getCultureMaintenanceAlerts()` async wrappers.
+
+- **Frontend — `src/lib/components/Dashboard.svelte`** — four new `cell_culture`-only panels,
+  rendered only when the active lab profile is `cell_culture`; all other profiles are
+  unaffected:
+  1. **Passages Due / Overdue** — reuses the existing subculture schedule data; shows overdue
+     passages (red badge) and those due within 3 days (yellow badge) using cell-culture
+     terminology.
+  2. **Lines Overdue for Mycoplasma Test** — filters the existing `getComplianceFlags()` result
+     for `flag_type === 'missing_mycoplasma_test'`; shows accession, species code, and last
+     test date (or "No test on record"). Links to the Compliance module.
+  3. **Vials in Storage by Line** — surfaces `getVialSummaryByLine()` data; rows with
+     `total_vials ≤ 5` are highlighted in amber. Links to the Cryostorage module.
+  4. **Cultures Needing Attention** — surfaces `getCultureMaintenanceAlerts()` data; days since
+     last passage shown as red (≥ 14 d) or yellow (7–13 d) badge. Stage label and last passage
+     date included per row.
+  - `loadDashboard()` now fetches `getLabProfile()`, `getVialSummaryByLine()`, and
+    `getCultureMaintenanceAlerts()` in the same `Promise.all` batch alongside existing calls.
+
 ## [1.26.0] - 2026-06-25
 
 ### Added — WP-33: Mycoplasma & Contamination Testing Compliance

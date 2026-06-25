@@ -142,6 +142,38 @@ pub struct RecentContaminationEvent {
     pub contamination_notes: Option<String>,
 }
 
+/// Per-cell-line frozen vial inventory summary for the dashboard.
+#[derive(Debug, Serialize)]
+pub struct VialLineSummary {
+    pub species_id: String,
+    pub species_code: String,
+    pub species_name: String,
+    /// Number of active (non-depleted, non-discarded) frozen lots for this line.
+    pub active_lots: i64,
+    /// Total vials across all active lots.
+    pub total_vials: i64,
+    /// Vial count in the smallest active lot (low-stock risk indicator).
+    pub min_vials_in_lot: i64,
+}
+
+/// A specimen in a non-terminal, non-archived profile stage that has not had a
+/// recorded passage event in the last 7 days. Useful as a routine maintenance
+/// alert in cell culture (cells may be approaching confluence).
+#[derive(Debug, Serialize)]
+pub struct CultureMaintenanceAlert {
+    pub specimen_id: String,
+    pub accession_number: String,
+    pub species_code: String,
+    /// Raw stage code (e.g. `"adherent"`).
+    pub stage: String,
+    /// Human-readable stage label from the vocabulary table (e.g. `"Adherent"`).
+    pub stage_label: String,
+    /// Date of the most recent recorded passage (ISO format); `None` if never passaged.
+    pub last_passage_date: Option<String>,
+    /// Days since the last passage; falls back to days since `created_at` when no passage exists.
+    pub days_since_passage: Option<i64>,
+}
+
 /// One row of the subculture due-date schedule.
 #[derive(Debug, Serialize)]
 pub struct SubcultureScheduleEntry {

@@ -180,6 +180,9 @@ pub fn run() {
             commands::cryo::get_frozen_vial,
             commands::cryo::thaw_vial,
             commands::cryo::discard_frozen_vial,
+            commands::cryo::get_vial_summary_by_line,
+            // Cell-culture dashboard (WP-34)
+            commands::subcultures::get_culture_maintenance_alerts,
             // QR Scans
             commands::qr_scans::store_qr_scan,
             commands::qr_scans::list_qr_scans,

@@ -4,6 +4,7 @@ use crate::models::cryo::{
     CreateFrozenVialRequest, DiscardFrozenVialRequest, FrozenVial, ListFrozenVialsParams,
     ThawVialRequest, ThawVialResult,
 };
+use crate::models::subculture::VialLineSummary;
 use crate::AppState;
 use tauri::State;
 
@@ -115,4 +116,14 @@ pub fn discard_frozen_vial(
 
     queries::get_frozen_vial(&db.conn, &request.vial_id)
         .map_err(|e| format!("Failed to retrieve vial: {}", e))
+}
+
+#[tauri::command]
+pub fn get_vial_summary_by_line(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<VialLineSummary>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    crate::db::dashboard::query_vial_summary_by_line(&db.conn)
 }

@@ -425,3 +425,14 @@ pub fn get_subculture_schedule(
     crate::db::dashboard::query_subculture_schedule(&db.conn, &profile)
 }
 
+
+#[tauri::command]
+pub fn get_culture_maintenance_alerts(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<CultureMaintenanceAlert>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
+    crate::db::dashboard::query_culture_maintenance_alerts(&db.conn, &profile)
+}

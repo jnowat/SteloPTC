@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, listBackups, restoreBackup, resetDatabase, getContaminationStats, getSubcultureSchedule } from '../api';
+  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, listBackups, restoreBackup, resetDatabase, getContaminationStats, getSubcultureSchedule, getLabProfile, getVialSummaryByLine, getCultureMaintenanceAlerts } from '../api';
   import { navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import FirstRun from './FirstRun.svelte';
@@ -11,10 +11,16 @@
   let lowStock = $state<any[]>([]);
   let contaminationStats = $state<any>(null);
   let schedule = $state<any[]>([]);
+  let labProfile = $state<string>('');
+  let vialSummary = $state<any[]>([]);
+  let maintenanceAlerts = $state<any[]>([]);
   let loading = $state(true);
 
   let overdueItems = $derived(schedule.filter((e: any) => e.is_overdue));
   let dueSoonItems = $derived(schedule.filter((e: any) => !e.is_overdue && e.days_until_due !== null && e.days_until_due <= 7));
+  let overduePassages = $derived(schedule.filter((e: any) => e.is_overdue));
+  let criticalPassages = $derived(schedule.filter((e: any) => !e.is_overdue && e.days_until_due !== null && e.days_until_due <= 3));
+  let mycoplasmaOverdue = $derived(flags.filter((f: any) => f.flag_type === 'missing_mycoplasma_test'));
   let firstRun = $derived(!loading && stats !== null && stats.total_specimens === 0);
   let backingUp = $state(false);
   let showResetPanel = $state(false);
@@ -37,13 +43,16 @@
   async function loadDashboard() {
     loading = true;
     try {
-      const [s, r, f, ls, cs, sch] = await Promise.all([
+      const [s, r, f, ls, cs, sch, lp, vs, ma] = await Promise.all([
         getSpecimenStats(),
         getActiveReminders(),
         getComplianceFlags(),
         getLowStockAlerts(),
         getContaminationStats(),
         getSubcultureSchedule(),
+        getLabProfile(),
+        getVialSummaryByLine(),
+        getCultureMaintenanceAlerts(),
       ]);
       stats = s;
       reminders = r;
@@ -51,6 +60,9 @@
       lowStock = ls;
       contaminationStats = cs;
       schedule = sch;
+      labProfile = lp;
+      vialSummary = vs;
+      maintenanceAlerts = ma;
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -427,6 +439,138 @@
         {/if}
       </div>
 
+      {#if labProfile === 'cell_culture'}
+        <!-- Panel CC-1: Passages Due / Overdue -->
+        <div class="panel">
+          <h3 title="Cell lines due or overdue for passage based on each species' subculture interval">Passages Due / Overdue</h3>
+          {#if overduePassages.length === 0 && criticalPassages.length === 0}
+            <p class="empty-state">All passages on schedule</p>
+          {:else}
+            {#if overduePassages.length > 0}
+              <div class="schedule-section-label overdue-label">Overdue ({overduePassages.length})</div>
+              <div class="schedule-list">
+                {#each overduePassages.slice(0, 6) as entry}
+                  <div class="schedule-item overdue-item">
+                    <div class="schedule-item-left">
+                      <span class="schedule-accession">{entry.accession_number}</span>
+                      <span class="schedule-species">{entry.species_code}</span>
+                    </div>
+                    <div class="schedule-item-right">
+                      <span class="badge badge-red" title="This line is {Math.abs(entry.days_until_due)} day(s) past its passage date">{Math.abs(entry.days_until_due)}d overdue</span>
+                      {#if entry.next_due_date}
+                        <span class="schedule-date">Due {entry.next_due_date}</span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            {#if criticalPassages.length > 0}
+              <div class="schedule-section-label" style="margin-top:{overduePassages.length > 0 ? 10 : 0}px;">Due within 3 days ({criticalPassages.length})</div>
+              <div class="schedule-list">
+                {#each criticalPassages.slice(0, 4) as entry}
+                  <div class="schedule-item">
+                    <div class="schedule-item-left">
+                      <span class="schedule-accession">{entry.accession_number}</span>
+                      <span class="schedule-species">{entry.species_code}</span>
+                    </div>
+                    <div class="schedule-item-right">
+                      <span class="badge badge-yellow" title="Passage due in {entry.days_until_due} day(s)">{entry.days_until_due}d left</span>
+                      {#if entry.next_due_date}
+                        <span class="schedule-date">Due {entry.next_due_date}</span>
+                      {/if}
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+            <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('specimens')} title="Go to the full Specimens list">
+              View specimens
+            </button>
+          {/if}
+        </div>
+
+        <!-- Panel CC-2: Lines Overdue for Mycoplasma Test -->
+        <div class="panel">
+          <h3 title="Cell lines that have no mycoplasma test result within the configured interval (default 90 days). Sourced from compliance rules.">Lines Overdue for Mycoplasma Test</h3>
+          {#if mycoplasmaOverdue.length === 0}
+            <p class="empty-state">All lines within mycoplasma test window</p>
+          {:else}
+            <div class="flag-list">
+              {#each mycoplasmaOverdue.slice(0, 8) as f}
+                <div class="flag-item">
+                  <span class="badge badge-yellow" title="Missing or overdue mycoplasma test">!</span>
+                  <div>
+                    <div class="flag-accession">{f.accession_number} <span style="font-weight:400;color:#6b7280;">({f.species_code})</span></div>
+                    <div class="flag-message">
+                      {#if f.last_test_date}
+                        Last tested: {f.last_test_date}
+                      {:else}
+                        No test on record
+                      {/if}
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+            <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('compliance')} title="Go to the Compliance module">
+              View compliance
+            </button>
+          {/if}
+        </div>
+
+        <!-- Panel CC-3: Vials in Storage by Line -->
+        <div class="panel">
+          <h3 title="Frozen vial inventory grouped by cell line. Only active lots are counted. Lines with fewer than 5 total vials are highlighted.">Vials in Storage by Line</h3>
+          {#if vialSummary.length === 0}
+            <p class="empty-state">No active vial lots in storage</p>
+          {:else}
+            <div class="vial-summary-list">
+              {#each vialSummary as line}
+                <div class="vial-summary-item" class:vial-low={line.total_vials <= 5}>
+                  <div class="vial-summary-left">
+                    <span class="vial-species-code">{line.species_code}</span>
+                    <span class="vial-species-name">{line.species_name}</span>
+                  </div>
+                  <div class="vial-summary-right">
+                    <span class="vial-count" title="{line.active_lots} active lot(s)">{line.total_vials} vials</span>
+                    <span class="vial-lots">{line.active_lots} lot{line.active_lots !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+              {/each}
+            </div>
+            <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('cryo')} title="Go to the Cryostorage inventory">
+              View cryostorage
+            </button>
+          {/if}
+        </div>
+
+        <!-- Panel CC-4: Cultures Needing Attention (Low-Confluence Alerts) -->
+        <div class="panel">
+          <h3 title="Specimens in active (non-terminal) cell culture stages that have not had a recorded passage in 7 or more days. May indicate cultures approaching high confluence.">Cultures Needing Attention</h3>
+          {#if maintenanceAlerts.length === 0}
+            <p class="empty-state">All active cultures passaged within 7 days</p>
+          {:else}
+            <div class="flag-list">
+              {#each maintenanceAlerts.slice(0, 8) as alert}
+                <div class="flag-item">
+                  <span class="badge" class:badge-red={alert.days_since_passage !== null && alert.days_since_passage >= 14} class:badge-yellow={alert.days_since_passage !== null && alert.days_since_passage < 14} title="{alert.days_since_passage ?? '?'}d since last passage">{alert.days_since_passage ?? '?'}d</span>
+                  <div>
+                    <div class="flag-accession">{alert.accession_number} <span style="font-weight:400;color:#6b7280;">({alert.species_code})</span></div>
+                    <div class="flag-message">
+                      {alert.stage_label}{alert.last_passage_date ? ` · Last passage: ${alert.last_passage_date}` : ' · Never passaged'}
+                    </div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+            <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('specimens')} title="Go to the full Specimens list">
+              View specimens
+            </button>
+          {/if}
+        </div>
+      {/if}
+
       <div class="panel">
         <h3 title="Create a snapshot backup of the entire database to the configured backup directory">Database Backup</h3>
         <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
@@ -672,4 +816,19 @@
     letter-spacing: 0.5px; color: var(--color-text-muted); margin-bottom: 6px;
   }
   .contam-fill { background: var(--color-fill-contam); }
+
+  /* ── Cell-culture Vial Summary (WP-34) ── */
+  .vial-summary-list { display: flex; flex-direction: column; gap: var(--space-2); }
+  .vial-summary-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: var(--space-2) 10px; border-radius: var(--radius-md);
+    background: var(--color-surface-raised);
+  }
+  .vial-low { background: var(--color-surface-overdue); }
+  .vial-summary-left { display: flex; flex-direction: column; gap: 2px; }
+  .vial-summary-right { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .vial-species-code { font-size: var(--font-size-base); font-weight: 700; font-family: monospace; }
+  .vial-species-name { font-size: var(--font-size-xs); color: var(--color-text-muted); font-style: italic; }
+  .vial-count { font-size: var(--font-size-base); font-weight: 700; }
+  .vial-lots { font-size: var(--font-size-xs); color: var(--color-text-muted); }
 </style>
