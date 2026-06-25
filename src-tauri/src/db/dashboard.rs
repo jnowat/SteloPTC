@@ -2,8 +2,8 @@ use rusqlite::Connection;
 
 use crate::models::specimen::{SpeciesCount, SpecimenStats, StageCount};
 use crate::models::subculture::{
-    ContaminationStats, RecentContaminationEvent, SubcultureScheduleEntry,
-    VesselContaminationCount,
+    ContaminationStats, CultureMaintenanceAlert, RecentContaminationEvent,
+    SubcultureScheduleEntry, VesselContaminationCount, VialLineSummary,
 };
 
 /// Returns specimen statistics fully scoped to stages defined for `profile` in
@@ -297,6 +297,97 @@ pub fn query_subculture_schedule(
         .collect();
 
     Ok(entries)
+}
+
+/// Returns frozen-vial inventory aggregated by species/cell-line.
+/// Only `active` lots are counted; `depleted` and `discarded` lots are excluded.
+/// Results are ordered by total_vials ascending so low-stock lines appear first.
+pub fn query_vial_summary_by_line(conn: &Connection) -> Result<Vec<VialLineSummary>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT fv.species_id,
+                    sp.species_code,
+                    sp.genus || ' ' || sp.species_name AS species_name,
+                    COUNT(*)          AS active_lots,
+                    SUM(fv.vial_count) AS total_vials,
+                    MIN(fv.vial_count) AS min_vials_in_lot
+             FROM frozen_vials fv
+             JOIN species sp ON fv.species_id = sp.id
+             WHERE fv.status = 'active'
+             GROUP BY fv.species_id
+             ORDER BY total_vials ASC, sp.species_code ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let items: Vec<VialLineSummary> = stmt
+        .query_map([], |row| {
+            Ok(VialLineSummary {
+                species_id: row.get("species_id")?,
+                species_code: row.get("species_code")?,
+                species_name: row.get("species_name")?,
+                active_lots: row.get("active_lots")?,
+                total_vials: row.get("total_vials")?,
+                min_vials_in_lot: row.get("min_vials_in_lot")?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(items)
+}
+
+/// Returns specimens in non-terminal, non-archived stages for `profile` that
+/// have not had a recorded passage event in the last 7 days.  When no passage
+/// exists the specimen's `created_at` is used as the reference date.
+///
+/// Results are ordered by `days_since_passage` descending so cultures that have
+/// gone longest without attention appear first.  Capped at 20 rows.
+pub fn query_culture_maintenance_alerts(
+    conn: &Connection,
+    profile: &str,
+) -> Result<Vec<CultureMaintenanceAlert>, String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                 sp.id               AS specimen_id,
+                 sp.accession_number,
+                 s.species_code,
+                 sp.stage,
+                 st.label            AS stage_label,
+                 MAX(sc.date)        AS last_passage_date,
+                 CAST(julianday('now') - julianday(COALESCE(MAX(sc.date), sp.created_at))
+                      AS INTEGER)    AS days_since_passage
+             FROM specimens sp
+             JOIN species s  ON sp.species_id = s.id
+             JOIN stages  st ON sp.stage = st.code AND st.profile = ?1
+             LEFT JOIN subcultures sc ON sc.specimen_id = sp.id
+             WHERE sp.is_archived = 0 AND st.is_terminal = 0
+             GROUP BY sp.id
+             HAVING CAST(julianday('now') - julianday(COALESCE(MAX(sc.date), sp.created_at))
+                         AS INTEGER) >= 7
+             ORDER BY days_since_passage DESC
+             LIMIT 20",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let items: Vec<CultureMaintenanceAlert> = stmt
+        .query_map([profile], |row| {
+            Ok(CultureMaintenanceAlert {
+                specimen_id: row.get("specimen_id")?,
+                accession_number: row.get("accession_number")?,
+                species_code: row.get("species_code")?,
+                stage: row.get("stage")?,
+                stage_label: row.get("stage_label")?,
+                last_passage_date: row.get("last_passage_date")?,
+                days_since_passage: row.get("days_since_passage")?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(items)
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -674,5 +765,221 @@ mod tests {
 
         let sched = query_subculture_schedule(&conn, "plant_tissue_culture").unwrap();
         assert!(sched.is_empty());
+    }
+
+    // ── Vial summary by line ──────────────────────────────────────────────────
+
+    fn setup_vial_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE species (
+                 id           TEXT PRIMARY KEY,
+                 species_code TEXT NOT NULL UNIQUE,
+                 genus        TEXT NOT NULL,
+                 species_name TEXT NOT NULL
+             );
+             CREATE TABLE frozen_vials (
+                 id         TEXT    PRIMARY KEY,
+                 species_id TEXT    NOT NULL REFERENCES species(id),
+                 vial_count INTEGER NOT NULL DEFAULT 1,
+                 status     TEXT    NOT NULL DEFAULT 'active'
+             );",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn vial_summary_groups_by_species() {
+        let conn = setup_vial_db();
+        conn.execute_batch(
+            "INSERT INTO species (id, species_code, genus, species_name) VALUES
+                 ('sp1', 'HEK', 'Homo', 'sapiens'),
+                 ('sp2', 'CHO', 'Cricetulus', 'griseus');
+             INSERT INTO frozen_vials (id, species_id, vial_count) VALUES
+                 ('v1', 'sp1', 5), ('v2', 'sp1', 3), ('v3', 'sp2', 10);",
+        )
+        .unwrap();
+        let summary = query_vial_summary_by_line(&conn).unwrap();
+        assert_eq!(summary.len(), 2);
+        // Ordered ascending by total_vials: HEK (total=8) before CHO (total=10)
+        assert_eq!(summary[0].species_code, "HEK");
+        assert_eq!(summary[0].active_lots, 2);
+        assert_eq!(summary[0].total_vials, 8);
+        assert_eq!(summary[0].min_vials_in_lot, 3);
+        assert_eq!(summary[1].species_code, "CHO");
+        assert_eq!(summary[1].total_vials, 10);
+    }
+
+    #[test]
+    fn vial_summary_excludes_depleted_and_discarded() {
+        let conn = setup_vial_db();
+        conn.execute_batch(
+            "INSERT INTO species (id, species_code, genus, species_name)
+                 VALUES ('sp1', 'HEK', 'Homo', 'sapiens');
+             INSERT INTO frozen_vials (id, species_id, vial_count, status) VALUES
+                 ('v1', 'sp1', 5, 'active'),
+                 ('v2', 'sp1', 0, 'depleted'),
+                 ('v3', 'sp1', 3, 'discarded');",
+        )
+        .unwrap();
+        let summary = query_vial_summary_by_line(&conn).unwrap();
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].active_lots, 1);
+        assert_eq!(summary[0].total_vials, 5);
+    }
+
+    #[test]
+    fn vial_summary_empty_when_no_active_vials() {
+        let conn = setup_vial_db();
+        conn.execute_batch(
+            "INSERT INTO species (id, species_code, genus, species_name)
+                 VALUES ('sp1', 'HEK', 'Homo', 'sapiens');
+             INSERT INTO frozen_vials (id, species_id, vial_count, status)
+                 VALUES ('v1', 'sp1', 0, 'depleted');",
+        )
+        .unwrap();
+        let summary = query_vial_summary_by_line(&conn).unwrap();
+        assert!(summary.is_empty());
+    }
+
+    #[test]
+    fn vial_summary_min_reflects_smallest_active_lot() {
+        let conn = setup_vial_db();
+        conn.execute_batch(
+            "INSERT INTO species (id, species_code, genus, species_name)
+                 VALUES ('sp1', 'HEK', 'Homo', 'sapiens');
+             INSERT INTO frozen_vials (id, species_id, vial_count, status) VALUES
+                 ('v1', 'sp1', 10, 'active'),
+                 ('v2', 'sp1', 2,  'active'),
+                 ('v3', 'sp1', 7,  'active');",
+        )
+        .unwrap();
+        let summary = query_vial_summary_by_line(&conn).unwrap();
+        assert_eq!(summary[0].min_vials_in_lot, 2);
+        assert_eq!(summary[0].total_vials, 19);
+    }
+
+    // ── Culture maintenance alerts ────────────────────────────────────────────
+
+    #[test]
+    fn maintenance_alerts_excludes_recently_passaged() {
+        let conn = setup_db();
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "HEK", Some(7));
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "adherent");
+        // Passage 1 day ago — below 7-day threshold, must NOT appear
+        conn.execute(
+            "INSERT INTO subcultures \
+             (id, specimen_id, passage_number, date, created_at, updated_at) \
+             VALUES ('sc1', 's1', 1, date('now', '-1 days'), \
+             datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        let alerts = query_culture_maintenance_alerts(&conn, "cell_culture").unwrap();
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn maintenance_alerts_includes_stale_specimen() {
+        let conn = setup_db();
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "HEK", Some(7));
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "adherent");
+        // Passage 10 days ago — above threshold, must appear
+        conn.execute(
+            "INSERT INTO subcultures \
+             (id, specimen_id, passage_number, date, created_at, updated_at) \
+             VALUES ('sc1', 's1', 1, date('now', '-10 days'), \
+             datetime('now'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        let alerts = query_culture_maintenance_alerts(&conn, "cell_culture").unwrap();
+        assert_eq!(alerts.len(), 1);
+        assert_eq!(alerts[0].accession_number, "ACC-001");
+        assert!(alerts[0].days_since_passage.unwrap() >= 7);
+    }
+
+    #[test]
+    fn maintenance_alerts_scoped_to_profile() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "HEK", None);
+        // CC specimen created 30 days ago, never passaged
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, is_archived, \
+              created_at, updated_at) \
+             VALUES ('cc1', 'ACC-CC', 'sp1', 'adherent', 0, \
+             date('now', '-30 days'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        // PTC specimen created 30 days ago, never passaged
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, is_archived, \
+              created_at, updated_at) \
+             VALUES ('ptc1', 'ACC-PTC', 'sp1', 'explant', 0, \
+             date('now', '-30 days'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+
+        let cc_alerts = query_culture_maintenance_alerts(&conn, "cell_culture").unwrap();
+        let ptc_alerts = query_culture_maintenance_alerts(&conn, "plant_tissue_culture").unwrap();
+
+        assert_eq!(cc_alerts.len(), 1);
+        assert_eq!(cc_alerts[0].accession_number, "ACC-CC");
+        assert_eq!(ptc_alerts.len(), 1);
+        assert_eq!(ptc_alerts[0].accession_number, "ACC-PTC");
+    }
+
+    #[test]
+    fn maintenance_alerts_excludes_terminal_stages() {
+        let conn = setup_db();
+        conn.execute(
+            "INSERT INTO stages (profile, code, label, sort_order, is_terminal) \
+             VALUES ('cell_culture', 'cryo_cc', 'Cryopreserved', 10, 1)",
+            [],
+        )
+        .unwrap();
+        insert_species(&conn, "sp1", "HEK", None);
+        // Old specimen in a terminal stage — must NOT appear
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s1', 'ACC-001', 'sp1', 'cryo_cc', 0, \
+             date('now', '-30 days'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        let alerts = query_culture_maintenance_alerts(&conn, "cell_culture").unwrap();
+        assert!(alerts.is_empty());
+    }
+
+    #[test]
+    fn maintenance_alerts_uses_created_at_when_no_passage() {
+        let conn = setup_db();
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "HEK", None);
+        // Specimen created 14 days ago, never passaged
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, is_archived, \
+              created_at, updated_at) \
+             VALUES ('s1', 'ACC-001', 'sp1', 'adherent', 0, \
+             date('now', '-14 days'), datetime('now'))",
+            [],
+        )
+        .unwrap();
+        let alerts = query_culture_maintenance_alerts(&conn, "cell_culture").unwrap();
+        assert_eq!(alerts.len(), 1);
+        assert!(alerts[0].days_since_passage.unwrap() >= 7);
+        assert!(alerts[0].last_passage_date.is_none());
     }
 }

@@ -900,3 +900,37 @@ export async function discardFrozenVial(request: {
 }) {
   return call<FrozenVial>('discard_frozen_vial', { request });
 }
+
+// ── WP-34: Cell-culture dashboard panels ─────────────────────────────────────
+
+export interface VialLineSummary {
+  species_id: string;
+  species_code: string;
+  species_name: string;
+  /** Number of active (non-depleted, non-discarded) lots. */
+  active_lots: number;
+  /** Total vials across all active lots for this line. */
+  total_vials: number;
+  /** Vial count in the smallest active lot (low-stock risk indicator). */
+  min_vials_in_lot: number;
+}
+
+export interface CultureMaintenanceAlert {
+  specimen_id: string;
+  accession_number: string;
+  species_code: string;
+  stage: string;
+  stage_label: string;
+  last_passage_date: string | null;
+  days_since_passage: number | null;
+}
+
+/** Frozen vial inventory grouped by cell line, active lots only, ascending by total vials. */
+export async function getVialSummaryByLine() {
+  return call<VialLineSummary[]>('get_vial_summary_by_line');
+}
+
+/** Specimens in non-terminal profile stages not passaged in the last 7 days. */
+export async function getCultureMaintenanceAlerts() {
+  return call<CultureMaintenanceAlert[]>('get_culture_maintenance_alerts');
+}
