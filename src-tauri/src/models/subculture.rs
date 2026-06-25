@@ -49,6 +49,11 @@ pub struct Subculture {
     pub pdl_gained: Option<f64>,
     /// Doubling time in hours, calculated from seed/harvest counts and elapsed time.
     pub doubling_time_hours: Option<f64>,
+    // ── WP-41: mycology colonization & contaminant tracking ─────────────────
+    /// Percentage of substrate colonized by mycelium (0–100). Mycology only.
+    pub colonization_pct: Option<f64>,
+    /// Categorical contaminant label (e.g. "trich", "wet_rot", "cobweb"). Set when contamination_flag is true.
+    pub contaminant_type: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -84,6 +89,9 @@ pub struct CreateSubcultureRequest {
     pub seed_cell_count: Option<f64>,
     pub harvest_cell_count: Option<f64>,
     pub split_ratio: Option<f64>,
+    // ── WP-41: mycology colonization & contaminant tracking ─────────────────
+    pub colonization_pct: Option<f64>,
+    pub contaminant_type: Option<String>,
 }
 
 /// Payload for the "Record Death & Archive" terminal event.
@@ -105,6 +113,9 @@ pub struct UpdateSubcultureRequest {
     pub location_to: Option<String>,
     pub contamination_flag: Option<bool>,
     pub contamination_notes: Option<String>,
+    // ── WP-41: mycology colonization & contaminant tracking ─────────────────
+    pub colonization_pct: Option<f64>,
+    pub contaminant_type: Option<String>,
 }
 
 /// Lab-wide contamination statistics.
@@ -120,6 +131,8 @@ pub struct ContaminationStats {
     pub contaminated_vessels: i64,
     /// Breakdown of contaminated events by vessel type.
     pub by_vessel_type: Vec<VesselContaminationCount>,
+    /// Breakdown of contaminated events by contaminant type (mycology-relevant).
+    pub by_contaminant_type: Vec<ContaminantTypeCount>,
     /// The 10 most recent contamination events.
     pub recent_events: Vec<RecentContaminationEvent>,
 }
@@ -140,6 +153,23 @@ pub struct RecentContaminationEvent {
     pub date: String,
     pub vessel_type: Option<String>,
     pub contamination_notes: Option<String>,
+    pub contaminant_type: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContaminantTypeCount {
+    pub contaminant_type: String,
+    pub count: i64,
+}
+
+/// One colonization reading for a specimen.
+#[derive(Debug, Serialize)]
+pub struct ColonizationEntry {
+    pub subculture_id: String,
+    pub date: String,
+    pub colonization_pct: f64,
+    pub passage_number: i32,
+    pub notes: Option<String>,
 }
 
 /// Per-cell-line frozen vial inventory summary for the dashboard.

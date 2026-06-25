@@ -2,7 +2,7 @@ use rusqlite::Connection;
 
 use crate::models::specimen::{SpeciesCount, SpecimenStats, StageCount};
 use crate::models::subculture::{
-    ContaminationStats, CultureMaintenanceAlert, RecentContaminationEvent,
+    ContaminantTypeCount, ContaminationStats, CultureMaintenanceAlert, RecentContaminationEvent,
     SubcultureScheduleEntry, VesselContaminationCount, VialLineSummary,
 };
 
@@ -191,12 +191,36 @@ pub fn query_contamination_stats(
         .filter_map(|r| r.ok())
         .collect();
 
+    let mut stmt_ct = conn
+        .prepare(
+            "SELECT COALESCE(sc.contaminant_type, 'Unknown') as contaminant_type, \
+                    COUNT(*) as cnt
+             FROM subcultures sc
+             JOIN specimens sp ON sc.specimen_id = sp.id
+             JOIN stages st ON sp.stage = st.code AND st.profile = ?1
+             WHERE sc.contamination_flag = 1 AND sc.contaminant_type IS NOT NULL
+             GROUP BY sc.contaminant_type
+             ORDER BY cnt DESC
+             LIMIT 10",
+        )
+        .map_err(|e| e.to_string())?;
+    let by_ct_rows = stmt_ct
+        .query_map([profile], |row| {
+            Ok(ContaminantTypeCount {
+                contaminant_type: row.get("contaminant_type")?,
+                count: row.get("cnt")?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let by_contaminant_type: Vec<ContaminantTypeCount> =
+        by_ct_rows.filter_map(|r| r.ok()).collect();
+
     let mut stmt2 = conn
         .prepare(
             "SELECT sc.id as subculture_id, sc.specimen_id, \
                     sp.accession_number, s.species_code, \
                     sc.passage_number, sc.date, sc.vessel_type, \
-                    sc.contamination_notes
+                    sc.contamination_notes, sc.contaminant_type
              FROM subcultures sc
              JOIN specimens sp ON sc.specimen_id = sp.id
              JOIN species s ON sp.species_id = s.id
@@ -206,7 +230,7 @@ pub fn query_contamination_stats(
              LIMIT 10",
         )
         .map_err(|e| e.to_string())?;
-    let recent_events: Vec<RecentContaminationEvent> = stmt2
+    let stmt2_rows = stmt2
         .query_map([profile], |row| {
             Ok(RecentContaminationEvent {
                 subculture_id: row.get("subculture_id")?,
@@ -217,11 +241,12 @@ pub fn query_contamination_stats(
                 date: row.get("date")?,
                 vessel_type: row.get("vessel_type")?,
                 contamination_notes: row.get("contamination_notes")?,
+                contaminant_type: row.get("contaminant_type")?,
             })
         })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+        .map_err(|e| e.to_string())?;
+    let recent_events: Vec<RecentContaminationEvent> =
+        stmt2_rows.filter_map(|r| r.ok()).collect();
 
     Ok(ContaminationStats {
         total_specimens,
@@ -229,6 +254,7 @@ pub fn query_contamination_stats(
         contamination_rate_pct,
         contaminated_vessels,
         by_vessel_type,
+        by_contaminant_type,
         recent_events,
     })
 }
@@ -438,6 +464,8 @@ mod tests {
                  vessel_type         TEXT,
                  contamination_flag  INTEGER NOT NULL DEFAULT 0,
                  contamination_notes TEXT,
+                 contaminant_type    TEXT,
+                 colonization_pct    REAL,
                  event_type          TEXT    NOT NULL DEFAULT 'passage',
                  created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
                  updated_at          TEXT    NOT NULL DEFAULT (datetime('now'))
@@ -712,6 +740,67 @@ mod tests {
         assert_eq!(stats.by_vessel_type.len(), 1);
         assert_eq!(stats.by_vessel_type[0].vessel_type, "jar");
         assert_eq!(stats.by_vessel_type[0].count, 2);
+    }
+
+    #[test]
+    fn contamination_by_contaminant_type_groups_correctly() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        // Two trich events, one wet_rot event
+        conn.execute_batch(
+            "INSERT INTO subcultures (id, specimen_id, passage_number, date,
+                contamination_flag, contaminant_type, created_at, updated_at)
+             VALUES
+                ('sc-ct1', 's1', 1, '2026-01-01', 1, 'trich',   datetime('now'), datetime('now')),
+                ('sc-ct2', 's1', 2, '2026-01-02', 1, 'trich',   datetime('now'), datetime('now')),
+                ('sc-ct3', 's1', 3, '2026-01-03', 1, 'wet_rot', datetime('now'), datetime('now'));",
+        )
+        .unwrap();
+
+        let stats = query_contamination_stats(&conn, "plant_tissue_culture").unwrap();
+        assert_eq!(stats.by_contaminant_type.len(), 2);
+        // trich should come first (highest count)
+        assert_eq!(stats.by_contaminant_type[0].contaminant_type, "trich");
+        assert_eq!(stats.by_contaminant_type[0].count, 2);
+        assert_eq!(stats.by_contaminant_type[1].contaminant_type, "wet_rot");
+        assert_eq!(stats.by_contaminant_type[1].count, 1);
+    }
+
+    #[test]
+    fn contamination_by_contaminant_type_empty_when_no_type_set() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        // Contaminated but no contaminant_type set
+        insert_subculture(&conn, "sc-nct", "s1", "2026-01-01", true, None);
+
+        let stats = query_contamination_stats(&conn, "plant_tissue_culture").unwrap();
+        assert_eq!(
+            stats.by_contaminant_type.len(),
+            0,
+            "by_contaminant_type must be empty when contaminant_type is NULL"
+        );
+    }
+
+    #[test]
+    fn recent_events_include_contaminant_type() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        conn.execute_batch(
+            "INSERT INTO subcultures (id, specimen_id, passage_number, date,
+                contamination_flag, contaminant_type, created_at, updated_at)
+             VALUES ('sc-re1', 's1', 1, '2026-01-01', 1, 'cobweb', datetime('now'), datetime('now'));",
+        )
+        .unwrap();
+
+        let stats = query_contamination_stats(&conn, "plant_tissue_culture").unwrap();
+        assert_eq!(stats.recent_events.len(), 1);
+        assert_eq!(stats.recent_events[0].contaminant_type, Some("cobweb".to_string()));
     }
 
     // ── Subculture schedule ───────────────────────────────────────────────────

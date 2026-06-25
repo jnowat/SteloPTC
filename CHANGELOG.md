@@ -5,6 +5,61 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.29.0] - 2026-06-25
+
+### Added — WP-41: Mycology colonization & contamination tracking
+
+- **Schema — Migration 028** — adds two nullable columns to `subcultures`:
+  - `colonization_pct REAL` — percentage of substrate colonized by mycelium (0–100),
+    enforced by a `CHECK` constraint. NULL for non-mycology passages.
+  - `contaminant_type TEXT` — categorical contaminant label (e.g. `trich`, `wet_rot`,
+    `cobweb`, `pin_mold`). NULL when no contaminant type is identified.
+
+- **Backend — `src-tauri/src/models/subculture.rs`**:
+  - `Subculture`, `CreateSubcultureRequest`, `UpdateSubcultureRequest` each gain
+    `colonization_pct: Option<f64>` and `contaminant_type: Option<String>` fields.
+  - `RecentContaminationEvent` gains `contaminant_type: Option<String>`.
+  - `ContaminationStats` gains `by_contaminant_type: Vec<ContaminantTypeCount>`.
+  - New `ContaminantTypeCount { contaminant_type: String, count: i64 }` struct.
+  - New `ColonizationEntry { subculture_id, date, colonization_pct, passage_number, notes }` struct.
+
+- **Backend — `src-tauri/src/db/dashboard.rs`**:
+  - `query_contamination_stats` now includes `contaminant_type` in recent event rows
+    and computes a `by_contaminant_type` breakdown (events grouped by contaminant category,
+    NULL-excluded, top 10 by count).
+
+- **Backend — `src-tauri/src/commands/subcultures.rs`**:
+  - `row_to_subculture` maps both new columns (graceful `unwrap_or(None)`).
+  - `create_subculture` INSERT expanded to params 36–37 (`colonization_pct`, `contaminant_type`).
+  - `update_subculture` dynamic builder handles both new fields when present.
+  - New command `get_colonization_history(specimen_id)` — returns all non-NULL
+    `colonization_pct` readings for a specimen, ordered oldest-first.
+
+- **Backend — `src-tauri/src/lib.rs`** — registers `get_colonization_history` in the
+  invoke handler.
+
+- **Frontend — `src/lib/api.ts`** — `ColonizationEntry` interface and
+  `getColonizationHistory(specimenId)` function added.
+
+- **Frontend — `src/lib/components/SpecimenDetail.svelte`**:
+  - Imports `labProfile` store and `getColonizationHistory` API function.
+  - Passage form gains a **Colonization %** input (mycology profile only) and a
+    **Contaminant Type** dropdown inside the contamination section (mycology + flag set).
+  - `loadAll` fetches colonization history for mycology specimens after the main data load.
+  - A **Colonization Progress** bar-chart section renders below the passage timeline for
+    mycology specimens that have at least one recorded reading (color-coded: green ≥ 80%,
+    amber ≥ 50%, red < 50%).
+
+- **Frontend — `src/lib/components/SpecimenPassageTimeline.svelte`**:
+  - Collapsed row badges now show contaminant type text when set (e.g. "⚠ trich" instead
+    of "⚠ Contaminated") and a `colonization_pct` badge when present.
+  - Expanded detail section shows `colonization_pct` as a detail item and contaminant type
+    as a sub-label inside the contamination block.
+
+- **Tests** — 4 new migration 028 unit tests (column existence, CHECK constraint, NULL
+  defaults); 4 new dashboard tests (`by_contaminant_type` grouping, empty when NULL,
+  `recent_events` includes contaminant_type). Total: 225 tests.
+
 ## [1.28.0] - 2026-06-25
 
 ### Added — WP-40: Mycology profile vocabulary

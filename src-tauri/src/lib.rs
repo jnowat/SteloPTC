@@ -183,6 +183,8 @@ pub fn run() {
             commands::cryo::get_vial_summary_by_line,
             // Cell-culture dashboard (WP-34)
             commands::subcultures::get_culture_maintenance_alerts,
+            // WP-41: colonization history
+            commands::subcultures::get_colonization_history,
             // QR Scans
             commands::qr_scans::store_qr_scan,
             commands::qr_scans::list_qr_scans,

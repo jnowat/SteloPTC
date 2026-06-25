@@ -347,7 +347,10 @@
                 <div class="tl-card-summary">
                   <span class="tl-date">{sc.date}</span>
                   {#if sc.contamination_flag}
-                    <span class="tl-pill contam-pill" title="Contamination was detected during this passage">⚠ Contaminated</span>
+                    <span class="tl-pill contam-pill" title="{sc.contaminant_type ? sc.contaminant_type.replace(/_/g, ' ') + ' — ' : ''}Contamination was detected during this passage">⚠ {sc.contaminant_type ? sc.contaminant_type.replace(/_/g, ' ') : 'Contaminated'}</span>
+                  {/if}
+                  {#if sc.colonization_pct != null}
+                    <span class="tl-pill colonization-pill" title="Colonization: {sc.colonization_pct}%">{sc.colonization_pct}% colonized</span>
                   {/if}
                   {#if sc.media_batch_name}
                     <span class="tl-pill media-pill" title="Media batch used for this passage: {sc.media_batch_name}">{sc.media_batch_name}</span>
@@ -479,9 +482,18 @@
                       {/if}
                     {/if}
                   </div>
+                  {#if sc.colonization_pct != null}
+                    <div class="tl-detail-item">
+                      <span class="tl-detail-label">Colonization</span>
+                      <span class="tl-detail-value">{sc.colonization_pct}%</span>
+                    </div>
+                  {/if}
                   {#if sc.contamination_flag}
                     <div class="tl-detail-text contam-detail">
                       <span class="tl-detail-label">Contamination</span>
+                      {#if sc.contaminant_type}
+                        <span class="tl-detail-value" style="margin-bottom:4px;">{sc.contaminant_type.replace(/_/g, ' ')}</span>
+                      {/if}
                       <p class="tl-detail-p">
                         {sc.contamination_notes || 'Contamination flagged — no notes recorded.'}
                       </p>
@@ -600,10 +612,12 @@
   .vessel-pill { background: #e0f2fe; color: #0369a1; }
   .loc-pill { background: #f0fdf4; color: #166534; }
   .contam-pill { background: #fee2e2; color: #b91c1c; font-weight: 700; }
+  .colonization-pill { background: #ecfdf5; color: #065f46; }
   :global(.dark) .media-pill { background: #3b0764; color: #c4b5fd; }
   :global(.dark) .vessel-pill { background: #0c4a6e; color: #7dd3fc; }
   :global(.dark) .loc-pill { background: #14532d; color: #86efac; }
   :global(.dark) .contam-pill { background: #7f1d1d; color: #fca5a5; }
+  :global(.dark) .colonization-pill { background: #064e3b; color: #6ee7b7; }
   .tl-card-body { padding: 0 14px 14px; border-top: 1px solid #f1f5f9; }
   :global(.dark) .tl-card-body { border-color: #334155; }
   .tl-detail-grid {

@@ -148,6 +148,24 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (27)", [])?;
     }
 
+    if current < 28 {
+        migration_028_colonization_contaminant(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (28)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_028_colonization_contaminant(conn: &Connection) -> DbResult<()> {
+    // WP-41: colonization progress and typed contaminant support.
+    // colonization_pct: percentage (0-100) of substrate colonized by mycelium.
+    // contaminant_type: categorical label for the contaminant (wet rot, trich, cobweb, etc.).
+    // Both columns are nullable so existing rows are unaffected.
+    conn.execute_batch(
+        "ALTER TABLE subcultures ADD COLUMN colonization_pct REAL
+             CHECK(colonization_pct IS NULL OR (colonization_pct >= 0.0 AND colonization_pct <= 100.0));
+         ALTER TABLE subcultures ADD COLUMN contaminant_type TEXT;",
+    )?;
     Ok(())
 }
 
@@ -3059,5 +3077,117 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stage_count, 10, "re-run must not duplicate mycology stage rows");
+    }
+
+    // ── Migration 028 tests ────────────────────────────────────────────────
+
+    fn seed_species_028(conn: &Connection) {
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp028-species', 'Pleurotus', 'ostreatus', 'PLEU-OS')",
+            [],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn migration_028_adds_colonization_pct_column() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute_batch(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at)
+             VALUES ('sp-028', 'ACC-028', 'sp028-species', 'colonizing', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01');
+             INSERT INTO subcultures (id, specimen_id, passage_number, date, colonization_pct,
+                created_at, updated_at, event_type)
+             VALUES ('sc-028', 'sp-028', 1, '2026-01-01', 55.0,
+                '2026-01-01', '2026-01-01', 'passage');",
+        )
+        .expect("inserting subculture with colonization_pct must succeed after migration 028");
+        let pct: f64 = conn
+            .query_row(
+                "SELECT colonization_pct FROM subcultures WHERE id = 'sc-028'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!((pct - 55.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn migration_028_colonization_pct_check_rejects_out_of_range() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute_batch(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at)
+             VALUES ('sp-028b', 'ACC-028B', 'sp028-species', 'colonizing', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01');",
+        )
+        .unwrap();
+        let result = conn.execute(
+            "INSERT INTO subcultures (id, specimen_id, passage_number, date,
+                colonization_pct, created_at, updated_at, event_type)
+             VALUES ('sc-028b', 'sp-028b', 1, '2026-01-01',
+                150.0, '2026-01-01', '2026-01-01', 'passage')",
+            [],
+        );
+        assert!(result.is_err(), "colonization_pct > 100 must be rejected by CHECK constraint");
+    }
+
+    #[test]
+    fn migration_028_adds_contaminant_type_column() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute_batch(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at)
+             VALUES ('sp-028c', 'ACC-028C', 'sp028-species', 'colonizing', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01');
+             INSERT INTO subcultures (id, specimen_id, passage_number, date,
+                contamination_flag, contaminant_type, created_at, updated_at, event_type)
+             VALUES ('sc-028c', 'sp-028c', 1, '2026-01-01',
+                1, 'trich', '2026-01-01', '2026-01-01', 'passage');",
+        )
+        .expect("inserting subculture with contaminant_type must succeed after migration 028");
+        let ct: String = conn
+            .query_row(
+                "SELECT contaminant_type FROM subcultures WHERE id = 'sc-028c'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(ct, "trich");
+    }
+
+    #[test]
+    fn migration_028_existing_rows_get_null_new_columns() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute_batch(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date,
+                generation, lineage_passage_offset, subculture_count, is_archived,
+                contamination_flag, ip_flag, quarantine_flag, created_at, updated_at)
+             VALUES ('sp-028d', 'ACC-028D', 'sp028-species', 'colonizing', '2026-01-01',
+                0, 0, 0, 0, 0, 0, 0, '2026-01-01', '2026-01-01');
+             INSERT INTO subcultures (id, specimen_id, passage_number, date,
+                created_at, updated_at, event_type)
+             VALUES ('sc-028d', 'sp-028d', 1, '2026-01-01',
+                '2026-01-01', '2026-01-01', 'passage');",
+        )
+        .unwrap();
+        let (cpct, ctype): (Option<f64>, Option<String>) = conn
+            .query_row(
+                "SELECT colonization_pct, contaminant_type FROM subcultures WHERE id = 'sc-028d'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert!(cpct.is_none(), "colonization_pct must default to NULL");
+        assert!(ctype.is_none(), "contaminant_type must default to NULL");
     }
 }
