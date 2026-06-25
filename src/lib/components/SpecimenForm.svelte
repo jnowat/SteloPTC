@@ -4,6 +4,7 @@
   import { addNotification, addErrorWithContext } from '../stores/app';
   import { effectiveHealth } from '../utils';
   import Tooltip from './Tooltip.svelte';
+  import { labProfile } from '../profile';
 
   let { onclose, onsave }: { onclose: () => void; onsave: () => void } = $props();
 
@@ -39,6 +40,7 @@
     media_batch_id: localStorage.getItem('spec_lastMediaBatch') || '',
     employee_id: '',
     notes: '',
+    origin_type: '',
   });
 
   let stages = $state<any[]>([]);
@@ -120,6 +122,7 @@
         health_status: effectiveHealth(healthValue, healthUnknown),
         employee_id: form.employee_id || undefined,
         notes: notes || undefined,
+        origin_type: form.origin_type || undefined,
       });
       addNotification('Specimen created', 'success');
       onsave();
@@ -199,6 +202,18 @@
           {/if}
         </div>
       {/if}
+    </div>
+  {/if}
+
+  {#if $labProfile === 'mycology'}
+    <div class="form-group">
+      <label for="origin_type">Culture Origin Type <Tooltip text="How this culture was established: multi-spore (from spore print), isolated dikaryon (single germinated spore pair), or tissue clone (from fruit body tissue)." /></label>
+      <select id="origin_type" bind:value={form.origin_type} title="Select the culture origin type for strain tracking">
+        <option value="">Not specified</option>
+        <option value="multi_spore">Multi-Spore</option>
+        <option value="isolated_dikaryon">Isolated Dikaryon</option>
+        <option value="tissue_clone">Tissue Clone</option>
+      </select>
     </div>
   {/if}
 

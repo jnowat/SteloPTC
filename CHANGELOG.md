@@ -5,6 +5,51 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.30.0] - 2026-06-25
+
+### Added — WP-42: Genetic lineage & strain isolation markers
+
+- **Schema — Migration 029** — two new columns on `specimens`:
+  - `origin_type TEXT` — culture origin: `multi_spore`, `isolated_dikaryon`, or `tissue_clone`.
+    Enforced by a `CHECK` constraint; NULL when not specified (non-mycology or unknown).
+  - `is_best_performer INTEGER NOT NULL DEFAULT 0` — lightweight best-performer selection flag.
+    Set to 1 when this culture is the top performer in its generation for strain improvement.
+
+- **Backend — `src-tauri/src/models/specimen.rs`**:
+  - `Specimen` struct gains `origin_type: Option<String>` and `is_best_performer: bool`.
+  - `CreateSpecimenRequest` gains `origin_type: Option<String>`.
+  - `UpdateSpecimenRequest` gains `origin_type: Option<String>` and `is_best_performer: Option<bool>`.
+  - `SpecimenSearchParams` gains `best_performer_only: Option<bool>`.
+
+- **Backend — `src-tauri/src/commands/specimens.rs`**:
+  - All three `Specimen` row-mapping sites (`list_specimens`, `get_specimen`,
+    `search_specimens`) now map `origin_type` and `is_best_performer`.
+  - `create_specimen` INSERT includes `origin_type` (param 29).
+  - `update_specimen` dynamic builder handles `origin_type` (via `add_update!` macro) and
+    `is_best_performer` (coerced to `i32`).
+  - `split_specimen` fetches and inherits `origin_type` from the parent into each child;
+    `is_best_performer` resets to 0 for all children (re-evaluated per generation).
+  - `search_specimens` adds a `WHERE s.is_best_performer = 1` filter when
+    `best_performer_only` is `true`.
+
+- **Frontend — `src/lib/components/SpecimenForm.svelte`**:
+  - Imports `labProfile` store.
+  - **Culture Origin Type** dropdown (Not specified / Multi-Spore / Isolated Dikaryon / Tissue Clone)
+    shown only when the mycology profile is active. Value sent as `origin_type` to `createSpecimen`.
+
+- **Frontend — `src/lib/components/SpecimenDetail.svelte`**:
+  - Imports `updateSpecimen` from API.
+  - Info card shows a **Culture Origin** badge (Multi-Spore / Isolated Dikaryon / Tissue Clone)
+    when `origin_type` is set and the mycology profile is active.
+  - Info card shows a **Best Performer** toggle button (mycology only) that calls
+    `updateSpecimen` to flip `is_best_performer` and refreshes the specimen.
+  - New `toggleBestPerformer()` async function; CSS for `.btn-best-performer` (active/hover states,
+    dark-mode variants).
+
+- **Tests** — 5 new migration 029 unit tests: column existence for both new columns, CHECK
+  constraint acceptance/rejection for `origin_type`, and `is_best_performer` filter on insert.
+  Total: **230 tests**.
+
 ## [1.29.0] - 2026-06-25
 
 ### Added — WP-41: Mycology colonization & contamination tracking
