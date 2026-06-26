@@ -331,6 +331,22 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
         flags.extend(positive_no_quarantine);
     }
 
+    // Flag: Mycology-specific QC rules (WP-44)
+    {
+        let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
+        if profile == "mycology" {
+            let transfer_days: i64 = queries::read_setting(&db.conn, "myco_transfer_interval_days", "21")
+                .parse().unwrap_or(21);
+            let slow_pct: f64 = queries::read_setting(&db.conn, "myco_slow_colonization_pct", "30")
+                .parse().unwrap_or(30.0);
+            let slow_days: i64 = queries::read_setting(&db.conn, "myco_slow_colonization_days", "7")
+                .parse().unwrap_or(7);
+            let myco_flags = queries::get_mycology_compliance_flags(&db.conn, transfer_days, slow_pct, slow_days)
+                .map_err(|e| format!("Mycology QC flags error: {}", e))?;
+            flags.extend(myco_flags);
+        }
+    }
+
     // Flag: Cell culture lines with no recent mycoplasma test (configurable interval)
     {
         let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
