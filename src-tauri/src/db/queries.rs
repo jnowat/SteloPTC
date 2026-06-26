@@ -9,6 +9,7 @@ use crate::models::strain::{
 };
 use crate::models::compliance::MycoplasmaStatus;
 use crate::models::cryo::{CreateFrozenVialRequest, FrozenVial, ListFrozenVialsParams};
+use crate::models::fruiting::{CreateFruitingRecordRequest, FruitingRecord};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
 pub const ZERO_HASH: &str =
@@ -2121,6 +2122,83 @@ pub fn discard_frozen_vial(
         return Err(DbError::Constraint(format!("Frozen vial not found: {}", vial_id)));
     }
     Ok(())
+}
+
+// ── WP-43: Fruiting records ───────────────────────────────────────────────────
+
+fn row_to_fruiting_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<FruitingRecord> {
+    Ok(FruitingRecord {
+        id: row.get(0)?,
+        specimen_id: row.get(1)?,
+        flush_number: row.get(2)?,
+        harvest_date: row.get(3)?,
+        fresh_weight_g: row.get(4)?,
+        dry_weight_g: row.get(5)?,
+        fruiting_temp_c: row.get(6)?,
+        fruiting_rh_percent: row.get(7)?,
+        fae_rate: row.get(8)?,
+        light_hours_per_day: row.get(9)?,
+        notes: row.get(10)?,
+        created_by: row.get(11)?,
+        created_at: row.get(12)?,
+        updated_at: row.get(13)?,
+    })
+}
+
+pub fn create_fruiting_record(
+    conn: &Connection,
+    req: &CreateFruitingRecordRequest,
+    created_by: Option<&str>,
+) -> DbResult<String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO fruiting_records
+         (id, specimen_id, flush_number, harvest_date,
+          fresh_weight_g, dry_weight_g, fruiting_temp_c, fruiting_rh_percent,
+          fae_rate, light_hours_per_day, notes, created_by)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
+        params![
+            id,
+            req.specimen_id,
+            req.flush_number,
+            req.harvest_date,
+            req.fresh_weight_g,
+            req.dry_weight_g,
+            req.fruiting_temp_c,
+            req.fruiting_rh_percent,
+            req.fae_rate,
+            req.light_hours_per_day,
+            req.notes,
+            created_by,
+        ],
+    )?;
+    Ok(id)
+}
+
+pub fn get_fruiting_record(conn: &Connection, id: &str) -> DbResult<FruitingRecord> {
+    conn.query_row(
+        "SELECT id, specimen_id, flush_number, harvest_date,
+                fresh_weight_g, dry_weight_g, fruiting_temp_c, fruiting_rh_percent,
+                fae_rate, light_hours_per_day, notes, created_by, created_at, updated_at
+         FROM fruiting_records WHERE id = ?1",
+        params![id],
+        row_to_fruiting_record,
+    )
+    .map_err(|_| DbError::Constraint(format!("Fruiting record not found: {}", id)))
+}
+
+pub fn list_fruiting_records(conn: &Connection, specimen_id: &str) -> DbResult<Vec<FruitingRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, specimen_id, flush_number, harvest_date,
+                fresh_weight_g, dry_weight_g, fruiting_temp_c, fruiting_rh_percent,
+                fae_rate, light_hours_per_day, notes, created_by, created_at, updated_at
+         FROM fruiting_records
+         WHERE specimen_id = ?1
+         ORDER BY flush_number ASC, harvest_date ASC",
+    )?;
+    let rows = stmt.query_map(params![specimen_id], row_to_fruiting_record)?;
+    let records: Vec<FruitingRecord> = rows.filter_map(|r| r.ok()).collect();
+    Ok(records)
 }
 
 #[cfg(test)]
@@ -4495,5 +4573,95 @@ mod tests {
         let status = list_mycoplasma_status(&conn).expect("query");
         assert!(status[0].last_test_date.is_none(),
             "non-mycoplasma test records must not affect mycoplasma status");
+    }
+
+    // ── WP-43 fruiting records ────────────────────────────────────────────────
+
+    fn fruiting_test_db() -> Connection {
+        use crate::db::migrations::run_all;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        run_all(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1','Pleurotus','ostreatus','MYC001')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, initiation_date) \
+             VALUES ('spec1','ACC-M-001','sp1','2026-01-01')",
+            [],
+        ).unwrap();
+        conn
+    }
+
+    #[test]
+    fn create_fruiting_record_inserts_row() {
+        let conn = fruiting_test_db();
+        let req = CreateFruitingRecordRequest {
+            specimen_id: "spec1".to_string(),
+            flush_number: 1,
+            harvest_date: "2026-06-01".to_string(),
+            fresh_weight_g: Some(42.5),
+            dry_weight_g: Some(4.1),
+            fruiting_temp_c: Some(22.0),
+            fruiting_rh_percent: Some(90.0),
+            fae_rate: Some(1.5),
+            light_hours_per_day: Some(12.0),
+            notes: Some("First flush".to_string()),
+        };
+        let id = create_fruiting_record(&conn, &req, Some("user1")).expect("insert");
+        let rec = get_fruiting_record(&conn, &id).expect("get");
+        assert_eq!(rec.specimen_id, "spec1");
+        assert_eq!(rec.flush_number, 1);
+        assert_eq!(rec.fresh_weight_g, Some(42.5));
+        assert_eq!(rec.created_by, Some("user1".to_string()));
+    }
+
+    #[test]
+    fn list_fruiting_records_returns_for_specimen() {
+        let conn = fruiting_test_db();
+        let req1 = CreateFruitingRecordRequest {
+            specimen_id: "spec1".to_string(),
+            flush_number: 1,
+            harvest_date: "2026-06-01".to_string(),
+            fresh_weight_g: Some(30.0),
+            dry_weight_g: None,
+            fruiting_temp_c: None,
+            fruiting_rh_percent: None,
+            fae_rate: None,
+            light_hours_per_day: None,
+            notes: None,
+        };
+        let req2 = CreateFruitingRecordRequest {
+            flush_number: 2,
+            fresh_weight_g: Some(20.0),
+            harvest_date: "2026-07-01".to_string(),
+            ..req1.clone()
+        };
+        create_fruiting_record(&conn, &req1, None).unwrap();
+        create_fruiting_record(&conn, &req2, None).unwrap();
+        let records = list_fruiting_records(&conn, "spec1").expect("list");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].flush_number, 1);
+        assert_eq!(records[1].flush_number, 2);
+    }
+
+    #[test]
+    fn create_fruiting_record_rejects_unknown_specimen() {
+        let conn = fruiting_test_db();
+        let req = CreateFruitingRecordRequest {
+            specimen_id: "does-not-exist".to_string(),
+            flush_number: 1,
+            harvest_date: "2026-06-01".to_string(),
+            fresh_weight_g: None,
+            dry_weight_g: None,
+            fruiting_temp_c: None,
+            fruiting_rh_percent: None,
+            fae_rate: None,
+            light_hours_per_day: None,
+            notes: None,
+        };
+        assert!(create_fruiting_record(&conn, &req, None).is_err());
     }
 }
