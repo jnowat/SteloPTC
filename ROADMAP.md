@@ -621,37 +621,80 @@ These are two independent but complementary lineage systems. The **strain pedigr
 
 ---
 
-### WP-45 — Full taxonomic hash chain (Kingdom → Strain → Specimen) — *Optional / Not Scheduled*
+### WP-45 — Full taxonomic hash chain (Kingdom → Strain → Specimen) — *Optional / Low Priority*
 
-> **Status: Deprioritized.** This packet is a design placeholder and is explicitly not part of the committed TX-3 plan. Retained here for future consideration only.
-
-If future demand warrants it: extend hash chain seeding to all taxonomy ranks so each `taxa` record's genesis is seeded from its parent taxon's current `entry_hash`. The full cryptographic path Kingdom → Phylum → Class → Order → Family → Genus → Species → Strain → Specimen would be continuously verifiable end-to-end. Highest value for IP-priority disputes requiring a dated, unbroken provenance chain from classification to culture.
-
-**Fundamental tension that must be resolved before scheduling:** Taxonomic reclassifications (common at family, order, and class level) would break the chain at the reclassified rank and invalidate every strain and specimen record below it. No satisfactory mitigation is known at the time WP-45 was written. Until this is resolved, hash chain integrity remains intentionally scoped to Species → Strain → Specimen.
-
----
+- **Goal:** Extend the existing per-lineage hash chain (Species → Strain → Specimen) upward to all `taxa` ranks so the complete classification-to-culture path is cryptographically verifiable end-to-end.
+- **Files:** new migration (030), `src-tauri/src/models/taxon.rs`, `src-tauri/src/db/queries.rs`, `src-tauri/src/commands/taxa.rs`, `src/lib/components/TaxonomyNavigator.svelte` (extend), `docs/merkle-checkpoints.md` (update).
+- **Steps:**
+  1. Migration 030: Add `chain_seq INTEGER`, `prev_hash TEXT`, `entry_hash TEXT` to `taxa` table (nullable for pre-existing rows). Add `taxon_chain_seq INTEGER` to `species` table (nullable, records the `taxa` chain_seq at binding time). Create indexes on new columns.
+  2. Extend `log_audit_seeded_by_strain` helper (rename/refactor to `log_audit_seeded_by_parent`) to handle taxa seeding: when creating/updating a taxon, seed its genesis audit entry from its parent's current `entry_hash` (or a fixed zero-hash for Kingdom). On species creation/update, record the parent's current `chain_seq` in `species.taxon_chain_seq`.
+  3. Update `create_taxon`, `update_taxon`, and `backfill_genus_taxa` to atomically write the new taxon row + its genesis audit entry (and any `used_as_parent` style entries for reclassifications). Use the same canonical serialization format already documented for strains/specimens.
+  4. Extend `verify_audit_chain`, `verify_against_checkpoint`, and `build_merkle_root` to optionally walk taxon lineages (add `lineage_type: 'taxon' | 'strain' | 'specimen'` discriminator if needed, but prefer unified `lineage_id` with prefix).
+  5. Update TaxonomyNavigator and StrainManager to display the full chain summary (e.g. "Kingdom → ... → Species v42 → Strain v3 → Specimen 2026-06-01-CITR-001").
+  6. Add 8 new Rust unit tests covering: genesis seeding from parent taxon, chain continuity across reclassification, species binding to taxon version, Merkle checkpoint inclusion of taxon entries, tamper detection at any rank.
+- **Acceptance:** Creating a new Kingdom → Genus path produces a continuous hash chain verifiable via existing tools; reclassifying a genus updates its chain without breaking downstream specimen provenance (new version recorded); full end-to-end verification command succeeds on clean data and pinpoints breaks.
+- **Preserve:** No hash chains on `taxa` records in current production data; existing Species → Strain → Specimen chains unchanged; `local_override` and NCBI sync behavior untouched.
+- **Bump:** minor.
+- **Risk note:** Reclassifications remain the primary tension — the design records immutable version bindings so downstream records stay verifiable even if higher taxonomy moves.
 
 ### WP-46 — Cross-domain taxonomy support
 
-Define `domain` as a per-profile configuration. SteloPTC defaults to `Plantae`; SteloCC uses `Animalia`; SteloMyco uses `Fungi`; future SteloBio uses `Bacteria/Archaea`. Domain controls: default ranks shown in the Navigator, strain type vocabulary (`cultivar/variety` for plants, `breed/ecotype` for animals, `strain/isolate` for fungi/bacteria), confirmation method vocabulary (`morphological/genomic/phenotypic` per domain). The underlying tables, audit log, and all cryptographic machinery are identical across all domains — only the UI manifest and lookup table data vary.
-
----
+- **Goal:** Make taxonomy fully profile-aware so Plantae, Animalia, Fungi (and future domains) share one engine with domain-specific defaults, ranks, and vocabularies.
+- **Files:** migration (031), `src-tauri/src/models/taxon.rs`, `src-tauri/src/commands/taxa.rs`, `src/lib/profile.ts`, `src/lib/components/TaxonomyNavigator.svelte`, `src/lib/components/StrainManager.svelte`.
+- **Steps:**
+  1. Migration 031: Add `domain TEXT NOT NULL DEFAULT 'Plantae'` to `app_config` (CHECK constraint: Plantae|Animalia|Fungi|Bacteria|Archaea). Add `domain` column to `taxa`, `species`, and `strains` tables with matching defaults. Update existing rows via backfill.
+  2. Extend profile-scoped vocabulary pattern: add `domain` filter to all `list_*` vocabulary commands and `get_taxon_column` / `search_taxonomy`.
+  3. In `profile.ts`: expose `currentDomain` derived from `lab_profile` (Plantae for PTC, Animalia for cell_culture, Fungi for mycology). Add domain-specific rank manifest (e.g., plants show Phylum-Class-Order-Family-Genus; fungi emphasize Subphylum/Section).
+  4. Update TaxonomyNavigator: default rank order and visible columns driven by domain manifest; strain_type vocabulary filtered by domain (cultivar/variety for plants, breed for animals, isolate for fungi).
+  5. Update StrainManager and HybridWizard: domain-appropriate strain status / confirmation method labels and required fields (e.g., morphology for animal cell lines).
+  6. Add 6 Rust unit tests for domain filtering and backfill; 4 TypeScript store tests.
+- **Acceptance:** Switching profiles shows correct domain taxonomy defaults and vocabularies; cross-domain data remains isolated; navigator and strain UI adapt without hard-coded strings.
+- **Preserve:** Existing PTC data stays under Plantae; all prior Phase TX behavior unchanged for plant profile.
+- **Bump:** minor.
 
 ### WP-47 — Breeding programs & multi-generational selection tracking
 
-Introduce a `breeding_programs` table (name, goal, start date, target traits, founder strains). Each hybrid strain can be linked to a program. A `breeding_records` table tracks selection notes, fitness scores, and generation number per strain per program. A breeding program dashboard compares all generations produced, selection milestones met, and performance trends across generations. Enables structured crop improvement, strain stabilization, and documented selection histories for any vertical.
+- **Goal:** Add structured breeding program support with selection history, trait scoring, and generation performance analytics.
+- **Files:** new migration (032), new `src-tauri/src/models/breeding.rs`, new `src-tauri/src/commands/breeding.rs`, new `src/lib/components/BreedingProgramManager.svelte`, updates to `PedigreeChart.svelte` and Dashboard.
+- **Steps:**
+  1. Migration 032: Create `breeding_programs` (id, name, goal, target_traits JSON array, start_date, status, created_by) and `breeding_records` (id, program_id, strain_id, generation_label, selection_round, trait_scores JSON, notes, recorded_at, recorded_by). Add indexes.
+  2. Commands: `create_breeding_program`, `list_breeding_programs`, `add_breeding_record`, `get_program_generational_stats` (aggregates health, yield, PDL/colonization by generation), `link_strain_to_program`.
+  3. `BreedingProgramManager.svelte`: table of programs, detail view with generational performance table (bar charts for key metrics), "Add Selection" form tied to strains.
+  4. Integrate with PedigreeChart: show program affiliation and selection highlights; add "View in Breeding Program" action.
+  5. Dashboard: optional "Breeding Insights" panel (top performers by program).
+  6. 10 new Rust unit tests (stats aggregation, trait scoring, generational roll-up); audit entries for all writes.
+- **Acceptance:** Full CRUD for programs; generational stats accurately aggregate across linked strains; pedigree view reflects program data; all changes audited.
+- **Preserve:** Existing strain/hybridization flows untouched; optional linking only.
+- **Bump:** minor.
 
----
+### WP-48 — Advanced hybridization (cross-species, generation labeling polish, introgression)
 
-### WP-48 — Advanced hybridization (cross-species, F1/F2, backcross)
-
-Lift the same-species constraint from WP-38 with an explicit admin override that writes a permanent warning to the audit log. Support F1/F2/F3 generation naming, backcross notation (`BC1F2`), and introgression lines. Add `hybrid_generation_code` field to strains. Optional hybrid vigor scoring (user-defined numeric metric). Full cross-species pedigree chart.
-
----
+- **Goal:** Fully support cross-species hybridization with admin overrides, refined generation labeling, and introgression line tracking.
+- **Files:** migration (033), `src-tauri/src/commands/strains.rs`, `src/lib/components/HybridWizard.svelte`, `src/lib/components/StrainDetail.svelte`, `docs/` hybridization section.
+- **Steps:**
+  1. Migration 033: Add `introgression_segments JSON` to `strains`, expand `hybridization_events` with `is_cross_species BOOLEAN`, `override_justification TEXT`, `introgression_notes TEXT`.
+  2. Update `create_hybridization_event`: admin override flow (requires justification text + explicit acknowledgement); auto-detect and store cross-species flag; enhanced generation label suggestions (F1, BCn, ILn for introgression lines).
+  3. HybridWizard: Step for cross-species unlock (admin only, writes permanent audit justification); dynamic generation label preview with backcross/introgression math.
+  4. StrainDetail: permanent cross-species banner with justification; introgression segment visual summary.
+  5. Extend pedigree tools to traverse cross-species edges with warning flags.
+  6. 7 new Rust unit tests for override path, generation math, audit justification; update existing hybridization tests.
+- **Acceptance:** Admin can create cross-species hybrid with justification recorded immutably; generation labels and pedigree correctly reflect advanced cases; UI enforces normal-user block.
+- **Preserve:** Intraspecific flow exactly as in WP-38; all existing data valid.
+- **Bump:** minor.
 
 ### WP-49 — Custom taxa & Darwin Core export
 
-Allow labs to define provisional taxa not yet in NCBI (undescribed species, working names, lab-internal groupings). Custom taxa get `status = provisional`. A mapping table links provisional names to accepted NCBI taxa once published. Export the full taxonomy tree (or any subtree) as Darwin Core XML/JSON for community sharing, regulatory submission, or integration with herbarium and museum databases.
+- **Goal:** Support provisional/lab-specific taxa and export full taxonomy + provenance in Darwin Core format for regulatory, herbarium, or community sharing.
+- **Files:** migration (034), `src-tauri/src/commands/taxa.rs`, `src-tauri/src/commands/export.rs` (extend), `src/lib/components/TaxonomyNavigator.svelte`, new `DarwinCoreExport.svelte`.
+- **Steps:**
+  1. Migration 034: Add `status TEXT` (`accepted | provisional | synonym`) and `accepted_taxon_id TEXT` (self-ref) to `taxa`. Add `dwc_occurrence_id` and `dwc_event_id` stubs to specimens/strains if needed for linkage.
+  2. Commands: `create_provisional_taxon`, `map_to_accepted_taxon`, `export_darwin_core` (supports subtree or full export with optional strain/specimen attachments).
+  3. UI: In TaxonomyNavigator, "New Provisional Taxon" button with form; mapping UI for conflicts; Export button that generates Darwin Core Archive (DwC-A) compatible CSV + EML metadata (JSON payload with full provenance hashes where available).
+  4. `export_darwin_core` produces standards-compliant output including taxonomic hierarchy, strain metadata, collection events (specimen accessions), and optional Merkle proof references.
+  5. 6 new Rust unit tests for provisional taxon handling and export schema validation.
+- **Acceptance:** Can create/map provisional taxa; export produces valid DwC files that round-trip into tools like GBIF or Symbiota; provisional taxa appear in navigator with distinct styling.
+- **Preserve:** NCBI sync and existing taxon flows unchanged; exports are read-only.
+- **Bump:** minor.
 
 ---
 
@@ -704,16 +747,118 @@ Contamination is even more central here than in PTC — the engine's contaminati
 
 ## 8. PHASE F — Cross-cutting & beyond (post-vertical)
 
-These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platform exists so they benefit all three verticals at once:
+These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platform exists so they benefit all three verticals at once. Each packet is now fully scoped for direct implementation.
 
-- **WP-50 — PostgreSQL backend option** for LAN/multi-writer deployments (drop-in behind the connection layer; the lookup-table design from Phase C makes the schema portable).
-- **WP-51 — LAN network sync** across desktop + mobile clients.
-- **WP-52 — Email/push notifications** for reminders and overdue passages/transfers.
-- **WP-53 — iOS support** (Tauri 2 iOS target; the responsive UI already exists).
-- **WP-54 — Environmental sensor integration** (temp/humidity/CO₂ → passage/fruiting records) — high value for cell culture (incubators) and mycology (fruiting chambers).
-- **WP-55 — Role-based field-level permissions** (hide IP/provenance by role).
-- **WP-56 — Local AI analysis** — notes summarization, image-based contamination detection (a natural fit given all three verticals already attach photos).
-- **WP-57 — Interactive lab map** — floor-plan heat-map of locations (your existing structured location data feeds this directly).
+### WP-50 — PostgreSQL backend option
+
+- **Goal:** Add optional PostgreSQL support for LAN/multi-user deployments while keeping SQLite as the default local-first backend.
+- **Files:** `src-tauri/src/db/mod.rs`, new `src-tauri/src/db/postgres.rs`, `src-tauri/src/db/connection.rs`, migration runner updates, `tauri.conf.json` (optional feature flags), `README.md` (deployment guide).
+- **Steps:**
+  1. Refactor connection layer to support a `DbBackend` trait (SQLite | Postgres) behind a feature flag (`postgres` in Cargo.toml).
+  2. Implement PostgreSQL connection pooling, query translation (parameter syntax, WAL → transaction handling), and schema migration runner.
+  3. Add config option in `app_config` / Settings for backend type + connection string (encrypted storage for credentials).
+  4. Update all repository functions to use the trait; add integration tests for both backends.
+  5. Provide a one-click "Migrate to PostgreSQL" admin action that exports SQLite → SQL dump then imports.
+- **Acceptance:** App runs identically on SQLite; can switch to Postgres on LAN with multi-user support; all existing queries and migrations work; schema remains portable thanks to Phase C lookup tables.
+- **Preserve:** SQLite remains default and fully functional offline; no behavior change for single-user installs.
+- **Bump:** minor.
+
+### WP-51 — LAN network sync across desktop + mobile clients
+
+- **Goal:** Enable real-time or periodic sync between multiple Stelo Lab Suite instances on the same local network.
+- **Files:** new `src-tauri/src/sync/`, `src/lib/components/SyncStatus.svelte`, `commands/sync.rs`, `db/` conflict resolver.
+- **Steps:**
+  1. Implement a lightweight WebSocket / mDNS discovery service for LAN peer detection.
+  2. Design a CRDT-style or last-write-wins merge strategy with audit-log-based conflict resolution.
+  3. Add sync commands: `start_lan_sync`, `push_changes`, `pull_changes`, `resolve_conflict`.
+  4. UI: Sync status indicator in sidebar + Settings panel with device list and manual sync button.
+  5. Include Merkle-proof verification on synced audit entries.
+- **Acceptance:** Two instances on same LAN can sync specimens, strains, subcultures, and audit logs; conflicts are detected and resolvable via UI; offline-first behavior preserved.
+- **Preserve:** Full offline operation; SQLite/Postgres compatibility.
+- **Bump:** minor.
+
+### WP-52 — Email/push notifications for reminders and overdue items
+
+- **Goal:** Notify users (and optionally lab supervisors) about due passages, contamination alerts, maintenance, etc.
+- **Files:** new `src-tauri/src/notifications/`, `commands/notifications.rs`, Settings UI extension, `WorkQueue.svelte` enhancements.
+- **Steps:**
+  1. Add configurable notification channels (email via SMTP, desktop push via Tauri, optional mobile push).
+  2. Extend Work Queue logic with scheduled background checks (using Tauri’s scheduler or cron-like task).
+  3. Create templated notifications tied to compliance rules and work queue items.
+  4. Add user preferences for frequency and types (per-role).
+  5. Write audit entries for sent notifications.
+- **Acceptance:** Overdue items trigger notifications; users can configure email/push in Settings; notifications respect lab_profile and role.
+- **Preserve:** Existing in-app Work Queue and compliance system unchanged.
+- **Bump:** minor.
+
+### WP-53 — iOS support
+
+- **Goal:** Add official iOS target alongside existing Windows + Android builds.
+- **Files:** `tauri.conf.json`, GitHub workflows (iOS), `src-tauri/src/` platform-specific code, `README.md`, `docs/` build guide.
+- **Steps:**
+  1. Enable Tauri 2 iOS target and configure signing (similar to Android keystore flow).
+  2. Update responsive UI components for iOS Safe Areas and native gestures.
+  3. Add iOS-specific build CI job that produces IPA.
+  4. Test camera (QR), file system (backups/attachments), and notifications on device.
+  5. Update Downloads table in README with iOS TestFlight / App Store notes.
+- **Acceptance:** Successful signed IPA build; core flows (specimen CRUD, QR scan, print-to-PDF) work on iOS; responsive layout adapts correctly.
+- **Preserve:** All existing desktop/Android behavior and CI.
+- **Bump:** minor.
+
+### WP-54 — Environmental sensor integration
+
+- **Goal:** Integrate temperature, humidity, CO₂, and other sensors into passage/fruiting records for cell culture and mycology.
+- **Files:** new `src-tauri/src/sensors/`, migration (035), `commands/sensors.rs`, updates to passage form and SpecimenDetail.
+- **Steps:**
+  1. Migration 035: Add `environmental_readings` table linked to subcultures/specimens (timestamp, temp, rh, co2, light, notes).
+  2. Support common protocols (USB/serial, Bluetooth, MQTT for LAN sensors).
+  3. UI: Auto-log button in passage form; historical chart in SpecimenDetail (mycology/ cell culture profiles).
+  4. Dashboard alerts for out-of-range conditions.
+  5. Add 6 Rust unit tests for reading parsing and validation.
+- **Acceptance:** Sensors can be paired and readings attached to passages; charts display correctly per profile; alerts fire on thresholds.
+- **Preserve:** Manual entry remains fully supported.
+- **Bump:** minor.
+
+### WP-55 — Role-based field-level permissions
+
+- **Goal:** Allow fine-grained control (e.g., hide provenance/strain/IP fields from technicians).
+- **Files:** `src-tauri/src/auth/permissions.rs`, migration for role definitions, updates to UI components and API layer.
+- **Steps:**
+  1. Extend roles with field-level visibility rules stored in `app_config` or dedicated table.
+  2. Implement permission checks in all read commands (e.g., mask `strain_id`, `genomic_fingerprint`, audit details).
+  3. UI: Conditionally render sensitive fields/panels based on user role.
+  4. Add admin UI in Settings to configure role permissions.
+- **Acceptance:** Technicians see redacted views; supervisors/admins see full data; all audit trails still capture full actions.
+- **Preserve:** Existing role system and admin visibility.
+- **Bump:** minor.
+
+### WP-56 — Local AI analysis
+
+- **Goal:** Provide on-device AI assistance for note summarization and image-based contamination detection.
+- **Files:** new `src-tauri/src/ai/`, `commands/ai.rs`, integration in SpecimenDetail and notes fields, Ollama/Local LLM support.
+- **Steps:**
+  1. Integrate with local LLM backends (Ollama, MLX, etc.) via Tauri commands.
+  2. Features: "Summarize Notes", "Suggest Passage Comments", "Analyze Photo for Contamination" (using vision models where available).
+  3. UI buttons in notes editor and attachment lightbox.
+  4. Store AI suggestions as draft notes with attribution; require user approval before saving.
+  5. Add privacy-first design: all processing stays local.
+- **Acceptance:** Users can invoke AI on notes/photos; suggestions appear in UI; works offline with local models.
+- **Preserve:** All manual workflows fully functional without AI.
+- **Bump:** minor.
+
+### WP-57 — Interactive lab map
+
+- **Goal:** Visualize locations with floor-plan heat-map and asset tracking.
+- **Files:** new `src/lib/components/LabMap.svelte`, migration for location metadata, `commands/locations.rs`.
+- **Steps:**
+  1. Extend location system with optional floor-plan image upload and coordinate mapping.
+  2. Implement interactive map using Leaflet or canvas overlay with specimen/location pins.
+  3. Heat-map by contamination risk, age, or density.
+  4. Click-to-navigate from map to specimen or location detail.
+  5. Dashboard widget showing map overview.
+- **Acceptance:** Upload floor plan → place specimens → view heat-map and navigate; updates reflect live data.
+- **Preserve:** Existing text-based location system works unchanged.
+- **Bump:** minor.
 
 ---
 
