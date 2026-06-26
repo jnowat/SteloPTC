@@ -5,6 +5,44 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.32.0] - 2026-06-26
+
+### Added — WP-44: Mycology compliance / QC rules
+
+- **Backend — `src-tauri/src/db/queries.rs`**:
+  - `get_mycology_compliance_flags(conn, transfer_interval_days, slow_colonization_pct, slow_colonization_days)` —
+    runs three mycology-specific QC rules and returns a `Vec<ComplianceFlag>`.
+  - **Rule `myco_open_contamination`** (severity: high) — triggers for non-terminal mycology
+    specimens where `contamination_flag = 1` (contamination detected but culture not yet discarded).
+  - **Rule `myco_overdue_transfer`** (severity: normal) — triggers for non-terminal mycology
+    specimens with no passage recorded within the configured interval (`myco_transfer_interval_days`,
+    default 21 days). Message includes the last-passage date or "No transfer on record".
+  - **Rule `myco_slow_colonization`** (severity: normal) — triggers for specimens in the
+    `colonizing` stage whose most recent `colonization_pct` reading is below the configured
+    threshold (`myco_slow_colonization_pct`, default 30%) **and** that reading is at least
+    `myco_slow_colonization_days` (default 7) days old. Prevents false positives on freshly
+    inoculated substrate.
+
+- **Backend — `src-tauri/src/commands/compliance.rs`** (`get_compliance_flags`):
+  - Added a mycology block (profile-gated on `lab_profile = mycology`) that reads three
+    `app_settings` keys (`myco_transfer_interval_days`, `myco_slow_colonization_pct`,
+    `myco_slow_colonization_days`) and extends the shared flags list with results from
+    `queries::get_mycology_compliance_flags`. No breakage to PTC or cell_culture rules.
+
+- **Frontend — `src/lib/components/Dashboard.svelte`**:
+  - Added `mycoQcFlags` derived state (filters the shared `flags` list for the three new
+    mycology flag types).
+  - Added **Panel MY-1: Mycology QC Alerts** rendered when `labProfile === 'mycology'`: shows
+    up to 8 flagged specimens with severity badges (red = open contamination, yellow = other),
+    accession + species, and the rule message; "View compliance" button links to full flag list.
+
+- **Tests** — 8 new `db::queries` unit tests covering all three rules:
+  - `myco_open_contamination_detected` / `_not_raised_for_terminal_stage`
+  - `myco_overdue_transfer_no_subculture` / `_recent_passage_not_flagged`
+  - `myco_slow_colonization_flagged` / `_recent_reading_not_flagged` / `_above_threshold_not_flagged`
+  - `myco_flags_ignore_archived_specimens`
+  Total: 245 Rust tests.
+
 ## [1.31.0] - 2026-06-26
 
 ### Added — WP-43: Fruiting conditions & yield tracking

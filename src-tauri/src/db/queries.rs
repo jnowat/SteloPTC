@@ -8,6 +8,7 @@ use crate::models::strain::{
     SpecimenSummary, StrainSpecimenTree, StrainSummary, SuggestGenerationLabelResponse,
 };
 use crate::models::compliance::MycoplasmaStatus;
+use crate::models::compliance::ComplianceFlag;
 use crate::models::cryo::{CreateFrozenVialRequest, FrozenVial, ListFrozenVialsParams};
 use crate::models::fruiting::{CreateFruitingRecordRequest, FruitingRecord};
 
@@ -2199,6 +2200,137 @@ pub fn list_fruiting_records(conn: &Connection, specimen_id: &str) -> DbResult<V
     let rows = stmt.query_map(params![specimen_id], row_to_fruiting_record)?;
     let records: Vec<FruitingRecord> = rows.filter_map(|r| r.ok()).collect();
     Ok(records)
+}
+
+// ── WP-44: Mycology compliance / QC rules ────────────────────────────────────
+
+/// Returns all active QC flags for mycology cultures.
+///
+/// Three rules:
+/// 1. `myco_open_contamination` — contamination flag set but culture not in a terminal stage.
+/// 2. `myco_overdue_transfer`   — no passage recorded in the last `transfer_interval_days` days.
+/// 3. `myco_slow_colonization`  — most recent colonization_pct < `slow_colonization_pct` and
+///    that reading was taken >= `slow_colonization_days` days ago.
+pub fn get_mycology_compliance_flags(
+    conn: &Connection,
+    transfer_interval_days: i64,
+    slow_colonization_pct: f64,
+    slow_colonization_days: i64,
+) -> DbResult<Vec<ComplianceFlag>> {
+    let mut flags: Vec<ComplianceFlag> = Vec::new();
+
+    // Rule 1: Open contamination — contamination_flag=1 in a non-terminal stage.
+    {
+        let mut stmt = conn.prepare(
+            "SELECT s.id, s.accession_number, sp.species_code
+             FROM specimens s
+             JOIN species sp ON s.species_id = sp.id
+             JOIN stages st ON st.code = s.stage AND st.profile = 'mycology'
+             WHERE s.is_archived = 0
+               AND st.is_terminal = 0
+               AND s.contamination_flag = 1",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(ComplianceFlag {
+                specimen_id: row.get(0)?,
+                accession_number: row.get(1)?,
+                species_code: row.get(2)?,
+                flag_type: "myco_open_contamination".to_string(),
+                message: "Contamination detected — culture has not been discarded".to_string(),
+                severity: "high".to_string(),
+                last_test_date: None,
+            })
+        })?;
+        for r in rows.flatten() { flags.push(r); }
+    }
+
+    // Rule 2: Overdue for transfer (no passage within the configured interval).
+    {
+        let sql = format!(
+            "SELECT s.id, s.accession_number, sp.species_code,
+                    (SELECT MAX(sc.date) FROM subcultures sc
+                     WHERE sc.specimen_id = s.id AND sc.event_type != 'death') AS last_passage
+             FROM specimens s
+             JOIN species sp ON s.species_id = sp.id
+             JOIN stages st ON st.code = s.stage AND st.profile = 'mycology'
+             WHERE s.is_archived = 0
+               AND st.is_terminal = 0
+               AND (
+                   (SELECT MAX(sc.date) FROM subcultures sc
+                    WHERE sc.specimen_id = s.id AND sc.event_type != 'death') IS NULL
+                   OR (SELECT MAX(sc.date) FROM subcultures sc
+                       WHERE sc.specimen_id = s.id AND sc.event_type != 'death')
+                      < date('now', '-{} days')
+               )",
+            transfer_interval_days
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            let last_passage: Option<String> = row.get(3)?;
+            let msg = match &last_passage {
+                Some(d) => format!("No transfer recorded since {} ({} day interval)", d, transfer_interval_days),
+                None    => format!("No transfer on record (interval: {} days)", transfer_interval_days),
+            };
+            Ok(ComplianceFlag {
+                specimen_id: row.get(0)?,
+                accession_number: row.get(1)?,
+                species_code: row.get(2)?,
+                flag_type: "myco_overdue_transfer".to_string(),
+                message: msg,
+                severity: "normal".to_string(),
+                last_test_date: last_passage,
+            })
+        })?;
+        for r in rows.flatten() { flags.push(r); }
+    }
+
+    // Rule 3: Slow colonization — latest pct < threshold AND reading >= slow_colonization_days old.
+    {
+        let sql = format!(
+            "SELECT s.id, s.accession_number, sp.species_code,
+                    (SELECT sc.colonization_pct FROM subcultures sc
+                     WHERE sc.specimen_id = s.id AND sc.colonization_pct IS NOT NULL
+                     ORDER BY sc.date DESC LIMIT 1) AS latest_pct,
+                    (SELECT sc.date FROM subcultures sc
+                     WHERE sc.specimen_id = s.id AND sc.colonization_pct IS NOT NULL
+                     ORDER BY sc.date DESC LIMIT 1) AS last_measured_date
+             FROM specimens s
+             JOIN species sp ON s.species_id = sp.id
+             WHERE s.is_archived = 0
+               AND s.stage = 'colonizing'
+               AND (SELECT sc.colonization_pct FROM subcultures sc
+                    WHERE sc.specimen_id = s.id AND sc.colonization_pct IS NOT NULL
+                    ORDER BY sc.date DESC LIMIT 1) < {}
+               AND (SELECT sc.date FROM subcultures sc
+                    WHERE sc.specimen_id = s.id AND sc.colonization_pct IS NOT NULL
+                    ORDER BY sc.date DESC LIMIT 1) <= date('now', '-{} days')",
+            slow_colonization_pct, slow_colonization_days
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map([], |row| {
+            let pct: Option<f64> = row.get(3)?;
+            let measured: Option<String> = row.get(4)?;
+            let msg = format!(
+                "Colonization at {:.0}% as of {} — below {}% threshold after {} days",
+                pct.unwrap_or(0.0),
+                measured.as_deref().unwrap_or("unknown date"),
+                slow_colonization_pct,
+                slow_colonization_days,
+            );
+            Ok(ComplianceFlag {
+                specimen_id: row.get(0)?,
+                accession_number: row.get(1)?,
+                species_code: row.get(2)?,
+                flag_type: "myco_slow_colonization".to_string(),
+                message: msg,
+                severity: "normal".to_string(),
+                last_test_date: measured,
+            })
+        })?;
+        for r in rows.flatten() { flags.push(r); }
+    }
+
+    Ok(flags)
 }
 
 #[cfg(test)]
@@ -4663,5 +4795,125 @@ mod tests {
             notes: None,
         };
         assert!(create_fruiting_record(&conn, &req, None).is_err());
+    }
+
+    // ── WP-44 mycology compliance / QC rules ──────────────────────────────────
+
+    fn myco_compliance_db() -> Connection {
+        use crate::db::migrations::run_all;
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        run_all(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1','Pleurotus','ostreatus','MYC001')",
+            [],
+        ).unwrap();
+        conn
+    }
+
+    fn insert_myco_specimen(conn: &Connection, id: &str, stage: &str, contamination_flag: i32) {
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, \
+             contamination_flag) VALUES (?1,?2,'sp1',?3,'2026-01-01',?4)",
+            rusqlite::params![id, format!("ACC-{}", id), stage, contamination_flag],
+        ).unwrap();
+    }
+
+    #[test]
+    fn myco_open_contamination_detected() {
+        let conn = myco_compliance_db();
+        insert_myco_specimen(&conn, "s1", "colonizing", 1);
+        let flags = get_mycology_compliance_flags(&conn, 21, 30.0, 7).unwrap();
+        let found = flags.iter().any(|f| f.flag_type == "myco_open_contamination" && f.specimen_id == "s1");
+        assert!(found, "contaminated non-terminal specimen must trigger open_contamination flag");
+    }
+
+    #[test]
+    fn myco_open_contamination_not_raised_for_terminal_stage() {
+        let conn = myco_compliance_db();
+        insert_myco_specimen(&conn, "s1", "contaminated", 1);
+        let flags = get_mycology_compliance_flags(&conn, 21, 30.0, 7).unwrap();
+        let found = flags.iter().any(|f| f.flag_type == "myco_open_contamination" && f.specimen_id == "s1");
+        assert!(!found, "specimen already in terminal contaminated stage must not raise open_contamination");
+    }
+
+    #[test]
+    fn myco_overdue_transfer_no_subculture() {
+        let conn = myco_compliance_db();
+        insert_myco_specimen(&conn, "s1", "grain_spawn", 0);
+        let flags = get_mycology_compliance_flags(&conn, 21, 30.0, 7).unwrap();
+        let found = flags.iter().any(|f| f.flag_type == "myco_overdue_transfer" && f.specimen_id == "s1");
+        assert!(found, "specimen with no passage on record must trigger overdue_transfer flag");
+    }
+
+    #[test]
+    fn myco_overdue_transfer_recent_passage_not_flagged() {
+        let conn = myco_compliance_db();
+        insert_myco_specimen(&conn, "s1", "grain_spawn", 0);
+        conn.execute(
+            "INSERT INTO subcultures (id, specimen_id, passage_number, date) \
+             VALUES ('sc1','s1',1,date('now','-5 days'))",
+            [],
+        ).unwrap();
+        let flags = get_mycology_compliance_flags(&conn, 21, 30.0, 7).unwrap();
+        let found = flags.iter().any(|f| f.flag_type == "myco_overdue_transfer" && f.specimen_id == "s1");
+        assert!(!found, "specimen passaged 5 days ago with 21-day interval must not be flagged");
+    }
+
+    #[test]
+    fn myco_slow_colonization_flagged() {
+        let conn = myco_compliance_db();
+        insert_myco_specimen(&conn, "s1", "colonizing", 0);
+        conn.execute(
+            "INSERT INTO subcultures (id, specimen_id, passage_number, date, colonization_pct) \
+             VALUES ('sc1','s1',1,date('now','-10 days'),15.0)",
+            [],
+        ).unwrap();
+        let flags = get_mycology_compliance_flags(&conn, 21, 30.0, 7).unwrap();
+        let found = flags.iter().any(|f| f.flag_type == "myco_slow_colonization" && f.specimen_id == "s1");
+        assert!(found, "15% colonization after 10 days must trigger slow_colonization flag (threshold 30%, window 7d)");
+    }
+
+    #[test]
+    fn myco_slow_colonization_recent_reading_not_flagged() {
+        let conn = myco_compliance_db();
+        insert_myco_specimen(&conn, "s1", "colonizing", 0);
+        conn.execute(
+            "INSERT INTO subcultures (id, specimen_id, passage_number, date, colonization_pct) \
+             VALUES ('sc1','s1',1,date('now','-3 days'),15.0)",
+            [],
+        ).unwrap();
+        // Reading is only 3 days old — within the 7-day window → not yet flagged.
+        let flags = get_mycology_compliance_flags(&conn, 21, 30.0, 7).unwrap();
+        let found = flags.iter().any(|f| f.flag_type == "myco_slow_colonization" && f.specimen_id == "s1");
+        assert!(!found, "15% colonization at 3 days must not be flagged when window is 7 days");
+    }
+
+    #[test]
+    fn myco_slow_colonization_above_threshold_not_flagged() {
+        let conn = myco_compliance_db();
+        insert_myco_specimen(&conn, "s1", "colonizing", 0);
+        conn.execute(
+            "INSERT INTO subcultures (id, specimen_id, passage_number, date, colonization_pct) \
+             VALUES ('sc1','s1',1,date('now','-10 days'),60.0)",
+            [],
+        ).unwrap();
+        let flags = get_mycology_compliance_flags(&conn, 21, 30.0, 7).unwrap();
+        let found = flags.iter().any(|f| f.flag_type == "myco_slow_colonization" && f.specimen_id == "s1");
+        assert!(!found, "60% colonization is above 30% threshold and must not be flagged");
+    }
+
+    #[test]
+    fn myco_flags_ignore_archived_specimens() {
+        let conn = myco_compliance_db();
+        // Insert archived specimen — should not appear in any flag.
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, \
+             contamination_flag, is_archived) VALUES ('s1','ACC-s1','sp1','colonizing','2026-01-01',1,1)",
+            [],
+        ).unwrap();
+        let flags = get_mycology_compliance_flags(&conn, 1, 30.0, 0).unwrap();
+        assert!(flags.is_empty(), "archived specimens must be excluded from all mycology flags");
     }
 }

@@ -21,6 +21,11 @@
   let overduePassages = $derived(schedule.filter((e: any) => e.is_overdue));
   let criticalPassages = $derived(schedule.filter((e: any) => !e.is_overdue && e.days_until_due !== null && e.days_until_due <= 3));
   let mycoplasmaOverdue = $derived(flags.filter((f: any) => f.flag_type === 'missing_mycoplasma_test'));
+  let mycoQcFlags = $derived(flags.filter((f: any) =>
+    f.flag_type === 'myco_open_contamination' ||
+    f.flag_type === 'myco_overdue_transfer' ||
+    f.flag_type === 'myco_slow_colonization'
+  ));
   let firstRun = $derived(!loading && stats !== null && stats.total_specimens === 0);
   let backingUp = $state(false);
   let showResetPanel = $state(false);
@@ -566,6 +571,40 @@
             </div>
             <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('specimens')} title="Go to the full Specimens list">
               View specimens
+            </button>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- ── Mycology-specific QC panels ─────────────────────────────────── -->
+      {#if labProfile === 'mycology'}
+        <!-- Panel MY-1: Mycology QC Alerts -->
+        <div class="panel">
+          <h3 title="Active QC flags for mycology cultures: open contamination, overdue transfers, and slow colonization.">Mycology QC Alerts</h3>
+          {#if mycoQcFlags.length === 0}
+            <p class="empty-state">No active mycology QC issues</p>
+          {:else}
+            <div class="flag-list">
+              {#each mycoQcFlags.slice(0, 8) as f}
+                <div class="flag-item">
+                  <span
+                    class="badge"
+                    class:badge-red={f.flag_type === 'myco_open_contamination'}
+                    class:badge-yellow={f.flag_type !== 'myco_open_contamination'}
+                    title="Flag: {f.flag_type.replace(/_/g, ' ')}"
+                  >{f.severity}</span>
+                  <div>
+                    <div class="flag-accession">{f.accession_number} <span style="font-weight:400;color:#6b7280;">({f.species_code})</span></div>
+                    <div class="flag-message">{f.message}</div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+            {#if mycoQcFlags.length > 8}
+              <p style="font-size:12px;color:#6b7280;margin-top:6px;">+{mycoQcFlags.length - 8} more — see full list below</p>
+            {/if}
+            <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('compliance')} title="View all compliance flags">
+              View compliance
             </button>
           {/if}
         </div>
