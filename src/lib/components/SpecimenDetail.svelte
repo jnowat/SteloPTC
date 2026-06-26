@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, type ColonizationEntry } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, type ColonizationEntry, type FruitingRecord } from '../api';
   import { labProfile } from '../profile';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
@@ -22,6 +22,20 @@
   let subcultures = $state<any[]>([]);
   let mediaBatches = $state<any[]>([]);
   let colonizationHistory = $state<ColonizationEntry[]>([]);
+  let fruitingRecords = $state<FruitingRecord[]>([]);
+  let showFruitingForm = $state(false);
+  let fruitingSubmitting = $state(false);
+  let fruitingForm = $state({
+    flush_number: 1,
+    harvest_date: new Date().toISOString().split('T')[0],
+    fresh_weight_g: '',
+    dry_weight_g: '',
+    fruiting_temp_c: '',
+    fruiting_rh_percent: '',
+    fae_rate: '',
+    light_hours_per_day: '',
+    notes: '',
+  });
   let complianceRecords = $state<any[]>([]);
   let parentSpecimen = $state<any>(null);
   let childSpecimens = $state<any[]>([]);
@@ -361,11 +375,13 @@
 
       subcultures = timelineItems;
 
-      // Load colonization history for mycology specimens
+      // Load colonization history and fruiting records for mycology specimens
       if (get(labProfile) === 'mycology') {
         colonizationHistory = await getColonizationHistory(id).catch(() => []);
+        fruitingRecords = await listFruitingRecords(id).catch(() => []);
       } else {
         colonizationHistory = [];
+        fruitingRecords = [];
       }
     } catch (e: any) {
       addNotification(e.message, 'error');
@@ -564,6 +580,38 @@
       addNotification(newValue ? 'Marked as best performer' : 'Best performer flag cleared', 'success');
     } catch (e: any) {
       addNotification(e.message, 'error');
+    }
+  }
+
+  async function submitFruitingRecord() {
+    if (!specimen) return;
+    fruitingSubmitting = true;
+    try {
+      const rec = await createFruitingRecord({
+        specimen_id: specimen.id,
+        flush_number: fruitingForm.flush_number,
+        harvest_date: fruitingForm.harvest_date,
+        fresh_weight_g: fruitingForm.fresh_weight_g ? parseFloat(fruitingForm.fresh_weight_g) : undefined,
+        dry_weight_g: fruitingForm.dry_weight_g ? parseFloat(fruitingForm.dry_weight_g) : undefined,
+        fruiting_temp_c: fruitingForm.fruiting_temp_c ? parseFloat(fruitingForm.fruiting_temp_c) : undefined,
+        fruiting_rh_percent: fruitingForm.fruiting_rh_percent ? parseFloat(fruitingForm.fruiting_rh_percent) : undefined,
+        fae_rate: fruitingForm.fae_rate ? parseFloat(fruitingForm.fae_rate) : undefined,
+        light_hours_per_day: fruitingForm.light_hours_per_day ? parseFloat(fruitingForm.light_hours_per_day) : undefined,
+        notes: fruitingForm.notes || undefined,
+      });
+      fruitingRecords = [...fruitingRecords, rec];
+      showFruitingForm = false;
+      fruitingForm = {
+        flush_number: fruitingRecords.length + 1,
+        harvest_date: new Date().toISOString().split('T')[0],
+        fresh_weight_g: '', dry_weight_g: '', fruiting_temp_c: '',
+        fruiting_rh_percent: '', fae_rate: '', light_hours_per_day: '', notes: '',
+      };
+      addNotification('Fruiting record saved', 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      fruitingSubmitting = false;
     }
   }
 
@@ -1520,6 +1568,108 @@ ${footnotesHtml}
             </div>
           </div>
         {/if}
+
+        <!-- Fruiting Records (mycology only) -->
+        {#if $labProfile === 'mycology'}
+          <div class="fruiting-section" style="margin-top:24px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <h4 style="font-size:14px;margin:0;color:var(--text-secondary);">Fruiting Records</h4>
+              <button class="btn btn-sm" onclick={() => { showFruitingForm = !showFruitingForm; }}>
+                {showFruitingForm ? 'Cancel' : '+ Add Flush'}
+              </button>
+            </div>
+
+            {#if showFruitingForm}
+              <div class="fruiting-form card" style="padding:14px;margin-bottom:14px;">
+                <div class="form-row">
+                  <div class="form-group" style="flex:0 0 90px;">
+                    <label for="ff-flush">Flush #</label>
+                    <input id="ff-flush" type="number" min="1" bind:value={fruitingForm.flush_number} />
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label for="ff-date">Harvest Date</label>
+                    <input id="ff-date" type="date" bind:value={fruitingForm.harvest_date} />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group" style="flex:1;">
+                    <label for="ff-fw">Fresh Weight (g)</label>
+                    <input id="ff-fw" type="number" step="0.1" placeholder="e.g. 42.5" bind:value={fruitingForm.fresh_weight_g} />
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label for="ff-dw">Dry Weight (g)</label>
+                    <input id="ff-dw" type="number" step="0.01" placeholder="e.g. 4.1" bind:value={fruitingForm.dry_weight_g} />
+                  </div>
+                </div>
+                <div class="form-row">
+                  <div class="form-group" style="flex:1;">
+                    <label for="ff-temp">Temp (°C)</label>
+                    <input id="ff-temp" type="number" step="0.1" placeholder="e.g. 22.0" bind:value={fruitingForm.fruiting_temp_c} />
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label for="ff-rh">RH (%)</label>
+                    <input id="ff-rh" type="number" step="1" min="0" max="100" placeholder="e.g. 90" bind:value={fruitingForm.fruiting_rh_percent} />
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label for="ff-fae">FAE Rate</label>
+                    <input id="ff-fae" type="number" step="0.1" placeholder="e.g. 1.5" bind:value={fruitingForm.fae_rate} />
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label for="ff-light">Light (h/day)</label>
+                    <input id="ff-light" type="number" step="0.5" min="0" max="24" placeholder="e.g. 12" bind:value={fruitingForm.light_hours_per_day} />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="ff-notes">Notes</label>
+                  <textarea id="ff-notes" rows="2" placeholder="Observations, pin set quality, etc." bind:value={fruitingForm.notes}></textarea>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+                  <button class="btn" onclick={() => showFruitingForm = false} disabled={fruitingSubmitting}>Cancel</button>
+                  <button class="btn btn-primary" onclick={submitFruitingRecord} disabled={fruitingSubmitting || !fruitingForm.harvest_date}>
+                    {fruitingSubmitting ? 'Saving…' : 'Save Flush'}
+                  </button>
+                </div>
+              </div>
+            {/if}
+
+            {#if fruitingRecords.length > 0}
+              <div class="fruiting-table-wrap">
+                <table class="fruiting-table">
+                  <thead>
+                    <tr>
+                      <th>Flush</th>
+                      <th>Date</th>
+                      <th>Fresh (g)</th>
+                      <th>Dry (g)</th>
+                      <th>Temp °C</th>
+                      <th>RH %</th>
+                      <th>FAE</th>
+                      <th>Light h</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each fruitingRecords as rec}
+                      <tr>
+                        <td class="ctr">{rec.flush_number}</td>
+                        <td>{rec.harvest_date}</td>
+                        <td class="ctr">{rec.fresh_weight_g ?? '—'}</td>
+                        <td class="ctr">{rec.dry_weight_g ?? '—'}</td>
+                        <td class="ctr">{rec.fruiting_temp_c ?? '—'}</td>
+                        <td class="ctr">{rec.fruiting_rh_percent ?? '—'}</td>
+                        <td class="ctr">{rec.fae_rate ?? '—'}</td>
+                        <td class="ctr">{rec.light_hours_per_day ?? '—'}</td>
+                        <td class="note-cell">{rec.notes ?? ''}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {:else if !showFruitingForm}
+              <p style="font-size:13px;color:var(--text-secondary);margin:0;">No fruiting records yet.</p>
+            {/if}
+          </div>
+        {/if}
       </div>
 
     <!-- ── Photos Tab ── -->
@@ -2248,5 +2398,30 @@ ${footnotesHtml}
   }
   .colonization-bar-fill { height: 100%; border-radius: 5px; transition: width 0.3s ease; }
   .colonization-bar-pct { font-size: 11px; width: 34px; text-align: right; flex-shrink: 0; color: var(--text-secondary); }
+
+  /* ── Fruiting records ─────────────────────────────────────────────────── */
+  .fruiting-table-wrap { overflow-x: auto; }
+  .fruiting-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .fruiting-table th {
+    text-align: left;
+    padding: 5px 8px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    white-space: nowrap;
+  }
+  .fruiting-table td {
+    padding: 5px 8px;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+    vertical-align: top;
+  }
+  .fruiting-table tr:last-child td { border-bottom: none; }
+  .fruiting-table .ctr { text-align: center; }
+  .fruiting-table .note-cell { max-width: 160px; white-space: pre-wrap; word-break: break-word; }
+  .btn-sm { font-size: 12px; padding: 3px 10px; }
 
 </style>

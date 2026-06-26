@@ -158,6 +158,39 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (29)", [])?;
     }
 
+    if current < 30 {
+        migration_030_fruiting_records(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (30)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_030_fruiting_records(conn: &Connection) -> DbResult<()> {
+    // WP-43: fruiting conditions and yield tracking for mycology cultures.
+    // A dedicated `fruiting_records` table keeps harvest events separate from
+    // the general subculture log so mycology-specific fields don't pollute
+    // the passage record for other profiles.
+    conn.execute_batch(
+        "CREATE TABLE fruiting_records (
+             id                  TEXT PRIMARY KEY,
+             specimen_id         TEXT NOT NULL REFERENCES specimens(id),
+             flush_number        INTEGER NOT NULL DEFAULT 1,
+             harvest_date        TEXT NOT NULL,
+             fresh_weight_g      REAL,
+             dry_weight_g        REAL,
+             fruiting_temp_c     REAL,
+             fruiting_rh_percent REAL,
+             fae_rate            REAL,
+             light_hours_per_day REAL,
+             notes               TEXT,
+             created_by          TEXT,
+             created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+             updated_at          TEXT NOT NULL DEFAULT (datetime('now'))
+         );
+         CREATE INDEX idx_fruiting_records_specimen_id
+             ON fruiting_records(specimen_id);",
+    )?;
     Ok(())
 }
 
@@ -3316,5 +3349,72 @@ mod tests {
             )
             .unwrap();
         assert!(ot.is_none(), "origin_type must be NULL when not specified");
+    }
+
+    // ── Migration 030: fruiting_records ──────────────────────────────────────
+
+    #[test]
+    fn migration_030_fruiting_records_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='fruiting_records'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "fruiting_records table must exist after migration 030");
+    }
+
+    #[test]
+    fn migration_030_fruiting_records_index_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' \
+                 AND name='idx_fruiting_records_specimen_id'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "index on fruiting_records.specimen_id must exist");
+    }
+
+    #[test]
+    fn migration_030_fruiting_record_fk_rejects_unknown_specimen() {
+        let conn = migrated_db();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        let result = conn.execute(
+            "INSERT INTO fruiting_records (id, specimen_id, flush_number, harvest_date) \
+             VALUES ('fr1','does-not-exist',1,'2026-06-01')",
+            [],
+        );
+        assert!(result.is_err(), "FK constraint must reject unknown specimen_id");
+    }
+
+    #[test]
+    fn migration_030_fruiting_record_flush_number_defaults_to_1() {
+        let conn = migrated_db();
+        seed_species_028(&conn);
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, initiation_date) \
+             VALUES ('spec-030','ACC-030','sp028-species','2026-01-01')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO fruiting_records (id, specimen_id, harvest_date) \
+             VALUES ('fr-030','spec-030','2026-06-01')",
+            [],
+        )
+        .unwrap();
+        let flush: i32 = conn
+            .query_row(
+                "SELECT flush_number FROM fruiting_records WHERE id = 'fr-030'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(flush, 1, "flush_number must default to 1");
     }
 }

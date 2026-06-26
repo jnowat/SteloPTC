@@ -5,6 +5,51 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.31.0] - 2026-06-26
+
+### Added — WP-43: Fruiting conditions & yield tracking
+
+- **Schema — Migration 030** — new `fruiting_records` table:
+  - `id TEXT PRIMARY KEY`, `specimen_id TEXT NOT NULL REFERENCES specimens(id)`,
+    `flush_number INTEGER NOT NULL DEFAULT 1`, `harvest_date TEXT NOT NULL`.
+  - Optional environment columns: `fruiting_temp_c REAL`, `fruiting_rh_percent REAL`,
+    `fae_rate REAL` (fresh air exchanges per hour), `light_hours_per_day REAL`.
+  - Optional yield columns: `fresh_weight_g REAL`, `dry_weight_g REAL`.
+  - `notes TEXT`, `created_by TEXT`, `created_at` / `updated_at` with `datetime('now')` defaults.
+  - Index on `specimen_id` for efficient per-specimen queries.
+
+- **Backend — `src-tauri/src/models/fruiting.rs`** (new):
+  - `FruitingRecord` — serializable read model matching all table columns.
+  - `CreateFruitingRecordRequest` — deserializable write request (cloneable for tests).
+
+- **Backend — `src-tauri/src/db/queries.rs`**:
+  - `create_fruiting_record(conn, req, created_by)` — inserts a row, returns the new UUID.
+  - `get_fruiting_record(conn, id)` — fetches a single record by primary key.
+  - `list_fruiting_records(conn, specimen_id)` — returns all records for a specimen ordered
+    by `flush_number ASC, harvest_date ASC`.
+
+- **Backend — `src-tauri/src/commands/fruiting.rs`** (new):
+  - `create_fruiting_record` — Tauri command (write-role required); writes audit entry.
+  - `list_fruiting_records` — Tauri command (read-only); filters by `specimen_id`.
+
+- **Frontend — `src/lib/api.ts`**:
+  - `FruitingRecord` TypeScript interface.
+  - `createFruitingRecord(request)` and `listFruitingRecords(specimenId)` async functions.
+
+- **Frontend — `src/lib/components/SpecimenDetail.svelte`**:
+  - Fruiting records loaded alongside colonization history for mycology specimens.
+  - **Fruiting Records** section added to the History tab (mycology only): inline flush entry
+    form (Flush #, Harvest Date, Fresh/Dry Weight, Temp, RH, FAE Rate, Light Hours/Day, Notes)
+    with a scrollable data table showing all recorded flushes.
+  - `submitFruitingRecord()` async function, `fruitingForm` reactive state,
+    `showFruitingForm` and `fruitingSubmitting` flags.
+  - CSS for `.fruiting-table`, `.fruiting-table-wrap`, and `.btn-sm`.
+
+- **Tests** — 7 new unit tests:
+  - 4 migration 030 tests: table existence, index existence, FK rejection, `flush_number` DEFAULT.
+  - 3 `db::queries` tests: insert + get round-trip, list for specimen, FK rejection.
+  Total: 237 Rust tests.
+
 ## [1.30.0] - 2026-06-25
 
 ### Added — WP-42: Genetic lineage & strain isolation markers

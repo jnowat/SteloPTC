@@ -11,6 +11,7 @@ pub mod error_log;
 pub mod strain;
 pub mod taxon;
 pub mod cryo;
+pub mod fruiting;
 
 // Re-export common types
 pub use specimen::*;

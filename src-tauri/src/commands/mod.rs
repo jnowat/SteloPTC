@@ -20,3 +20,4 @@ pub mod strains;
 pub mod taxa;
 pub mod ncbi;
 pub mod cryo;
+pub mod fruiting;

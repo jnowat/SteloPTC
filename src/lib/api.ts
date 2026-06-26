@@ -946,3 +946,41 @@ export async function getVialSummaryByLine() {
 export async function getCultureMaintenanceAlerts() {
   return call<CultureMaintenanceAlert[]>('get_culture_maintenance_alerts');
 }
+
+// ── WP-43: Fruiting records ───────────────────────────────────────────────────
+
+export interface FruitingRecord {
+  id: string;
+  specimen_id: string;
+  flush_number: number;
+  harvest_date: string;
+  fresh_weight_g: number | null;
+  dry_weight_g: number | null;
+  fruiting_temp_c: number | null;
+  fruiting_rh_percent: number | null;
+  fae_rate: number | null;
+  light_hours_per_day: number | null;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function createFruitingRecord(request: {
+  specimen_id: string;
+  flush_number: number;
+  harvest_date: string;
+  fresh_weight_g?: number;
+  dry_weight_g?: number;
+  fruiting_temp_c?: number;
+  fruiting_rh_percent?: number;
+  fae_rate?: number;
+  light_hours_per_day?: number;
+  notes?: string;
+}) {
+  return call<FruitingRecord>('create_fruiting_record', { request });
+}
+
+export async function listFruitingRecords(specimenId: string) {
+  return call<FruitingRecord[]>('list_fruiting_records', { specimenId });
+}

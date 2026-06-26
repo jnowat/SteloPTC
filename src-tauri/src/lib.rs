@@ -195,6 +195,9 @@ pub fn run() {
             commands::attachments::delete_attachment,
             // Work Queue
             commands::work_queue::get_work_queue,
+            // Fruiting records (WP-43)
+            commands::fruiting::create_fruiting_record,
+            commands::fruiting::list_fruiting_records,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
