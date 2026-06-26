@@ -1,8 +1,8 @@
 # SteloPTC User Manual
 
-**Current as of:** June 2026 · **v1.18.0** (Trust Layer Phase 1 complete, dead specimen workflow, lab profile, profile-scoped vocabulary tables, profile-aware dashboard, lab profile switcher in Settings, cell_culture vocabulary seeded, Strain/Cultivar data model and backend, Strain Manager UI, Hybrid Wizard, Taxonomy Navigator — Phase TX-1 complete; Expanded taxonomy backbone Genus → Kingdom — Phase TX-2 WP-35 shipped)
+**Current as of:** June 2026 · **v1.30.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1 complete; Phase TX-2 fully shipped — NCBI sync, pedigree tools, advanced hybridization, advanced Taxonomy Navigator; Phase D Cell Culture features WP-30–34 shipped; Phase E Mycology features WP-40–42 shipped including colonization tracking, contaminant typing, and genetic lineage markers)
 
-> **Scope note:** This manual documents both shipping features and planned functionality. Sections marked "Phase TX-2+" describe upcoming work in the Taxonomic & Provenance Module. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, Taxonomy Navigator) is fully shipped as of v1.17.0. Phase TX-2 WP-35 (Expanded taxonomy backbone: `taxa` table for Genus → Kingdom hierarchy with `get_taxon_descendants`) shipped in v1.18.0. Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
+> **Scope note:** This manual documents both shipping features and planned functionality. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, basic Taxonomy Navigator) fully shipped as of v1.17.0. Phase TX-2 is fully shipped: WP-35 taxonomy backbone (v1.18.0), WP-36 NCBI import/sync (v1.19.0), WP-37 pedigree tools (v1.20.0), WP-38 advanced hybridization (v1.21.0), WP-39 advanced multi-column Taxonomy Navigator (v1.22.0). Cell Culture features (WP-30–34) shipped v1.23.0–v1.27.0. Mycology features (WP-40–42) shipped v1.28.0–v1.30.0. Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
 
 SteloPTC is a desktop application for managing plant tissue culture laboratories with a strong focus on **provenance, traceability, and cryptographic data integrity**.
 
@@ -198,9 +198,9 @@ Hybridization is modeled as a distinct event (not a passage or split). It create
 
 ---
 
-## 6. Taxonomy Navigator (Phase TX-1 shipped v1.17.0 / TX-2 WP-35 backbone v1.18.0 / TX-2 UI planned)
+## 6. Taxonomy Navigator (Phase TX fully shipped — v1.17.0–v1.22.0)
 
-> **Note:** The basic Species → Strains → Specimens navigator shipped in v1.17.0 (WP-29). The taxonomy backbone (`taxa` table for Kingdom → Genus hierarchy, `get_taxon_descendants` tree command, automatic genus backfill) shipped in v1.18.0 (WP-35). The full multi-rank column browser UI (WP-39) arrives in a later Phase TX-2 packet.
+> **Note:** The basic Species → Strains → Specimens navigator shipped in v1.17.0 (WP-29). The taxonomy backbone (`taxa` table for Kingdom → Genus hierarchy, `get_taxon_descendants`) shipped in v1.18.0 (WP-35). The advanced multi-column Kingdom → Species → Strains browser with global search, keyboard navigation, and localStorage path persistence shipped in v1.22.0 (WP-39). Phase TX-2 is complete.
 
 The Taxonomy Navigator lets you browse your collection hierarchically instead of using a flat specimen list. It is especially useful as your collection grows.
 

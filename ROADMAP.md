@@ -1,10 +1,10 @@
 # SteloPTC → Stelo Lab Suite — Engineering Roadmap
 
-**Status as of June 2026:** **v1.18.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Trust Layer Phase 1 complete (WP-18–21) · Phase C WP-22–27 fully shipped · Phase TX-1 complete (WP-28 backend v1.16.0 · WP-29 UI v1.17.0) · Phase TX-2 WP-35 shipped (v1.18.0)**
-**Schema:** **20 migrations** total; latest is **migration 020** (`taxa` table for Kingdom → Genus hierarchy, two new nullable columns on `species` — `taxon_path` JSON array and `ncbi_taxon_id`; genus-level taxa backfill from existing `species.genus` values; purely additive, v1.18.0). Migration 019 was the Strain/Cultivar data model (`strains`, `strain_parents`, `hybridization_events` tables; nullable `strain_id`/`strain_chain_seq` on `specimens`; six indexes — v1.16.0). Migration 018 seeded `cell_culture` vocabulary into all six lookup tables via `INSERT OR IGNORE` (v1.15.0). Migration 017 created the four remaining vocabulary lookup tables and dropped their CHECK constraints (v1.12.0); 016 created `stages` lookup table, dropped the `CHECK(stage IN (...))` constraint on `specimens`, and seeded all 15 PTC stage codes (v1.12.0); 015 added `event_type` on `subcultures` + `app_config` table with `lab_profile` (v1.11.0); 014 added `is_auto`/`auto_source` to `audit_checkpoints` + `app_settings` (v1.10.0); 013 added the `audit_checkpoints` Merkle table (v1.9.0); 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` to `media_batches` (v1.8.0); 010 added generational depth columns (v1.7.0); 009 introduced the per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes. The stage `CHECK` constraint was expanded in **migration 002**, defensively rebuilt in **migration 003**, and **finally dropped for good in migration 016** (WP-23) — no more CHECK-constraint rebuilds for vocabulary changes.
+**Status as of June 2026:** **v1.30.0** (`tauri.conf.json` + latest `CHANGELOG`) · Tauri 2 + Svelte 5 + Rust/SQLite · Windows + Android CI · **Trust Layer Phase 1 complete (WP-18–21) · Phase C WP-22–27 fully shipped · Phase TX-1 complete (WP-28 backend v1.16.0 · WP-29 UI v1.17.0) · Phase TX-2 fully shipped (WP-35–39 v1.18.0–v1.22.0) · Phase D Cell Culture WP-30–34 fully shipped (v1.23.0–v1.27.0) · Phase E Mycology WP-40–42 shipped (v1.28.0–v1.30.0)**
+**Schema:** **29 migrations** total; latest is **migration 029** (`origin_type` culture-origin CHECK column and `is_best_performer` flag on `specimens`, mycology genetic lineage, v1.30.0). Migration 028 added `colonization_pct` and `contaminant_type` to `subcultures` (v1.29.0). Migration 027 seeded mycology profile vocabulary (v1.28.0). Migration 026 added `biosafety_level` to `specimens` (v1.26.0). Migration 025 added `frozen_vials` table (v1.25.0). Migration 024 added PDL columns to `specimens`/`subcultures` (v1.24.0). Migration 023 expanded `cell_culture` vocabulary (v1.23.0). Migration 022 added generation-label and backcross-depth columns to `hybridization_events` + `is_cross_species` on `strains` (v1.21.0). Migration 021 added `ncbi_sync_log` table (v1.19.0). Migration 020 was the `taxa` table for Kingdom → Genus hierarchy (v1.18.0). Migration 019 was the Strain/Cultivar data model (v1.16.0). Migration 018 seeded `cell_culture` vocabulary (v1.15.0). Migrations 017/016 converted hardcoded vocabularies to profile-scoped lookup tables (v1.12.0). Migration 015 added `event_type` on `subcultures` + `app_config` (v1.11.0); 014 `app_settings` + auto-checkpoint flags (v1.10.0); 013 `audit_checkpoints` Merkle table (v1.9.0); 012 contamination columns on `specimens`; 011 `is_draft` on `media_batches` (v1.8.0); 010 generational depth (v1.7.0); 009 per-lineage hash chain; 008 hash-chain columns on `audit_log`; 007 performance indexes. The stage `CHECK` constraint was expanded in **migration 002**, rebuilt in **migration 003**, and **finally dropped for good in migration 016** — no more CHECK-constraint rebuilds for vocabulary changes.
 **Security:** `csp` is now a locked-down policy (no longer `null`, WP-02); the default `admin/admin` credential is now gated behind a forced password change on first login (WP-01).
 **Recent:** Trust(less) & Audit Layer Phase 1 (hash-chain + per-lineage genealogy, WP-18) shipped across v1.5.0 → v1.6.4; generational depth tracking, lineage passage offsets, `root_specimen_id`, and sibling display landed in v1.7.0; split workflow overhauled in v1.8.0 with letter-suffix accessions (001A/001B…), per-child controls, draft media batches, safety confirmation dialog, and synthetic split events in the passage timeline.
-**In progress (Phase TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅; **Phase C WP-22–27 fully shipped** ✅ — WP-22 lab_profile + dead specimen (v1.11.0), WP-23 stage lookup table (v1.12.0), WP-24 remaining vocabulary tables (v1.12.0), WP-25 profile-aware dashboard statistics (v1.13.0), WP-26 lab profile switcher in Settings (v1.14.0), WP-27 cell_culture vocabulary seeded (v1.15.0). **Phase TX-1 WP-28 shipped** ✅ — Strain/Cultivar data model + backend + 14 new Rust tests (v1.16.0). **Phase TX-1 WP-29 shipped** ✅ — Strain Manager UI, Hybrid Wizard, Taxonomy Navigator (v1.17.0). **Phase TX-1 complete.** **Phase TX-2 WP-35 shipped** ✅ — Expanded taxonomy backbone (Genus → Kingdom `taxa` table, `get_taxon_descendants`, automatic genus backfill, v1.18.0). Current focus: Phase TX-2 continued — WP-36 NCBI import/sync, WP-37 pedigree tools, WP-39 advanced Taxonomy Navigator. Phase TX introduced Strain/Cultivar as first-class entities, cryptographic version binding of specimens to strain versions, pedigree tracking, hybridization tools, and a hierarchical taxonomy navigator.
+**Shipped (Phase TX):** Phase B polish & stability (WP-06–17) fully shipped v1.1.1–v1.3.0 ✅; Trust Layer Phase 1 (WP-18–21) **fully shipped** ✅; **Phase C WP-22–27 fully shipped** ✅ — WP-22 lab_profile + dead specimen (v1.11.0), WP-23 stage lookup table (v1.12.0), WP-24 remaining vocabulary tables (v1.12.0), WP-25 profile-aware dashboard statistics (v1.13.0), WP-26 lab profile switcher in Settings (v1.14.0), WP-27 cell_culture vocabulary seeded (v1.15.0). **Phase TX-1 WP-28 shipped** ✅ — Strain/Cultivar data model + backend (v1.16.0). **Phase TX-1 WP-29 shipped** ✅ — Strain Manager UI, Hybrid Wizard, Taxonomy Navigator (v1.17.0). **Phase TX-1 complete.** **Phase TX-2 fully shipped** ✅ — WP-35 taxonomy backbone (v1.18.0), WP-36 NCBI import/sync (v1.19.0), WP-37 multi-generational pedigree tools (v1.20.0), WP-38 advanced hybridization + generation labeling (v1.21.0), WP-39 advanced multi-column Taxonomy Navigator (v1.22.0). **Phase TX complete.** **Phase D Cell Culture WP-30–34 fully shipped** ✅ — WP-30 vocabulary (v1.23.0), WP-31 PDL tracking (v1.24.0), WP-32 cryopreservation (v1.25.0), WP-33 mycoplasma compliance + biosafety level (v1.26.0), WP-34 cell-culture dashboard panels (v1.27.0). **Phase E Mycology WP-40–42 shipped** ✅ — WP-40 vocabulary (v1.28.0), WP-41 colonization & contamination tracking (v1.29.0), WP-42 genetic lineage & strain isolation markers (v1.30.0). Current focus: Phase E WP-43–44 (fruiting/yield, QC compliance rules) and Phase TX-3.
 **Assets to preserve (don't regress these):** the error-logging system with form-payload capture; the immutable audit trail **and (once built) its cryptographic hash-chain/Merkle integrity layer**; the contamination-overview dashboard panel.
 **Goal:** Now that PTC v1.0 has shipped, harden and polish it, then expand to **Cell Culture** and **Mycology** verticals from one shared engine — without forking the codebase three ways.
 
@@ -492,7 +492,7 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
 
 ---
 
-#### Phase TX-2 — Expansion · WP-35–39 · In progress (WP-35 shipped v1.18.0 · WP-36–39 planned)
+#### Phase TX-2 — Expansion · WP-35–39 · ✅ Fully shipped (WP-35 v1.18.0 · WP-36 v1.19.0 · WP-37 v1.20.0 · WP-38 v1.21.0 · WP-39 v1.22.0)
 
 **Goal:** Deeper taxonomy (Genus → Kingdom), NCBI Taxonomy import with sync and conflict resolution, multi-generational pedigree visualization, intraspecific hybridization, and a powerful full-featured taxonomy navigator.
 
@@ -525,9 +525,15 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
 
 ---
 
-### WP-36 — NCBI Taxonomy import & ongoing sync
+### WP-36 — NCBI Taxonomy import & ongoing sync — ✅ Delivered in **v1.19.0**
 
 - **Goal:** Seed and maintain the `taxa` table from NCBI Taxonomy with admin-controlled conflict resolution.
+- **As built (v1.19.0):**
+  - **Migration 021** — `ncbi_sync_log` table (`sync_type`: import/update/conflict, `taxon_id`, `ncbi_taxon_id`, `conflict_details` JSON, `resolved_at`, `resolved_by`, `resolution`: kept_local/accepted_ncbi/merged, `created_at`); four indexes.
+  - **`commands/ncbi.rs`** (new) — four Tauri commands: `import_ncbi_taxonomy` (two-phase dry-run → atomic write, skips `local_override`), `resolve_ncbi_conflict`, `sync_ncbi_taxon` (single-record upsert), `list_ncbi_sync_log` (paginated, optional `pending_only` filter).
+  - **`db/queries.rs`** — seven new pure helpers: `normalize_ncbi_rank`, `find_taxon_by_ncbi_id`, `find_taxon_by_name_rank`, `detect_ncbi_conflict`, `insert_ncbi_sync_log`, `list_pending_ncbi_conflicts`, `list_ncbi_sync_log`.
+  - **`NcbiSyncPanel.svelte`** (new) — admin-only panel: JSON textarea, Dry Run → Confirm Import flow, pending conflict list with Keep Local / Accept NCBI / Merged resolution buttons, recent sync log table.
+  - TypeScript: `NcbiTaxonRecord`, `NcbiSyncLog`, `NcbiConflictSummary`, `ImportNcbiTaxonomyResult` interfaces; `importNcbiTaxonomy`, `resolveNcbiConflict`, `syncNcbiTaxon`, `listNcbiSyncLog` async helpers.
 - **Files:** new `src-tauri/src/commands/ncbi.rs`, new migration for `ncbi_sync_log`, Admin UI panel.
 - **Steps:**
   1. Create `ncbi_sync_log` table: `id TEXT PK`, `sync_type TEXT NOT NULL` (`import | update | conflict`), `taxon_id TEXT`, `ncbi_taxon_id INTEGER`, `conflict_details TEXT` (JSON: local vs. NCBI name/rank diff), `resolved_at TEXT`, `resolved_by TEXT`, `resolution TEXT` (`kept_local | accepted_ncbi | merged`), `created_at TEXT NOT NULL`.
@@ -540,9 +546,15 @@ The Taxonomic & Provenance Module is a **major new workstream** with equal prior
 
 ---
 
-### WP-37 — Multi-generational pedigree tools
+### WP-37 — Multi-generational pedigree tools — ✅ Delivered in **v1.20.0**
 
 - **Goal:** Visualize and export the full multi-generational pedigree of any strain, tracing both ancestor and descendant lines through all hybrid generations.
+- **As built (v1.20.0):**
+  - Seven new model types in `models/strain.rs`: `StrainSummary`, `PedigreeEdge`, `PedigreeNode` (recursive), `SpecimenSummary`, `StrainSpecimenTree`, `HybridizationEventRecord`, `PedigreeExport`.
+  - Eight new pure pedigree helpers in `db/queries.rs`: `get_strain_ancestry`, `get_strain_descendants` (both with DFS cycle detection rejecting circular references), `get_strain_specimen_tree` (with optional descendant recursion), `export_strain_pedigree`. Default depth 5, capped at 10.
+  - Four Tauri commands in `commands/strains.rs`: `get_strain_ancestry`, `get_strain_descendants`, `get_strain_specimen_tree`, `export_strain_pedigree`.
+  - **`PedigreeChart.svelte`** (new) — indented node list (no SVG/canvas), ancestors/descendants toggle with live node counts, per-node status badge + Hybrid badge + specimen count, root node distinguished with primary-colour border, one-click JSON export (`pedigree-{strainId}.json`), dark-mode support.
+  - 13 new Rust unit tests covering wildtype, 2- and 3-generation ancestry/descendants, max-depth capping, cycle detection both directions, specimen tree with/without descendants, export bundle integrity.
 - **Files:** `src-tauri/src/commands/strains.rs` (extend and add pedigree commands), new `src/lib/components/PedigreeChart.svelte`.
 
 **Conceptual distinction — strain pedigree vs. specimen chain:**
@@ -559,9 +571,16 @@ These are two independent but complementary lineage systems. The **strain pedigr
 
 ---
 
-### WP-38 — Advanced hybridization tools (generation labeling, backcross notation, cross-species guard hardening)
+### WP-38 — Advanced hybridization tools (generation labeling, backcross notation, cross-species guard hardening) — ✅ Delivered in **v1.21.0**
 
 - **Goal:** Extend the Phase TX-1 hybrid model with generation naming, backcross notation, and hardened cross-species guardrails. The core hybridization model (`hybridization_events` table, `create_hybridization_event` command, and basic wizard) was delivered in WP-28 and WP-29; this packet builds on it.
+- **As built (v1.21.0):**
+  - **Migration 022** — `hybridization_events.generation_label TEXT`, `hybridization_events.backcross_depth INTEGER`, `strains.is_cross_species INTEGER NOT NULL DEFAULT 0` — three additive `ALTER TABLE ADD COLUMN` statements.
+  - Six new pure helpers in `db/queries.rs`: `get_strain_generation_label`, `suggest_generation_label` (pure: F1×F1→F2, etc.), `detect_backcross` (DFS; returns ancestor + depth), `suggest_generation_label_for_parents`, `get_generational_stats` — all unit-tested (9 new tests).
+  - `create_hybridization_event` fully rewritten: cross-species admin override path (requires justification + acknowledgement checkbox + writes permanent `cross_species_override` audit entry); generation label resolved: explicit → backcross suggestion → parent-label suggestion; stores `generation_label` + `backcross_depth`.
+  - **HybridWizard expanded to 9 steps** — new Step 5 (Generation Label) with async backend suggestion; Step 3 (Parent B) gains admin-only cross-species override panel.
+  - **`StrainDetail.svelte`** (new) — slide-over opened by clicking strain names: permanent cross-species red banner; Overview, Generations, Pedigree tabs; generational stats per-generation table with health % bar.
+  - **`StrainManager.svelte`** — strain names clickable; cross-species hybrids show red ⚠ chip.
 - **Files:** `src-tauri/src/commands/strains.rs` (extend `create_hybridization_event`), `src/lib/components/HybridWizard.svelte` (expand), `src/lib/components/StrainDetail.svelte`.
 - **Steps:**
   1. **Generation labeling:** Add first-class generation label support to the hybrid wizard. Supported labels: `F1`, `F2`, `F3`, `BC1F1`, `BC1F2`, and custom free-text. `generation_label` is stored on `hybridization_events.generation_label`. Auto-suggest the generation label based on parent generation labels when both parents have known labels.
@@ -573,9 +592,15 @@ These are two independent but complementary lineage systems. The **strain pedigr
 
 ---
 
-### WP-39 — Advanced taxonomy navigator
+### WP-39 — Advanced taxonomy navigator — ✅ Delivered in **v1.22.0**
 
 - **Goal:** Upgrade the Phase TX-1 two-column navigator into a full multi-rank column browser with powerful filtering, descendant counts, and keyboard navigation.
+- **As built (v1.22.0):**
+  - Two new helpers in `db/queries.rs`: `get_taxon_column_items` (immediate children + aggregated `strain_count`/`specimen_count` via correlated `taxon_path` LIKE subqueries) and `search_taxonomy` (taxa, species, strains, specimens — up to 10 hits each); 8 new unit tests.
+  - Two new model types: `TaxonColumnItem`, `TaxonomySearchResult`.
+  - Three new Tauri commands: `get_taxon_column`, `list_species_for_taxon`, `search_taxonomy`.
+  - **TaxonomyNavigator.svelte — complete rewrite** — multi-column browser Kingdom → Phylum → Class → Order → Family → Genus → Species → Strains; each column independently scrollable; breadcrumb trail; descendant counts on every node; global search (300 ms debounce) with grouped dropdown; keyboard navigation (arrows, Enter, Escape, `/`); strain quick-action panel; StrainDetail slide-over integration; `localStorage` path persistence under `stelo_taxonomy_path`.
+  - TypeScript: `getTaxonColumn`, `listSpeciesForTaxon`, `searchTaxonomy` helpers; `TaxonColumnItem`, `TaxonomySearchResult` interfaces.
 - **Files:** `src/lib/components/TaxonomyNavigator.svelte` (major expansion of Phase TX-1 version).
 - **Steps:**
   1. **Column browser:** Kingdom → Phylum → Class → Order → Family → Genus → Species → Strain → Specimens. Each column is a scrollable list with descendant counts. Selecting a node populates the next column. Columns collapse on mobile (accordion). Breadcrumb trail shows the current path.
@@ -630,48 +655,44 @@ Allow labs to define provisional taxa not yet in NCBI (undescribed species, work
 
 ---
 
-## 6. PHASE D — Cell Culture vertical (SteloCC)
+## 6. PHASE D — Cell Culture vertical (SteloCC) — ✅ WP-30–34 fully shipped (v1.23.0–v1.27.0)
 
 Built entirely as profile data + a handful of cell-specific features on the shared engine. Mammalian/insect/cell-line work, not plants.
 
 **What "species" becomes:** a **Cell Line** registry — line name, organism, tissue/origin, ATCC/ECACC/DSMZ catalog #, biosafety level, morphology (adherent/suspension), and recommended split ratio + interval.
 
-### WP-30 — Seed the cell-culture profile vocabulary
+### WP-30 — Seed the cell-culture profile vocabulary — ✅ Delivered in **v1.23.0**
 - Stages → cell-culture lifecycle: `thawed → adherent/suspension → confluent → passaged → frozen/cryopreserved → contaminated → discarded`.
-- Passage verb → **"Passage"** (not subculture). Each passage records **passage number** (P-number), split ratio (e.g. 1:4), confluence % at split, viable cell count / viability %, and counting method (hemocytometer / automated).
-- Media → **"Medium"**; basal types become `DMEM, RPMI-1640, MEM, F-12, IMDM, ...` with supplements (FBS %, L-glutamine, antibiotics, growth factors) replacing the auxin/cytokinin/gibberellin hormone model.
-- **Files:** seed migration for `profile = 'cell_culture'`, cell-culture manifest in `profile.ts`.
+- **As built:** Migration 023 expanded `cell_culture` vocabulary with 8 new stages (total 20), 4 propagation methods (total 11), 2 hormone types (total 6), 2 compliance record types (total 11), 2 agencies (total 6), 2 inventory categories (total 9). All `INSERT OR IGNORE` — idempotent; existing rows untouched. 9 new Rust unit tests.
 
-### WP-31 — Passage-number lineage & doubling time
-- Extend the existing parent/child lineage (already strong for split culture) to track **cumulative passage number** and **population doubling level (PDL)**. Compute **doubling time** from seed/harvest counts + elapsed time. Reuse the lineage banner UI.
+### WP-31 — Passage-number lineage & doubling time — ✅ Delivered in **v1.24.0**
+- **As built:** Migration 024 adds `cumulative_pdl REAL` to `specimens`; `seed_cell_count`, `harvest_cell_count`, `split_ratio`, `pdl_gained`, `doubling_time_hours` to `subcultures`. Three pure calculation helpers (`calculate_doubling_time`, `calculate_pdl_from_counts`, `calculate_pdl_from_ratio`; 9 unit tests). `create_subculture` auto-calculates PDL/doubling time; `split_specimen` inherits `cumulative_pdl`. SpecimenDetail gains Cell Count & Doubling section with live PDL preview; passage timeline shows PDL block for readings. Cumulative PDL shown in specimen info card.
 
-### WP-32 — Cryopreservation & LN2 inventory
-- The structured location entry (Room/Rack/Shelf/Tray) maps cleanly to **freezer/tower/box/position** for LN2 / -80°C storage. Add a frozen-vial record: cell line, passage #, vial count, freeze date, freeze medium (e.g. 10% DMSO), location, and a thaw action that decrements vial count and creates a new active culture with the carried-forward passage number.
+### WP-32 — Cryopreservation & LN2 inventory — ✅ Delivered in **v1.25.0**
+- **As built:** Migration 025 adds `frozen_vials` table (Freezer/Tower/Box/Position, vial_count CHECK ≥ 0, status CHECK active/depleted/discarded). Five Tauri commands in new `commands/cryo.rs`. Atomic thaw: decrements count, auto-depletes at zero, creates new `specimens` row inheriting `lineage_passage_offset` + `cumulative_pdl`, writes audit entries on both vial and new specimen. 13 unit tests. `CryoManager.svelte` (new) — filterable lot table, Record Vials modal, Thaw/Discard modals; ❄ sidebar entry.
 
-### WP-33 — Mycoplasma & contamination testing (compliance rule)
-- Register a cell-culture compliance rule: flag lines with no **mycoplasma test** in the last N passages/days (mirrors the citrus-HLB rule pattern from WP-26). Add biosafety-level tracking to the cell-line registry.
+### WP-33 — Mycoplasma & contamination testing (compliance rule) — ✅ Delivered in **v1.26.0**
+- **As built:** Migration 026 adds `biosafety_level TEXT CHECK(IN('BSL-1','BSL-2','BSL-2+','BSL-3'))` to `specimens`. New mycoplasma compliance rule fires for every non-archived `cell_culture` specimen without a mycoplasma test within `mycoplasma_test_interval_days` (default 90). `get_mycoplasma_status` command returns per-specimen status. ComplianceView gains "Last Test" column; SpecimenDetail shows colour-coded BSL badge. 3 migration + 4 query unit tests.
 
-### WP-34 — Cell-culture dashboard panels
-- Reuse the contamination-overview + schedule widgets: "passages due," "lines overdue for mycoplasma test," "vials in storage by line," "low-confluence alerts."
+### WP-34 — Cell-culture dashboard panels — ✅ Delivered in **v1.27.0**
+- **As built:** Two new `db/dashboard.rs` helpers: `query_vial_summary_by_line` and `query_culture_maintenance_alerts`. Four `cell_culture`-only Dashboard panels: Passages Due/Overdue, Lines Overdue for Mycoplasma Test, Vials in Storage by Line (amber ≤ 5 vials), Cultures Needing Attention (red ≥ 14 d, yellow 7–13 d). 9 new Rust unit tests.
 
 ---
 
-## 7. PHASE E — Mycology vertical (SteloMyco)
+## 7. PHASE E — Mycology vertical (SteloMyco) — WP-40–42 shipped (v1.28.0–v1.30.0) · WP-43–44 planned
 
 Contamination is even more central here than in PTC — the engine's contamination tracking is a real advantage. Built as profile data + a few mycology-specific features.
 
 **What "species" becomes:** a **Strain/Culture** registry — genus/species (e.g. *Pleurotus ostreatus*), strain name/code, source (spore print / tissue clone / commercial culture), and dikaryon vs monokaryon status.
 
-### WP-40 — Seed the mycology profile vocabulary
-- Stages → mycology lifecycle: `spore/clone → agar (mycelium on plate) → liquid culture → grain spawn → bulk substrate → colonizing → fruiting → senescent → contaminated`.
-- Passage verb → **"Transfer"** (agar-to-agar, agar-to-grain, grain-to-grain, grain-to-bulk). Each transfer records source→target medium type and inoculation rate.
-- Media → **"Substrate / Medium"**: `MEA, PDA, MYA agar`, `liquid culture (honey/LME/malt)`, `grain (rye/millet/WBS)`, `bulk (CVG/masters mix/manure/straw)`. Replace the basal-salts/hormone model with substrate composition + supplementation (gypsum, bran).
+### WP-40 — Seed the mycology profile vocabulary — ✅ Delivered in **v1.28.0**
+- **As built:** Migration 027 seeds all six vocabulary tables for `mycology` via `INSERT OR IGNORE` (idempotent; PTC and cell_culture rows untouched). Stages: 10-entry full mushroom lifecycle (`spore_clone`, `agar`, `liquid_culture`, `grain_spawn`, `bulk_substrate`, `colonizing`, `fruiting`, `senescent`, `contaminated` [terminal], `discarded` [terminal]). Propagation methods: 8 (agar_to_agar, agar_to_grain, grain_to_grain, grain_to_bulk, liquid_inoculation, spore_syringe, culture_restart, other). Supplement types: 7 (gypsum, bran, calcium_carbonate, activated_carbon, coconut_coir, vermiculite, other). 12 new Rust unit tests.
 
-### WP-41 — Colonization & contamination front-and-center
-- Add a **colonization %** field and a colonization timeline per culture. Elevate the existing per-passage contamination flag to a prominent culture-level health signal with contaminant type (Trichoderma/bacterial/cobweb/etc.). The lab-wide contamination-rate panel is directly reusable and is arguably the headline feature for this audience.
+### WP-41 — Colonization & contamination front-and-center — ✅ Delivered in **v1.29.0**
+- **As built:** Migration 028 adds `colonization_pct REAL CHECK(0–100)` and `contaminant_type TEXT` to `subcultures`. `get_colonization_history` Tauri command. SpecimenDetail (mycology only): Colonization % input in passage form, Contaminant Type dropdown (trich/wet_rot/cobweb/pin_mold/mycelium_abort/other) in contamination section, **Colonization Progress** bar-chart section (green ≥ 80%, amber ≥ 50%, red < 50%). Passage timeline badges show specific contaminant type. Dashboard `by_contaminant_type` breakdown (top 10). 4 migration + 4 dashboard unit tests. Total: 225 tests.
 
-### WP-42 — Genetic lineage & strain isolation
-- The parent/child lineage tree maps perfectly to **clone lineage** (which plate came from which). Add multi-spore vs isolated-dikaryon markers and a "best performer" flag for strain selection over generations.
+### WP-42 — Genetic lineage & strain isolation — ✅ Delivered in **v1.30.0**
+- **As built:** Migration 029 adds `origin_type TEXT CHECK('multi_spore'|'isolated_dikaryon'|'tissue_clone')` and `is_best_performer INTEGER NOT NULL DEFAULT 0` to `specimens`. SpecimenForm (mycology only): **Culture Origin Type** dropdown. SpecimenDetail: Culture Origin badge (colour-coded) + **Best Performer** toggle (★/☆, calls `updateSpecimen` on click). `split_specimen` inherits `origin_type` into children; resets `is_best_performer = 0`. `search_specimens` supports `best_performer_only` filter. 5 migration unit tests. Total: 230 tests.
 
 ### WP-43 — Fruiting conditions & yield
 - Per-culture environmental targets (temp, RH, FAE, light) — reuse `environmental_notes` + structured fields. Record **yield** at harvest (fresh/dry weight, flush number) to compare strains and substrates over time.
@@ -750,15 +771,26 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | **v1.15.0** *(Phase C)* | WP-27 as built: `cell_culture` vocabulary seeded via migration 018 — 12 stages, 7 propagation methods, 4 hormone types, 9 compliance record types, 4 agencies, 7 inventory categories; 9 Rust tests — **Phase C WP-27 complete · Phase C fully complete** | ✅ shipped |
 | **v1.16.0** *(Phase TX-1)* | **WP-28 — Strain/Cultivar data model + backend:** migration 019 (`strains`, `strain_parents`, `hybridization_events`); hash chain seeding from species; strict status machine; `create_hybridization_event` atomic command; 14 new Rust tests | ✅ shipped |
 | **v1.17.0** *(Phase TX-1)* | **WP-29 — Strain Manager UI + Hybrid Wizard + basic Taxonomy Navigator** — `StrainManager.svelte`, `HybridWizard.svelte`, `TaxonomyNavigator.svelte`; strain pill on `SpecimenDetail`; `confirmed_manual` blocking modal; Taxonomy sidebar nav entry — **Phase TX-1 complete** | ✅ shipped |
-| **v1.18.0** *(Phase TX-2)* | **WP-35 — Expanded taxonomy backbone (Genus → Kingdom):** migration 020 (`taxa` table, `taxon_path`/`ncbi_taxon_id` on `species`); `backfill_genus_taxa`; `commands/taxa.rs` (`create_taxon`, `get_taxon`, `update_taxon`, `list_taxa_by_rank`, `get_taxon_descendants`); TypeScript interfaces — **Phase TX-2 WP-35 complete** | ✅ shipped |
-| v2.x *(Phase TX-2 continued)* | **Phase TX-2 remaining:** WP-36 NCBI import/sync, WP-37 multi-generational pedigree tools, WP-38 intraspecific hybridization, WP-39 advanced taxonomy navigator | planned |
-| v2.1.0 | **SteloCC (Cell Culture)** — first multi-vertical release | planned |
-| v2.2.0 | **SteloMyco (Mycology)** | planned |
-| v3.x *(Phase TX-3)* | **Phase TX-3 — Advanced taxonomy:** WP-45 full taxonomic hash chain, WP-46 cross-domain support, WP-47 breeding programs, WP-48 advanced hybridization, WP-49 custom taxa & Darwin Core export | future |
+| **v1.18.0** *(Phase TX-2)* | **WP-35 — Expanded taxonomy backbone (Genus → Kingdom):** migration 020 (`taxa` table, `taxon_path`/`ncbi_taxon_id` on `species`); `backfill_genus_taxa`; `commands/taxa.rs` (5 commands); TypeScript interfaces — **Phase TX-2 WP-35 complete** | ✅ shipped |
+| **v1.19.0** *(Phase TX-2)* | **WP-36 — NCBI Taxonomy import & sync:** migration 021 (`ncbi_sync_log`); `commands/ncbi.rs` (4 commands: import, resolve, sync, list); dry-run → atomic write flow; `NcbiSyncPanel.svelte` | ✅ shipped |
+| **v1.20.0** *(Phase TX-2)* | **WP-37 — Multi-generational pedigree tools:** 8 new `db/queries.rs` helpers; `PedigreeChart.svelte`; 4 Tauri commands (ancestry, descendants, specimen tree, export); cycle detection; 13 Rust tests | ✅ shipped |
+| **v1.21.0** *(Phase TX-2)* | **WP-38 — Advanced hybridization:** migration 022 (generation_label, backcross_depth, is_cross_species); generation labeling + backcross notation; cross-species admin override; 9-step Hybrid Wizard; `StrainDetail.svelte`; 9 Rust tests | ✅ shipped |
+| **v1.22.0** *(Phase TX-2)* | **WP-39 — Advanced Taxonomy Navigator:** multi-column browser (Kingdom → Strains); global search (300 ms debounce); keyboard navigation; localStorage path persistence; descendant count aggregates — **Phase TX-2 complete** | ✅ shipped |
+| **v1.23.0** *(Phase D)* | **WP-30 — Cell Culture vocabulary expansion:** migration 023 expands cell_culture vocabulary (20 stages, 11 propagation methods, 6 supplement types, 11 compliance types, 6 agencies, 9 categories); 9 Rust tests | ✅ shipped |
+| **v1.24.0** *(Phase D)* | **WP-31 — PDL & doubling time:** migration 024 (`cumulative_pdl` on specimens; seed/harvest counts + `pdl_gained` + `doubling_time_hours` on subcultures); auto-calculation on `create_subculture`; PDL inherited at split; 9 Rust tests | ✅ shipped |
+| **v1.25.0** *(Phase D)* | **WP-32 — Cryopreservation & LN2 inventory:** migration 025 (`frozen_vials` table); `commands/cryo.rs`; atomic thaw (decrements vial count, creates specimen, inherits PDL); `CryoManager.svelte`; 13 Rust tests | ✅ shipped |
+| **v1.26.0** *(Phase D)* | **WP-33 — Mycoplasma compliance & biosafety level:** migration 026 (`biosafety_level` on specimens); mycoplasma compliance rule (cell_culture); `get_mycoplasma_status` command; BSL badge in SpecimenDetail; 7 Rust tests | ✅ shipped |
+| **v1.27.0** *(Phase D)* | **WP-34 — Cell-culture dashboard panels:** `query_vial_summary_by_line` + `query_culture_maintenance_alerts` in `db/dashboard.rs`; 4 cell_culture-only dashboard panels; 9 Rust tests — **Phase D WP-30–34 complete** | ✅ shipped |
+| **v1.28.0** *(Phase E)* | **WP-40 — Mycology profile vocabulary:** migration 027 seeds all 6 vocabulary tables for `mycology` (10 stages, 8 propagation methods, 7 supplement types, 6 compliance types, 4 agencies, 10 inventory categories); 12 Rust tests | ✅ shipped |
+| **v1.29.0** *(Phase E)* | **WP-41 — Colonization & contamination tracking:** migration 028 (`colonization_pct`, `contaminant_type` on subcultures); `get_colonization_history` command; Colonization Progress bar-chart; contaminant type badges; dashboard `by_contaminant_type`; 8 Rust tests. Total: 225 | ✅ shipped |
+| **v1.30.0** *(Phase E)* | **WP-42 — Genetic lineage & strain isolation:** migration 029 (`origin_type` CHECK, `is_best_performer` on specimens); Culture Origin badge + Best Performer toggle (mycology); `split_specimen` inherits origin_type; 5 Rust tests. Total: 230 | ✅ shipped |
+| **v1.31.0+** *(Phase E)* | **WP-43 — Fruiting conditions & yield** (temp/RH/FAE, flush yield tracking) | planned |
+| **v1.32.0+** *(Phase E)* | **WP-44 — Mycology QC compliance rules** (slow colonization, overdue transfer, open contamination) | planned |
+| v2.x *(Phase TX-3)* | **Phase TX-3 — Advanced taxonomy:** WP-45 full taxonomic hash chain, WP-46 cross-domain support, WP-47 breeding programs, WP-48 advanced cross-species hybridization, WP-49 custom taxa & Darwin Core export | future |
 | v2.x+ | Phase F cross-cutting features; Trust Layer **Phase 2** (Dogecoin anchoring, WP-65+) when external proof is needed | future |
 
 > **On the version history:** the jump from `0.1.19` to the `1.0.0-x` line was intentional — the `0.1.x` series was a feature-complete-but-unreleased prototype, and `1.0.0-x` marks the first **production-grade, security-hardened, signed** release with a real GitHub Release. Note the pre-release label shipped as numeric **`1.0.0-1`** (not `rc.1`): the WiX MSI bundler rejects non-numeric pre-release identifiers. Phase A then settled at **v1.1.0** once onboarding (WP-05) landed.
 
 ---
 
-*This roadmap is grounded in the live repository at **v1.18.0**: 20 migrations, latest being migration 020 (`taxa` table for Kingdom→Genus hierarchy, `taxon_path`/`ncbi_taxon_id` on `species`, automatic genus backfill — purely additive, v1.18.0); migration 019 was the Strain/Cultivar data model (`strains`, `strain_parents`, `hybridization_events`; nullable `strain_id`/`strain_chain_seq` on `specimens`; six indexes — v1.16.0; no new migrations in WP-29); migration 018 seeded `cell_culture` vocabulary into all six lookup tables; 017 created the four remaining vocabulary lookup tables with CHECK constraints dropped; 016 created the `stages` lookup table and dropped the stage CHECK constraint on `specimens`; 015 added `event_type` on `subcultures` + `app_config` for `lab_profile`; 014 added `app_settings` + auto-checkpoint flags on `audit_checkpoints`; 013 added the `audit_checkpoints` Merkle table; 012 added `contamination_flag`/`contamination_notes` to `specimens`; 011 added `is_draft` on `media_batches`; 010 added generational-depth columns; 009 introduced per-lineage hash chain; 008 added hash-chain columns to `audit_log`; 007 added performance indexes; stage CHECK-constraint rebuilds in migrations 002/003, final drop in 016, at `db/migrations.rs`; the now-active CSP in `tauri.conf.json`; taxa commands in `commands/taxa.rs`; strain UI components in `StrainManager.svelte`, `HybridWizard.svelte`, `TaxonomyNavigator.svelte`; strain commands in `commands/strains.rs`; vocabulary commands in `commands/vocabulary.rs`; dashboard module at `db/dashboard.rs`; Settings view in `Settings.svelte`; and the species/specimen models. Hand packets to Claude Code in order; each is scoped to stand alone.*
+*This roadmap is grounded in the live repository at **v1.30.0**: 29 migrations, latest being migration 029 (`origin_type` culture-origin type + `is_best_performer` flag on `specimens`, mycology genetic lineage markers, v1.30.0); 028 added `colonization_pct`/`contaminant_type` to `subcultures` (v1.29.0); 027 seeded mycology vocabulary (v1.28.0); 026 added `biosafety_level` on `specimens` (v1.26.0); 025 added `frozen_vials` (v1.25.0); 024 added PDL columns (v1.24.0); 023 expanded cell_culture vocabulary (v1.23.0); 022 added generation-label/backcross columns to `hybridization_events` + `is_cross_species` on `strains` (v1.21.0); 021 added `ncbi_sync_log` (v1.19.0); 020 added `taxa` table for Kingdom→Genus hierarchy (v1.18.0); 019 Strain/Cultivar data model; 018 seeded `cell_culture` vocabulary; 017 created remaining vocabulary lookup tables with CHECK constraints dropped; 016 created the `stages` lookup table and dropped the stage CHECK constraint on `specimens`; 015 added `event_type` on `subcultures` + `app_config` for `lab_profile`; 014 `app_settings` + auto-checkpoint flags; 013 `audit_checkpoints` Merkle table; 012 contamination columns on `specimens`; 011 `is_draft` on `media_batches`; 010 generational-depth columns; 009 per-lineage hash chain; 008 hash-chain columns on `audit_log`; 007 performance indexes. Hand packets to Claude Code in order; each is scoped to stand alone.*

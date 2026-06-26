@@ -455,7 +455,7 @@ SteloPTC/
 │       ├── auth/mod.rs               # bcrypt + session management
 │       ├── db/
 │       │   ├── mod.rs                # Connection pool, init
-│       │   ├── migrations.rs         # 20 schema migrations
+│       │   ├── migrations.rs         # 29 schema migrations
 │       │   └── queries.rs            # SQL helpers
 │       ├── models/                   # Rust data structures
 │       │   ├── user.rs, specimen.rs, media.rs
