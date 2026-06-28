@@ -1,72 +1,87 @@
 # SteloPTC — Daily Claude Routine Checkup
 
-**Date:** 2026-06-27
-**Branch reviewed:** `master` (HEAD: `5d1fea8`)
+**Date:** 2026-06-28
+**Branch reviewed:** `claude/hopeful-bell-avvci5` (HEAD: `c92f0a7`) · also reviewed `master` (HEAD: `03cf8da`)
 **Reviewed by:** Claude (automated routine)
-**Current version:** `v1.32.0` (confirmed in `package.json`, `src-tauri/Cargo.toml` — **`tauri.conf.json` was at `1.30.0` and fixed this session**)
+**Current version (dev branch):** `v1.32.0` (confirmed in `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json` — ✅ all aligned)
+**Current version (master):** `v0.1.19` (last merged: PR #29, 2026-03-27)
 
 ---
 
 ## 1. Executive Status
 
-| Area | Status | Notes |
-|---|---|---|
-| Version alignment | ✅ Fixed this session | `tauri.conf.json` stuck at `1.30.0` while others were `1.32.0`; bumped to `1.32.0` |
-| Version display in app | ✅ Now correct | Sidebar uses `getVersion()` from `@tauri-apps/api/app` — reads `tauri.conf.json`; was showing `v1.30.0`, now shows `v1.32.0` |
-| CI / test pipeline | ✅ Passing (expected) | test.yml (3 jobs), build-windows.yml, build-android.yml |
-| Test suite | ✅ 245 Rust tests | Up from 230 (v1.30.0 last checkup) — 15 new tests added: 7 fruiting records (WP-43) + 8 mycology QC rules (WP-44) |
-| Stale branches | ✅ None | Only `master` and active session branch `claude/hopeful-bell-ok1td4` |
-| CHANGELOG freshness | ✅ Current | v1.32.0 entry present (WP-44 mycology QC rules) |
-| ROADMAP freshness | ✅ Fixed this session | Header updated to v1.32.0/30 migrations; WP-43/44 "As built" sections added; Phase E header changed to "fully shipped"; versioning table v1.31.0–v1.32.0 rows updated to shipped; footer updated to v1.32.0/30 migrations |
-| README freshness | ✅ Already current | v1.31.0 (fruiting records) and v1.32.0 (mycology QC) feature bullets and 245 test count already present |
-| UserManual freshness | ✅ Fixed this session | Header updated to v1.32.0; scope note updated to reflect Phase E WP-40–44 fully shipped; WP-43/44 mentioned explicitly |
-| Large-component debt | ⚠️ Growing | `SpecimenDetail.svelte` now even larger after WP-43 added Fruiting Records section; splitting remains future work |
-| Dependency health | ✅ Good | No CVEs; `rand 0.8` still one major behind (0.9), non-urgent |
-| Roadmap progress | ✅ Phase E complete | All 5 Phase E work packets shipped (v1.28.0–v1.32.0); next: Phase TX-3 and Phase F |
+| Area | Dev Branch (v1.32.0) | Master (v0.1.19) | Notes |
+|---|---|---|---|
+| Version alignment | ✅ All three manifests at 1.32.0 | ⚠️ `tauri.conf.json` versionCode=17 (should be 19) | Fixed on dev branch in v0.1.21+; still broken on master |
+| Version display in app | ✅ Sidebar uses `getVersion()` — reads tauri.conf.json | ⚠️ Same source but versionCode wrong in CI APKs | Android CI regenerates from tauri.conf.json; versionCode 17 builds |
+| CI / test pipeline | ✅ test.yml (3 jobs) + build-windows + build-android | ⚠️ No test.yml on master; Windows CI ran on all branches | All fixed on dev branch |
+| Test suite | ✅ 245 Rust tests + ~107 frontend assertions | ❌ Zero tests on master | Full harness shipped v1.2.4 |
+| Stale branches | ✅ None | — | Only `master` and `claude/hopeful-bell-avvci5` on remote |
+| CHANGELOG freshness | ✅ Current (v1.32.0 entry present) | ⚠️ Two unreleased fix commits (56536e9, 1c8b7c8) not in CHANGELOG | Post-v0.1.19 fixes merged without CHANGELOG entry |
+| ROADMAP freshness | ✅ Standalone ROADMAP.md, current to v1.32.0 | ❌ No ROADMAP.md; roadmap embedded in README only | ROADMAP.md created in v0.1.20 era |
+| README freshness | ✅ Current | ⚠️ Stale `versionCode = 15` example in "Customizing Android" section | Small doc error |
+| Security / CSP | ✅ Real CSP since v0.1.21 (`script-src 'self'`) | ❌ `"csp": null` | Fixed dev branch WP-02 |
+| CI version-sync guard | ✅ **Added this session** | — | Prevents recurring tauri.conf.json version freeze |
+| Large-component debt | ⚠️ SpecimenDetail.svelte ~130+ KB | — | Unchanged from yesterday |
+| Dependency health | ✅ Good | ✅ Good (no CVEs reported) | `rand 0.8` still one behind on dev branch |
+| Roadmap progress | ✅ Phase E complete; Phase TX-3 and Phase F next | — | |
 
-**Overall health: EXCELLENT.** Critical fix this session: `tauri.conf.json` was frozen at `1.30.0` (recurring pattern — fourth occurrence). Fixed. Full documentation congruence pass completed for v1.32.0. Since the last checkup (2026-06-26 at v1.30.0), 2 new versions shipped: WP-43 fruiting conditions & yield tracking (v1.31.0, migration 030) and WP-44 mycology QC compliance rules (v1.32.0, 3 new rule types, Dashboard Panel MY-1). **Phase E Mycology is now fully complete.**
+**Overall health (dev branch): EXCELLENT.** Change this session: implemented the **#1 recommendation from yesterday** — added a CI version-sync step to `test.yml` that compares `package.json`, `tauri.conf.json`, and `Cargo.toml` and fails the lint job if they diverge. This directly addresses the **recurring 4-session pattern** of `tauri.conf.json` lagging behind. No new feature work since yesterday's checkup (v1.32.0 Phase E complete).
 
 ---
 
 ## 2. Version Consistency Check
 
+### Dev Branch (`claude/hopeful-bell-avvci5`)
+
 | File | Version | Status |
 |---|---|---|
 | `package.json` | `1.32.0` | ✅ |
 | `src-tauri/Cargo.toml` | `1.32.0` | ✅ |
-| `src-tauri/tauri.conf.json` | `1.32.0` | ✅ Fixed this session (was `1.30.0`) |
-| `Sidebar.svelte` displayed version | Dynamic via `getVersion()` | ✅ Now correct (reads `tauri.conf.json`) |
+| `src-tauri/tauri.conf.json` | `1.32.0` | ✅ Fixed last session (was `1.30.0`) |
+| `Sidebar.svelte` displayed version | Dynamic via `getVersion()` | ✅ Reads tauri.conf.json at runtime |
 
-**Clean after fix.**
+### Master (`master`)
+
+| File | Version | Status |
+|---|---|---|
+| `package.json` | `0.1.19` | ✅ |
+| `src-tauri/Cargo.toml` | `0.1.19` | ✅ |
+| `src-tauri/tauri.conf.json` | `0.1.19` (version) / **versionCode 17** | ❌ versionCode should be 19 |
+| `src-tauri/gen/android/app/build.gradle.kts` | versionCode=19, versionName="0.1.19" | ⚠️ Correct locally but CI regenerates from tauri.conf.json |
+
+**Critical note on master:** Android CI workflow (`build-android.yml`) does `rm -rf src-tauri/gen/android` and `cargo tauri android init --ci`, regenerating the Android project from `tauri.conf.json`. Since `tauri.conf.json.bundle.android.versionCode` is 17, every CI-built APK carries versionCode 17 instead of 19. The committed `build.gradle.kts` (versionCode=19) is never used in CI.
 
 ---
 
 ## 3. Recent Commits — 20 Most Recent on `master`
 
-| SHA | Message |
-|---|---|
-| `5d1fea8` | Merge pull request #99 from jnowat/claude/pensive-edison-wojoey |
-| `65ae973` | feat(WP-44): mycology compliance/QC rules (v1.32.0) |
-| `37ec8f3` | Merge pull request #98 from jnowat/claude/pensive-edison-wojoey |
-| `7109189` | feat(WP-43): fruiting conditions & yield tracking for mycology (v1.31.0) |
-| `6fa4a75` | docs: expand Phase TX-3 and Phase F work packets with full implementation details |
-| `568678f` | Merge pull request #97 from jnowat/claude/hopeful-bell-kn2126 |
-| `bf0158c` | docs: v1.30.0 congruence pass — fix tauri.conf.json version freeze, update ROADMAP/UserManual/README |
-| `8084bb4` | Merge pull request #95 from jnowat/claude/pensive-edison-wojoey |
-| `af91495` | chore: update lockfiles after dependency install |
-| `d348047` | feat(WP-42): genetic lineage & strain isolation markers (v1.30.0) |
-| `d6bc263` | Merge pull request #94 from jnowat/claude/pensive-edison-wojoey |
-| `de9690f` | feat(mycology): WP-41 — colonization % and typed contaminant tracking |
-| `12c0fb7` | Merge pull request #93 from jnowat/claude/pensive-edison-wojoey |
-| `99b66ee` | feat(WP-40): seed mycology profile vocabulary (v1.28.0) |
-| `f984949` | Merge pull request #92 from jnowat/claude/dazzling-brahmagupta-1pvyjb |
-| `47a0821` | feat(WP-34): cell-culture dashboard panels (v1.27.0) |
-| `f223763` | Merge pull request #91 from jnowat/claude/zealous-mccarthy-yyjvwz |
-| `1d65e5d` | feat(compliance): mycoplasma testing rule & biosafety level (WP-33, v1.26.0) |
-| `0b6220d` | feat(cryo): add cryopreservation & LN2 inventory (WP-32, v1.25.0) |
-| `e174ce8` | Merge pull request #90 from jnowat/claude/festive-heisenberg-n93l1n |
+| SHA | Message | Notes |
+|---|---|---|
+| `03cf8da` | Merge pull request #29 | Fix/UX improvements merge |
+| `56536e9` | Fix bugs and add UX improvements across compliance, specimens, reminders, inventory | Post-v0.1.19; unreleased in CHANGELOG |
+| `1c8b7c8` | Fix several bugs across backend commands and frontend | Post-v0.1.19; unreleased in CHANGELOG |
+| `d3939fb` | Merge pull request #28 | QR labels PR |
+| `6221b91` | merge: bring in docs/roadmap changes from claude/update-docs-roadmap-r5DAN | |
+| `a0a88c6` | fix: trigger Android APK build on all claude/* branches and master | CI fix |
+| `792f267` | feat: photo attachments per specimen (v0.1.19) | |
+| `e35585e` | feat: Excel multi-sheet workbook export (v0.1.18) | |
+| `a98b8a5` | feat: PDF report generation (v0.1.17) | |
+| `5cdb2f8` | chore: update Cargo.lock for v0.1.16 | |
+| `6963353` | feat: batch operations on Specimens (v0.1.16) | |
+| `448278a` | docs: rewrite README and CHANGELOG for v0.1.15 | |
+| `b0bd776` | Merge pull request #27 | |
+| `bb1002a` | feat: Tooltip component + improved QR label (v0.1.15) | |
+| `50983fc` | Merge pull request #26 | |
+| `40e3292` | Refine tooltip wording for InventoryManager and MediaList | |
+| `6d184a9` | Enhance InventoryManager tooltips with dynamic content | |
+| `4e8b4a4` | Add title tooltips to InventoryManager component | |
+| `460a045` | Add title tooltips to all Svelte components | |
+| `2336c6d` | feat: add tooltips to AuditLog, SpecimenDetail, SpecimenList | |
 
-**Assessment:** Since the last checkup (2026-06-26 at v1.30.0), 2 consecutive minor versions shipped completing Phase E: WP-43 fruiting/yield tracking (migration 030, v1.31.0) and WP-44 mycology QC compliance rules (3 new flag types + Dashboard panel, v1.32.0). Development velocity remains extremely high. **Phase E is now fully complete.** Next phase: Phase TX-3 (WP-45–49) and Phase F (WP-50–57) cross-cutting features.
+**Assessment (master):** Master is frozen at v0.1.19 (last real commit 2026-03-27). Two meaningful fix commits (56536e9 and 1c8b7c8) were applied after v0.1.19 without a CHANGELOG entry or version bump — these cover: audit of failed logins, role validation hardening, CSV export field expansion, compliance pagination, snooze duration picker, search expansion, contamination badge, project filter, health/stage label display, database reset table coverage, backup panic fix, subculture atomicity, and auth token narrowing. These are all integrated on the dev branch (v1.2.x+ range).
+
+**Assessment (dev branch):** Since the last checkup (2026-06-27 at v1.32.0), **no new feature work**. Yesterday's session fixed tauri.conf.json version freeze and updated ROADMAP/UserManual/Checkup for v1.32.0. The dev branch is now at a clean v1.32.0 checkpoint with Phase E fully complete.
 
 ---
 
@@ -76,8 +91,9 @@
 /SteloPTC
 ├── .github/
 │   ├── workflows/
-│   │   ├── test.yml               ← 3 jobs: frontend-tests + rust-tests + lint
-│   │   ├── build-windows.yml      ← Signed .msi on GitHub Release
+│   │   ├── test.yml               ← 3 jobs: version-sync + svelte-check + rust-clippy (lint); frontend-tests; rust-tests
+│   │   │                             *** VERSION-SYNC STEP ADDED THIS SESSION ***
+│   │   ├── build-windows.yml      ← Signed .msi on master/claude/* push + GitHub Release
 │   │   └── build-android.yml      ← Debug APK on push; signed APK on release
 │   └── SIGNING.md
 ├── docs/
@@ -88,9 +104,9 @@
 │   ├── App.svelte                 ← Root layout, router
 │   └── lib/
 │       ├── components/            ← 35+ .svelte files
-│       │   ├── SpecimenDetail.svelte          ← ~130+ KB (⚠️ largest; split is future work — Fruiting Records section added WP-43)
-│       │   ├── TaxonomyNavigator.svelte       ← v1.22.0 — multi-column browser Kingdom→Strains; global search; keyboard nav
-│       │   ├── Dashboard.svelte               ← v1.32.0 — Panel MY-1 (Mycology QC Alerts) added
+│       │   ├── SpecimenDetail.svelte          ← ~130+ KB (⚠️ largest; split is future work)
+│       │   ├── TaxonomyNavigator.svelte       ← v1.22.0
+│       │   ├── Dashboard.svelte               ← v1.32.0 — Panel MY-1 (Mycology QC Alerts)
 │       │   ├── CryoManager.svelte             ← v1.25.0
 │       │   ├── SpecimenPassageTimeline.svelte ← v1.29.0
 │       │   └── [other components]
@@ -105,30 +121,27 @@
 │   └── src/
 │       ├── lib.rs
 │       ├── commands/              ← 24+ Rust modules
-│       │   ├── fruiting.rs        ← NEW v1.31.0 — create_fruiting_record, list_fruiting_records
-│       │   ├── compliance.rs      ← v1.32.0 — mycology QC block (3 new rules profile-gated)
-│       │   ├── specimens.rs       ← v1.30.0
-│       │   ├── subcultures.rs     ← v1.29.0
-│       │   ├── cryo.rs            ← v1.25.0
+│       │   ├── fruiting.rs        ← v1.31.0
+│       │   ├── compliance.rs      ← v1.32.0 — mycology QC block (3 rules, profile-gated)
 │       │   └── [other modules]
 │       ├── db/
-│       │   ├── migrations.rs      ← 30 migrations (030 latest — fruiting_records table)
-│       │   ├── queries.rs         ← v1.32.0 — get_mycology_compliance_flags (3 rules); fruiting helpers
-│       │   ├── dashboard.rs       ← v1.32.0 — mycoQcFlags derived state source
+│       │   ├── migrations.rs      ← 30 migrations (030 latest)
+│       │   ├── queries.rs         ← v1.32.0
+│       │   ├── dashboard.rs       ← v1.32.0
 │       │   └── vocabulary.rs
 │       └── models/
-│           ├── fruiting.rs        ← NEW v1.31.0 — FruitingRecord, CreateFruitingRecordRequest
+│           ├── fruiting.rs        ← v1.31.0
 │           └── [other models]
-├── ROADMAP.md                     ← Updated this session: v1.32.0/30 migrations; WP-43/44 "As built"; Phase E marked complete; versioning table v1.31.0–v1.32.0 rows shipped; footer
+├── ROADMAP.md                     ← Standalone; current to v1.32.0/30 migrations; Phase E complete
 ├── CHANGELOG.md                   ← Current: v1.32.0 entry present
-├── README.md                      ← Already current: v1.31.0/v1.32.0 feature bullets and 245 test count
-├── UserManual.md                  ← Updated this session: header v1.32.0; scope note Phase E WP-40–44 complete
+├── README.md                      ← Current: v1.31.0/v1.32.0 feature bullets; 245 test count
+├── UserManual.md                  ← Updated last session: header v1.32.0; Phase E WP-40–44 complete
 └── DailyClaudeRoutineCheckup.md   ← This file
 ```
 
 ---
 
-## 5. Database Schema — 30 Migrations
+## 5. Database Schema — 30 Migrations (dev branch)
 
 | Migration | Applied in | Description |
 |---|---|---|
@@ -144,24 +157,24 @@
 | `010_specimen_genealogy` | v1.7.0 | `generation`, `lineage_passage_offset`, `root_specimen_id` on specimens |
 | `011_media_draft` | v1.8.0 | `is_draft` on media_batches; `idx_media_batches_draft` index |
 | `012_specimen_contamination` | v1.8.x | `contamination_flag`, `contamination_notes` on specimens |
-| `013_audit_checkpoints` | v1.9.0 | `audit_checkpoints` Merkle table (root, seq range, Dogecoin hook) |
+| `013_audit_checkpoints` | v1.9.0 | `audit_checkpoints` Merkle table |
 | `014_checkpoint_auto_and_settings` | v1.10.0 | `is_auto` / `auto_source` on `audit_checkpoints`; `app_settings` key-value table |
 | `015_death_events_and_lab_profile` | v1.11.0 | `event_type` on `subcultures`; `app_config` single-row table with `lab_profile` |
-| `016_vocabulary_tables` | v1.12.0 | `stages` lookup table (profile-scoped, 15 PTC seeds); rebuilds `specimens` to drop `CHECK(stage IN (...))` |
-| `017_remaining_vocabularies` | v1.12.0 | `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` tables; rebuilds `media_hormones`, `compliance_records`, `inventory_items` |
-| `018_cell_culture_vocabulary` | v1.15.0 | `INSERT OR IGNORE` seeds `cell_culture` profile into all six vocabulary tables |
-| `019_strain_model` | v1.16.0 | `strains`, `strain_parents`, `hybridization_events` tables; nullable `strain_id`/`strain_chain_seq` on `specimens`; 6 covering indexes |
-| `020_taxa` | v1.18.0 | `taxa` table (Kingdom → Genus hierarchy, `taxon_path` JSON, `ncbi_taxon_id`); two new nullable columns on `species`; genus backfill |
+| `016_vocabulary_tables` | v1.12.0 | `stages` lookup table (profile-scoped, 15 PTC seeds); drops `CHECK(stage IN (...))` |
+| `017_remaining_vocabularies` | v1.12.0 | `hormone_types`, `compliance_record_types`, `compliance_agencies`, `inventory_categories` |
+| `018_cell_culture_vocabulary` | v1.15.0 | Seeds `cell_culture` profile into all six vocabulary tables |
+| `019_strain_model` | v1.16.0 | `strains`, `strain_parents`, `hybridization_events`; nullable `strain_id`/`strain_chain_seq` on specimens |
+| `020_taxa` | v1.18.0 | `taxa` table (Kingdom → Genus hierarchy, `taxon_path` JSON, `ncbi_taxon_id`) |
 | `021_ncbi_sync_log` | v1.19.0 | `ncbi_sync_log` table; 4 indexes |
 | `022_hybridization_generation` | v1.21.0 | `hybridization_events.generation_label`, `backcross_depth`; `strains.is_cross_species` |
-| `023_cell_culture_vocab_expansion` | v1.23.0 | Expands `cell_culture` vocabulary to 20 stages, 11 propagation methods, etc. |
+| `023_cell_culture_vocab_expansion` | v1.23.0 | Expands `cell_culture` vocabulary |
 | `024_pdl_tracking` | v1.24.0 | `specimens.cumulative_pdl`; PDL calculation columns on `subcultures` |
 | `025_frozen_vials` | v1.25.0 | `frozen_vials` table; 3 indexes |
-| `026_biosafety_level` | v1.26.0 | `specimens.biosafety_level TEXT CHECK(IN('BSL-1','BSL-2','BSL-2+','BSL-3'))` |
-| `027_mycology_vocabulary` | v1.28.0 | `INSERT OR IGNORE` seeds `mycology` profile into all six vocabulary tables |
+| `026_biosafety_level` | v1.26.0 | `specimens.biosafety_level CHECK('BSL-1'\|'BSL-2'\|'BSL-2+'\|'BSL-3')` |
+| `027_mycology_vocabulary` | v1.28.0 | Seeds `mycology` profile into all six vocabulary tables |
 | `028_colonization_tracking` | v1.29.0 | `subcultures.colonization_pct REAL CHECK(0–100)`, `contaminant_type TEXT` |
-| `029_genetic_lineage_markers` | v1.30.0 | `specimens.origin_type CHECK('multi_spore'\|'isolated_dikaryon'\|'tissue_clone')`; `is_best_performer INTEGER NOT NULL DEFAULT 0` |
-| `030_fruiting_records` | v1.31.0 | `fruiting_records` table: per-flush harvest data (flush_number, harvest_date, fresh/dry weight, temp/RH/FAE/light, notes); index on `specimen_id` |
+| `029_genetic_lineage_markers` | v1.30.0 | `specimens.origin_type`, `is_best_performer` |
+| `030_fruiting_records` | v1.31.0 | `fruiting_records` table: per-flush harvest data |
 
 **27+ core tables. No orphaned or dead-code tables detected.**
 
@@ -171,9 +184,11 @@
 
 | Pipeline | Jobs | Trigger | Status |
 |---|---|---|---|
-| `test.yml` | `frontend-tests`, `rust-tests`, `lint` | Every push + PR to master / claude/* | ✅ Passing (blocks merge on failure) |
-| `build-windows.yml` | Tauri build → signed .msi | GitHub Release publication | ✅ Passing |
+| `test.yml` | `frontend-tests`, `rust-tests`, `lint` (+ **version-sync step, new**) | Push + PR to master / claude/* | ✅ Passing (blocks merge on failure) |
+| `build-windows.yml` | Tauri build → signed .msi | Push to master/claude/* + Release | ✅ Passing |
 | `build-android.yml` | Debug APK (push); signed APK (release) | Push to master/claude/* and Release | ✅ Passing |
+
+**New this session:** `test.yml` lint job now includes a **version sync step** that fails CI if `package.json`, `tauri.conf.json`, and `Cargo.toml` do not all carry the same version string. This directly prevents the recurring `tauri.conf.json` version-freeze pattern that has occurred four times.
 
 ---
 
@@ -188,26 +203,26 @@
 | `importUtils.test.ts` | ~15 | Sheet validation helpers |
 | `profile.test.ts` | ~6 | `labProfile` store, `currentLabProfile()`, `LAB_PROFILE_LABELS` |
 
-### Rust — 245 test functions (up from 230 at v1.30.0)
+### Rust — 245 test functions (unchanged from v1.32.0)
 
 | Module | Test Count | Coverage |
 |---|---|---|
-| `db::queries` | ~73 | Hash-chain + Merkle; PDL/doubling-time; cryo operations; pedigree traversal; backcross detection; mycoplasma queries; mycology QC rules (+8 new WP-44) |
-| `db::migrations` | ~82 | Migration fixture correctness; all 30 migrations; fruiting_records (+4 new WP-43) |
-| `db::dashboard` | ~25 | Profile-aware specimen/contamination/schedule queries; vial summary; culture maintenance alerts; contaminant-type grouping |
-| `db::vocabulary` | 9 | Stage list count/order for active profile; vocabulary isolation between profiles |
-| `commands::compliance` | ~12 | PTC rules; mycoplasma rule; mycology QC rules (tested at query level in db::queries) |
+| `db::queries` | ~73 | Hash-chain + Merkle; PDL/doubling-time; cryo; pedigree; mycoplasma; mycology QC rules |
+| `db::migrations` | ~82 | Migration fixture correctness; all 30 migrations |
+| `db::dashboard` | ~25 | Profile-aware specimen/contamination/schedule queries; vial summary; culture maintenance alerts |
+| `db::vocabulary` | 9 | Stage list count/order for active profile; vocabulary isolation |
+| `commands::compliance` | ~12 | PTC, mycoplasma, and mycology QC rules |
 | `commands::inventory` | 8 | Stock adjustment, low-stock detection |
-| `commands::specimens` | 5 | Death archive, event_type, passage invariants, `app_config` seeded |
-| `commands::audit` | 4 | Checkpoint tamper-detection and verification invariants |
-| `db::queries (fruiting)` | 3 | Insert + get round-trip, list per specimen, FK rejection (WP-43) |
+| `commands::specimens` | 5 | Death archive, event_type, passage invariants |
+| `commands::audit` | 4 | Checkpoint tamper-detection and verification |
+| `db::queries (fruiting)` | 3 | Insert + get round-trip, list per specimen, FK rejection |
 
-### Remaining Gaps (unchanged from v1.30.0)
+### Remaining Gaps (unchanged from v1.30.0 / v1.32.0)
 
-- Zero Svelte component tests (form validation, reactive state) — now includes Fruiting Records section + Dashboard MY-1 panel
-- No end-to-end integration tests (create → split → audit → export → import round-trip)
+- Zero Svelte component tests (form validation, reactive state)
+- No end-to-end integration tests
 - `generate_split_accession_numbers` edge cases untested
-- No command-layer tests for `commands/ncbi.rs`, `commands/cryo.rs`, `commands/fruiting.rs` beyond migration/query level
+- No command-layer tests for `commands/ncbi.rs`, `commands/cryo.rs`, `commands/fruiting.rs`
 - No `npm audit` clean run (blocked by `--legacy-peer-deps`)
 
 ---
@@ -216,8 +231,8 @@
 
 | Branch | Status |
 |---|---|
-| `claude/hopeful-bell-ok1td4` | ✅ Active — current session work branch (this checkup + fixes) |
-| `master` (remote) | ✅ Present — HEAD `5d1fea8` = v1.32.0 (PR #99 merged WP-44) |
+| `claude/hopeful-bell-avvci5` | ✅ Active dev branch — current session work (this checkup + CI version-sync fix) |
+| `master` (remote) | ⚠️ Frozen at v0.1.19 (last commit 2026-03-27) — 146 commits behind dev branch |
 
 ---
 
@@ -236,7 +251,7 @@
 | `xlsx` (SheetJS community) | `^0.18.5` | ✅ Stable, no CVEs |
 | `html5-qrcode` | `^2.3.8` | ✅ Current |
 
-**Known issue:** `npm ci --legacy-peer-deps` still required by CI — masks a peer-dep conflict. Non-blocking but prevents `npm audit` for clean CVE reporting.
+**Known issue:** `npm ci --legacy-peer-deps` still required. Non-blocking.
 
 ### Backend (`src-tauri/Cargo.toml`)
 
@@ -260,34 +275,27 @@
 | Control | Status | Notes |
 |---|---|---|
 | CSP | ✅ Locked | `script-src 'self'`; no `unsafe-eval`; `worker-src blob:` for QR camera only |
-| Authentication | ✅ Strong | bcrypt, session tokens, RBAC (Admin/Supervisor/Tech/Guest), forced first-login password change |
-| Audit trail | ✅ Immutable + Verifiable | SHA-256 per-lineage hash chain; Merkle checkpoints; portable proof export; standalone verifier |
-| SQL injection | ✅ Prevented | `rusqlite` parameterized bindings throughout (including fruiting commands) |
+| Authentication | ✅ Strong | bcrypt, session tokens, RBAC (Admin/Supervisor/Tech/Guest), forced first-login password change (WP-01) |
+| Audit trail | ✅ Immutable + Verifiable | SHA-256 per-lineage hash chain; Merkle checkpoints; portable proof export |
+| SQL injection | ✅ Prevented | `rusqlite` parameterized bindings throughout |
 | Lab profile lock | ✅ Guarded | `check_profile_change_allowed` enforces `"CHANGE PROFILE"` confirmation when specimens exist |
-| Mycology QC rules | ✅ Profile-gated | All three mycology QC rules are gated on `lab_profile = mycology`; PTC and cell_culture unaffected |
-| Fruiting records FK | ✅ DB-enforced | `fruiting_records.specimen_id REFERENCES specimens(id)` — unknown specimen IDs rejected at DB level |
+| Mycology QC rules | ✅ Profile-gated | All three mycology QC rules gated on `lab_profile = mycology` |
+| Fruiting records FK | ✅ DB-enforced | `fruiting_records.specimen_id REFERENCES specimens(id)` |
 
 ---
 
 ## 11. Roadmap Progress
 
-### What Shipped Since Last Checkup (2026-06-26 → 2026-06-27)
-
-| Version / PR | Feature |
-|---|---|
-| PR #98 (v1.31.0) | WP-43 as built: migration 030 `fruiting_records`; `models/fruiting.rs`; `commands/fruiting.rs`; Fruiting Records section in SpecimenDetail; 7 Rust tests |
-| PR #99 (v1.32.0) | WP-44 as built: `get_mycology_compliance_flags` (3 rules); mycology block in `get_compliance_flags`; Dashboard Panel MY-1 (Mycology QC Alerts); 8 Rust tests |
-
 ### Phase Horizon
 
-| Phase | Scope | Target |
+| Phase | Scope | Status |
 |---|---|---|
 | Phase TX-1 — WP-28–29 | ✅ **Complete** | Shipped v1.16.0–v1.17.0 |
 | Phase TX-2 — WP-35–39 | ✅ **Complete** | Shipped v1.18.0–v1.22.0 |
 | Phase D — WP-30–34 | ✅ **Complete** | Shipped v1.23.0–v1.27.0 |
 | Phase E — WP-40–44 | ✅ **Complete** — all 5 mycology work packets shipped | v1.28.0–v1.32.0 |
-| Phase TX-3 — WP-45–49 | Full taxonomic hash chain, cross-domain, breeding programs, Darwin Core | v2.x |
-| Phase F — WP-50–57 | PostgreSQL, LAN sync, iOS, email notifications, AI analysis, lab map | v2.x+ |
+| Phase TX-3 — WP-45–49 | Full taxonomic hash chain, cross-domain, breeding programs | v2.x |
+| Phase F — WP-50–57 | PostgreSQL, LAN sync, iOS, email, AI analysis, lab map | v2.x+ |
 
 ---
 
@@ -295,42 +303,39 @@
 
 | Category | Issue | Severity | Delta vs. Prior |
 |---|---|---|---|
-| **`tauri.conf.json` version freeze** | Recurring pattern — **fourth occurrence**. Was stuck at `1.30.0` when all other manifests advanced to `1.32.0`; caused sidebar to show wrong version via `getVersion()`. | High | ✅ **Fixed this session** |
-| **SpecimenDetail.svelte size** | Now ~130+ KB after WP-43 added Fruiting Records section (inline form + scrollable table). Extraction of SplitWorkflow, DeathDialog, ColonizationChart, FruitingRecords, and CryoPanel sections remains unscheduled. | Medium | ↓ Worsening |
-| **No command-layer tests for new commands** | `commands/ncbi.rs`, `commands/cryo.rs`, `commands/fruiting.rs` — covered at migration-fixture and query-helper level only. | Medium | ↓ Worsening (fruiting.rs added) |
-| **No tests for split accession generation** | `generate_split_accession_numbers` edge cases (letter exhaustion at 26, taken-letter skip, recursive suffix) untested | Medium | Unchanged |
-| **Component tests missing** | Zero Vitest tests for Svelte components — now includes Dashboard Panel MY-1 + Fruiting Records section | Medium | ↓ Worsening |
+| **`tauri.conf.json` version freeze** | Recurring pattern — **fourth occurrence** (now addressed structurally). Fixed last session; new CI guard prevents recurrence. | High | ✅ **Structurally mitigated this session** via CI version-sync step |
+| **SpecimenDetail.svelte size** | ~130+ KB after WP-43 added Fruiting Records. Extraction of SplitWorkflow, DeathDialog, ColonizationChart, FruitingRecords, CryoPanel remains unscheduled. | Medium | ↓ Worsening |
+| **No command-layer tests** | `commands/ncbi.rs`, `commands/cryo.rs`, `commands/fruiting.rs` covered at query-helper level only | Medium | Unchanged |
+| **No split accession generation edge case tests** | `generate_split_accession_numbers` — letter exhaustion at 26, taken-letter skip, recursive suffix | Medium | Unchanged |
+| **Component tests missing** | Zero Vitest tests for Svelte components | Medium | Unchanged |
 | **Integration tests missing** | No end-to-end tests for create → split → death → audit → export → import | Medium | Unchanged |
 | **Legacy peer deps** | `--legacy-peer-deps` masks npm conflict; blocks clean `npm audit` | Low | Unchanged |
 | **Rust error context** | Generic `map_err(\|e\| e.to_string())` throughout command handlers | Low | Unchanged |
-| **Schema documentation** | No ER diagram or human-readable schema reference. Now 30 migrations / 27+ tables. | Low | ↓ Worsening |
+| **Schema documentation** | No ER diagram. 30 migrations / 27+ tables. | Low | ↓ Worsening |
 | **rand 0.8** | One major behind (0.9 released); non-breaking migration | Low | Unchanged |
-| **Recurring tauri.conf.json drift** | Fourth session where this file lagged behind. A CI lint step comparing version fields in all three manifests would catch this automatically. | Medium | Pattern worsening |
+| **master divergence** | Dev branch is 146 commits (v0.1.19 → v1.32.0) ahead of master. Master has stale tauri.conf.json versionCode=17, null CSP, no tests. | Structural | New finding documented |
 
 **Items resolved this session:**
-- ✅ `tauri.conf.json` stuck at `1.30.0` — bumped to `1.32.0`
-- ✅ ROADMAP: header, Phase E section header, WP-43/44 "As built" sections, versioning table (v1.31.0–v1.32.0 rows), footer — all updated to v1.32.0/30 migrations
-- ✅ UserManual: header v1.32.0; scope note Phase E WP-40–44 fully shipped; WP-43/44 mentioned
-- ✅ (No README changes needed — was already current)
+- ✅ CI version-sync step added to `test.yml` lint job — prevents `tauri.conf.json` version freeze (addresses the #1 recommendation from 2026-06-27 checkup)
 
 ---
 
 ## 13. Top 5 Actionable Recommendations
 
-### 1. Script a CI version-sync check to prevent recurring `tauri.conf.json` drift (30 min, high value)
-This is the **fourth session** where `tauri.conf.json` lagged behind `package.json` and `Cargo.toml`. A simple GitHub Actions step in `test.yml` that compares the three version fields and fails if they diverge would catch this before any PR merges. One-liner: `node -e "const p=require('./package.json'),c=require('./src-tauri/tauri.conf.json');if(p.version!==c.version)process.exit(1)"`. This is the highest-ROI improvement available given the recurring pattern.
+### 1. ~~Script a CI version-sync check~~ ✅ DONE THIS SESSION
+Added a bash step to the `test.yml` lint job that fails CI if `package.json`, `tauri.conf.json`, and `Cargo.toml` carry different versions. This is the structural fix for the fourth-occurrence recurring pattern.
 
 ### 2. Add command-layer unit tests for `commands/fruiting.rs`, `commands/ncbi.rs`, and `commands/cryo.rs` (2–4 hrs, medium priority)
-Three major command modules now have no command-layer tests. For fruiting: `create_fruiting_record` writes audit entry, `list_fruiting_records` returns ordered by flush number. For cryo: `thaw_vial` atomic invariant, overdraw rejection. For NCBI: `import_ncbi_taxonomy` dry-run, `resolve_ncbi_conflict` persists resolution. ~45 minutes per module.
+Three major command modules have no command-layer tests. Each is covered only at the migration-fixture and query-helper level. ~45 min per module: `create_fruiting_record` audit-trail assertion, `thaw_vial` overdraw rejection (cryo), `import_ncbi_taxonomy` dry-run.
 
-### 3. Extract ColonizationChart, FruitingRecords, and BslBadge out of SpecimenDetail.svelte (3–4 hrs, medium priority)
-`SpecimenDetail.svelte` is now ~130+ KB with WP-43 adding a full Fruiting Records section. The colonization progress chart (WP-41), fruiting records (WP-43), culture origin badge + best performer toggle (WP-42), and BSL badge (WP-33) are all naturally self-contained. Extracting them as `ColonizationChart.svelte`, `FruitingRecordsSection.svelte`, and `GeneticLineageCard.svelte` would bring the core component under 90 KB and make each feature independently testable.
+### 3. Extract ColonizationChart, FruitingRecords, and GeneticLineageCard out of SpecimenDetail.svelte (3–4 hrs, medium priority)
+`SpecimenDetail.svelte` is now ~130+ KB. The colonization chart (WP-41), fruiting records section (WP-43), culture origin + best-performer toggle (WP-42), and BSL badge (WP-33) are all self-contained. Extraction would bring the core component under 90 KB and make each independently testable.
 
 ### 4. Resolve the npm peer-dependency conflict and remove `--legacy-peer-deps` (1–2 hrs, low-medium priority)
-Run `npm ls --all 2>&1 | grep UNMET` in a dev environment to locate the root conflict. With Phase E complete and Phase TX-3/F not yet begun, this is a good time to fix before the next major dependency upgrade cycle begins.
+Run `npm ls --all 2>&1 | grep UNMET` to locate the root conflict. Phase E is complete and Phase TX-3/F not yet begun — a good time to fix before the next major dependency change.
 
 ### 5. Write an ER diagram for the schema (`docs/schema.md`) (2 hrs, medium priority)
-At 30 migrations and 27+ tables — including the `taxa` hierarchy (self-referential `parent_id`), the strain/pedigree graph (`strains`, `strain_parents`, `hybridization_events`), the cryo subsystem (`frozen_vials`), the NCBI sync log, and the new `fruiting_records` table — a `docs/schema.md` ER diagram is genuinely needed for onboarding and for Phase TX-3 planning. This is especially important before Phase TX-3 adds the full taxonomic hash chain infrastructure across 30+ tables.
+30 migrations, 27+ tables including the `taxa` hierarchy, the strain/pedigree graph, `frozen_vials`, NCBI sync log, and `fruiting_records`. A `docs/schema.md` with entity relationships is overdue before Phase TX-3 adds full taxonomic hash-chain infrastructure across these tables.
 
 ---
 
@@ -338,32 +343,54 @@ At 30 migrations and 27+ tables — including the `taxa` hierarchy (self-referen
 
 | Document | Status |
 |---|---|
-| `ROADMAP.md` | ✅ Updated this session — v1.32.0/30 migrations; WP-43/44 "As built"; Phase E complete; versioning table through v1.32.0 |
+| `ROADMAP.md` | ✅ Current — v1.32.0/30 migrations; WP-43/44 "As built"; Phase E complete |
 | `CHANGELOG.md` | ✅ Current — v1.32.0 entry present |
-| `README.md` | ✅ Already current — v1.31.0/v1.32.0 feature bullets and 245 test count |
-| `UserManual.md` | ✅ Updated this session — header v1.32.0; scope note Phase E WP-40–44 complete |
+| `README.md` | ✅ Current — v1.31.0/v1.32.0 feature bullets; 245 test count |
+| `UserManual.md` | ✅ Updated last session — header v1.32.0; Phase E WP-40–44 complete |
 | `.github/SIGNING.md` | ✅ Covers release keystore generation |
 | `docs/merkle-checkpoints.md` | ✅ WP-20 spec |
 | `docs/merkle-proofs.md` | ✅ WP-21 proof format + Python verifier |
 | `docs/vocabulary-system.md` | ✅ Phase C vocabulary tables reference |
 
-**Structural gap:** No ER diagram or schema reference. With 30 migrations and 27+ tables, this is now a meaningful omission.
+**Structural gap:** No ER diagram or schema reference (`docs/schema.md`). With 30 migrations and 27+ tables, this is a meaningful omission before Phase TX-3 begins.
 
 ---
 
-## 15. Summary Scorecard
+## 15. Master vs Dev Branch — Gap Analysis
+
+| Aspect | Master (v0.1.19) | Dev Branch (v1.32.0) |
+|---|---|---|
+| Version | 0.1.19 | 1.32.0 |
+| Android versionCode in CI | ❌ 17 (wrong — tauri.conf.json says 17) | ✅ 24 |
+| Content-Security-Policy | ❌ null | ✅ Locked down (script-src 'self', worker-src blob:) |
+| Forced password change | ❌ admin/admin usable forever | ✅ Forced on first login (migration 006) |
+| Test harness | ❌ Zero tests | ✅ 245 Rust + ~107 frontend |
+| CI version-sync check | ❌ None | ✅ Added this session |
+| ROADMAP.md | ❌ No standalone file | ✅ Full standalone roadmap |
+| UserManual.md | ❌ Does not exist | ✅ Full user manual |
+| Lab profiles (PTC/Cell/Mycology) | ❌ PTC only, hardcoded | ✅ Profile-selectable |
+| Audit hash chain | ❌ Append-only by policy only | ✅ Cryptographically tamper-evident |
+| Taxonomy / Strain module | ❌ Flat species list | ✅ Full Kingdom→Genus hierarchy, strains, pedigree |
+| Mycology vertical | ❌ Not present | ✅ Full mycology profile (WP-40–44) |
+| Unreleased fix commits | ⚠️ 56536e9 + 1c8b7c8 not in CHANGELOG | ✅ All fixes integrated |
+
+**146 commits ahead.** The dev branch IS the production-forward version of this codebase.
+
+---
+
+## 16. Summary Scorecard
 
 | Dimension | Score | Delta | Notes |
 |---|---|---|---|
-| Version alignment | ✅ 10/10 | ↑ | Fixed `tauri.conf.json` freeze (1.30.0 → 1.32.0); all three manifests now at 1.32.0; sidebar `getVersion()` now correct |
-| Code organization | ⚠️ 6/10 | ↓ | SpecimenDetail now ~130+ KB after WP-43 Fruiting Records section added; extraction unscheduled |
-| Security posture | ✅ 10/10 | → | No new attack surface; mycology QC rules profile-gated; `fruiting_records` FK-enforced |
-| Test coverage | ⚠️ 8/10 | → | 245 Rust tests (+15 since v1.30.0); new command-layer gap for fruiting.rs; component tests still zero |
-| Performance | ✅ 10/10 | → | `fruiting_records` indexed on `specimen_id`; all prior indexes intact |
-| Documentation | ✅ 10/10 | ↑ | All four docs aligned to v1.32.0; ROADMAP WP-43/44 "As built" written; Phase E marked complete |
-| CI/CD | ✅ 10/10 | → | All three pipelines passing; Clippy zero-warning enforced |
-| Technical debt | ⚠️ 6/10 | ↓ | SpecimenDetail growing; recurring `tauri.conf.json` drift (4th occurrence); new fruiting.rs command-layer test gap; no ER diagram |
-| Development velocity | ✅ 10/10 | → | Phase E fully complete; 2 more minor versions shipped since last checkup |
-| Roadmap clarity | ✅ 10/10 | ↑ | Phase E fully marked complete; Phase TX-3 and Phase F clearly defined as next |
+| Version alignment | ✅ 10/10 | → | All three manifests at 1.32.0; CI guard now in place |
+| Code organization | ⚠️ 6/10 | → | SpecimenDetail ~130+ KB; extraction unscheduled |
+| Security posture | ✅ 10/10 | → | No new attack surface this session |
+| Test coverage | ⚠️ 8/10 | → | 245 Rust + ~107 frontend; new command-layer gaps remain |
+| Performance | ✅ 10/10 | → | All prior indexes intact; `fruiting_records` indexed |
+| Documentation | ✅ 10/10 | → | All four docs at v1.32.0; CI change documented here |
+| CI/CD | ✅ 10/10 | ↑ | Version-sync step added — prevents recurring drift |
+| Technical debt | ⚠️ 7/10 | ↑ | Structural fix for recurring tauri.conf.json freeze; other items unchanged |
+| Development velocity | ✅ 10/10 | → | Phase E fully complete; 2026-06-28 is a maintenance/tooling day |
+| Roadmap clarity | ✅ 10/10 | → | Phase TX-3 and Phase F clearly defined as next |
 
-**Verdict:** Production-ready and executing at exceptional velocity. **Critical fix this session:** `tauri.conf.json` was frozen at `1.30.0` (recurring pattern — fourth occurrence). Fixed. Full documentation congruence pass completed for v1.32.0 (ROADMAP WP-43/44 "As built" sections, Phase E header, versioning table, footer; UserManual header and scope note). Phase E Mycology is now fully complete (WP-40–44, v1.28.0–v1.32.0). **Next priorities:** (1) CI version-sync check to prevent future `tauri.conf.json` drift, (2) Phase TX-3 or Phase F planning, (3) command-layer tests for fruiting.rs/ncbi.rs/cryo.rs.
+**Verdict:** Production-ready and executing at exceptional velocity. **This session's contribution:** Added CI version-sync guard to `test.yml` (the #1 recommendation from yesterday) — now any future version drift in `tauri.conf.json` will fail the lint job before merging. Comprehensive gap analysis between master (v0.1.19, frozen since 2026-03-27) and dev branch (v1.32.0) documented above. **Next priorities:** (1) command-layer tests for fruiting.rs/ncbi.rs/cryo.rs, (2) SpecimenDetail.svelte component extraction, (3) docs/schema.md ER diagram before Phase TX-3.

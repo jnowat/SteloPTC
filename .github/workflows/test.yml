@@ -76,6 +76,20 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
+      - name: Version sync check
+        run: |
+          VERSION_PKG=$(node -p "require('./package.json').version")
+          VERSION_TAURI=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          VERSION_CARGO=$(grep '^version = ' src-tauri/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          if [ "$VERSION_PKG" != "$VERSION_TAURI" ] || [ "$VERSION_PKG" != "$VERSION_CARGO" ]; then
+            echo "VERSION MISMATCH:"
+            echo "  package.json:     $VERSION_PKG"
+            echo "  tauri.conf.json:  $VERSION_TAURI"
+            echo "  Cargo.toml:       $VERSION_CARGO"
+            exit 1
+          fi
+          echo "Version sync OK: $VERSION_PKG"
+
       - name: Svelte type-check (svelte-check)
         run: npm run check
 
