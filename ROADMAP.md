@@ -668,20 +668,10 @@ These are two independent but complementary lineage systems. The **strain pedigr
   - **Tests** — 4 migration tests + 9 query tests = 13 new Rust tests. Total: 271 Rust tests.
 - **Scope boundary:** PedigreeChart integration and dashboard "Breeding Insights" panel are deferred. Existing strain, hybridization, and pedigree flows are untouched.
 
-### WP-48 — Advanced hybridization (cross-species, generation labeling polish, introgression)
+### WP-48 — Advanced hybridization (cross-species, generation labeling polish, introgression) ✅ v1.36.0
 
-- **Goal:** Fully support cross-species hybridization with admin overrides, refined generation labeling, and introgression line tracking.
-- **Files:** migration (033), `src-tauri/src/commands/strains.rs`, `src/lib/components/HybridWizard.svelte`, `src/lib/components/StrainDetail.svelte`, `docs/` hybridization section.
-- **Steps:**
-  1. Migration 033: Add `introgression_segments JSON` to `strains`, expand `hybridization_events` with `is_cross_species BOOLEAN`, `override_justification TEXT`, `introgression_notes TEXT`.
-  2. Update `create_hybridization_event`: admin override flow (requires justification text + explicit acknowledgement); auto-detect and store cross-species flag; enhanced generation label suggestions (F1, BCn, ILn for introgression lines).
-  3. HybridWizard: Step for cross-species unlock (admin only, writes permanent audit justification); dynamic generation label preview with backcross/introgression math.
-  4. StrainDetail: permanent cross-species banner with justification; introgression segment visual summary.
-  5. Extend pedigree tools to traverse cross-species edges with warning flags.
-  6. 7 new Rust unit tests for override path, generation math, audit justification; update existing hybridization tests.
-- **Acceptance:** Admin can create cross-species hybrid with justification recorded immutably; generation labels and pedigree correctly reflect advanced cases; UI enforces normal-user block.
-- **Preserve:** Intraspecific flow exactly as in WP-38; all existing data valid.
-- **Bump:** minor.
+- **Shipped:** v1.36.0 — generation labeling (F1→F4, BCnF1/F2 notation, custom), backcross detection via pedigree graph, admin-only cross-species override with permanent audit warning, cross-species banner in StrainDetail, live auto-suggestion in HybridWizard step 5, admin override panel in step 3. Core logic and test coverage included in v1.21.0 (WP-38); v1.36.0 formalises the packet and bumps the version.
+- **Not implemented (future WP-49+):** introgression line tracking (`ILn` notation), `introgression_segments` column, cross-species pedigree traversal flags.
 
 ### WP-49 — Custom taxa & Darwin Core export
 

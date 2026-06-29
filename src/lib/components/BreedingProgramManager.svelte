@@ -203,7 +203,7 @@
       <DataState {loading} {error} empty={!loading && programs.length === 0}
         emptyTitle="No Breeding Programs"
         emptyMessage="Create a breeding program to start tracking multi-generational selection."
-        onRetry={load}>
+        onretry={load}>
         {#each programs as prog (prog.id)}
           <button
             class="bm-program-row {selectedProgram?.id === prog.id ? 'selected' : ''}"

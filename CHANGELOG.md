@@ -5,6 +5,36 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.36.0] - 2026-06-29
+
+### Added — WP-48: Advanced hybridization tools (cross-species, F1/F2, backcross)
+
+- **Backend — `src-tauri/src/db/queries.rs`**:
+  - `get_strain_generation_label(conn, strain_id)` — reads the `generation_label` stored on a strain's most-recent `hybridization_events` row.
+  - `suggest_generation_label(parent_a_label, parent_b_label)` — pure function returning the next filial label when both parents share the same label (`None` + `None` → `F1`, `F1` + `F1` → `F2`, `F2` + `F2` → `F3`, `F3` + `F3` → `F4`); returns `None` for mixed or unknown inputs.
+  - `detect_backcross(conn, parent_a_id, parent_b_id)` — walks the `strain_parents` pedigree graph in both directions (up to depth 10, cycle-guarded); returns `Some((ancestor_id, depth))` when one parent is an ancestor of the other, `None` otherwise.
+  - `suggest_generation_label_for_parents(conn, parent_a_id, parent_b_id)` — composes backcross detection (which overrides filial rules) with the label-suggestion helper; returns `SuggestGenerationLabelResponse` with `suggested_label`, `is_backcross`, `backcross_depth`, and `backcross_ancestor_id`.
+  - `get_generational_stats(conn, strain_id)` — per-generation specimen count and healthy/problem breakdown for all hybrid descendants carrying a `generation_label`.
+
+- **Backend — `src-tauri/src/commands/strains.rs`**:
+  - `create_hybridization_event` extended: detects backcross via `detect_backcross`, stores `backcross_depth` in `hybridization_events`, resolves generation label (explicit → backcross suggestion → parent-label suggestion), writes permanent `cross_species_override` audit entry (admin only; requires non-empty justification text), sets `is_cross_species = 1` on the resulting strain.
+  - `suggest_generation_label` Tauri command — token-authenticated read-only call; returns `SuggestGenerationLabelResponse` for live UI suggestions.
+  - `get_generational_stats` Tauri command — returns per-label specimen stats.
+  - Non-admin users attempting cross-species hybridization are blocked with a clear error; no override path exists for non-admins.
+
+- **Frontend — `src/lib/components/HybridWizard.svelte`**:
+  - **Step 3 (Parent B)** — non-admin users hard-blocked on cross-species selection with user-friendly error; admin users presented with amber override panel requiring explicit scientific justification text and an explicit consent checkbox before proceeding.
+  - **Step 5 (Generation Label)** — live auto-suggestion fetched on parent pair selection; suggestion box styled green (filial) or amber (backcross); quick-select dropdown of common labels (`F1`–`F4`, `BC1F1`, `BC1F2`, `BC2F1`, `BC2F2`); free-text field for custom labels; backcross notice on pedigree preview step.
+  - **Step 9 (Review & Confirm)** — shows cross-species override warning if admin override is active.
+
+- **Frontend — `src/lib/components/StrainDetail.svelte`**:
+  - Permanent red cross-species warning banner at the top of any strain where `is_cross_species` is set; cannot be dismissed or hidden.
+  - Generation label badge in hybrid overview (blue for filial, amber for backcross); backcross label note.
+
+- **Models** — `SuggestGenerationLabelResponse` with `suggested_label`, `is_backcross`, `backcross_depth`, `backcross_ancestor_id`; `GenerationalStats` with `generation_label`, `specimen_count`, `healthy_count`, `problem_count`; `CreateHybridizationEventRequest` extended with `generation_label`, `admin_override_cross_species`, `admin_override_reason`; `HybridizationEventRecord` extended with `generation_label` and `backcross_depth`; `Strain` extended with `is_cross_species`.
+
+- **Tests** — 9 new tests covering: `suggest_generation_label` (unlabeled→F1, F1+F1→F2, F2+F2→F3, mixed→None), `detect_backcross` (unrelated parents, direct ancestor, grandparent ancestor), `suggest_generation_label_for_parents` (backcross overrides filial rules), `get_generational_stats` (per-label grouping). Total: 271 Rust tests.
+
 ## [1.35.0] - 2026-06-29
 
 ### Added — WP-47: Breeding programs & multi-generational selection tracking
