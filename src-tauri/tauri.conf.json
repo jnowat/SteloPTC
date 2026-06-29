@@ -1,6 +1,6 @@
 {
   "productName": "SteloPTC",
-  "version": "1.33.0",
+  "version": "1.34.0",
   "identifier": "com.steloptc.app",
   "build": {
     "devUrl": "http://localhost:1420",

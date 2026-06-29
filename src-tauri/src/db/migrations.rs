@@ -168,6 +168,38 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (31)", [])?;
     }
 
+    if current < 32 {
+        migration_032_domain_column(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (32)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_032_domain_column(conn: &Connection) -> DbResult<()> {
+    // WP-46: Add a `domain` TEXT column to app_config that records the biological
+    // domain (kingdom-level grouping) for the active lab profile.
+    //
+    // Known mappings:
+    //   plant_tissue_culture → 'Plantae'
+    //   cell_culture         → 'Animalia'
+    //   mycology             → 'Fungi'
+    //
+    // No CHECK constraint is added so that future domains (e.g. 'Bacteria', 'Archaea')
+    // can be stored without another schema migration.
+    //
+    // The UPDATE assigns the domain for every known profile; rows with an
+    // unrecognised lab_profile fall back to 'Plantae' for safety.
+    conn.execute_batch("
+        ALTER TABLE app_config ADD COLUMN domain TEXT NOT NULL DEFAULT 'Plantae';
+        UPDATE app_config SET domain = CASE lab_profile
+            WHEN 'plant_tissue_culture' THEN 'Plantae'
+            WHEN 'cell_culture'         THEN 'Animalia'
+            WHEN 'mycology'             THEN 'Fungi'
+            ELSE 'Plantae'
+        END
+        WHERE id = 1;
+    ")?;
     Ok(())
 }
 
@@ -3488,5 +3520,54 @@ mod tests {
             )
             .unwrap();
         assert_eq!(flush, 1, "flush_number must default to 1");
+    }
+
+    // ── Migration 032: domain column ─────────────────────────────────────────
+
+    #[test]
+    fn migration_032_domain_column_exists() {
+        let conn = migrated_db();
+        let domain: String = conn
+            .query_row("SELECT domain FROM app_config WHERE id = 1", [], |r| r.get(0))
+            .expect("domain column must exist in app_config after migration 032");
+        assert!(!domain.is_empty(), "domain must not be empty");
+    }
+
+    #[test]
+    fn migration_032_plant_tissue_culture_maps_to_plantae() {
+        let conn = migrated_db();
+        // Default lab_profile is 'plant_tissue_culture' — domain must be 'Plantae'.
+        let domain: String = conn
+            .query_row("SELECT domain FROM app_config WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(domain, "Plantae");
+    }
+
+    #[test]
+    fn migration_032_cell_culture_maps_to_animalia() {
+        let conn = migrated_db();
+        conn.execute(
+            "UPDATE app_config SET lab_profile = 'cell_culture', domain = 'Animalia' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+        let domain: String = conn
+            .query_row("SELECT domain FROM app_config WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(domain, "Animalia");
+    }
+
+    #[test]
+    fn migration_032_mycology_maps_to_fungi() {
+        let conn = migrated_db();
+        conn.execute(
+            "UPDATE app_config SET lab_profile = 'mycology', domain = 'Fungi' WHERE id = 1",
+            [],
+        )
+        .unwrap();
+        let domain: String = conn
+            .query_row("SELECT domain FROM app_config WHERE id = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(domain, "Fungi");
     }
 }
