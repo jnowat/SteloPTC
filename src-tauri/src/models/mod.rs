@@ -12,6 +12,7 @@ pub mod strain;
 pub mod taxon;
 pub mod cryo;
 pub mod fruiting;
+pub mod breeding;
 
 // Re-export common types
 pub use specimen::*;

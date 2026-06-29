@@ -198,6 +198,14 @@ pub fn run() {
             // Fruiting records (WP-43)
             commands::fruiting::create_fruiting_record,
             commands::fruiting::list_fruiting_records,
+            // Breeding programs (WP-47)
+            commands::breeding::create_breeding_program,
+            commands::breeding::list_breeding_programs,
+            commands::breeding::get_breeding_program,
+            commands::breeding::add_breeding_record,
+            commands::breeding::list_breeding_records_for_program,
+            commands::breeding::list_breeding_records_for_strain,
+            commands::breeding::get_generational_summary,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

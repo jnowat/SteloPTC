@@ -984,3 +984,79 @@ export async function createFruitingRecord(request: {
 export async function listFruitingRecords(specimenId: string) {
   return call<FruitingRecord[]>('list_fruiting_records', { specimenId });
 }
+
+// ── Breeding programs (WP-47) ─────────────────────────────────────────────────
+
+export interface BreedingProgram {
+  id: string;
+  name: string;
+  goal: string | null;
+  start_date: string | null;
+  target_traits: string | null;
+  founder_strain_ids: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface BreedingRecord {
+  id: string;
+  program_id: string;
+  strain_id: string;
+  generation_number: number;
+  selection_notes: string | null;
+  fitness_score: number | null;
+  selection_date: string | null;
+  selected_by: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface GenerationalSummary {
+  generation_number: number;
+  record_count: number;
+  avg_fitness: number | null;
+}
+
+export async function createBreedingProgram(request: {
+  name: string;
+  goal?: string;
+  start_date?: string;
+  target_traits?: string;
+  founder_strain_ids?: string;
+  notes?: string;
+}) {
+  return call<BreedingProgram>('create_breeding_program', { request });
+}
+
+export async function listBreedingPrograms() {
+  return call<BreedingProgram[]>('list_breeding_programs');
+}
+
+export async function getBreedingProgram(id: string) {
+  return call<BreedingProgram>('get_breeding_program', { id });
+}
+
+export async function addBreedingRecord(request: {
+  program_id: string;
+  strain_id: string;
+  generation_number: number;
+  selection_notes?: string;
+  fitness_score?: number;
+  selection_date?: string;
+  notes?: string;
+}) {
+  return call<BreedingRecord>('add_breeding_record', { request });
+}
+
+export async function listBreedingRecordsForProgram(programId: string) {
+  return call<BreedingRecord[]>('list_breeding_records_for_program', { programId });
+}
+
+export async function listBreedingRecordsForStrain(strainId: string) {
+  return call<BreedingRecord[]>('list_breeding_records_for_strain', { strainId });
+}
+
+export async function getGenerationalSummary(programId: string) {
+  return call<GenerationalSummary[]>('get_generational_summary', { programId });
+}

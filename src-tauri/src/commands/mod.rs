@@ -21,3 +21,4 @@ pub mod taxa;
 pub mod ncbi;
 pub mod cryo;
 pub mod fruiting;
+pub mod breeding;

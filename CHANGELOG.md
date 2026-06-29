@@ -5,6 +5,37 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.35.0] - 2026-06-29
+
+### Added — WP-47: Breeding programs & multi-generational selection tracking
+
+- **Schema — Migration 033** (`migration_033_breeding_programs`):
+  - `breeding_programs` table: `id`, `name`, `goal`, `start_date`, `target_traits`, `founder_strain_ids`, `notes`, `created_at`, `created_by`.
+  - `breeding_records` table: `id`, `program_id` (FK → `breeding_programs` with `ON DELETE CASCADE`), `strain_id` (FK → `strains`), `generation_number`, `selection_notes`, `fitness_score`, `selection_date`, `selected_by`, `notes`, `created_at`.
+  - Indexes on `breeding_records.program_id` and `breeding_records.strain_id`.
+
+- **Backend — `src-tauri/src/models/breeding.rs`** (new file):
+  - `BreedingProgram`, `CreateBreedingProgramRequest`, `BreedingRecord`, `CreateBreedingRecordRequest`, `GenerationalSummary` structs.
+
+- **Backend — `src-tauri/src/db/queries.rs`**:
+  - `create_breeding_program` — inserts a program and returns its UUID.
+  - `get_breeding_program` — fetch by ID.
+  - `list_breeding_programs` — all programs ordered by `created_at DESC`.
+  - `add_breeding_record` — links a strain to a program with generation, fitness score, and selection notes.
+  - `get_breeding_record` — fetch by ID.
+  - `list_breeding_records_for_program` — all records for a program, ordered by generation then date.
+  - `list_breeding_records_for_strain` — all records for a strain across any programs.
+  - `get_generational_summary` — aggregates per-generation count and average fitness score for a program.
+
+- **Backend — `src-tauri/src/commands/breeding.rs`** (new file): 7 Tauri commands exposing all CRUD operations; write operations require `can_write()` role; audit entries written for create events.
+
+- **Frontend — `src/lib/api.ts`**: `BreedingProgram`, `BreedingRecord`, `GenerationalSummary` TypeScript interfaces; `createBreedingProgram`, `listBreedingPrograms`, `getBreedingProgram`, `addBreedingRecord`, `listBreedingRecordsForProgram`, `listBreedingRecordsForStrain`, `getGenerationalSummary` API functions.
+
+- **Frontend — `src/lib/components/BreedingProgramManager.svelte`** (new component): program list panel, program detail panel with generational summary table and selection record cards, create program form, add selection record form. Accessible via the **Breeding** sidebar entry (🌱 icon).
+
+- **Tests** — 4 migration tests (`breeding_programs_table_exists`, `breeding_records_table_exists`, `breeding_records_index_exists`, `cascade_deletes_records`); 9 query tests (`create_breeding_program_inserts_and_retrieves`, `list_breeding_programs_returns_all`, `add_breeding_record_inserts_and_retrieves`, `list_breeding_records_for_program_returns_rows`, `list_breeding_records_for_strain_returns_rows`, `get_generational_summary_aggregates_correctly`, `list_breeding_records_for_program_empty_when_no_records`, `get_breeding_program_returns_error_for_unknown_id`, `add_breeding_record_rejects_unknown_program`).
+  Total: 271 Rust tests.
+
 ## [1.34.0] - 2026-06-29
 
 ### Added — WP-46: Cross-domain taxonomy support
