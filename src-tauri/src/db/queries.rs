@@ -400,9 +400,10 @@ pub fn log_audit_for_child(
 
 /// Log an audit entry at chain_seq = 0 with prev_hash = ZERO_HASH.
 ///
-/// Used exclusively for species creation. seq=0 marks the "birth" of the
-/// species lineage and its entry_hash serves as the cryptographic seed that
-/// new specimens inherit via log_audit_seeded_by_species.
+/// Original genesis function for species creation. For databases running migration_031
+/// (WP-45) or later, prefer `log_audit_species_genesis` instead, which seeds prev_hash
+/// from the genus taxon's current entry_hash. This function is retained for backward
+/// compatibility with existing call sites and test fixtures that pre-date WP-45.
 #[allow(clippy::too_many_arguments)]
 pub fn log_audit_at_seq_zero(
     conn: &Connection,
@@ -533,12 +534,54 @@ fn log_audit_impl(
     Ok(())
 }
 
+/// EXPERIMENTAL (WP-45): Look up the last entry_hash for the genus taxon with the given name.
+/// Returns None if the genus taxon does not exist or has no audit entries yet.
+/// Tolerates a missing `taxa` table (returns None), so callers can fall back to ZERO_HASH
+/// in test environments and pre-WP-45 databases.
+fn genus_entry_hash_by_name(conn: &Connection, genus_name: &str) -> Option<String> {
+    let genus_id: String = conn.query_row(
+        "SELECT id FROM taxa WHERE rank = 'genus' AND name = ?1",
+        params![genus_name],
+        |r| r.get(0),
+    ).ok()?;
+
+    conn.query_row(
+        "SELECT entry_hash FROM audit_log \
+         WHERE (lineage_id = ?1 OR (lineage_id IS NULL AND entity_id = ?1)) \
+           AND entry_hash IS NOT NULL \
+         ORDER BY chain_seq DESC LIMIT 1",
+        params![genus_id],
+        |r| r.get(0),
+    ).ok()
+}
+
+/// EXPERIMENTAL (WP-45): Look up the last entry_hash for the genus taxon associated
+/// with a species. Queries `species.genus` then delegates to `genus_entry_hash_by_name`.
+/// Returns None if the species, genus taxon, or its audit entries are missing.
+fn genus_entry_hash_by_species(conn: &Connection, species_id: &str) -> Option<String> {
+    let genus_name: String = conn.query_row(
+        "SELECT genus FROM species WHERE id = ?1",
+        params![species_id],
+        |r| r.get(0),
+    ).ok()?;
+    genus_entry_hash_by_name(conn, &genus_name)
+}
+
 /// Log a genesis audit entry for a new strain at chain_seq = 0.
 ///
-/// Unlike species births (which use ZERO_HASH), strain genesis entries inherit
-/// prev_hash from the parent species' last entry_hash, cryptographically binding
-/// the strain lineage to its species definition.  Falls back to ZERO_HASH when
-/// the species has no audit entries.
+/// EXPERIMENTAL (WP-45): strain genesis entries are now anchored to the genus taxon's
+/// last entry_hash rather than directly to the species, extending the cryptographic
+/// chain upward: Kingdom → … → Genus → Strain → Specimen. Falls back to ZERO_HASH
+/// when no genus taxon exists or has not yet participated in the hash chain (e.g.
+/// pre-WP-45 databases and test fixtures without a `taxa` table).
+///
+/// Existing strain chains (written before WP-45) remain valid — their stored prev_hash
+/// values are never rewritten. Only new strains created after migration_031 use the genus
+/// anchor.
+///
+/// WARNING: Reclassifying the parent genus (or any ancestor) after this genesis entry is
+/// written will break the cryptographic chain for this strain and all its specimens.
+/// There is currently no automated re-anchoring tool. See ROADMAP.md §WP-45.
 #[allow(clippy::too_many_arguments)]
 pub fn log_audit_strain_genesis(
     conn: &Connection,
@@ -555,15 +598,121 @@ pub fn log_audit_strain_genesis(
     let lineage_id = entity_id.unwrap_or("system").to_string();
     let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
 
-    let species_hash: Option<String> = conn.query_row(
-        "SELECT entry_hash FROM audit_log \
-         WHERE (lineage_id = ?1 OR (lineage_id IS NULL AND entity_id = ?1)) \
-           AND entry_hash IS NOT NULL \
-         ORDER BY chain_seq DESC LIMIT 1",
-        params![species_id],
-        |row| row.get(0),
-    ).ok().flatten();
-    let prev_hash = species_hash.unwrap_or_else(|| ZERO_HASH.to_string());
+    // WP-45: anchor strain genesis to the genus taxon rather than directly to the species.
+    let prev_hash = genus_entry_hash_by_species(conn, species_id)
+        .unwrap_or_else(|| ZERO_HASH.to_string());
+
+    let canonical = audit_canonical_bytes(
+        &lineage_id, 0, &timestamp,
+        user_id.unwrap_or(""), entity_type, entity_id.unwrap_or(""),
+        action, details.unwrap_or(""),
+    );
+    let entry_hash = compute_entry_hash(&canonical, &prev_hash);
+
+    conn.execute(
+        "INSERT INTO audit_log \
+         (id, user_id, action, entity_type, entity_id, old_value, new_value, details, created_at, \
+          lineage_id, chain_seq, prev_hash, entry_hash) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11, ?12)",
+        params![
+            id, user_id, action, entity_type, entity_id,
+            old_value, new_value, details, timestamp,
+            lineage_id, prev_hash, entry_hash
+        ],
+    )?;
+    Ok(())
+}
+
+/// EXPERIMENTAL (WP-45): Log a genesis audit entry for a new taxon at chain_seq = 0.
+///
+/// If `parent_taxon_id` is given the genesis entry inherits the parent's last
+/// entry_hash as prev_hash, creating a cryptographically linked parent→child
+/// taxon chain (e.g. Kingdom → Phylum → Class → … → Genus).  Root taxa
+/// (kingdoms with no parent) use ZERO_HASH.
+///
+/// WARNING: This is an experimental feature. Reclassifying a taxon after its genesis
+/// entry is written will break the cryptographic chain for ALL descendants (taxa,
+/// species, strains, and specimens). There is currently no automated re-anchoring tool.
+/// See ROADMAP.md §WP-45 for the known limitation and design notes.
+#[allow(clippy::too_many_arguments)]
+pub fn log_audit_taxon_genesis(
+    conn: &Connection,
+    user_id: Option<&str>,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<&str>,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    details: Option<&str>,
+    parent_taxon_id: Option<&str>,
+) -> DbResult<()> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let lineage_id = entity_id.unwrap_or("system").to_string();
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    let prev_hash = if let Some(parent_id) = parent_taxon_id {
+        conn.query_row(
+            "SELECT entry_hash FROM audit_log \
+             WHERE (lineage_id = ?1 OR (lineage_id IS NULL AND entity_id = ?1)) \
+               AND entry_hash IS NOT NULL \
+             ORDER BY chain_seq DESC LIMIT 1",
+            params![parent_id],
+            |r| r.get(0),
+        ).ok().unwrap_or_else(|| ZERO_HASH.to_string())
+    } else {
+        ZERO_HASH.to_string()
+    };
+
+    let canonical = audit_canonical_bytes(
+        &lineage_id, 0, &timestamp,
+        user_id.unwrap_or(""), entity_type, entity_id.unwrap_or(""),
+        action, details.unwrap_or(""),
+    );
+    let entry_hash = compute_entry_hash(&canonical, &prev_hash);
+
+    conn.execute(
+        "INSERT INTO audit_log \
+         (id, user_id, action, entity_type, entity_id, old_value, new_value, details, created_at, \
+          lineage_id, chain_seq, prev_hash, entry_hash) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, ?11, ?12)",
+        params![
+            id, user_id, action, entity_type, entity_id,
+            old_value, new_value, details, timestamp,
+            lineage_id, prev_hash, entry_hash
+        ],
+    )?;
+    Ok(())
+}
+
+/// EXPERIMENTAL (WP-45): Log a genesis audit entry for a new species at chain_seq = 0.
+///
+/// Seeds prev_hash from the genus taxon's last entry_hash when the genus has already
+/// participated in the hash chain (i.e. after migration_031); falls back to ZERO_HASH
+/// otherwise. This binds the species' genesis to the current state of the genus
+/// classification, extending the full chain: Kingdom → … → Genus → Species.
+///
+/// WARNING: If the species is later reclassified to a different genus, its genesis
+/// entry_hash remains cryptographically anchored to the ORIGINAL genus. All descendant
+/// strains and specimens stay linked to the original classification.
+/// See ROADMAP.md §WP-45.
+#[allow(clippy::too_many_arguments)]
+pub fn log_audit_species_genesis(
+    conn: &Connection,
+    user_id: Option<&str>,
+    action: &str,
+    entity_type: &str,
+    entity_id: Option<&str>,
+    old_value: Option<&str>,
+    new_value: Option<&str>,
+    details: Option<&str>,
+    genus_name: &str,
+) -> DbResult<()> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let lineage_id = entity_id.unwrap_or("system").to_string();
+    let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+
+    let prev_hash = genus_entry_hash_by_name(conn, genus_name)
+        .unwrap_or_else(|| ZERO_HASH.to_string());
 
     let canonical = audit_canonical_bytes(
         &lineage_id, 0, &timestamp,
@@ -3061,7 +3210,17 @@ mod tests {
     fn mem_conn_with_strains() -> Connection {
         let conn = mem_conn_with_audit();
         conn.execute_batch(
-            "CREATE TABLE species (
+            "CREATE TABLE taxa (
+                id TEXT PRIMARY KEY,
+                rank TEXT NOT NULL,
+                name TEXT NOT NULL,
+                parent_id TEXT,
+                local_override INTEGER NOT NULL DEFAULT 0,
+                taxon_path TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE species (
                 id TEXT PRIMARY KEY,
                 genus TEXT NOT NULL,
                 species_name TEXT NOT NULL,
@@ -3115,16 +3274,29 @@ mod tests {
         log_audit_strain_genesis(conn, None, "create", "strain", Some(id), None, None, None, species_id).unwrap();
     }
 
+    /// WP-45: Strain genesis now anchors to the genus taxon's entry_hash rather than
+    /// directly to the species. This test verifies the new behaviour when a genus taxon
+    /// exists and has a genesis audit entry.
     #[test]
     fn strain_genesis_prev_hash_equals_species_entry_hash() {
         let conn = mem_conn_with_strains();
-        insert_test_species(&conn, "sp-001");
 
-        let species_hash: String = conn.query_row(
-            "SELECT entry_hash FROM audit_log WHERE lineage_id = 'sp-001' ORDER BY chain_seq DESC LIMIT 1",
+        // Insert genus taxon with a genesis audit entry (the WP-45 anchor).
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, local_override) VALUES ('genus-001', 'genus', 'Genus', 0)",
+            [],
+        ).unwrap();
+        log_audit_taxon_genesis(
+            &conn, None, "create", "taxon", Some("genus-001"), None, None, None, None,
+        ).unwrap();
+
+        let genus_hash: String = conn.query_row(
+            "SELECT entry_hash FROM audit_log WHERE lineage_id = 'genus-001' ORDER BY chain_seq DESC LIMIT 1",
             [], |r| r.get(0),
         ).unwrap();
 
+        // Insert species in that genus.
+        insert_test_species(&conn, "sp-001");
         insert_test_strain(&conn, "st-001", "sp-001", "WT01");
 
         let genesis_prev: String = conn.query_row(
@@ -3132,8 +3304,26 @@ mod tests {
             [], |r| r.get(0),
         ).unwrap();
 
-        assert_eq!(genesis_prev, species_hash,
-            "strain genesis prev_hash must equal species' current entry_hash");
+        assert_eq!(genesis_prev, genus_hash,
+            "WP-45: strain genesis prev_hash must equal the genus taxon's entry_hash");
+    }
+
+    /// WP-45 backward compat: when no genus taxon has been seeded (pre-WP-45 data or
+    /// environments without a taxa table), strain genesis falls back to ZERO_HASH.
+    #[test]
+    fn strain_genesis_falls_back_to_zero_hash_when_no_genus_entry() {
+        let conn = mem_conn_with_strains();
+        // No genus taxon inserted — genus_entry_hash_by_species returns None.
+        insert_test_species(&conn, "sp-001");
+        insert_test_strain(&conn, "st-001", "sp-001", "WT01");
+
+        let genesis_prev: String = conn.query_row(
+            "SELECT prev_hash FROM audit_log WHERE lineage_id = 'st-001' AND chain_seq = 0",
+            [], |r| r.get(0),
+        ).unwrap();
+
+        assert_eq!(genesis_prev, ZERO_HASH,
+            "without a genus taxon entry, strain genesis must fall back to ZERO_HASH");
     }
 
     #[test]
@@ -3282,6 +3472,103 @@ mod tests {
 
         assert_eq!(prev_a, prev_b,
             "siblings sharing a strain must share the same prev_hash (fork invariant)");
+    }
+
+    // ── WP-45: Experimental taxon hash chain ─────────────────────────────────
+
+    /// Root taxon (kingdom with no parent) must start with ZERO_HASH.
+    #[test]
+    fn taxon_genesis_root_uses_zero_hash() {
+        let conn = mem_conn_with_strains();
+        log_audit_taxon_genesis(
+            &conn, None, "create", "taxon", Some("kingdom-1"), None, None, None, None,
+        ).unwrap();
+
+        let (seq, prev): (i64, String) = conn.query_row(
+            "SELECT chain_seq, prev_hash FROM audit_log WHERE lineage_id = 'kingdom-1'",
+            [], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+
+        assert_eq!(seq, 0, "genesis entry must be at chain_seq = 0");
+        assert_eq!(prev, ZERO_HASH, "root taxon genesis must use ZERO_HASH as prev_hash");
+    }
+
+    /// Child taxon genesis seeds from parent taxon's last entry_hash.
+    #[test]
+    fn taxon_genesis_child_seeds_from_parent() {
+        let conn = mem_conn_with_strains();
+
+        // Kingdom genesis
+        log_audit_taxon_genesis(
+            &conn, None, "create", "taxon", Some("k-1"), None, None, None, None,
+        ).unwrap();
+        let kingdom_hash: String = conn.query_row(
+            "SELECT entry_hash FROM audit_log WHERE lineage_id = 'k-1' ORDER BY chain_seq DESC LIMIT 1",
+            [], |r| r.get(0),
+        ).unwrap();
+
+        // Phylum genesis seeded from kingdom
+        log_audit_taxon_genesis(
+            &conn, None, "create", "taxon", Some("p-1"), None, None, None, Some("k-1"),
+        ).unwrap();
+        let phylum_prev: String = conn.query_row(
+            "SELECT prev_hash FROM audit_log WHERE lineage_id = 'p-1' AND chain_seq = 0",
+            [], |r| r.get(0),
+        ).unwrap();
+
+        assert_eq!(phylum_prev, kingdom_hash,
+            "phylum genesis prev_hash must equal kingdom's entry_hash");
+    }
+
+    /// Taxon update entries are appended to the existing lineage chain.
+    #[test]
+    fn taxon_chain_update_appends_correctly() {
+        let conn = mem_conn_with_strains();
+
+        log_audit_taxon_genesis(
+            &conn, None, "create", "taxon", Some("g-1"), None, None, None, None,
+        ).unwrap();
+        log_audit(
+            &conn, None, "update", "taxon", Some("g-1"), None, None, Some("name change"),
+        ).unwrap();
+
+        let max_seq: i64 = conn.query_row(
+            "SELECT MAX(chain_seq) FROM audit_log WHERE lineage_id = 'g-1'",
+            [], |r| r.get(0),
+        ).unwrap();
+
+        assert_eq!(max_seq, 1, "update entry must advance chain_seq to 1");
+    }
+
+    /// Species genesis (WP-45) seeds from genus taxon's entry_hash.
+    #[test]
+    fn species_genesis_seeds_from_genus_taxon() {
+        let conn = mem_conn_with_strains();
+
+        // Insert genus taxon and write its genesis entry.
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, local_override) VALUES ('g-citrus', 'genus', 'Citrus', 0)",
+            [],
+        ).unwrap();
+        log_audit_taxon_genesis(
+            &conn, None, "create", "taxon", Some("g-citrus"), None, None, None, None,
+        ).unwrap();
+        let genus_hash: String = conn.query_row(
+            "SELECT entry_hash FROM audit_log WHERE lineage_id = 'g-citrus' ORDER BY chain_seq DESC LIMIT 1",
+            [], |r| r.get(0),
+        ).unwrap();
+
+        log_audit_species_genesis(
+            &conn, None, "create", "species", Some("sp-sin"), None, None, None, "Citrus",
+        ).unwrap();
+
+        let species_prev: String = conn.query_row(
+            "SELECT prev_hash FROM audit_log WHERE lineage_id = 'sp-sin' AND chain_seq = 0",
+            [], |r| r.get(0),
+        ).unwrap();
+
+        assert_eq!(species_prev, genus_hash,
+            "species genesis prev_hash must equal the genus taxon's entry_hash");
     }
 
     // ── WP-36: NCBI query helpers ─────────────────────────────────────────────

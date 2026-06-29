@@ -99,6 +99,23 @@ pub fn create_taxon(
         )
         .map_err(|e| format!("Failed to create taxon: {}", e))?;
 
+    // EXPERIMENTAL (WP-45): Write a genesis audit entry for the new taxon, anchoring
+    // it to the parent taxon's hash chain. This begins the full Kingdom → … → Genus
+    // cryptographic provenance chain. Reclassifying a taxon after this point will break
+    // the chain for all descendants — see ROADMAP.md §WP-45.
+    queries::log_audit_taxon_genesis(
+        &db.conn,
+        Some(&user.id),
+        "create",
+        "taxon",
+        Some(&id),
+        None,
+        Some(&request.name),
+        None,
+        request.parent_id.as_deref(),
+    )
+    .ok();
+
     queries::load_taxon(&db.conn, &id).map_err(|e| e.to_string())
 }
 
@@ -161,6 +178,25 @@ pub fn update_taxon(
     db.conn
         .execute(&sql, bind_refs.as_slice())
         .map_err(|e| format!("Failed to update taxon: {}", e))?;
+
+    // EXPERIMENTAL (WP-45): Append an update entry to the taxon's audit chain.
+    //
+    // RECLASSIFICATION WARNING: If `name`, `rank`, or `parent_id` changed, this update
+    // advances the taxon's chain but does NOT re-anchor any descendant chains. All strains
+    // and specimens whose genesis prev_hash was derived from this taxon's previous
+    // entry_hash will remain cryptographically bound to the OLD classification.
+    // There is currently no automated re-anchoring tool. See ROADMAP.md §WP-45.
+    queries::log_audit(
+        &db.conn,
+        Some(&user.id),
+        "update",
+        "taxon",
+        Some(&request.id),
+        None,
+        None,
+        None,
+    )
+    .ok();
 
     Ok(())
 }

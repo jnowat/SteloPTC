@@ -163,6 +163,78 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (30)", [])?;
     }
 
+    if current < 31 {
+        migration_031_taxon_hash_chain(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (31)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_031_taxon_hash_chain(conn: &Connection) -> DbResult<()> {
+    // WP-45: EXPERIMENTAL — full taxonomic hash chain (Kingdom → Strain → Specimen).
+    //
+    // No schema changes are required: the `audit_log` table already carries the
+    // necessary hash chain columns (`chain_seq`, `prev_hash`, `entry_hash`, `lineage_id`).
+    // This migration backfills genesis audit entries for all existing `taxa` rows so that
+    // the chain Kingdom → Phylum → Class → Order → Family → Genus is established for
+    // any data that pre-dates this migration.
+    //
+    // Safe to re-run: `backfill_taxa_genesis` skips taxa that already have a genesis entry.
+    //
+    // RECLASSIFICATION WARNING: Once a taxon has a genesis entry, reclassifying it (renaming,
+    // re-parenting, or changing rank) will NOT automatically re-anchor descendant chains.
+    // All strains and specimens whose genesis prev_hash was derived from this taxon's
+    // entry_hash will remain bound to the original classification. There is currently no
+    // automated re-anchoring tool. This is an OPTIONAL/EXPERIMENTAL feature — see ROADMAP.md §WP-45.
+    backfill_taxa_genesis(conn)
+}
+
+/// EXPERIMENTAL (WP-45): Write genesis audit entries for all existing taxa that do not
+/// yet have one, processing ranks from kingdom down to genus so each child taxon can
+/// inherit the parent's already-written entry_hash.
+///
+/// Idempotent: taxa with a pre-existing genesis entry (entity_type = 'taxon', chain_seq = 0)
+/// are skipped.
+///
+/// The hash chain columns are on `audit_log`; the `taxa` table itself is unchanged.
+pub fn backfill_taxa_genesis(conn: &Connection) -> DbResult<()> {
+    // Rank order guarantees parents are seeded before children.
+    let rank_order = ["kingdom", "phylum", "class", "order", "family", "genus"];
+
+    for rank in &rank_order {
+        // Collect taxa at this rank that lack a genesis audit entry.
+        let taxa: Vec<(String, Option<String>)> = {
+            let mut stmt = conn.prepare(
+                "SELECT id, parent_id FROM taxa \
+                 WHERE rank = ?1 \
+                 AND id NOT IN ( \
+                     SELECT entity_id FROM audit_log \
+                     WHERE entity_id IS NOT NULL \
+                       AND entity_type = 'taxon' \
+                       AND chain_seq = 0 \
+                 )",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![rank], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        for (taxon_id, parent_id) in taxa {
+            super::queries::log_audit_taxon_genesis(
+                conn,
+                None,
+                "create",
+                "taxon",
+                Some(&taxon_id),
+                None,
+                None,
+                None,
+                parent_id.as_deref(),
+            )?;
+        }
+    }
     Ok(())
 }
 
