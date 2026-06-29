@@ -28,6 +28,7 @@
   import NcbiSyncPanel from './lib/components/NcbiSyncPanel.svelte';
   import CryoManager from './lib/components/CryoManager.svelte';
   import BreedingProgramManager from './lib/components/BreedingProgramManager.svelte';
+  import ProvisionalTaxaManager from './lib/components/ProvisionalTaxaManager.svelte';
 
   let startupError = '';
 
@@ -185,6 +186,8 @@
           <CryoManager />
         {:else if $currentView === 'breeding'}
           <BreedingProgramManager />
+        {:else if $currentView === 'provisional-taxa'}
+          <ProvisionalTaxaManager />
         {:else}
           <Dashboard />
         {/if}

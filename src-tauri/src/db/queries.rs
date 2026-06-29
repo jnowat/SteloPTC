@@ -2,7 +2,10 @@
 use rusqlite::{Connection, params};
 use sha2::{Sha256, Digest};
 use super::{DbError, DbResult};
-use crate::models::taxon::{NcbiSyncLog, SpeciesNodeSummary, Taxon, TaxonColumnItem, TaxonomySearchResult};
+use crate::models::taxon::{
+    DarwinCoreExport, DarwinCoreRecord, NcbiSyncLog, SpeciesNodeSummary, Taxon, TaxonColumnItem,
+    TaxonMapping, TaxonomySearchResult,
+};
 use crate::models::strain::{
     GenerationalStats, HybridizationEventRecord, PedigreeEdge, PedigreeExport, PedigreeNode,
     SpecimenSummary, StrainSpecimenTree, StrainSummary, SuggestGenerationLabelResponse,
@@ -1239,6 +1242,219 @@ pub fn find_taxon_by_name_rank(
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(DbError::Sqlite(e)),
     }
+}
+
+// ── WP-49: Provisional taxa & Darwin Core export ─────────────────────────────
+
+/// Create a provisional (lab-internal) taxon.  Returns the full taxon row on
+/// success.  Provisional taxa have `status = 'provisional'` and `local_override = 1`.
+#[allow(clippy::too_many_arguments)]
+pub fn create_provisional_taxon(
+    conn: &Connection,
+    id: &str,
+    rank: &str,
+    name: &str,
+    parent_id: Option<&str>,
+    provisional_notes: Option<&str>,
+    created_by: Option<&str>,
+) -> DbResult<Taxon> {
+    conn.execute(
+        "INSERT INTO taxa (id, rank, name, parent_id, local_override, status, provisional_notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 1, 'provisional', ?5, datetime('now'), datetime('now'))",
+        params![id, rank, name, parent_id, provisional_notes],
+    )?;
+
+    // Audit genesis entry for this provisional taxon.
+    log_audit(
+        conn,
+        created_by,
+        "create",
+        "taxon",
+        Some(id),
+        None,
+        None,
+        Some(&format!("Provisional taxon created: {} ({})", name, rank)),
+    )?;
+
+    load_taxon(conn, id)
+}
+
+/// List all provisional taxa ordered by rank then name.
+pub fn list_provisional_taxa(conn: &Connection) -> DbResult<Vec<Taxon>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, rank, name, parent_id, ncbi_taxon_id, ncbi_updated_at,
+                local_override, taxon_path, created_at, updated_at
+         FROM taxa WHERE status = 'provisional'
+         ORDER BY rank, name",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Taxon {
+            id: row.get("id")?,
+            rank: row.get("rank")?,
+            name: row.get("name")?,
+            parent_id: row.get("parent_id")?,
+            ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+            ncbi_updated_at: row.get("ncbi_updated_at")?,
+            local_override: row.get::<_, i64>("local_override")? != 0,
+            taxon_path: row.get("taxon_path")?,
+            created_at: row.get("created_at")?,
+            updated_at: row.get("updated_at")?,
+        })
+    })?;
+    let taxa: Vec<Taxon> = rows.filter_map(|r| r.ok()).collect();
+    Ok(taxa)
+}
+
+/// Create a mapping from a provisional taxon to an accepted taxon.
+#[allow(clippy::too_many_arguments)]
+pub fn create_taxon_mapping(
+    conn: &Connection,
+    mapping_id: &str,
+    provisional_taxon_id: &str,
+    accepted_taxon_id: Option<&str>,
+    accepted_ncbi_id: Option<i64>,
+    accepted_name: Option<&str>,
+    notes: Option<&str>,
+    mapped_by: Option<&str>,
+) -> DbResult<TaxonMapping> {
+    conn.execute(
+        "INSERT INTO taxon_mappings
+         (id, provisional_taxon_id, accepted_taxon_id, accepted_ncbi_id, accepted_name, notes, mapped_by)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![
+            mapping_id,
+            provisional_taxon_id,
+            accepted_taxon_id,
+            accepted_ncbi_id,
+            accepted_name,
+            notes,
+            mapped_by,
+        ],
+    )?;
+    get_taxon_mapping(conn, mapping_id)
+}
+
+/// Retrieve a single taxon mapping by ID.
+pub fn get_taxon_mapping(conn: &Connection, id: &str) -> DbResult<TaxonMapping> {
+    conn.query_row(
+        "SELECT id, provisional_taxon_id, accepted_taxon_id, accepted_ncbi_id,
+                accepted_name, notes, mapped_by, mapped_at
+         FROM taxon_mappings WHERE id = ?1",
+        params![id],
+        |row| {
+            Ok(TaxonMapping {
+                id: row.get("id")?,
+                provisional_taxon_id: row.get("provisional_taxon_id")?,
+                accepted_taxon_id: row.get("accepted_taxon_id")?,
+                accepted_ncbi_id: row.get("accepted_ncbi_id")?,
+                accepted_name: row.get("accepted_name")?,
+                notes: row.get("notes")?,
+                mapped_by: row.get("mapped_by")?,
+                mapped_at: row.get("mapped_at")?,
+            })
+        },
+    )
+    .map_err(DbError::Sqlite)
+}
+
+/// List all taxon mappings ordered by mapped_at DESC.
+pub fn list_taxon_mappings(conn: &Connection) -> DbResult<Vec<TaxonMapping>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, provisional_taxon_id, accepted_taxon_id, accepted_ncbi_id,
+                accepted_name, notes, mapped_by, mapped_at
+         FROM taxon_mappings ORDER BY mapped_at DESC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(TaxonMapping {
+            id: row.get("id")?,
+            provisional_taxon_id: row.get("provisional_taxon_id")?,
+            accepted_taxon_id: row.get("accepted_taxon_id")?,
+            accepted_ncbi_id: row.get("accepted_ncbi_id")?,
+            accepted_name: row.get("accepted_name")?,
+            notes: row.get("notes")?,
+            mapped_by: row.get("mapped_by")?,
+            mapped_at: row.get("mapped_at")?,
+        })
+    })?;
+    let mappings: Vec<TaxonMapping> = rows.filter_map(|r| r.ok()).collect();
+    Ok(mappings)
+}
+
+/// Walk the taxa subtree rooted at `root_id` (or all top-level taxa when None)
+/// and emit Darwin Core records.  Follows `parent_id` edges downward.
+pub fn export_darwin_core(
+    conn: &Connection,
+    root_id: Option<&str>,
+) -> DbResult<DarwinCoreExport> {
+    let rows: Vec<(String, String, String, Option<String>, String)> = if let Some(rid) = root_id {
+        // Collect the root + all descendants via a recursive CTE.
+        let mut stmt = conn.prepare(
+            "WITH RECURSIVE subtree(id) AS (
+                 SELECT ?1
+                 UNION ALL
+                 SELECT t.id FROM taxa t
+                 INNER JOIN subtree s ON t.parent_id = s.id
+             )
+             SELECT t.id, t.name, t.rank, t.parent_id, t.status
+             FROM taxa t
+             INNER JOIN subtree s ON t.id = s.id
+             ORDER BY t.rank, t.name",
+        )?;
+        let r = stmt.query_map(params![rid], |row| {
+            Ok((
+                row.get::<_, String>("id")?,
+                row.get::<_, String>("name")?,
+                row.get::<_, String>("rank")?,
+                row.get::<_, Option<String>>("parent_id")?,
+                row.get::<_, String>("status")?,
+            ))
+        })?;
+        r.filter_map(|x| x.ok()).collect()
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, name, rank, parent_id, status FROM taxa ORDER BY rank, name",
+        )?;
+        let r = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>("id")?,
+                row.get::<_, String>("name")?,
+                row.get::<_, String>("rank")?,
+                row.get::<_, Option<String>>("parent_id")?,
+                row.get::<_, String>("status")?,
+            ))
+        })?;
+        r.filter_map(|x| x.ok()).collect()
+    };
+
+    let records: Vec<DarwinCoreRecord> = rows
+        .into_iter()
+        .map(|(id, name, rank, parent_id, status)| {
+            let taxonomic_status = match status.as_str() {
+                "provisional" => "provisionallyAccepted",
+                "synonym" => "synonym",
+                _ => "accepted",
+            };
+            DarwinCoreRecord {
+                taxon_id: id,
+                scientific_name: name,
+                taxon_rank: rank,
+                parent_name_usage_id: parent_id,
+                taxonomic_status: taxonomic_status.to_string(),
+                name_according_to: Some("SteloPTC".to_string()),
+                remarks: if taxonomic_status == "provisionallyAccepted" {
+                    Some("Provisional taxon — lab-internal, not yet published".to_string())
+                } else {
+                    None
+                },
+            }
+        })
+        .collect();
+
+    let record_count = records.len();
+    Ok(DarwinCoreExport {
+        record_count,
+        records,
+    })
 }
 
 /// Compare a local taxon against incoming NCBI data.
@@ -5550,5 +5766,108 @@ mod breeding_tests {
         conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
         let req = make_record_req("no-such-program", "st1", 1);
         assert!(add_breeding_record(&conn, &req, None).is_err());
+    }
+}
+
+#[cfg(test)]
+mod provisional_taxa_tests {
+    use super::*;
+    use crate::db::migrations::run_all;
+    use rusqlite::Connection;
+
+    fn prov_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        run_all(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn create_provisional_taxon_inserts_and_retrieves() {
+        let conn = prov_db();
+        let t = create_provisional_taxon(
+            &conn, "pt1", "genus", "Provisius", None, Some("Lab working name"), None,
+        ).expect("insert");
+        assert_eq!(t.id, "pt1");
+        assert_eq!(t.name, "Provisius");
+        assert!(t.local_override);
+    }
+
+    #[test]
+    fn list_provisional_taxa_returns_only_provisional() {
+        let conn = prov_db();
+        // Insert an accepted taxon the normal way.
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, status) VALUES ('ta1', 'genus', 'Acceptia', 'accepted')",
+            [],
+        ).unwrap();
+        create_provisional_taxon(
+            &conn, "tp1", "genus", "Provisius", None, None, None,
+        ).unwrap();
+        let list = list_provisional_taxa(&conn).expect("list");
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].id, "tp1");
+    }
+
+    #[test]
+    fn create_taxon_mapping_inserts_and_retrieves() {
+        let conn = prov_db();
+        create_provisional_taxon(&conn, "tp1", "genus", "Provisius", None, None, None).unwrap();
+        let m = create_taxon_mapping(
+            &conn, "tm1", "tp1", None, Some(12345), Some("Acceptius maximus"), None, None,
+        ).expect("mapping");
+        assert_eq!(m.id, "tm1");
+        assert_eq!(m.accepted_ncbi_id, Some(12345));
+        assert_eq!(m.accepted_name.as_deref(), Some("Acceptius maximus"));
+    }
+
+    #[test]
+    fn list_taxon_mappings_returns_all() {
+        let conn = prov_db();
+        create_provisional_taxon(&conn, "tp1", "genus", "Alpha", None, None, None).unwrap();
+        create_provisional_taxon(&conn, "tp2", "genus", "Beta", None, None, None).unwrap();
+        create_taxon_mapping(&conn, "tm1", "tp1", None, None, Some("Acc1"), None, None).unwrap();
+        create_taxon_mapping(&conn, "tm2", "tp2", None, None, Some("Acc2"), None, None).unwrap();
+        let list = list_taxon_mappings(&conn).expect("list");
+        assert_eq!(list.len(), 2);
+    }
+
+    #[test]
+    fn export_darwin_core_full_returns_all_taxa() {
+        let conn = prov_db();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, status) VALUES ('t1', 'kingdom', 'Plantae', 'accepted')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, parent_id, status) VALUES ('t2', 'genus', 'Rosaria', 't1', 'provisional')",
+            [],
+        ).unwrap();
+        let export = export_darwin_core(&conn, None).expect("export");
+        assert_eq!(export.record_count, 2);
+        let prov = export.records.iter().find(|r| r.taxon_id == "t2").unwrap();
+        assert_eq!(prov.taxonomic_status, "provisionallyAccepted");
+        let acc = export.records.iter().find(|r| r.taxon_id == "t1").unwrap();
+        assert_eq!(acc.taxonomic_status, "accepted");
+    }
+
+    #[test]
+    fn export_darwin_core_subtree_respects_root() {
+        let conn = prov_db();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('k1', 'kingdom', 'Plantae')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, parent_id) VALUES ('g1', 'genus', 'Rosaria', 'k1')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('k2', 'kingdom', 'Fungi')",
+            [],
+        ).unwrap();
+        let export = export_darwin_core(&conn, Some("k1")).expect("export");
+        // Should include k1 and g1 but not k2.
+        assert_eq!(export.record_count, 2);
+        assert!(export.records.iter().all(|r| r.taxon_id != "k2"));
     }
 }

@@ -163,6 +163,12 @@ pub fn run() {
             commands::taxa::get_taxon_column,
             commands::taxa::list_species_for_taxon,
             commands::taxa::search_taxonomy,
+            // Provisional taxa & Darwin Core export (WP-49)
+            commands::taxa::create_provisional_taxon,
+            commands::taxa::list_provisional_taxa,
+            commands::taxa::map_provisional_taxon,
+            commands::taxa::list_taxon_mappings,
+            commands::taxa::export_darwin_core,
             // NCBI Taxonomy (WP-36)
             commands::ncbi::import_ncbi_taxonomy,
             commands::ncbi::resolve_ncbi_conflict,
