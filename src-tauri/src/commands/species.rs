@@ -64,9 +64,14 @@ pub fn create_species(
                 request.species_code, request.default_subculture_interval_days, request.notes],
     ).map_err(|e| format!("Failed to create species: {}", e))?;
 
-    queries::log_audit_at_seq_zero(
+    // EXPERIMENTAL (WP-45): Seed the species genesis entry from the genus taxon's
+    // current entry_hash (if the genus has participated in the hash chain), extending
+    // the provenance chain upward: Kingdom → … → Genus → Species. Falls back to
+    // ZERO_HASH for genera that pre-date migration_031 or lack audit entries.
+    queries::log_audit_species_genesis(
         &db.conn, Some(&user.id), "create", "species", Some(&id),
         None, Some(&request.species_code), None,
+        &request.genus,
     ).ok();
 
     db.conn.query_row(

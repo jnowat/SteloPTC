@@ -5,6 +5,48 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.33.0] - 2026-06-29
+
+### Added — WP-45: Full taxonomic hash chain (Kingdom → Strain → Specimen) — EXPERIMENTAL
+
+> **Warning:** This is an optional, experimental feature. Reclassifying a taxon (renaming,
+> re-parenting, or changing rank) after its genesis entry is written will break the
+> cryptographic chain for all descendants. There is no automated re-anchoring tool.
+> See ROADMAP.md §WP-45 for the full risk description.
+
+- **Schema — Migration 031** (`migration_031_taxon_hash_chain`):
+  - No new columns. The existing `audit_log` table already carries all required hash chain
+    fields (`lineage_id`, `chain_seq`, `prev_hash`, `entry_hash`).
+  - Runs `backfill_taxa_genesis` to write genesis audit entries for all existing taxa in
+    rank order (kingdom → phylum → class → order → family → genus), so every taxon
+    participates in the cryptographic chain from the first time the database opens on v1.33.0.
+  - Idempotent: taxa with a pre-existing `entity_type = 'taxon'` genesis entry are skipped.
+
+- **Backend — `src-tauri/src/db/queries.rs`**:
+  - `log_audit_taxon_genesis(conn, user_id, action, entity_type, entity_id, old_value, new_value, details, parent_taxon_id)` — new public function. Writes `chain_seq = 0` genesis for a taxon. When `parent_taxon_id` is given, seeds `prev_hash` from the parent taxon's last `entry_hash`; root taxa (kingdoms) receive `ZERO_HASH`.
+  - `log_audit_species_genesis(conn, ..., genus_name)` — new public function. Seeds species genesis `prev_hash` from the genus taxon's last `entry_hash` rather than `ZERO_HASH`, extending the chain: Kingdom → … → Genus → Species.
+  - `log_audit_strain_genesis` — updated. Now anchors strain genesis to the genus taxon's `entry_hash` (looked up via `species.genus → taxa`) instead of the species' `entry_hash` directly. Falls back to `ZERO_HASH` when no genus taxon entry exists (backward-compatible with pre-WP-45 data and test fixtures without a `taxa` table).
+  - `genus_entry_hash_by_name` / `genus_entry_hash_by_species` — new private helpers. Tolerate a missing `taxa` table (return `None`) so all pre-WP-45 test fixtures and databases continue to function without modification.
+
+- **Backend — `src-tauri/src/db/migrations.rs`**:
+  - `backfill_taxa_genesis()` — new public function. Processes taxa in rank order to guarantee parent genesis entries exist before children are processed. Called by migration_031 and safe to call on any database.
+
+- **Backend — `src-tauri/src/commands/taxa.rs`**:
+  - `create_taxon` — now calls `log_audit_taxon_genesis` after the INSERT, anchoring the new taxon to its parent's chain.
+  - `update_taxon` — now appends an `update` audit entry to the taxon's lineage chain. Includes an inline comment warning that name/parent_id changes are reclassifications that break downstream chains.
+
+- **Backend — `src-tauri/src/commands/species.rs`**:
+  - `create_species` — replaced `log_audit_at_seq_zero` with `log_audit_species_genesis`, which seeds from the genus taxon's `entry_hash` when available.
+
+- **Tests** — 6 new / updated `db::queries` unit tests:
+  - `taxon_genesis_root_uses_zero_hash` — root taxon (kingdom, no parent) receives `ZERO_HASH` as `prev_hash`.
+  - `taxon_genesis_child_seeds_from_parent` — phylum genesis `prev_hash` equals kingdom's `entry_hash`.
+  - `taxon_chain_update_appends_correctly` — update entry advances `chain_seq` to 1.
+  - `species_genesis_seeds_from_genus_taxon` — species genesis `prev_hash` equals genus taxon's `entry_hash`.
+  - `strain_genesis_prev_hash_equals_species_entry_hash` — **updated**: now verifies strain genesis anchors to the genus taxon's `entry_hash` (the new WP-45 behaviour).
+  - `strain_genesis_falls_back_to_zero_hash_when_no_genus_entry` — new: verifies backward-compat fallback when no genus taxon exists.
+  Total: 250 Rust tests.
+
 ## [1.32.0] - 2026-06-26
 
 ### Added — WP-44: Mycology compliance / QC rules
