@@ -11,6 +11,10 @@ use crate::models::compliance::MycoplasmaStatus;
 use crate::models::compliance::ComplianceFlag;
 use crate::models::cryo::{CreateFrozenVialRequest, FrozenVial, ListFrozenVialsParams};
 use crate::models::fruiting::{CreateFruitingRecordRequest, FruitingRecord};
+use crate::models::breeding::{
+    BreedingProgram, BreedingRecord, CreateBreedingProgramRequest,
+    CreateBreedingRecordRequest, GenerationalSummary,
+};
 
 /// Zero-hash used as prev_hash when a lineage has no prior entry.
 pub const ZERO_HASH: &str =
@@ -5202,5 +5206,349 @@ mod tests {
         ).unwrap();
         let flags = get_mycology_compliance_flags(&conn, 1, 30.0, 0).unwrap();
         assert!(flags.is_empty(), "archived specimens must be excluded from all mycology flags");
+    }
+}
+
+// ── WP-47: Breeding programs ──────────────────────────────────────────────────
+
+pub fn create_breeding_program(
+    conn: &Connection,
+    req: &CreateBreedingProgramRequest,
+    created_by: Option<&str>,
+) -> DbResult<String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO breeding_programs \
+         (id, name, goal, start_date, target_traits, founder_strain_ids, notes, created_by) \
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        params![
+            id,
+            req.name,
+            req.goal,
+            req.start_date,
+            req.target_traits,
+            req.founder_strain_ids,
+            req.notes,
+            created_by,
+        ],
+    )
+    .map_err(|e| DbError::Constraint(e.to_string()))?;
+    Ok(id)
+}
+
+pub fn get_breeding_program(conn: &Connection, id: &str) -> DbResult<BreedingProgram> {
+    conn.query_row(
+        "SELECT id, name, goal, start_date, target_traits, founder_strain_ids, \
+                notes, created_at, created_by \
+         FROM breeding_programs WHERE id = ?1",
+        params![id],
+        |r| Ok(BreedingProgram {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            goal: r.get(2)?,
+            start_date: r.get(3)?,
+            target_traits: r.get(4)?,
+            founder_strain_ids: r.get(5)?,
+            notes: r.get(6)?,
+            created_at: r.get(7)?,
+            created_by: r.get(8)?,
+        }),
+    )
+    .map_err(|_| DbError::Constraint(format!("Breeding program not found: {}", id)))
+}
+
+pub fn list_breeding_programs(conn: &Connection) -> DbResult<Vec<BreedingProgram>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, name, goal, start_date, target_traits, founder_strain_ids, \
+                notes, created_at, created_by \
+         FROM breeding_programs ORDER BY created_at DESC",
+    )?;
+    let rows = stmt.query_map([], |r| Ok(BreedingProgram {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        goal: r.get(2)?,
+        start_date: r.get(3)?,
+        target_traits: r.get(4)?,
+        founder_strain_ids: r.get(5)?,
+        notes: r.get(6)?,
+        created_at: r.get(7)?,
+        created_by: r.get(8)?,
+    }))?;
+    let programs: Vec<BreedingProgram> = rows.filter_map(|r| r.ok()).collect();
+    Ok(programs)
+}
+
+pub fn add_breeding_record(
+    conn: &Connection,
+    req: &CreateBreedingRecordRequest,
+    selected_by: Option<&str>,
+) -> DbResult<String> {
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO breeding_records \
+         (id, program_id, strain_id, generation_number, selection_notes, \
+          fitness_score, selection_date, selected_by, notes) \
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![
+            id,
+            req.program_id,
+            req.strain_id,
+            req.generation_number,
+            req.selection_notes,
+            req.fitness_score,
+            req.selection_date,
+            selected_by,
+            req.notes,
+        ],
+    )
+    .map_err(|e| DbError::Constraint(e.to_string()))?;
+    Ok(id)
+}
+
+pub fn get_breeding_record(conn: &Connection, id: &str) -> DbResult<BreedingRecord> {
+    conn.query_row(
+        "SELECT id, program_id, strain_id, generation_number, selection_notes, \
+                fitness_score, selection_date, selected_by, notes, created_at \
+         FROM breeding_records WHERE id = ?1",
+        params![id],
+        |r| Ok(BreedingRecord {
+            id: r.get(0)?,
+            program_id: r.get(1)?,
+            strain_id: r.get(2)?,
+            generation_number: r.get(3)?,
+            selection_notes: r.get(4)?,
+            fitness_score: r.get(5)?,
+            selection_date: r.get(6)?,
+            selected_by: r.get(7)?,
+            notes: r.get(8)?,
+            created_at: r.get(9)?,
+        }),
+    )
+    .map_err(|_| DbError::Constraint(format!("Breeding record not found: {}", id)))
+}
+
+pub fn list_breeding_records_for_program(
+    conn: &Connection,
+    program_id: &str,
+) -> DbResult<Vec<BreedingRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, program_id, strain_id, generation_number, selection_notes, \
+                fitness_score, selection_date, selected_by, notes, created_at \
+         FROM breeding_records WHERE program_id = ?1 \
+         ORDER BY generation_number, created_at",
+    )?;
+    let rows = stmt.query_map(params![program_id], |r| Ok(BreedingRecord {
+        id: r.get(0)?,
+        program_id: r.get(1)?,
+        strain_id: r.get(2)?,
+        generation_number: r.get(3)?,
+        selection_notes: r.get(4)?,
+        fitness_score: r.get(5)?,
+        selection_date: r.get(6)?,
+        selected_by: r.get(7)?,
+        notes: r.get(8)?,
+        created_at: r.get(9)?,
+    }))?;
+    let records: Vec<BreedingRecord> = rows.filter_map(|r| r.ok()).collect();
+    Ok(records)
+}
+
+pub fn list_breeding_records_for_strain(
+    conn: &Connection,
+    strain_id: &str,
+) -> DbResult<Vec<BreedingRecord>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, program_id, strain_id, generation_number, selection_notes, \
+                fitness_score, selection_date, selected_by, notes, created_at \
+         FROM breeding_records WHERE strain_id = ?1 \
+         ORDER BY generation_number, created_at",
+    )?;
+    let rows = stmt.query_map(params![strain_id], |r| Ok(BreedingRecord {
+        id: r.get(0)?,
+        program_id: r.get(1)?,
+        strain_id: r.get(2)?,
+        generation_number: r.get(3)?,
+        selection_notes: r.get(4)?,
+        fitness_score: r.get(5)?,
+        selection_date: r.get(6)?,
+        selected_by: r.get(7)?,
+        notes: r.get(8)?,
+        created_at: r.get(9)?,
+    }))?;
+    let records: Vec<BreedingRecord> = rows.filter_map(|r| r.ok()).collect();
+    Ok(records)
+}
+
+pub fn get_generational_summary(
+    conn: &Connection,
+    program_id: &str,
+) -> DbResult<Vec<GenerationalSummary>> {
+    let mut stmt = conn.prepare(
+        "SELECT generation_number, COUNT(*) AS record_count, AVG(fitness_score) AS avg_fitness \
+         FROM breeding_records WHERE program_id = ?1 \
+         GROUP BY generation_number ORDER BY generation_number",
+    )?;
+    let rows = stmt.query_map(params![program_id], |r| Ok(GenerationalSummary {
+        generation_number: r.get(0)?,
+        record_count: r.get(1)?,
+        avg_fitness: r.get(2)?,
+    }))?;
+    let summaries: Vec<GenerationalSummary> = rows.filter_map(|r| r.ok()).collect();
+    Ok(summaries)
+}
+
+#[cfg(test)]
+mod breeding_tests {
+    use super::*;
+    use crate::db::migrations::run_all;
+    use rusqlite::Connection;
+    use crate::models::breeding::{CreateBreedingProgramRequest, CreateBreedingRecordRequest};
+
+    fn breeding_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        run_all(&conn).unwrap();
+        // Seed a species and strain so FK references are valid when FK enforcement is on.
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp1','Rosa','damascena','ROSE001')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) \
+             VALUES ('st1','sp1','Damask Classic','ROSE001-S01')",
+            [],
+        ).unwrap();
+        conn
+    }
+
+    fn make_program_req(name: &str) -> CreateBreedingProgramRequest {
+        CreateBreedingProgramRequest {
+            name: name.to_string(),
+            goal: Some("Improve fragrance".to_string()),
+            start_date: Some("2026-01-01".to_string()),
+            target_traits: Some("[\"fragrance\",\"disease resistance\"]".to_string()),
+            founder_strain_ids: Some("[\"st1\"]".to_string()),
+            notes: None,
+        }
+    }
+
+    fn make_record_req(program_id: &str, strain_id: &str, gen: i32) -> CreateBreedingRecordRequest {
+        CreateBreedingRecordRequest {
+            program_id: program_id.to_string(),
+            strain_id: strain_id.to_string(),
+            generation_number: gen,
+            selection_notes: Some("Strong fragrance".to_string()),
+            fitness_score: Some(8.5),
+            selection_date: Some("2026-06-01".to_string()),
+            notes: None,
+        }
+    }
+
+    #[test]
+    fn create_breeding_program_inserts_and_retrieves() {
+        let conn = breeding_test_db();
+        let id = create_breeding_program(&conn, &make_program_req("Fragrance F1"), Some("u1"))
+            .expect("insert");
+        let prog = get_breeding_program(&conn, &id).expect("get");
+        assert_eq!(prog.name, "Fragrance F1");
+        assert_eq!(prog.goal.as_deref(), Some("Improve fragrance"));
+        assert_eq!(prog.created_by.as_deref(), Some("u1"));
+    }
+
+    #[test]
+    fn list_breeding_programs_returns_all() {
+        let conn = breeding_test_db();
+        create_breeding_program(&conn, &make_program_req("Program A"), None).unwrap();
+        create_breeding_program(&conn, &make_program_req("Program B"), None).unwrap();
+        let programs = list_breeding_programs(&conn).expect("list");
+        assert_eq!(programs.len(), 2);
+    }
+
+    #[test]
+    fn add_breeding_record_inserts_and_retrieves() {
+        let conn = breeding_test_db();
+        let pid = create_breeding_program(&conn, &make_program_req("Gen Test"), None).unwrap();
+        let rid = add_breeding_record(&conn, &make_record_req(&pid, "st1", 1), Some("u2"))
+            .expect("insert record");
+        let rec = get_breeding_record(&conn, &rid).expect("get record");
+        assert_eq!(rec.program_id, pid);
+        assert_eq!(rec.strain_id, "st1");
+        assert_eq!(rec.generation_number, 1);
+        assert!((rec.fitness_score.unwrap() - 8.5).abs() < f64::EPSILON);
+        assert_eq!(rec.selected_by.as_deref(), Some("u2"));
+    }
+
+    #[test]
+    fn list_breeding_records_for_program_returns_rows() {
+        let conn = breeding_test_db();
+        let pid = create_breeding_program(&conn, &make_program_req("Multi-Gen"), None).unwrap();
+        add_breeding_record(&conn, &make_record_req(&pid, "st1", 1), None).unwrap();
+        add_breeding_record(&conn, &make_record_req(&pid, "st1", 2), None).unwrap();
+        let records = list_breeding_records_for_program(&conn, &pid).expect("list");
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].generation_number, 1);
+        assert_eq!(records[1].generation_number, 2);
+    }
+
+    #[test]
+    fn list_breeding_records_for_strain_returns_rows() {
+        let conn = breeding_test_db();
+        let pid = create_breeding_program(&conn, &make_program_req("Strain Test"), None).unwrap();
+        add_breeding_record(&conn, &make_record_req(&pid, "st1", 1), None).unwrap();
+        let records = list_breeding_records_for_strain(&conn, "st1").expect("list");
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].strain_id, "st1");
+    }
+
+    #[test]
+    fn get_generational_summary_aggregates_correctly() {
+        let conn = breeding_test_db();
+        let pid = create_breeding_program(&conn, &make_program_req("Summary Test"), None).unwrap();
+        // Gen 1: two records with fitness 8.0 and 9.0 → avg 8.5
+        let r1 = CreateBreedingRecordRequest {
+            fitness_score: Some(8.0),
+            ..make_record_req(&pid, "st1", 1)
+        };
+        let r2 = CreateBreedingRecordRequest {
+            fitness_score: Some(9.0),
+            ..make_record_req(&pid, "st1", 1)
+        };
+        let r3 = CreateBreedingRecordRequest {
+            fitness_score: Some(7.5),
+            ..make_record_req(&pid, "st1", 2)
+        };
+        add_breeding_record(&conn, &r1, None).unwrap();
+        add_breeding_record(&conn, &r2, None).unwrap();
+        add_breeding_record(&conn, &r3, None).unwrap();
+        let summary = get_generational_summary(&conn, &pid).expect("summary");
+        assert_eq!(summary.len(), 2);
+        assert_eq!(summary[0].generation_number, 1);
+        assert_eq!(summary[0].record_count, 2);
+        let avg = summary[0].avg_fitness.unwrap();
+        assert!((avg - 8.5).abs() < 0.001, "avg fitness for gen 1 must be 8.5, got {}", avg);
+        assert_eq!(summary[1].generation_number, 2);
+        assert_eq!(summary[1].record_count, 1);
+    }
+
+    #[test]
+    fn list_breeding_records_for_program_empty_when_no_records() {
+        let conn = breeding_test_db();
+        let pid = create_breeding_program(&conn, &make_program_req("Empty"), None).unwrap();
+        let records = list_breeding_records_for_program(&conn, &pid).expect("list");
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn get_breeding_program_returns_error_for_unknown_id() {
+        let conn = breeding_test_db();
+        assert!(get_breeding_program(&conn, "does-not-exist").is_err());
+    }
+
+    #[test]
+    fn add_breeding_record_rejects_unknown_program() {
+        let conn = breeding_test_db();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        let req = make_record_req("no-such-program", "st1", 1);
+        assert!(add_breeding_record(&conn, &req, None).is_err());
     }
 }

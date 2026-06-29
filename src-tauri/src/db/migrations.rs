@@ -173,6 +173,55 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (32)", [])?;
     }
 
+    if current < 33 {
+        migration_033_breeding_programs(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (33)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_033_breeding_programs(conn: &Connection) -> DbResult<()> {
+    // WP-47: Breeding programs and multi-generational selection tracking.
+    //
+    // `breeding_programs` is the top-level container: a user-named program with a goal,
+    // start date, free-text target traits, and an optional JSON array of founder strain IDs.
+    //
+    // `breeding_records` links a strain to a program and captures a selection event:
+    // generation number, selection notes, a numeric fitness score, and selection date.
+    // Deleting a program cascades to its records; the strain FK does not cascade so
+    // strains remain intact if a program is removed.
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS breeding_programs (
+            id                 TEXT    PRIMARY KEY,
+            name               TEXT    NOT NULL,
+            goal               TEXT,
+            start_date         TEXT,
+            target_traits      TEXT,
+            founder_strain_ids TEXT,
+            notes              TEXT,
+            created_at         TEXT    NOT NULL DEFAULT (datetime('now')),
+            created_by         TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS breeding_records (
+            id                TEXT    PRIMARY KEY,
+            program_id        TEXT    NOT NULL REFERENCES breeding_programs(id) ON DELETE CASCADE,
+            strain_id         TEXT    NOT NULL REFERENCES strains(id),
+            generation_number INTEGER NOT NULL DEFAULT 1,
+            selection_notes   TEXT,
+            fitness_score     REAL,
+            selection_date    TEXT,
+            selected_by       TEXT,
+            notes             TEXT,
+            created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_breeding_records_program_id
+            ON breeding_records(program_id);
+        CREATE INDEX IF NOT EXISTS idx_breeding_records_strain_id
+            ON breeding_records(strain_id);
+    ")?;
     Ok(())
 }
 
@@ -3569,5 +3618,74 @@ mod tests {
             .query_row("SELECT domain FROM app_config WHERE id = 1", [], |r| r.get(0))
             .unwrap();
         assert_eq!(domain, "Fungi");
+    }
+
+    // ── Migration 033: breeding_programs & breeding_records ──────────────────
+
+    #[test]
+    fn migration_033_breeding_programs_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='breeding_programs'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "breeding_programs table must exist after migration 033");
+    }
+
+    #[test]
+    fn migration_033_breeding_records_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='breeding_records'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "breeding_records table must exist after migration 033");
+    }
+
+    #[test]
+    fn migration_033_breeding_records_index_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' \
+                 AND name='idx_breeding_records_program_id'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "index on breeding_records.program_id must exist");
+    }
+
+    #[test]
+    fn migration_033_breeding_program_cascade_deletes_records() {
+        let conn = migrated_db();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        conn.execute(
+            "INSERT INTO breeding_programs (id, name) VALUES ('bp1', 'Test Program')",
+            [],
+        ).unwrap();
+        // Insert a record without a real strain FK (FK enforcement is only on strains
+        // which requires seeding; test just checks cascade on program delete).
+        conn.execute_batch("PRAGMA foreign_keys = OFF").unwrap();
+        conn.execute(
+            "INSERT INTO breeding_records (id, program_id, strain_id) VALUES ('br1','bp1','s1')",
+            [],
+        ).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        conn.execute("DELETE FROM breeding_programs WHERE id = 'bp1'", []).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM breeding_records WHERE program_id = 'bp1'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "cascade delete must remove breeding_records when program is deleted");
     }
 }

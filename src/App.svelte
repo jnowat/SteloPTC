@@ -27,6 +27,7 @@
   import TaxonomyNavigator from './lib/components/TaxonomyNavigator.svelte';
   import NcbiSyncPanel from './lib/components/NcbiSyncPanel.svelte';
   import CryoManager from './lib/components/CryoManager.svelte';
+  import BreedingProgramManager from './lib/components/BreedingProgramManager.svelte';
 
   let startupError = '';
 
@@ -182,6 +183,8 @@
           <NcbiSyncPanel />
         {:else if $currentView === 'cryo'}
           <CryoManager />
+        {:else if $currentView === 'breeding'}
+          <BreedingProgramManager />
         {:else}
           <Dashboard />
         {/if}
