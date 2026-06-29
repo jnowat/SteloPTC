@@ -11,6 +11,21 @@ pub fn active_profile(conn: &Connection) -> String {
     .unwrap_or_else(|_| "plant_tissue_culture".to_string())
 }
 
+/// Returns the biological domain for the active lab profile from app_config,
+/// defaulting to 'Plantae' if the `domain` column is absent or the query fails.
+///
+/// Known values: 'Plantae', 'Animalia', 'Fungi'. Future domains (e.g. 'Bacteria',
+/// 'Archaea') can be stored in the column without a schema migration (no CHECK
+/// constraint is enforced at the DB level).
+pub fn active_domain(conn: &Connection) -> String {
+    conn.query_row(
+        "SELECT domain FROM app_config WHERE id = 1",
+        [],
+        |r| r.get(0),
+    )
+    .unwrap_or_else(|_| "Plantae".to_string())
+}
+
 /// Validates that `code` exists in the `stages` table for the given profile and is not
 /// a terminal stage (is_terminal = 0). Returns false on any query error (table missing,
 /// etc.) so unknown codes are always rejected.
@@ -35,9 +50,10 @@ mod tests {
         conn.execute_batch(
             "CREATE TABLE app_config (
                  id INTEGER PRIMARY KEY CHECK (id = 1),
-                 lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture'
+                 lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture',
+                 domain TEXT NOT NULL DEFAULT 'Plantae'
              );
-             INSERT INTO app_config (id, lab_profile) VALUES (1, 'plant_tissue_culture');
+             INSERT INTO app_config (id, lab_profile, domain) VALUES (1, 'plant_tissue_culture', 'Plantae');
 
              CREATE TABLE stages (
                  id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +84,35 @@ mod tests {
     fn active_profile_falls_back_when_table_missing() {
         let conn = Connection::open_in_memory().unwrap();
         assert_eq!(active_profile(&conn), "plant_tissue_culture");
+    }
+
+    #[test]
+    fn active_domain_reads_plantae_for_ptc() {
+        let conn = db_with_stages();
+        assert_eq!(active_domain(&conn), "Plantae");
+    }
+
+    #[test]
+    fn active_domain_reads_animalia_when_set() {
+        let conn = db_with_stages();
+        conn.execute("UPDATE app_config SET domain = 'Animalia' WHERE id = 1", [])
+            .unwrap();
+        assert_eq!(active_domain(&conn), "Animalia");
+    }
+
+    #[test]
+    fn active_domain_reads_fungi_when_set() {
+        let conn = db_with_stages();
+        conn.execute("UPDATE app_config SET domain = 'Fungi' WHERE id = 1", [])
+            .unwrap();
+        assert_eq!(active_domain(&conn), "Fungi");
+    }
+
+    #[test]
+    fn active_domain_falls_back_to_plantae_when_column_missing() {
+        let conn = Connection::open_in_memory().unwrap();
+        // No app_config table at all — must not panic.
+        assert_eq!(active_domain(&conn), "Plantae");
     }
 
     #[test]

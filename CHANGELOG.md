@@ -5,6 +5,28 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-06-29
+
+### Added — WP-46: Cross-domain taxonomy support
+
+- **Schema — Migration 032** (`migration_032_domain_column`):
+  - Adds a `domain TEXT NOT NULL DEFAULT 'Plantae'` column to `app_config`.
+  - No `CHECK` constraint so future domains (Bacteria, Archaea) can be stored without another schema migration.
+  - `UPDATE` on first run assigns domains by profile: `plant_tissue_culture` → `'Plantae'`, `cell_culture` → `'Animalia'`, `mycology` → `'Fungi'`; unrecognised profiles fall back to `'Plantae'`.
+
+- **Backend — `src-tauri/src/db/vocabulary.rs`**:
+  - `active_domain(conn)` — new public function. Reads `domain` from `app_config WHERE id = 1`; falls back to `'Plantae'` on any error (missing table, missing column, or absent row).
+
+- **Frontend — `src/lib/profile.ts`**:
+  - `LabDomain` type — `'Plantae' | 'Animalia' | 'Fungi'`.
+  - `DomainManifest` interface — `rankOrder: string[]`, `strainTypeLabels: Record<string, string>`, `confirmationMethodLabels: Record<string, string>`.
+  - `PROFILE_DOMAIN` — maps each `LabProfile` to its `LabDomain`.
+  - `DOMAIN_MANIFESTS` — per-domain UI manifests with rank navigator order, strain type labels, and confirmation method labels for Plantae, Animalia, and Fungi.
+  - `activeDomainManifest()` — returns the `DomainManifest` for the currently active lab profile.
+
+- **Tests** — 8 new Rust tests (4 `db::migrations`, 4 `db::vocabulary`); 16 new frontend tests in `src/lib/profile.test.ts`.
+  Total: 258 Rust tests.
+
 ## [1.33.0] - 2026-06-29
 
 ### Added — WP-45: Full taxonomic hash chain (Kingdom → Strain → Specimen) — EXPERIMENTAL
