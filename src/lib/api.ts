@@ -1060,3 +1060,62 @@ export async function listBreedingRecordsForStrain(strainId: string) {
 export async function getGenerationalSummary(programId: string) {
   return call<GenerationalSummary[]>('get_generational_summary', { programId });
 }
+
+// WP-49: Provisional taxa & Darwin Core export
+
+export interface TaxonMapping {
+  id: string;
+  provisional_taxon_id: string;
+  accepted_taxon_id: string | null;
+  accepted_ncbi_id: number | null;
+  accepted_name: string | null;
+  notes: string | null;
+  mapped_by: string | null;
+  mapped_at: string;
+}
+
+export interface DarwinCoreRecord {
+  taxonID: string;
+  scientificName: string;
+  taxonRank: string;
+  parentNameUsageID: string | null;
+  taxonomicStatus: string;
+  nameAccordingTo: string | null;
+  remarks: string | null;
+}
+
+export interface DarwinCoreExport {
+  record_count: number;
+  records: DarwinCoreRecord[];
+}
+
+export async function createProvisionalTaxon(request: {
+  rank: TaxonRank;
+  name: string;
+  parent_id?: string;
+  provisional_notes?: string;
+}) {
+  return call<Taxon>('create_provisional_taxon', { request });
+}
+
+export async function listProvisionalTaxa() {
+  return call<Taxon[]>('list_provisional_taxa');
+}
+
+export async function mapProvisionalTaxon(request: {
+  provisional_taxon_id: string;
+  accepted_taxon_id?: string;
+  accepted_ncbi_id?: number;
+  accepted_name?: string;
+  notes?: string;
+}) {
+  return call<TaxonMapping>('map_provisional_taxon', { request });
+}
+
+export async function listTaxonMappings() {
+  return call<TaxonMapping[]>('list_taxon_mappings');
+}
+
+export async function exportDarwinCore(rootId?: string) {
+  return call<DarwinCoreExport>('export_darwin_core', { rootId: rootId ?? null });
+}

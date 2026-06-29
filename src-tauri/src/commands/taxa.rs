@@ -1,8 +1,9 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::taxon::{
-    CreateTaxonRequest, SpeciesNodeSummary, Taxon, TaxonColumnItem, TaxonNode,
-    TaxonomySearchResult, UpdateTaxonRequest,
+    CreateProvisionalTaxonRequest, CreateTaxonMappingRequest, CreateTaxonRequest, DarwinCoreExport,
+    SpeciesNodeSummary, Taxon, TaxonColumnItem, TaxonMapping, TaxonNode, TaxonomySearchResult,
+    UpdateTaxonRequest,
 };
 use crate::AppState;
 use rusqlite::params;
@@ -297,4 +298,92 @@ pub fn search_taxonomy(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
     queries::search_taxonomy(&db.conn, &query).map_err(|e| e.to_string())
+}
+
+// ── WP-49: Provisional taxa & Darwin Core export ──────────────────────────────
+
+/// Create a provisional (lab-internal) taxon.  Requires supervisor or admin role.
+#[tauri::command]
+pub fn create_provisional_taxon(
+    state: State<AppState>,
+    token: String,
+    request: CreateProvisionalTaxonRequest,
+) -> Result<Taxon, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Only supervisors and admins can create provisional taxa".to_string());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    queries::create_provisional_taxon(
+        &db.conn,
+        &id,
+        &request.rank,
+        &request.name,
+        request.parent_id.as_deref(),
+        request.provisional_notes.as_deref(),
+        Some(&user.id),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// List all provisional taxa.
+#[tauri::command]
+pub fn list_provisional_taxa(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<Taxon>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::list_provisional_taxa(&db.conn).map_err(|e| e.to_string())
+}
+
+/// Map a provisional taxon to an accepted NCBI taxon.  Requires supervisor or admin role.
+#[tauri::command]
+pub fn map_provisional_taxon(
+    state: State<AppState>,
+    token: String,
+    request: CreateTaxonMappingRequest,
+) -> Result<TaxonMapping, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Only supervisors and admins can map provisional taxa".to_string());
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    queries::create_taxon_mapping(
+        &db.conn,
+        &id,
+        &request.provisional_taxon_id,
+        request.accepted_taxon_id.as_deref(),
+        request.accepted_ncbi_id,
+        request.accepted_name.as_deref(),
+        request.notes.as_deref(),
+        Some(&user.id),
+    )
+    .map_err(|e| e.to_string())
+}
+
+/// List all taxon mappings (provisional → accepted).
+#[tauri::command]
+pub fn list_taxon_mappings(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<TaxonMapping>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::list_taxon_mappings(&db.conn).map_err(|e| e.to_string())
+}
+
+/// Export a taxonomy subtree (or the full taxonomy) as Darwin Core JSON.
+/// Pass `root_id` to export a subtree; omit (or pass null) for the full taxonomy.
+#[tauri::command]
+pub fn export_darwin_core(
+    state: State<AppState>,
+    token: String,
+    root_id: Option<String>,
+) -> Result<DarwinCoreExport, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::export_darwin_core(&db.conn, root_id.as_deref()).map_err(|e| e.to_string())
 }

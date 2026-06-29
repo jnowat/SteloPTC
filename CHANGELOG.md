@@ -5,6 +5,49 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.0] - 2026-06-29
+
+### Added — WP-49: Custom taxa & Darwin Core export
+
+- **Schema — Migration 034** (`migration_034_provisional_taxa`):
+  - Adds `status TEXT NOT NULL DEFAULT 'accepted'` to `taxa` — no CHECK constraint so future statuses can be added without another migration.
+  - Adds `provisional_notes TEXT` to `taxa` for lab-internal commentary.
+  - Creates `taxon_mappings` table: `id`, `provisional_taxon_id` (FK → taxa with `ON DELETE CASCADE`), `accepted_taxon_id` (FK → taxa with `ON DELETE SET NULL`), `accepted_ncbi_id`, `accepted_name`, `notes`, `mapped_by`, `mapped_at`. Indexes on both FK columns.
+  - Migration is safe and additive; existing rows keep `status = 'accepted'` by default.
+
+- **Backend — `src-tauri/src/models/taxon.rs`**:
+  - `CreateProvisionalTaxonRequest` — rank, name, parent_id, provisional_notes.
+  - `TaxonMapping` — mapping row struct.
+  - `CreateTaxonMappingRequest` — provisional_taxon_id, accepted_taxon_id, accepted_ncbi_id, accepted_name, notes.
+  - `DarwinCoreRecord` — single DwC record with camelCase DwC field names (`taxonID`, `scientificName`, `taxonRank`, `parentNameUsageID`, `taxonomicStatus`, `nameAccordingTo`, `remarks`).
+  - `DarwinCoreExport` — export bundle with `record_count` and `records` array.
+
+- **Backend — `src-tauri/src/db/queries.rs`**:
+  - `create_provisional_taxon` — inserts taxa with `status='provisional'`, `local_override=1`, writes `create`/taxon audit entry; returns full taxon row.
+  - `list_provisional_taxa` — `SELECT … WHERE status = 'provisional'` ordered by rank then name.
+  - `create_taxon_mapping` — inserts into `taxon_mappings`; returns inserted row.
+  - `get_taxon_mapping` — fetch mapping by ID.
+  - `list_taxon_mappings` — all mappings ordered by `mapped_at DESC`.
+  - `export_darwin_core(conn, root_id)` — walks subtree via recursive CTE (or all taxa when `root_id` is `None`); emits `DarwinCoreRecord` per taxon with correct `taxonomicStatus` (`accepted` | `provisionallyAccepted` | `synonym`).
+
+- **Backend — `src-tauri/src/commands/taxa.rs`** (5 new commands):
+  - `create_provisional_taxon` — supervisor/admin only.
+  - `list_provisional_taxa` — any authenticated user.
+  - `map_provisional_taxon` — supervisor/admin only; creates a `taxon_mappings` row.
+  - `list_taxon_mappings` — any authenticated user.
+  - `export_darwin_core` — any authenticated user; accepts optional `root_id`.
+
+- **Frontend — `src/lib/api.ts`**: `TaxonMapping`, `DarwinCoreRecord`, `DarwinCoreExport` TypeScript interfaces; `createProvisionalTaxon`, `listProvisionalTaxa`, `mapProvisionalTaxon`, `listTaxonMappings`, `exportDarwinCore` API functions.
+
+- **Frontend — `src/lib/components/ProvisionalTaxaManager.svelte`** (new component):
+  - Left panel: list of all provisional taxa with mapped/unmapped badges.
+  - Right panel: taxon detail, per-taxon mapping cards, add-mapping form (NCBI ID, accepted name, notes).
+  - Bottom section: Darwin Core export — optional root taxon ID field, single-click JSON download.
+  - Accessible via the **Prov. Taxa** sidebar entry (🔬 icon).
+
+- **Tests** — 5 migration tests (`status_column_exists`, `status_defaults_to_accepted`, `provisional_notes_column_exists`, `taxon_mappings_table_exists`, `taxon_mappings_cascade_deletes`); 6 query tests (`create_provisional_taxon_inserts_and_retrieves`, `list_provisional_taxa_returns_only_provisional`, `create_taxon_mapping_inserts_and_retrieves`, `list_taxon_mappings_returns_all`, `export_darwin_core_full_returns_all_taxa`, `export_darwin_core_subtree_respects_root`).
+  Total: 282 Rust tests.
+
 ## [1.36.0] - 2026-06-29
 
 ### Added — WP-48: Advanced hybridization tools (cross-species, F1/F2, backcross)

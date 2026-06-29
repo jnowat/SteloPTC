@@ -178,6 +178,51 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (33)", [])?;
     }
 
+    if current < 34 {
+        migration_034_provisional_taxa(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (34)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_034_provisional_taxa(conn: &Connection) -> DbResult<()> {
+    // WP-49: Custom/provisional taxa and Darwin Core export support.
+    //
+    // Adds a `status` column to `taxa` (default 'accepted'; no CHECK constraint so
+    // future statuses can be added without another migration).  Also adds a
+    // `provisional_notes` TEXT column for lab-internal commentary.
+    //
+    // Creates a `taxon_mappings` table linking provisional taxa to their accepted
+    // NCBI taxa once published.  The link is advisory only — it does not affect
+    // the main taxa hierarchy or any hash-chain entries.
+
+    // Ignore DUPLICATE_COLUMN errors in case this migration is re-run against a
+    // database that already has the column (defensive idempotency).
+    let _ = conn.execute(
+        "ALTER TABLE taxa ADD COLUMN status TEXT NOT NULL DEFAULT 'accepted'",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE taxa ADD COLUMN provisional_notes TEXT",
+        [],
+    );
+
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS taxon_mappings (
+            id                  TEXT PRIMARY KEY,
+            provisional_taxon_id TEXT NOT NULL REFERENCES taxa(id) ON DELETE CASCADE,
+            accepted_taxon_id    TEXT REFERENCES taxa(id) ON DELETE SET NULL,
+            accepted_ncbi_id     INTEGER,
+            accepted_name        TEXT,
+            notes                TEXT,
+            mapped_by            TEXT,
+            mapped_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_taxon_mappings_provisional ON taxon_mappings(provisional_taxon_id);
+        CREATE INDEX IF NOT EXISTS idx_taxon_mappings_accepted    ON taxon_mappings(accepted_taxon_id);
+    ")?;
+
     Ok(())
 }
 
@@ -3687,5 +3732,80 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 0, "cascade delete must remove breeding_records when program is deleted");
+    }
+
+    // ── Migration 034: provisional taxa & taxon_mappings ─────────────────────
+
+    #[test]
+    fn migration_034_taxa_status_column_exists() {
+        let conn = migrated_db();
+        // Inserting a row with an explicit status proves the column exists.
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, status) VALUES ('t-prov', 'genus', 'Provisia', 'provisional')",
+            [],
+        ).unwrap();
+        let status: String = conn
+            .query_row("SELECT status FROM taxa WHERE id = 't-prov'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status, "provisional");
+    }
+
+    #[test]
+    fn migration_034_taxa_status_defaults_to_accepted() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name) VALUES ('t-acc', 'genus', 'Acceptia')",
+            [],
+        ).unwrap();
+        let status: String = conn
+            .query_row("SELECT status FROM taxa WHERE id = 't-acc'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(status, "accepted");
+    }
+
+    #[test]
+    fn migration_034_taxa_provisional_notes_column_exists() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, provisional_notes) VALUES ('t-n', 'genus', 'Notia', 'test note')",
+            [],
+        ).unwrap();
+        let notes: String = conn
+            .query_row("SELECT provisional_notes FROM taxa WHERE id = 't-n'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(notes, "test note");
+    }
+
+    #[test]
+    fn migration_034_taxon_mappings_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='taxon_mappings'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "taxon_mappings table must exist after migration 034");
+    }
+
+    #[test]
+    fn migration_034_taxon_mappings_cascade_deletes() {
+        let conn = migrated_db();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, status) VALUES ('tp1', 'genus', 'Provisia', 'provisional')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO taxon_mappings (id, provisional_taxon_id, accepted_name) \
+             VALUES ('tm1', 'tp1', 'Acceptia')",
+            [],
+        ).unwrap();
+        conn.execute("DELETE FROM taxa WHERE id = 'tp1'", []).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM taxon_mappings WHERE id = 'tm1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 0, "taxon_mappings must cascade-delete when provisional taxon is removed");
     }
 }

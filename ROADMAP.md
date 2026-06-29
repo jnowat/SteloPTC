@@ -675,17 +675,7 @@ These are two independent but complementary lineage systems. The **strain pedigr
 
 ### WP-49 — Custom taxa & Darwin Core export
 
-- **Goal:** Support provisional/lab-specific taxa and export full taxonomy + provenance in Darwin Core format for regulatory, herbarium, or community sharing.
-- **Files:** migration (034), `src-tauri/src/commands/taxa.rs`, `src-tauri/src/commands/export.rs` (extend), `src/lib/components/TaxonomyNavigator.svelte`, new `DarwinCoreExport.svelte`.
-- **Steps:**
-  1. Migration 034: Add `status TEXT` (`accepted | provisional | synonym`) and `accepted_taxon_id TEXT` (self-ref) to `taxa`. Add `dwc_occurrence_id` and `dwc_event_id` stubs to specimens/strains if needed for linkage.
-  2. Commands: `create_provisional_taxon`, `map_to_accepted_taxon`, `export_darwin_core` (supports subtree or full export with optional strain/specimen attachments).
-  3. UI: In TaxonomyNavigator, "New Provisional Taxon" button with form; mapping UI for conflicts; Export button that generates Darwin Core Archive (DwC-A) compatible CSV + EML metadata (JSON payload with full provenance hashes where available).
-  4. `export_darwin_core` produces standards-compliant output including taxonomic hierarchy, strain metadata, collection events (specimen accessions), and optional Merkle proof references.
-  5. 6 new Rust unit tests for provisional taxon handling and export schema validation.
-- **Acceptance:** Can create/map provisional taxa; export produces valid DwC files that round-trip into tools like GBIF or Symbiota; provisional taxa appear in navigator with distinct styling.
-- **Preserve:** NCBI sync and existing taxon flows unchanged; exports are read-only.
-- **Bump:** minor.
+- **Shipped:** v1.37.0 — Migration 034 adds `status` and `provisional_notes` columns to `taxa` plus a `taxon_mappings` table. Five Tauri commands (`create_provisional_taxon`, `list_provisional_taxa`, `map_provisional_taxon`, `list_taxon_mappings`, `export_darwin_core`). Darwin Core JSON export with recursive CTE subtree traversal and camelCase DwC field names. `ProvisionalTaxaManager` Svelte component with list/detail/mapping/export UI. Supervisor/admin role gate on create and map operations. 11 new Rust tests (5 migration, 6 query). Total: 282 Rust tests.
 
 ---
 
@@ -940,7 +930,7 @@ These are your existing v0.2/v0.3 items, re-sequenced to run *after* the platfor
 | **v1.33.0** *(Phase TX-3)* | **WP-45 — Full taxonomic hash chain (EXPERIMENTAL):** migration 031 backfills genesis audit entries for all existing taxa (kingdom → genus); `log_audit_taxon_genesis`, `log_audit_species_genesis`; strain genesis anchored to genus taxon; 6 Rust tests. Total: 250 | ✅ shipped |
 | **v1.34.0** *(Phase TX-3)* | **WP-46 — Cross-domain taxonomy support:** migration 032 adds `domain` column to `app_config`; `active_domain()` backend helper; `LabDomain` type + `DomainManifest` interface + `PROFILE_DOMAIN`/`DOMAIN_MANIFESTS`/`activeDomainManifest()` in `profile.ts`; 8 Rust tests + 16 frontend tests. Total: 258 | ✅ shipped |
 | **v1.35.0** *(Phase TX-3)* | **WP-47 — Breeding programs:** migration 033 (`breeding_programs` + `breeding_records` with cascade/indexes); 8 query functions; `get_generational_summary`; 7 Tauri commands; `BreedingProgramManager` UI; 13 Rust tests. Total: 271 | ✅ shipped |
-| v2.x *(Phase TX-3)* | **Phase TX-3 — Advanced taxonomy (remaining):** WP-48 advanced cross-species hybridization, WP-49 custom taxa & Darwin Core export | future |
+| v1.36.0–v1.37.0 *(Phase TX-3)* | **Phase TX-3 — Advanced taxonomy:** WP-48 advanced cross-species hybridization (v1.36.0), WP-49 custom taxa & Darwin Core export (v1.37.0) | ✅ shipped |
 | v2.x+ | Phase F cross-cutting features; Trust Layer **Phase 2** (Dogecoin anchoring, WP-65+) when external proof is needed | future |
 
 > **On the version history:** the jump from `0.1.19` to the `1.0.0-x` line was intentional — the `0.1.x` series was a feature-complete-but-unreleased prototype, and `1.0.0-x` marks the first **production-grade, security-hardened, signed** release with a real GitHub Release. Note the pre-release label shipped as numeric **`1.0.0-1`** (not `rc.1`): the WiX MSI bundler rejects non-numeric pre-release identifiers. Phase A then settled at **v1.1.0** once onboarding (WP-05) landed.

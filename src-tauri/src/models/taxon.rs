@@ -156,3 +156,62 @@ pub struct ResolveNcbiConflictRequest {
     /// One of: "kept_local" | "accepted_ncbi" | "merged"
     pub resolution: String,
 }
+
+// ── WP-49: Custom/provisional taxa & Darwin Core export ───────────────────────
+
+/// Request to create a provisional (lab-internal) taxon.
+#[derive(Debug, Deserialize)]
+pub struct CreateProvisionalTaxonRequest {
+    pub rank: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+    pub provisional_notes: Option<String>,
+}
+
+/// A mapping from a provisional taxon to an accepted NCBI taxon.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaxonMapping {
+    pub id: String,
+    pub provisional_taxon_id: String,
+    pub accepted_taxon_id: Option<String>,
+    pub accepted_ncbi_id: Option<i64>,
+    pub accepted_name: Option<String>,
+    pub notes: Option<String>,
+    pub mapped_by: Option<String>,
+    pub mapped_at: String,
+}
+
+/// Request to map a provisional taxon to an accepted taxon.
+#[derive(Debug, Deserialize)]
+pub struct CreateTaxonMappingRequest {
+    pub provisional_taxon_id: String,
+    pub accepted_taxon_id: Option<String>,
+    pub accepted_ncbi_id: Option<i64>,
+    pub accepted_name: Option<String>,
+    pub notes: Option<String>,
+}
+
+/// A single Darwin Core record for a taxon.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DarwinCoreRecord {
+    #[serde(rename = "taxonID")]
+    pub taxon_id: String,
+    #[serde(rename = "scientificName")]
+    pub scientific_name: String,
+    #[serde(rename = "taxonRank")]
+    pub taxon_rank: String,
+    #[serde(rename = "parentNameUsageID")]
+    pub parent_name_usage_id: Option<String>,
+    #[serde(rename = "taxonomicStatus")]
+    pub taxonomic_status: String,
+    #[serde(rename = "nameAccordingTo")]
+    pub name_according_to: Option<String>,
+    pub remarks: Option<String>,
+}
+
+/// Result of a Darwin Core export operation.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DarwinCoreExport {
+    pub record_count: usize,
+    pub records: Vec<DarwinCoreRecord>,
+}
