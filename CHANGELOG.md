@@ -5,6 +5,21 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.37.1] - 2026-06-29
+
+### Changed — ROADMAP.md comprehensive review & Phase F expansion
+
+- Updated ROADMAP.md status header to v1.37.0; corrected schema description to reference 34 migrations and migration 034 as the latest.
+- Expanded "Shipped" summary line to include WP-48 (v1.36.0) and WP-49 (v1.37.0) with Phase TX-3 marked complete.
+- Corrected Phase TX-2 to be marked "Phase TX-2 complete" (was incorrectly labelled "Phase TX complete" which conflated TX-2 with TX-3).
+- Promoted Phase TX-3 header from "Target: v3.x" to "✅ Fully shipped (WP-45 v1.33.0 … WP-49 v1.37.0)".
+- Expanded WP-48 from a single-line note to a full "As built" block matching the format of all other delivered WPs.
+- Expanded WP-49 from a single-line note to a full "As built" block with detailed component, command, migration, and test descriptions.
+- Added six new Phase F work packets (WP-58 through WP-63): Advanced analytics & reporting dashboards, Cloud backup & multi-device sync with E2E encryption, Regulatory compliance export modules (FDA/USDA/CITES), Plugin/extension system, PWA & offline-first mobile experience, Performance & scalability hardening.
+- Added new "Beyond Phase F" section (§8a) documenting Phase G federated networks (WP-70–72), Trust Layer Phase 2 on-chain anchoring (WP-65), Trust Layer Phase 3 signed transactions (WP-66), and regulatory submission pipeline (WP-67+).
+- Expanded versioning table: split combined WP-48/49 row into individual rows; added separate rows for WP-50 through WP-63 as "future"; added Phase G long-term row.
+- Updated document footer from "grounded at v1.32.0" to "v1.37.0, 34 migrations, 282 Rust tests".
+
 ## [1.37.0] - 2026-06-29
 
 ### Added — WP-49: Custom taxa & Darwin Core export
