@@ -7,8 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.37.1] - 2026-06-29
 
-### Changed — ROADMAP.md comprehensive review & Phase F expansion
+### Changed — ROADMAP.md comprehensive review & Phase F expansion (two passes)
 
+**Pass 1 — Initial Phase F build-out:**
 - Updated ROADMAP.md status header to v1.37.0; corrected schema description to reference 34 migrations and migration 034 as the latest.
 - Expanded "Shipped" summary line to include WP-48 (v1.36.0) and WP-49 (v1.37.0) with Phase TX-3 marked complete.
 - Corrected Phase TX-2 to be marked "Phase TX-2 complete" (was incorrectly labelled "Phase TX complete" which conflated TX-2 with TX-3).
@@ -16,9 +17,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Expanded WP-48 from a single-line note to a full "As built" block matching the format of all other delivered WPs.
 - Expanded WP-49 from a single-line note to a full "As built" block with detailed component, command, migration, and test descriptions.
 - Added six new Phase F work packets (WP-58 through WP-63): Advanced analytics & reporting dashboards, Cloud backup & multi-device sync with E2E encryption, Regulatory compliance export modules (FDA/USDA/CITES), Plugin/extension system, PWA & offline-first mobile experience, Performance & scalability hardening.
-- Added new "Beyond Phase F" section (§8a) documenting Phase G federated networks (WP-70–72), Trust Layer Phase 2 on-chain anchoring (WP-65), Trust Layer Phase 3 signed transactions (WP-66), and regulatory submission pipeline (WP-67+).
+- Added new "Beyond Phase F" section (§8a) documenting Phase G federated networks (WP-70–72), Trust Layer Phase 2 on-chain anchoring (WP-66), Trust Layer Phase 3 signed transactions (WP-67), and regulatory submission pipeline (WP-68+).
 - Expanded versioning table: split combined WP-48/49 row into individual rows; added separate rows for WP-50 through WP-63 as "future"; added Phase G long-term row.
-- Updated document footer from "grounded at v1.32.0" to "v1.37.0, 34 migrations, 282 Rust tests".
+
+**Pass 2 — v1.37.1 review recommendations incorporated:**
+- Updated ROADMAP.md status header from v1.37.0 to v1.37.1 to match shipped code version.
+- Added WP-64 (taxon chain re-anchoring tool) as a concrete Phase F work packet — makes WP-45 EXPERIMENTAL status production-safe; includes `reanchor_events` table, dry-run command, supervised admin workflow, and 8 unit tests.
+- Added WP-65 (A11y completion pass) as a Phase F work packet — targets 85 remaining label-association axe-core warnings in form-heavy views; introduces `<FormField>` wrapper; WCAG 2.1 AA 1.3.1 full compliance target.
+- Added WP-12 open-item note: 85 non-critical axe-core warnings remain (label association), tracked as Phase F WP-65 follow-up.
+- Updated WP-45 RECLASSIFICATION WARNING: added forward reference to WP-64 as the planned resolution.
+- Added Phase F priority callout block: WP-58 and WP-63 elevated as highest-ROI; WP-55 as key blocker for multi-technician shared labs; WP-59 + WP-60 as mutually reinforcing for FDA Part 11 compliance labs.
+- Expanded WP-55 (field-level permissions): full schema for `field_permissions` table, field-mask layer design, conditional UI rendering, `PermissionsEditor.svelte`, write-path preservation — framed around multi-technician shared lab use.
+- Expanded WP-58 (analytics): added "highest ROI for labs at scale" priority note; added strain performance report panel; added technician activity report (supervisor+); expanded KPI strip to include throughput metric and growth indicator; expanded to 10 Rust unit tests.
+- Expanded WP-59 (cloud backup): full zero-knowledge E2E encryption design (Argon2id key derivation, AES-256-GCM, per-backup nonce, header format); OS keychain integration; `CloudBackupPanel.svelte`; multi-device delta-journal sync conflict detection; expanded to 8 Rust unit tests.
+- Expanded WP-60 (regulatory compliance exports): full FDA 21 CFR Part 11 attestation bundle (cover doc + audit trail JSON + Merkle verification + user activity report + RSA-4096 signing); USDA APHIS PPQ Form 526 pre-fill; CITES Species Provenance Dossier with chain-of-custody table; `docs/regulatory-exports.md`; expanded to 8 Rust unit tests.
+- Expanded WP-63 (performance hardening): explicit 100k+ specimens target; exhaustive index audit covering 5 table/query combinations; streaming pedigree for deep trees; taxonomy navigator performance at scale; 6-benchmark Criterion suite with 20% regression canary in CI; seeded large-DB fixture generator; hard performance budgets (100ms list, 200ms dashboard cache, 500ms depth-10 pedigree).
+- Renumbered Beyond Phase F Trust Layer reservations: WP-65→WP-66 (Dogecoin anchoring), WP-66→WP-67 (signed transactions), WP-67+→WP-68+ (regulatory pipeline) to make room for new Phase F WP-64 and WP-65.
+- Added v1.37.1 row to versioning table documenting both ROADMAP update passes.
+- Updated footer to clarify document is at v1.37.1 while latest code release is v1.37.0 (no new migrations or code in v1.37.1).
 
 ## [1.37.0] - 2026-06-29
 
