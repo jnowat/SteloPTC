@@ -5,6 +5,29 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.2] - 2026-07-01
+
+### Stabilization & Hardening — Android CI fix + masking-model hardening (no new features)
+
+A focused stabilization sprint on top of v1.40.1: unblock the failing Android build, close a latent field-masking-configuration gap, and refresh the WP-50/51 foundation-honesty disclosures. No user-facing feature changed. All three mandated verification commands pass clean: `cargo test --lib --no-default-features` (**467 passing**, up from 464), `cargo clippy --no-default-features --lib -- -D warnings` (clean), and `npm run check` (**0 errors, 0 warnings**).
+
+**Android build (Task 1 — was blocking CI):**
+- **Root cause: Tauri CLI/runtime version drift.** The `build-android.yml` workflow installed the Tauri CLI with an unpinned `cargo install tauri-cli --locked`, which pulls the newest published CLI (2.11.4+) on every run, while the app links the `tauri` runtime crate pinned at **2.11.3** (via `Cargo.lock`). A CLI newer than the runtime regenerated the `gen/android` Gradle project from newer templates, shifting the build-output layout so the "Collect debug APK" step's `find` glob matched nothing and failed the job seconds after an otherwise-green build. The CLI is now pinned to `--version 2.11.3` to match the runtime exactly (a comment marks it to be bumped in lockstep with the `tauri` crate).
+- **APK-collection steps hardened.** Both the debug and release "Collect APK" steps now search the entire `outputs/` tree (not just `apk/`), match case-insensitively (`*ebug*`/`*elease*`), fall back progressively (universal → any-variant → any APK), and print the full build-output tree via a `::error::` annotation on a miss — so a future layout shift degrades to a clear diagnostic instead of a bare non-zero exit.
+
+**Field-masking model (Task 3 — WP-55 strategy decision):**
+- **Decision: keep the call-site masking model, harden it against drift.** Response-sanitization/typed-masking (Option B) was evaluated and rejected — in a language with no runtime reflection it needs either a heavy proc-macro framework or a field-name JSON walker that can't consult the role/entity context masking depends on, a poor trade for a deliberately tiny 3-field surface. The call-site model's one real weakness — a maskable field gaining a seed row or a new read path without a matching mask call — is now pinned shut by three guards in `db::permissions`: a canonical **`MASKABLE_FIELDS`** registry (single source of truth), a **tripwire test** that fails the build if the migration seed and the registry ever disagree, and a **`set_field_permission` guard** that refuses to persist a visibility rule for any field the read path doesn't actually mask (previously such a rule was a silent no-op that looked like protection). 3 new unit tests.
+- **Coverage re-audited, no bypass found.** `strain.genomic_fingerprint` is carried only by the full `Strain` struct (both read paths mask it; the pedigree/tree/export payloads use `StrainSummary`, which omits the field entirely); `breeding_program.goal`/`target_traits` are masked on both read paths with a `reject_if_restricted_marker` write-guard on create.
+
+**SMTP credential security (Task 2 — WP-52):**
+- **Both backup paths verified redacting; OS-keychain re-assessed and deliberately deferred.** The plaintext-storage warning in the Settings SMTP card and the SMTP-password redaction on *both* the local and cloud backup paths (with test coverage) were re-verified. Native OS-keychain storage was re-evaluated and deferred again, with the trade-off documented in ROADMAP.md WP-52 rather than half-built: a `keyring`-style crate adds a Linux **system** dependency (`libsecret`/Secret Service) that would break the `--no-default-features` unit-test guarantee, the mobile keystores are a separate API surface, and headless/CI Linux often has no Secret Service daemon — forcing a plaintext fallback that reintroduces today's exposure. Current mitigations (plaintext only in the local DB, never in any backup, prominent warning, least-privilege-account guidance) are the right posture for a patch release.
+
+**Cross-feature integration review (Task 5) & foundation honesty (Task 4):**
+- **Notifications, Analytics, and dashboard-cache paths re-reviewed — no gaps.** WP-52 notifications still draw only from non-maskable Work Queue fields and pass every candidate through the `[RESTRICTED]`-marker backstop; WP-58 analytics queries read only aggregates and non-maskable columns (`st.id`/`st.name`, counts, averages); the WP-63 dashboard-cache invalidation was re-audited end-to-end and confirmed complete after the v1.40.1 `thaw_vial` fix (every mutation to a cached dimension — stage/species/archived/quarantine/subculture-count/contamination — invalidates; location-only, frozen-vial, and audit-chain-only writes correctly do not). Existing regression coverage for both invariants was confirmed present.
+- **WP-50/WP-51 disclosures re-affirmed for v1.40.2.** Re-read against the code and left honest: PostgreSQL remains "a well-tested skeleton, not a working [second backend]" with no live-server verification, and LAN sync remains "data-model and detection logic only… no transport, no merge," with a dated note on each confirming this sprint changed no code there and added no verification — explicitly not softened to imply progress that did not happen.
+
+**Bump:** patch — **v1.40.2**.
+
 ## [1.40.1] - 2026-07-01
 
 ### Security & Hardening — Phase F review pass (no new features)

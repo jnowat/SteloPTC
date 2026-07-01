@@ -38,6 +38,43 @@ use std::collections::HashMap;
 /// `Option<String>` was already `None` for an unrelated reason.
 pub const RESTRICTED_MARKER: &str = "[RESTRICTED]";
 
+/// Canonical registry of every field the read path actually masks at a call
+/// site (WP-55). This is the single source of truth that ties together three
+/// things which would otherwise drift silently:
+///   1. the migration seed (`field_permissions` default rows, migration 036),
+///   2. the `apply_field_permissions` mask calls in the command layer
+///      (`commands::strains`, `commands::breeding`), and
+///   3. what the admin permissions editor is allowed to configure.
+///
+/// A pair listed here MUST have a corresponding `mask_optional_field` call on
+/// **every** read path that returns it. A pair NOT listed here is never masked,
+/// even if a `field_permissions` row somehow exists for it — so we refuse to
+/// create such a row (see [`set_field_permission`]) rather than let an admin
+/// believe they hid a field that the read path still returns in full. The test
+/// `maskable_fields_registry_matches_migration_seed` fails the build if this
+/// list and the migration seed ever disagree, catching "added a seed row but
+/// forgot the call site" (and the reverse) before it ships.
+///
+/// This is the deliberate hardening of the call-site masking model (WP-55
+/// strategy decision, v1.40.2): keep per-call-site masking — the idiomatic
+/// choice given Rust has no runtime reflection and the masked surface is
+/// intentionally tiny — but pin the set of masked fields to one auditable
+/// constant so the model cannot drift out of sync unnoticed.
+pub const MASKABLE_FIELDS: &[(&str, &str)] = &[
+    ("strain", "genomic_fingerprint"),
+    ("breeding_program", "goal"),
+    ("breeding_program", "target_traits"),
+];
+
+/// Whether `(entity_type, field_name)` is a field the read path actually masks
+/// (i.e. present in [`MASKABLE_FIELDS`]). Used to reject permission rules that
+/// would otherwise be silent no-ops.
+pub fn is_maskable_field(entity_type: &str, field_name: &str) -> bool {
+    MASKABLE_FIELDS
+        .iter()
+        .any(|(e, f)| *e == entity_type && *f == field_name)
+}
+
 /// Looks up whether `role` may see `field_name` on `entity_type`. Falls back
 /// to visible (permissive default) when no explicit row exists, so adding a
 /// brand-new sensitive field never silently locks everyone out before an
@@ -179,6 +216,20 @@ pub fn set_field_permission(
     field_name: &str,
     visible: bool,
 ) -> DbResult<()> {
+    // Refuse to store a rule for a field the read path does not actually mask.
+    // Without this, an admin could toggle "hide" on an arbitrary field and get
+    // a persisted `field_permissions` row that the read path never consults —
+    // a false sense of security (the field is still returned in full). Only the
+    // fields wired into a call-site mask (see `MASKABLE_FIELDS`) may be
+    // configured; everything else is rejected loudly instead of silently
+    // no-op'd.
+    if !is_maskable_field(entity_type, field_name) {
+        return Err(crate::db::DbError::Constraint(format!(
+            "Field '{}.{}' is not a maskable field — only {:?} can have visibility rules. \
+             Configuring visibility here would have no effect on what the read path returns.",
+            entity_type, field_name, MASKABLE_FIELDS
+        )));
+    }
     let existing: Option<String> = conn
         .query_row(
             "SELECT id FROM field_permissions WHERE role = ?1 AND entity_type = ?2 AND field_name = ?3",
@@ -259,6 +310,64 @@ mod tests {
         assert!(!is_field_visible(&conn, "tech", "strain", "genomic_fingerprint"));
         // Other roles are untouched.
         assert!(is_field_visible(&conn, "supervisor", "strain", "genomic_fingerprint"));
+    }
+
+    #[test]
+    fn maskable_fields_registry_matches_migration_seed() {
+        // Tripwire for the call-site masking model (WP-55): the fields the
+        // migration seeds into `field_permissions` must be exactly the fields
+        // the code masks at a call site (`MASKABLE_FIELDS`). If someone seeds a
+        // new field without wiring a mask call (or removes a mask without
+        // updating the seed), this fails — the two can never drift silently.
+        let conn = migrated_db();
+        let mut seeded: Vec<(String, String)> = conn
+            .prepare("SELECT DISTINCT entity_type, field_name FROM field_permissions")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+        let mut registry: Vec<(String, String)> = MASKABLE_FIELDS
+            .iter()
+            .map(|(e, f)| (e.to_string(), f.to_string()))
+            .collect();
+        seeded.sort();
+        registry.sort();
+        assert_eq!(
+            seeded, registry,
+            "the field_permissions migration seed and the MASKABLE_FIELDS registry must stay in sync"
+        );
+    }
+
+    #[test]
+    fn set_field_permission_rejects_a_non_maskable_field() {
+        // Guard: an admin must not be able to persist a visibility rule for a
+        // field the read path never masks — that would be a silent no-op that
+        // looks like protection but isn't. `strain.name` is a real column but
+        // is not in MASKABLE_FIELDS.
+        let conn = migrated_db();
+        let result = set_field_permission(&conn, "tech", "strain", "name", false);
+        assert!(result.is_err(), "setting a rule for a non-maskable field must be refused");
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(msg.contains("not a maskable field"), "error should explain why: {msg}");
+        // And nothing was written.
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM field_permissions WHERE entity_type='strain' AND field_name='name'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "a rejected rule must not leave a row behind");
+    }
+
+    #[test]
+    fn is_maskable_field_matches_registry() {
+        assert!(is_maskable_field("strain", "genomic_fingerprint"));
+        assert!(is_maskable_field("breeding_program", "goal"));
+        assert!(is_maskable_field("breeding_program", "target_traits"));
+        assert!(!is_maskable_field("strain", "name"));
+        assert!(!is_maskable_field("specimen", "notes"));
     }
 
     #[test]
