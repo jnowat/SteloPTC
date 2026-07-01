@@ -68,6 +68,24 @@ pub fn create_backup(
     std::fs::copy(&db_path, &backup_path)
         .map_err(|e| format!("Failed to copy database: {}", e))?;
 
+    // Security: `smtp_config.password` is stored in plaintext in the live
+    // database (see the WP-52 migration comment in db/migrations.rs for the
+    // disclosed trade-off — no OS-keychain integration yet). A backup file
+    // may be copied to removable media, uploaded to cloud storage, or handed
+    // to support, so it must not carry that secret even though the live
+    // database does. Redact it in the copy only; the live database and the
+    // SMTP-sending code path are untouched. Other smtp_config columns
+    // (host/port/username/from_address) aren't secret and are left intact so
+    // restoring from a backup doesn't force reconfiguring the whole mail
+    // server — just re-entering the password.
+    if let Err(e) = redact_smtp_password_in_backup(&backup_path) {
+        let _ = std::fs::remove_file(&backup_path);
+        return Err(format!(
+            "Failed to finalize backup (SMTP credential redaction): {}",
+            e
+        ));
+    }
+
     let backup_path_str = backup_path.to_string_lossy().to_string();
 
     queries::log_audit(
@@ -201,10 +219,133 @@ pub fn restore_backup(
     app.restart();
 }
 
+/// Clears `smtp_config.password` in the database file at `backup_path`,
+/// leaving every other column untouched. Operates on a standalone file copy,
+/// never the live database — see the call site in `create_backup`.
+///
+/// Forces `journal_mode = DELETE` on this one-shot connection before writing.
+/// The source `.db` file was checkpointed and copied as a self-contained
+/// snapshot, but its header still records WAL mode, so a plain write here
+/// would otherwise land in a freshly created sibling `-wal` file rather than
+/// the `.db` file itself — meaning a backup file copied or uploaded on its
+/// own (without that sibling) would silently carry the *unredacted*
+/// password. Switching to DELETE mode first forces SQLite to checkpoint and
+/// write directly into the single `.db` file, and leaves no `-wal`/`-shm`
+/// behind afterward.
+fn redact_smtp_password_in_backup(backup_path: &std::path::Path) -> Result<(), String> {
+    let conn = rusqlite::Connection::open(backup_path).map_err(|e| e.to_string())?;
+    conn.pragma_update(None, "journal_mode", "DELETE")
+        .map_err(|e| e.to_string())?;
+    conn.execute("UPDATE smtp_config SET password = NULL WHERE id = 1", [])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 #[derive(serde::Serialize)]
 pub struct BackupInfo {
     pub file_name: String,
     pub path: String,
     pub size_bytes: u64,
     pub created_at: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    /// Unique-per-test temp file path; no `tempfile` dependency needed for
+    /// this one-off use. Callers must clean up with `cleanup_db_file`.
+    fn temp_db_path(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "steloptc_backup_test_{}_{}.db",
+            label,
+            uuid::Uuid::new_v4()
+        ))
+    }
+
+    fn cleanup_db_file(path: &std::path::Path) {
+        let _ = std::fs::remove_file(path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+        let _ = std::fs::remove_file(path.with_extension("db-journal"));
+    }
+
+    #[test]
+    fn redact_smtp_password_in_backup_clears_password_only() {
+        let path = temp_db_path("redact");
+        {
+            let conn = Connection::open(&path).unwrap();
+            crate::db::migrations::run_all(&conn).unwrap();
+            conn.execute(
+                "UPDATE smtp_config SET host = 'smtp.example.com', username = 'lab@example.com', \
+                 password = 'super-secret', from_address = 'lab@example.com' WHERE id = 1",
+                [],
+            )
+            .unwrap();
+        }
+
+        redact_smtp_password_in_backup(&path).unwrap();
+
+        let conn = Connection::open(&path).unwrap();
+        let (host, username, password, from_address): (
+            Option<String>,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ) = conn
+            .query_row(
+                "SELECT host, username, password, from_address FROM smtp_config WHERE id = 1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        drop(conn);
+
+        assert_eq!(password, None, "password must be redacted in the backup file");
+        assert_eq!(host.as_deref(), Some("smtp.example.com"), "non-secret fields must survive redaction");
+        assert_eq!(username.as_deref(), Some("lab@example.com"));
+        assert_eq!(from_address.as_deref(), Some("lab@example.com"));
+
+        cleanup_db_file(&path);
+    }
+
+    #[test]
+    fn redact_smtp_password_in_backup_succeeds_when_no_password_was_set() {
+        let path = temp_db_path("redact_empty");
+        {
+            let conn = Connection::open(&path).unwrap();
+            crate::db::migrations::run_all(&conn).unwrap();
+        }
+
+        redact_smtp_password_in_backup(&path).unwrap();
+
+        cleanup_db_file(&path);
+    }
+
+    #[test]
+    fn redact_smtp_password_in_backup_leaves_no_wal_sidecar_file() {
+        let path = temp_db_path("redact_wal");
+        {
+            let conn = Connection::open(&path).unwrap();
+            crate::db::migrations::run_all(&conn).unwrap();
+            conn.execute(
+                "UPDATE smtp_config SET password = 'super-secret' WHERE id = 1",
+                [],
+            )
+            .unwrap();
+        }
+
+        redact_smtp_password_in_backup(&path).unwrap();
+
+        // A `.db-wal` sidecar left behind would mean a copy of just the
+        // `.db` file could still carry the unredacted password — see the
+        // doc comment on `redact_smtp_password_in_backup`.
+        assert!(
+            !path.with_extension("db-wal").exists(),
+            "redaction must not leave a WAL sidecar file that could carry the unredacted password"
+        );
+
+        cleanup_db_file(&path);
+    }
 }

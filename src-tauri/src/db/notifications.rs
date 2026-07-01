@@ -3,10 +3,21 @@
 //! `compute_due_notifications` builds candidates entirely from
 //! `db::work_queue::compute_work_queue_items` (accession, reason,
 //! reason_code, urgency) — fields that are never subject to WP-55 field
-//! masking. This is the enforcement mechanism for "notifications must
+//! masking. This is the primary enforcement mechanism for "notifications must
 //! respect field-level permissions": the notification templates simply never
 //! draw from a maskable entity/field in the first place, so there is no
-//! masked value that could leak into a notification body.
+//! masked value that could leak into a notification body today.
+//!
+//! As a second, defense-in-depth layer, `compute_due_notifications` also runs
+//! every candidate through [`drop_candidates_with_restricted_marker`] before
+//! returning — a single, centralized choke point that every current and
+//! future notification source passes through, rather than relying on each
+//! new field/source remembering to sanitize itself. It should never trigger
+//! given the above, but if a future change adds a `WorkQueueItem` field (or a
+//! new notification source entirely) sourced from a maskable entity without
+//! updating this module, the leaked candidate is dropped and logged instead
+//! of silently reaching a desktop popup, an email, or the audit log (all of
+//! which sit downstream of this function).
 //!
 //! Direct integration with `get_compliance_flags` (permits, HLB, mycoplasma)
 //! is deferred — see the WP-52 "As built" note in ROADMAP.md. Work Queue
@@ -43,7 +54,7 @@ pub fn severity_meets_threshold(candidate_severity: &str, min_severity: &str) ->
 /// ("critical"/"high"/"normal") as notification severity, so no mapping is needed.
 pub fn compute_due_notifications(conn: &Connection) -> Result<Vec<NotificationCandidate>, String> {
     let items = crate::db::work_queue::compute_work_queue_items(conn)?;
-    Ok(items
+    let candidates = items
         .into_iter()
         .map(|item| NotificationCandidate {
             severity: item.urgency,
@@ -56,7 +67,35 @@ pub fn compute_due_notifications(conn: &Connection) -> Result<Vec<NotificationCa
             source_reason_code: item.reason_code,
             specimen_accession: Some(item.accession_number),
         })
-        .collect())
+        .collect();
+    Ok(drop_candidates_with_restricted_marker(candidates))
+}
+
+/// Defense-in-depth backstop described in the module doc comment: removes any
+/// candidate whose content contains the [`crate::db::permissions::RESTRICTED_MARKER`]
+/// placeholder, logging when it happens since it indicates a masked value
+/// reached a code path that should never see one.
+fn drop_candidates_with_restricted_marker(
+    candidates: Vec<NotificationCandidate>,
+) -> Vec<NotificationCandidate> {
+    let marker = crate::db::permissions::RESTRICTED_MARKER;
+    let contains_marker = |c: &NotificationCandidate| {
+        c.subject.contains(marker)
+            || c.body.contains(marker)
+            || c.source_reason_code.contains(marker)
+            || c.specimen_accession.as_deref().is_some_and(|a| a.contains(marker))
+    };
+    let (safe, leaked): (Vec<_>, Vec<_>) = candidates.into_iter().partition(|c| !contains_marker(c));
+    if !leaked.is_empty() {
+        eprintln!(
+            "Notification pipeline: dropped {} candidate(s) containing the restricted-field \
+             placeholder ('{}'). This should never happen — a masked value reached the \
+             notification pipeline; investigate before trusting this dispatch cycle's data.",
+            leaked.len(),
+            marker
+        );
+    }
+    safe
 }
 
 /// Returns (enabled, min_severity) for a user's channel, defaulting to
@@ -312,6 +351,58 @@ mod tests {
         // Empty lab => no candidates (mirrors compute_work_queue_items behavior).
         let candidates = compute_due_notifications(&conn).unwrap();
         assert!(candidates.is_empty());
+    }
+
+    // ── WP-55: notification-pipeline masking backstop ──────────────────────────
+
+    fn sample_candidate(accession: &str) -> NotificationCandidate {
+        NotificationCandidate {
+            severity: "high".to_string(),
+            subject: format!("[SteloPTC] {} — subculture due", accession),
+            body: format!("{}: Subculture overdue by 3 days", accession),
+            source_reason_code: "subculture_due".to_string(),
+            specimen_accession: Some(accession.to_string()),
+        }
+    }
+
+    #[test]
+    fn drop_candidates_with_restricted_marker_passes_through_clean_candidates() {
+        let candidates = vec![sample_candidate("ACC-1"), sample_candidate("ACC-2")];
+        let result = drop_candidates_with_restricted_marker(candidates);
+        assert_eq!(result.len(), 2);
+    }
+
+    #[test]
+    fn drop_candidates_with_restricted_marker_removes_leaked_body() {
+        let clean = sample_candidate("ACC-1");
+        let mut leaked = sample_candidate("ACC-2");
+        leaked.body = format!("ACC-2: fingerprint {}", crate::db::permissions::RESTRICTED_MARKER);
+
+        let result = drop_candidates_with_restricted_marker(vec![clean, leaked]);
+        assert_eq!(result.len(), 1, "the leaked candidate must be dropped, not just the clean one kept incidentally");
+        assert_eq!(result[0].specimen_accession.as_deref(), Some("ACC-1"));
+    }
+
+    #[test]
+    fn drop_candidates_with_restricted_marker_checks_every_string_field() {
+        use crate::db::permissions::RESTRICTED_MARKER;
+
+        let mut leaked_subject = sample_candidate("ACC-3");
+        leaked_subject.subject = RESTRICTED_MARKER.to_string();
+        assert!(drop_candidates_with_restricted_marker(vec![leaked_subject]).is_empty(), "subject leak must be caught");
+
+        let mut leaked_reason_code = sample_candidate("ACC-4");
+        leaked_reason_code.source_reason_code = RESTRICTED_MARKER.to_string();
+        assert!(drop_candidates_with_restricted_marker(vec![leaked_reason_code]).is_empty(), "source_reason_code leak must be caught");
+
+        let mut leaked_accession = sample_candidate("ACC-5");
+        leaked_accession.specimen_accession = Some(RESTRICTED_MARKER.to_string());
+        assert!(drop_candidates_with_restricted_marker(vec![leaked_accession]).is_empty(), "specimen_accession leak must be caught");
+    }
+
+    #[test]
+    fn drop_candidates_with_restricted_marker_handles_empty_input() {
+        assert!(drop_candidates_with_restricted_marker(Vec::new()).is_empty());
     }
 
     #[test]

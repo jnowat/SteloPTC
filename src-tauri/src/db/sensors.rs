@@ -16,12 +16,47 @@
 //! listener call `parse_sensor_payload` on each incoming message and then
 //! `create_environmental_reading` with the appropriate `source` value — the
 //! ingestion pipeline below already accepts exactly that shape of input.
+//!
+//! **Trust gap in `source` (documented after the v1.39.1 self-review):**
+//! because no hardware transport is wired up yet, nothing in this codebase
+//! has ever legitimately produced a reading with `source` set to
+//! `usb_serial`, `bluetooth`, or `mqtt` — every reading that exists today was
+//! created through manual entry. `source` is a **caller-supplied label**,
+//! not a system-verified fact: both `create_environmental_reading` and
+//! `commands::sensors::ingest_sensor_payload` are ordinary `#[tauri::command]`
+//! entry points, and neither has any way to confirm a reading claiming
+//! `usb_serial` actually came from a USB device rather than a human (or a
+//! script) simply passing that string. `validate_source` below only checks
+//! that the value is one of the four known labels — it is input validation,
+//! not provenance verification, and should not be mistaken for the latter.
+//! Anyone relying on `source` for a compliance or audit narrative (e.g. "this
+//! reading was objectively machine-collected, not operator-entered") should
+//! not do so until a real transport listener exists and, ideally, is the
+//! only caller permitted to set a non-`manual` source.
 
 use super::DbResult;
 use crate::models::sensors::{CreateEnvironmentalReadingRequest, EnvironmentalAlert, EnvironmentalReading, ParsedReading};
 use rusqlite::{params, Connection};
 
 const KNOWN_READING_TYPES: &[&str] = &["temp_c", "humidity_pct", "co2_ppm", "light_lux", "ph", "custom"];
+const KNOWN_SOURCES: &[&str] = &["manual", "usb_serial", "bluetooth", "mqtt"];
+
+/// Checks `source` against the same enum the `environmental_readings.source`
+/// CHECK constraint enforces at the database layer, so a bad value gets a
+/// clear, specific error here rather than a raw SQLite constraint-violation
+/// message. This is input validation only — see the module doc comment's
+/// "Trust gap in `source`" note for what it does *not* verify.
+pub fn validate_source(source: &str) -> Result<(), String> {
+    if KNOWN_SOURCES.contains(&source) {
+        Ok(())
+    } else {
+        Err(format!(
+            "Unknown reading source '{}'. Must be one of: {}",
+            source,
+            KNOWN_SOURCES.join(", ")
+        ))
+    }
+}
 
 /// Parses a raw sensor payload into one or more readings. Accepts two common
 /// shapes: a comma-separated `key=value` line (typical of a USB/serial
@@ -113,6 +148,10 @@ pub fn validate_reading_value(reading_type: &str, value: f64) -> Result<(), Stri
     Ok(())
 }
 
+/// `req.source` defaults to `"manual"` when omitted and is checked against
+/// [`validate_source`] otherwise — see the module doc comment's "Trust gap in
+/// `source`" note: this confirms the value is a recognized label, not that it
+/// truthfully describes how the reading was collected.
 pub fn create_environmental_reading(
     conn: &Connection,
     req: &CreateEnvironmentalReadingRequest,
@@ -123,8 +162,10 @@ pub fn create_environmental_reading(
     }
     validate_reading_value(&req.reading_type, req.value)?;
 
-    let id = uuid::Uuid::new_v4().to_string();
     let source = req.source.as_deref().unwrap_or("manual");
+    validate_source(source)?;
+
+    let id = uuid::Uuid::new_v4().to_string();
     conn.execute(
         "INSERT INTO environmental_readings \
          (id, specimen_id, subculture_id, reading_type, value, unit, source, recorded_at, notes, created_by) \
@@ -331,6 +372,27 @@ mod tests {
     }
 
     #[test]
+    fn validate_source_accepts_all_known_sources() {
+        for s in KNOWN_SOURCES {
+            assert!(validate_source(s).is_ok(), "'{}' should be a recognized source", s);
+        }
+    }
+
+    #[test]
+    fn validate_source_rejects_unknown_value() {
+        let err = validate_source("wifi_sensor").unwrap_err();
+        assert!(err.contains("wifi_sensor"), "error should name the rejected value: {err}");
+        assert!(err.contains("manual"), "error should list the known values: {err}");
+    }
+
+    #[test]
+    fn validate_source_rejects_case_mismatch() {
+        // Enum values are lowercase in the CHECK constraint; no case-folding.
+        assert!(validate_source("Manual").is_err());
+        assert!(validate_source("USB_SERIAL").is_err());
+    }
+
+    #[test]
     fn create_environmental_reading_requires_specimen_or_subculture() {
         let conn = migrated_db();
         let req = CreateEnvironmentalReadingRequest {
@@ -366,6 +428,45 @@ mod tests {
         assert_eq!(readings[0].id, id);
         assert_eq!(readings[0].source, "manual");
         assert_eq!(readings[0].value, 24.5);
+    }
+
+    #[test]
+    fn create_environmental_reading_accepts_each_known_source() {
+        let conn = migrated_db();
+        insert_minimal_specimen(&conn, "sp-src");
+        for s in KNOWN_SOURCES {
+            let req = CreateEnvironmentalReadingRequest {
+                specimen_id: Some("sp-src".to_string()),
+                subculture_id: None,
+                reading_type: "temp_c".to_string(),
+                value: 22.0,
+                unit: None,
+                source: Some(s.to_string()),
+                recorded_at: None,
+                notes: None,
+            };
+            assert!(create_environmental_reading(&conn, &req, None).is_ok(), "'{}' should be accepted", s);
+        }
+    }
+
+    #[test]
+    fn create_environmental_reading_rejects_unknown_source_before_hitting_the_db() {
+        let conn = migrated_db();
+        insert_minimal_specimen(&conn, "sp-src-2");
+        let req = CreateEnvironmentalReadingRequest {
+            specimen_id: Some("sp-src-2".to_string()),
+            subculture_id: None,
+            reading_type: "temp_c".to_string(),
+            value: 22.0,
+            unit: None,
+            source: Some("wifi_sensor".to_string()),
+            recorded_at: None,
+            notes: None,
+        };
+        let err = create_environmental_reading(&conn, &req, None).unwrap_err();
+        // A clear validation error, not a raw SQLite CHECK-constraint message.
+        assert!(err.contains("wifi_sensor"), "error should name the rejected value: {err}");
+        assert_eq!(list_environmental_readings(&conn, Some("sp-src-2"), 10).unwrap().len(), 0);
     }
 
     #[test]

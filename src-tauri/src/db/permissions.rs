@@ -11,13 +11,26 @@
 //! `strains.genomic_fingerprint` and `breeding_programs.goal` /
 //! `target_traits` — matching the packet's own acceptance-criteria examples.
 //! Extending masking to additional fields/entities is a mechanical follow-up
-//! (add a seed row + one `mask_optional_field` call at the relevant read
-//! site) and is intentionally left as future work rather than a sweeping
-//! rewrite of every read command in the codebase.
+//! (add a seed row + one call to `FieldPermissionSet::mask_optional_field` at
+//! the relevant read site) and is intentionally left as future work rather
+//! than a sweeping rewrite of every read command in the codebase.
+//!
+//! **Write-path guard, mandatory wherever a masked field is also writable:**
+//! a read command can return the [`RESTRICTED_MARKER`] placeholder in place
+//! of a real value. If a UI pre-fills an edit form from that read result and
+//! the user submits without noticing, the literal marker string would
+//! overwrite the real value — permanently destroying it. Every write command
+//! that accepts a value for a masked field **must** call
+//! [`reject_if_restricted_marker`] on that value before persisting it. This
+//! was found and fixed as a real (not hypothetical) bug: `update_strain_status`
+//! unconditionally wrote `genomic_fingerprint` on every call, and
+//! `StrainManager.svelte` pre-filled its form from the (possibly masked)
+//! current value — see the regression tests below and in `commands::strains`.
 
 use super::DbResult;
 use crate::models::permissions::FieldPermission;
 use rusqlite::{params, Connection};
+use std::collections::HashMap;
 
 /// Returned in place of a real value when a field is masked. Chosen instead
 /// of `null` so the frontend can distinguish "no data" from "hidden data"
@@ -43,6 +56,10 @@ pub fn is_field_visible(conn: &Connection, role: &str, entity_type: &str, field_
 /// Never turns `None` into a restricted marker (there's nothing to hide) and
 /// never removes the field itself — callers always get `Some(...)` back for
 /// a masked, previously-populated value.
+///
+/// Issues one query per call — fine for a single-record read (`get_strain`),
+/// wasteful for a list of N rows (N queries with identical parameters). Use
+/// [`FieldPermissionSet`] instead for any list/loop call site.
 pub fn mask_optional_field(
     conn: &Connection,
     role: &str,
@@ -57,6 +74,75 @@ pub fn mask_optional_field(
         value
     } else {
         Some(RESTRICTED_MARKER.to_string())
+    }
+}
+
+/// Rejects a write when `value` is literally the restricted-value placeholder.
+///
+/// Call this on every value a write command accepts for a field that is also
+/// gated by masking on read, **before** persisting it. This is the hard
+/// backend guarantee that a masked read result can never be round-tripped
+/// back into the database as if it were real data — it holds regardless of
+/// what any frontend does or fails to do.
+pub fn reject_if_restricted_marker(value: Option<&str>, field_label: &str) -> Result<(), String> {
+    if value == Some(RESTRICTED_MARKER) {
+        Err(format!(
+            "'{}' cannot be saved as \"{}\" — that placeholder is shown when a field is \
+             restricted for your role; it is never real data. Leave the field blank to keep \
+             the existing value unchanged, or ask an admin to grant visibility before editing it.",
+            field_label, RESTRICTED_MARKER
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// A role's full set of field-visibility rules, loaded once and then queried
+/// in memory — the fix for the N+1 pattern `mask_optional_field` has when
+/// called once per field per row across a list of N records. Load one of
+/// these per request (not per row) and reuse it for every row.
+pub struct FieldPermissionSet {
+    /// `(entity_type, field_name) -> visible`. Absent entries default to
+    /// visible, matching `is_field_visible`'s permissive-default behavior.
+    visible: HashMap<(String, String), bool>,
+}
+
+impl FieldPermissionSet {
+    pub fn load(conn: &Connection, role: &str) -> DbResult<Self> {
+        let mut stmt = conn.prepare(
+            "SELECT entity_type, field_name, visible FROM field_permissions WHERE role = ?1",
+        )?;
+        let rows = stmt.query_map(params![role], |row| {
+            Ok((
+                (row.get::<_, String>("entity_type")?, row.get::<_, String>("field_name")?),
+                row.get::<_, i64>("visible")? != 0,
+            ))
+        })?;
+        let mut visible = HashMap::new();
+        for row in rows {
+            let (key, is_visible) = row?;
+            visible.insert(key, is_visible);
+        }
+        Ok(Self { visible })
+    }
+
+    pub fn is_visible(&self, entity_type: &str, field_name: &str) -> bool {
+        self.visible
+            .get(&(entity_type.to_string(), field_name.to_string()))
+            .copied()
+            .unwrap_or(true)
+    }
+
+    /// In-memory equivalent of [`mask_optional_field`] — no query per call.
+    pub fn mask_optional_field(&self, entity_type: &str, field_name: &str, value: Option<String>) -> Option<String> {
+        if value.is_none() {
+            return value;
+        }
+        if self.is_visible(entity_type, field_name) {
+            value
+        } else {
+            Some(RESTRICTED_MARKER.to_string())
+        }
     }
 }
 
@@ -264,5 +350,96 @@ mod tests {
             )
             .unwrap();
         assert_eq!(stored, "ATCG-SENSITIVE-VALUE", "audit log must always capture the full, unmasked value");
+    }
+
+    // ── reject_if_restricted_marker (write-path corruption guard) ────────────
+
+    #[test]
+    fn reject_if_restricted_marker_rejects_the_exact_marker() {
+        let result = reject_if_restricted_marker(Some(RESTRICTED_MARKER), "Genomic fingerprint");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Genomic fingerprint"));
+    }
+
+    #[test]
+    fn reject_if_restricted_marker_allows_real_values() {
+        assert!(reject_if_restricted_marker(Some("ATCG123"), "Genomic fingerprint").is_ok());
+    }
+
+    #[test]
+    fn reject_if_restricted_marker_allows_none() {
+        assert!(reject_if_restricted_marker(None, "Genomic fingerprint").is_ok());
+    }
+
+    #[test]
+    fn reject_if_restricted_marker_allows_empty_string() {
+        // Empty string is a real (if unusual) value a caller might legitimately
+        // send to clear a field — only the exact marker text is rejected.
+        assert!(reject_if_restricted_marker(Some(""), "Genomic fingerprint").is_ok());
+    }
+
+    // ── FieldPermissionSet (N+1 fix) ──────────────────────────────────────────
+
+    #[test]
+    fn field_permission_set_matches_is_field_visible_for_seeded_defaults() {
+        let conn = migrated_db();
+        let set = FieldPermissionSet::load(&conn, "tech").unwrap();
+        assert_eq!(set.is_visible("strain", "genomic_fingerprint"), is_field_visible(&conn, "tech", "strain", "genomic_fingerprint"));
+        assert_eq!(set.is_visible("breeding_program", "goal"), is_field_visible(&conn, "tech", "breeding_program", "goal"));
+    }
+
+    #[test]
+    fn field_permission_set_defaults_true_for_unseeded_field() {
+        let conn = migrated_db();
+        let set = FieldPermissionSet::load(&conn, "tech").unwrap();
+        assert!(set.is_visible("strain", "some_new_field_no_row_yet"));
+    }
+
+    #[test]
+    fn field_permission_set_reflects_restrictions_after_load() {
+        let conn = migrated_db();
+        set_field_permission(&conn, "tech", "strain", "genomic_fingerprint", false).unwrap();
+        let set = FieldPermissionSet::load(&conn, "tech").unwrap();
+        assert!(!set.is_visible("strain", "genomic_fingerprint"));
+
+        // A different role's set, loaded separately, is unaffected.
+        let admin_set = FieldPermissionSet::load(&conn, "admin").unwrap();
+        assert!(admin_set.is_visible("strain", "genomic_fingerprint"));
+    }
+
+    #[test]
+    fn field_permission_set_mask_optional_field_matches_free_function() {
+        let conn = migrated_db();
+        set_field_permission(&conn, "tech", "strain", "genomic_fingerprint", false).unwrap();
+        let set = FieldPermissionSet::load(&conn, "tech").unwrap();
+
+        let via_set = set.mask_optional_field("strain", "genomic_fingerprint", Some("ATCG123".to_string()));
+        let via_free_fn = mask_optional_field(&conn, "tech", "strain", "genomic_fingerprint", Some("ATCG123".to_string()));
+        assert_eq!(via_set, via_free_fn);
+        assert_eq!(via_set.as_deref(), Some(RESTRICTED_MARKER));
+    }
+
+    #[test]
+    fn field_permission_set_never_masks_none() {
+        let conn = migrated_db();
+        set_field_permission(&conn, "tech", "strain", "genomic_fingerprint", false).unwrap();
+        let set = FieldPermissionSet::load(&conn, "tech").unwrap();
+        assert_eq!(set.mask_optional_field("strain", "genomic_fingerprint", None), None);
+    }
+
+    #[test]
+    fn field_permission_set_one_query_covers_a_full_list() {
+        // Regression guard for the N+1 pattern: loading once and checking N
+        // times must not touch the database again after `load`. We can't
+        // directly count queries here without instrumentation, but we can
+        // assert the set is fully self-contained (no `Connection` stored)
+        // by checking its type has no lifetime tied to the connection —
+        // this is enforced at compile time (FieldPermissionSet owns a
+        // HashMap<(String,String), bool>, not a &Connection), so a
+        // compile-only check is the meaningful assertion here.
+        let conn = migrated_db();
+        let set = FieldPermissionSet::load(&conn, "tech").unwrap();
+        drop(conn); // if `set` borrowed the connection, this would fail to compile/drop safely
+        assert!(set.is_visible("strain", "genomic_fingerprint"));
     }
 }

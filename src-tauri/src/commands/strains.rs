@@ -166,9 +166,13 @@ pub fn create_strain(
 
 /// WP-55: masks `genomic_fingerprint` per the calling user's role. Applied
 /// only here (the read-response construction), never at the DB/audit level.
-fn apply_field_permissions(conn: &rusqlite::Connection, role: &str, mut strain: Strain) -> Strain {
+/// Takes a pre-loaded [`crate::db::permissions::FieldPermissionSet`] rather
+/// than querying per call — `list_strains_by_species` used to call this once
+/// per row, issuing one identical `field_permissions` query per strain in
+/// the list (an N+1 pattern fixed alongside the corruption bug below).
+fn apply_field_permissions(perms: &crate::db::permissions::FieldPermissionSet, mut strain: Strain) -> Strain {
     strain.genomic_fingerprint =
-        crate::db::permissions::mask_optional_field(conn, role, "strain", "genomic_fingerprint", strain.genomic_fingerprint);
+        perms.mask_optional_field("strain", "genomic_fingerprint", strain.genomic_fingerprint);
     strain
 }
 
@@ -181,7 +185,9 @@ pub fn get_strain(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let user = auth_service::validate_session(&db, &token)?;
     let strain = load_strain(&db.conn, &id)?;
-    Ok(apply_field_permissions(&db.conn, user.role.as_str(), strain))
+    let perms = crate::db::permissions::FieldPermissionSet::load(&db.conn, user.role.as_str())
+        .map_err(|e| e.to_string())?;
+    Ok(apply_field_permissions(&perms, strain))
 }
 
 #[tauri::command]
@@ -209,9 +215,13 @@ pub fn list_strains_by_species(
         .query_map(params![species_id], row_to_strain)
         .map_err(|e| e.to_string())?;
 
+    // Loaded once for the whole list, not once per row — see the doc comment
+    // on `apply_field_permissions`.
+    let perms = crate::db::permissions::FieldPermissionSet::load(&db.conn, user.role.as_str())
+        .map_err(|e| e.to_string())?;
     let strains: Vec<Strain> = rows
         .filter_map(|r| r.ok())
-        .map(|s| apply_field_permissions(&db.conn, user.role.as_str(), s))
+        .map(|s| apply_field_permissions(&perms, s))
         .collect();
     Ok(strains)
 }
@@ -330,28 +340,21 @@ pub fn update_strain_status(
         )
         .map_err(|_| "Strain not found".to_string())?;
 
-    queries::validate_strain_status_transition(
+    // WP-55: validation, the write-path guard against a masked
+    // "[RESTRICTED]" genomic_fingerprint round-tripping back into the
+    // database, and the actual UPDATE all live in
+    // `queries::apply_strain_status_update` so they can be unit-tested
+    // directly. See that function's doc comment for details.
+    queries::apply_strain_status_update(
+        &db.conn,
+        &request.id,
         &current_status,
         &request.status,
+        request.claimed_by.as_deref(),
+        request.claimed_at.as_deref(),
         request.confirmation_basis.as_deref(),
         request.genomic_fingerprint.as_deref(),
     )?;
-
-    db.conn
-        .execute(
-            "UPDATE strains SET status = ?1, claimed_by = ?2, claimed_at = ?3,
-             confirmation_basis = ?4, genomic_fingerprint = ?5,
-             updated_at = datetime('now') WHERE id = ?6",
-            params![
-                request.status,
-                request.claimed_by,
-                request.claimed_at,
-                request.confirmation_basis,
-                request.genomic_fingerprint,
-                request.id
-            ],
-        )
-        .map_err(|e| format!("Failed to update status: {}", e))?;
 
     queries::log_audit(
         &db.conn,
