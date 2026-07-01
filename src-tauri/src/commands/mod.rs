@@ -24,3 +24,6 @@ pub mod fruiting;
 pub mod breeding;
 pub mod backend_config;
 pub mod sync;
+pub mod permissions;
+pub mod sensors;
+pub mod notifications;

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getStrain, getGenerationalStats, getStrainAncestry, type GenerationalStats } from '../api';
+  import { getStrain, getGenerationalStats, getStrainAncestry, RESTRICTED_MARKER, type GenerationalStats } from '../api';
   import { addNotification } from '../stores/app';
 
   let { strainId, onclose }: { strainId: string; onclose: () => void } = $props();
@@ -122,7 +122,14 @@
                 <span class="dg-label">Basis</span><span class="basis-text">{strain.confirmation_basis}</span>
               {/if}
               {#if strain.genomic_fingerprint}
-                <span class="dg-label">Fingerprint</span><span><code class="fingerprint">{strain.genomic_fingerprint}</code></span>
+                <span class="dg-label">Fingerprint</span>
+                <span>
+                  {#if strain.genomic_fingerprint === RESTRICTED_MARKER}
+                    <span class="restricted-chip" title="Your role does not have permission to view this field">🔒 Restricted</span>
+                  {:else}
+                    <code class="fingerprint">{strain.genomic_fingerprint}</code>
+                  {/if}
+                </span>
               {/if}
             </div>
 
@@ -238,6 +245,19 @@
 </div>
 
 <style>
+  .restricted-chip {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: #f1f5f9;
+    color: #64748b;
+    font-size: 12px;
+    font-style: italic;
+  }
+  :global(.dark) .restricted-chip {
+    background: #1e293b;
+    color: #94a3b8;
+  }
   .sd-backdrop {
     position: fixed;
     inset: 0;

@@ -164,6 +164,14 @@ pub fn create_strain(
     get_strain(state, token, id)
 }
 
+/// WP-55: masks `genomic_fingerprint` per the calling user's role. Applied
+/// only here (the read-response construction), never at the DB/audit level.
+fn apply_field_permissions(conn: &rusqlite::Connection, role: &str, mut strain: Strain) -> Strain {
+    strain.genomic_fingerprint =
+        crate::db::permissions::mask_optional_field(conn, role, "strain", "genomic_fingerprint", strain.genomic_fingerprint);
+    strain
+}
+
 #[tauri::command]
 pub fn get_strain(
     state: State<AppState>,
@@ -171,8 +179,9 @@ pub fn get_strain(
     id: String,
 ) -> Result<Strain, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let _user = auth_service::validate_session(&db, &token)?;
-    load_strain(&db.conn, &id)
+    let user = auth_service::validate_session(&db, &token)?;
+    let strain = load_strain(&db.conn, &id)?;
+    Ok(apply_field_permissions(&db.conn, user.role.as_str(), strain))
 }
 
 #[tauri::command]
@@ -182,7 +191,7 @@ pub fn list_strains_by_species(
     species_id: String,
 ) -> Result<Vec<Strain>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let _user = auth_service::validate_session(&db, &token)?;
+    let user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db
         .conn
@@ -200,7 +209,10 @@ pub fn list_strains_by_species(
         .query_map(params![species_id], row_to_strain)
         .map_err(|e| e.to_string())?;
 
-    let strains: Vec<Strain> = rows.filter_map(|r| r.ok()).collect();
+    let strains: Vec<Strain> = rows
+        .filter_map(|r| r.ok())
+        .map(|s| apply_field_permissions(&db.conn, user.role.as_str(), s))
+        .collect();
     Ok(strains)
 }
 

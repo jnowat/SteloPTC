@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, listBackups, restoreBackup, resetDatabase, getContaminationStats, getSubcultureSchedule, getLabProfile, getVialSummaryByLine, getCultureMaintenanceAlerts } from '../api';
+  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, listBackups, restoreBackup, resetDatabase, getContaminationStats, getSubcultureSchedule, getLabProfile, getVialSummaryByLine, getCultureMaintenanceAlerts, getEnvironmentalAlerts } from '../api';
   import { navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import FirstRun from './FirstRun.svelte';
@@ -14,6 +14,7 @@
   let labProfile = $state<string>('');
   let vialSummary = $state<any[]>([]);
   let maintenanceAlerts = $state<any[]>([]);
+  let environmentalAlerts = $state<any[]>([]);
   let loading = $state(true);
 
   let overdueItems = $derived(schedule.filter((e: any) => e.is_overdue));
@@ -48,7 +49,7 @@
   async function loadDashboard() {
     loading = true;
     try {
-      const [s, r, f, ls, cs, sch, lp, vs, ma] = await Promise.all([
+      const [s, r, f, ls, cs, sch, lp, vs, ma, ea] = await Promise.all([
         getSpecimenStats(),
         getActiveReminders(),
         getComplianceFlags(),
@@ -58,6 +59,7 @@
         getLabProfile(),
         getVialSummaryByLine(),
         getCultureMaintenanceAlerts(),
+        getEnvironmentalAlerts(),
       ]);
       stats = s;
       reminders = r;
@@ -68,6 +70,7 @@
       labProfile = lp;
       vialSummary = vs;
       maintenanceAlerts = ma;
+      environmentalAlerts = ea;
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -606,6 +609,30 @@
             <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('compliance')} title="View all compliance flags">
               View compliance
             </button>
+          {/if}
+        </div>
+      {/if}
+
+      <!-- WP-54: Environmental Alerts (cell_culture / mycology only) -->
+      {#if labProfile === 'cell_culture' || labProfile === 'mycology'}
+        <div class="panel">
+          <h3 title="Recent environmental readings outside their configured min/max threshold">Environmental Alerts</h3>
+          {#if environmentalAlerts.length === 0}
+            <p class="empty-state">No environmental readings out of range</p>
+          {:else}
+            <div class="flag-list">
+              {#each environmentalAlerts.slice(0, 8) as a}
+                <div class="flag-item">
+                  <span class="badge badge-yellow" title="Reading type: {a.reading_type}">{a.reading_type}</span>
+                  <div>
+                    <div class="flag-message">{a.message}</div>
+                  </div>
+                </div>
+              {/each}
+            </div>
+            {#if environmentalAlerts.length > 8}
+              <p style="font-size:12px;color:#6b7280;margin-top:6px;">+{environmentalAlerts.length - 8} more</p>
+            {/if}
           {/if}
         </div>
       {/if}

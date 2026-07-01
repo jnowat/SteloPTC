@@ -5,6 +5,53 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.0] - 2026-07-01
+
+### Added — WP-52, WP-53, WP-54, WP-55: Notifications, iOS scaffold, sensor integration, field-level permissions (implemented together)
+
+All four packets were developed in one session with awareness of each other, as scoped: notification
+content is built exclusively from non-maskable fields (enforcing WP-55 from the notification side),
+and the migration numbering/schema design was coordinated up front (migrations 036–038).
+
+**WP-55 — Field-level permissions:**
+- **Migration 036** adds `field_permissions` (role, entity_type, field_name, visible; `UNIQUE(role, entity_type, field_name)`), seeded with permissive defaults (visible = 1) for the three fields wired into masking: `strains.genomic_fingerprint`, `breeding_programs.goal`, `breeding_programs.target_traits`.
+- New `db::permissions` module: `is_field_visible` (defaults to visible when no row exists — a brand-new sensitive field never silently locks everyone out before an admin configures it), `mask_optional_field` (replaces a hidden value with the literal string `"[RESTRICTED]"`, never `null` — this lets the frontend distinguish "no data" from "hidden data" unambiguously, and the field key is never omitted from the response).
+- Masking is wired into `get_strain`/`list_strains_by_species` (`genomic_fingerprint`) and `get_breeding_program`/`list_breeding_programs` (`goal`, `target_traits`) — the two entities named in the packet's own acceptance criteria. Extending masking to more fields/entities is a mechanical follow-up (one seed row + one call at the read site), not built out further here.
+- New commands (`commands/permissions.rs`): `list_field_permissions`, `set_field_permission` (both admin-only; takes effect immediately since every read queries the table live — there is no cache to invalidate).
+- New `PermissionsEditor.svelte` — admin-only role × field visibility matrix, embedded in Settings. `StrainDetail.svelte` and `BreedingProgramManager.svelte` show a "🔒 Restricted" chip in place of a masked value.
+- Masking never touches the audit trail — `log_audit` always receives the raw value; a dedicated test (`masking_never_reaches_audit_log_writes`) proves this architecturally rather than by convention.
+- 14 new Rust unit tests.
+
+**WP-54 — Environmental sensor integration:**
+- **Migration 037** adds `environmental_readings` (linked to `specimens` and/or `subcultures` via nullable FKs with a CHECK requiring at least one; `reading_type` CHECK'd to `temp_c|humidity_pct|co2_ppm|light_lux|ph|custom`; `source` CHECK'd to `manual|usb_serial|bluetooth|mqtt`).
+- New `db::sensors` module: `parse_sensor_payload` (real, tested, transport-agnostic parsing of both a comma-separated `key=value` line and a flat JSON object — the two payload shapes a serial/BLE/MQTT listener would realistically deliver), `validate_reading_value` (sanity-range checks per reading type), `create_environmental_reading` (manual entry, fully functional), `get_environmental_alerts` (checks the latest reading per specimen/type against a threshold read from `app_settings` with sensible built-in defaults).
+- **Scope boundary, disclosed:** opening a real USB/serial port, BLE peripheral, or MQTT broker connection was not implemented — those require hardware-specific crates (`serialport`, `btleplug`, `rumqttc`) with system dependencies that cannot be exercised or verified without attached hardware in this environment. `ingest_sensor_payload` is the transport-agnostic entry point a future listener would call per incoming message; the parsing/validation/storage pipeline it depends on is complete today.
+- New commands (`commands/sensors.rs`): `create_environmental_reading`, `ingest_sensor_payload`, `list_environmental_readings`, `get_environmental_alerts`.
+- `SpecimenDetail.svelte` gains an Environmental Readings section (History tab, cell_culture/mycology profiles only): manual entry form, a dependency-free inline SVG sparkline per reading type, and a full history table. `Dashboard.svelte` gains an "Environmental Alerts" panel (same profile gating) following the existing WP-34/WP-44 panel pattern.
+- 12 new Rust unit tests.
+
+**WP-52 — Email/desktop notifications:**
+- **Migration 038** adds `notification_preferences` (per-user, per-channel; `UNIQUE(user_id, channel)`) and `smtp_config` (single row, `id = 1`); seeds `notification_check_interval_minutes = 15` in `app_settings`.
+- `commands::work_queue::get_work_queue`'s detection logic was mechanically extracted (behavior-preserving, not rewritten) into a new pure `db::work_queue::compute_work_queue_items`, so notifications and the existing Work Queue view share one implementation instead of duplicating five overdue-detection SQL queries.
+- New `db::notifications` module: `compute_due_notifications` builds candidates entirely from Work Queue fields (accession, reason, urgency) — this is the WP-55 enforcement mechanism, since those fields are never subject to field-level masking, there is no masked value that could leak into a notification. `send_email` (via `lettre`, STARTTLS or direct, blocking transport — kept synchronous to match every other command rather than introduce the first async Tauri command).
+- Desktop push via the official `tauri-plugin-notification` plugin. A background scheduler (`tauri::async_runtime::spawn` in `lib.rs::run`) sleeps for the configured interval before each check, so restarting the app during development never immediately fires a notification burst.
+- Recipients are every active admin/supervisor — Work Queue items have no per-specimen "assigned technician" field to target more narrowly. Each dispatch cycle sends at most one digest desktop popup and one digest email per recipient (not one notification per item, which would be noisy at any nontrivial queue size).
+- **Scope boundary, disclosed:** direct integration with `get_compliance_flags` (permits, HLB, mycoplasma) was not built — Work Queue already covers the two most safety-relevant conditions (quarantine, contamination), and extracting compliance.rs's ~170 lines of profile-gated detection logic was judged disproportionate risk for this already-large combined packet. Mobile push has a `mobile_push` channel value reserved in the schema but no delivery mechanism.
+- SMTP credentials are stored as entered (not OS-keychain-backed) — a disclosed trade-off, unlike the zero-knowledge design used for WP-59 cloud-backup targets; see ROADMAP.md.
+- New commands (`commands/notifications.rs`): `get_notification_preferences`, `set_notification_preference` (self-service, every user), `get_smtp_config`, `set_smtp_config`, `send_test_desktop_notification`, `send_test_email`, `list_recent_notifications`, `dispatch_due_notifications_now` (admin/supervisor manual trigger).
+- New Settings sections: "Notification Preferences" (all users) and "Email (SMTP) Configuration" (admin only, password never redisplayed once saved).
+- Sending real email requires a configured SMTP server and cannot be unit-tested without one — matching the same limitation already documented for WP-50's PostgreSQL connector. 8 new Rust unit tests cover the pure logic (severity ranking, preference defaults/round-trips, candidate construction, password redaction, audit completeness).
+
+**WP-53 — iOS support (best-effort scaffold):**
+- Safe-area handling (`env(safe-area-inset-*)`, `viewport-fit=cover`) was already comprehensive from earlier mobile-polish work — no changes needed.
+- New `.github/workflows/build-ios.yml`, modeled on `build-android.yml`'s structure: unsigned simulator build on every push/PR (validates the Xcode project compiles, no signing required), signed IPA build on GitHub Release events (requires five new secrets: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`, `APPLE_TEAM_ID`, `APPLE_SIGNING_IDENTITY`).
+- **Explicitly unverified:** this workflow was authored without access to a macOS/Xcode environment or an Apple Developer account, and has not been run. `cargo tauri ios init` has never been executed against this codebase. TestFlight/App Store Connect upload is not automated. Core flows (specimen CRUD, QR camera, file access, notifications) have not been verified on an iOS device or simulator.
+- README `Downloads` section and Tech Stack table updated to reflect this status honestly rather than imply iOS is shipping.
+
+**Verification:** `cargo test --lib --no-default-features` (364/364 passing, up from 322), `cargo clippy --no-default-features --lib -- -D warnings` (clean), and `npm run check` (0 errors, 85 pre-existing warnings — unchanged) all pass at every checkpoint. Also verified clean across the full default `tauri-commands` build (including the new `tauri-plugin-notification` dependency, the background scheduler, and all new commands) and `--features postgres` combinations, per the same extra-diligence pattern established for WP-50/WP-51.
+
+**Bump:** minor — **v1.39.0**.
+
 ## [1.38.0] - 2026-07-01
 
 ### Added — WP-50 & WP-51: Multi-user backend + LAN sync foundation (implemented together)

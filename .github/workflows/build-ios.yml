@@ -1,0 +1,164 @@
+name: Build iOS App
+
+# WP-53 — best-effort scaffold, modeled on build-android.yml's structure.
+#
+# UNVERIFIED: this workflow was authored without access to a macOS/Xcode
+# environment or a real Apple Developer account, and has not been run. Two
+# prerequisites must be completed by a maintainer on macOS before it can
+# succeed at all:
+#   1. `cargo tauri ios init` must be run once locally to generate the Xcode
+#      project scaffold (src-tauri/gen/apple/), the same way gen/android/ was
+#      bootstrapped for the Android target. This job regenerates it fresh on
+#      every run (matching the Android job's `rm -rf gen/android && cargo
+#      tauri android init --ci` pattern) — but the very first successful run
+#      of `cargo tauri ios init --ci` on this codebase has not been verified.
+#   2. Real Apple Developer signing material must be added as repository
+#      secrets before the "release" path below can produce a signed IPA (see
+#      the secrets list in the release job step). Until then, only the
+#      unsigned-simulator build path can be expected to work.
+#
+# Treat this as a documented starting point, not a working pipeline.
+
+on:
+  push:
+    branches:
+      - master
+      - 'claude/**'
+  pull_request:
+    branches: [master]
+  release:
+    types: [published]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-ios:
+    name: Build iOS app
+    runs-on: macos-14
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable with iOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: "aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios"
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install npm dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli --locked
+
+      # ── Generate the Xcode project ─────────────────────────────────────────
+      # Always regenerated fresh, matching the Android job's approach, so the
+      # committed repo never needs to carry a generated Xcode project.
+      - name: Initialize Tauri iOS project
+        run: |
+          rm -rf src-tauri/gen/apple
+          cargo tauri ios init --ci
+
+      # ── Unsigned simulator build (every push / PR) ─────────────────────────
+      # Building for the simulator requires no code signing at all, so this
+      # path can validate that the Rust/Swift/Xcode project actually builds
+      # without needing any Apple Developer secrets.
+      - name: Build for iOS Simulator (debug, unsigned)
+        run: cargo tauri ios build --debug --target aarch64-sim
+
+      # ── Signed release IPA (GitHub Release events only) ────────────────────
+      # Requires these secrets to be configured before this step can succeed:
+      #   APPLE_CERTIFICATE_BASE64             – base64-encoded .p12 distribution certificate
+      #   APPLE_CERTIFICATE_PASSWORD           – password for the .p12 file
+      #   APPLE_PROVISIONING_PROFILE_BASE64    – base64-encoded .mobileprovision file
+      #   APPLE_TEAM_ID                        – Apple Developer Team ID
+      #   APPLE_SIGNING_IDENTITY                – e.g. "Apple Distribution: Your Org (TEAMID)"
+      # None of these exist yet — see the workflow-level comment above.
+      - name: Verify signing secrets present
+        if: github.event_name == 'release'
+        run: |
+          missing=()
+          [ -z "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ]          && missing+=("APPLE_CERTIFICATE_BASE64")
+          [ -z "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]        && missing+=("APPLE_CERTIFICATE_PASSWORD")
+          [ -z "${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}" ] && missing+=("APPLE_PROVISIONING_PROFILE_BASE64")
+          [ -z "${{ secrets.APPLE_TEAM_ID }}" ]                     && missing+=("APPLE_TEAM_ID")
+          [ -z "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]            && missing+=("APPLE_SIGNING_IDENTITY")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Release build requires signing secrets that are not set: ${missing[*]}"
+            echo "iOS distribution requires a real Apple Developer account — these cannot be generated automatically."
+            exit 1
+          fi
+          echo "All signing secrets are present."
+
+      - name: Import signing certificate and provisioning profile
+        if: github.event_name == 'release'
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
+
+          echo "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/certificate.p12" -P "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | sed 's/"//g')
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode \
+            > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
+
+      - name: Build signed release IPA
+        if: github.event_name == 'release'
+        run: cargo tauri ios build --export-method app-store-connect
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+
+      - name: Collect release IPA
+        if: github.event_name == 'release'
+        run: |
+          mkdir -p artifacts
+          IPA=$(find src-tauri/gen/apple -name "*.ipa" -type f | head -1)
+          if [ -z "$IPA" ]; then
+            echo "ERROR: No IPA found. Build output tree:"
+            find src-tauri/gen/apple -type f 2>/dev/null || true
+            exit 1
+          fi
+          cp "$IPA" artifacts/SteloPTC-iOS-Release.ipa
+          echo "Packaged: $(basename "$IPA") → SteloPTC-iOS-Release.ipa"
+
+      - name: Upload release IPA artifact
+        if: github.event_name == 'release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SteloPTC-iOS-Release
+          path: artifacts/SteloPTC-iOS-Release.ipa
+          retention-days: 90
+
+      # Uploading to TestFlight/App Store Connect additionally requires an
+      # App Store Connect API key (issuer ID, key ID, .p8 file) and is left
+      # as a manual step for now — see README.md "Downloads" for the current
+      # distribution status.
+      - name: Attach release IPA to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/SteloPTC-iOS-Release.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

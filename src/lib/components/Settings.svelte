@@ -5,9 +5,13 @@
     setLabProfile, getSpecimenStats,
     getBackendConfig, setBackendType, testPostgresConnection,
     getSyncStatus, type BackendConfigInfo, type SyncStatusResponse,
+    getNotificationPreferences, setNotificationPreference,
+    getSmtpConfig, setSmtpConfig, sendTestDesktopNotification, sendTestEmail,
+    type NotificationPreference, type SmtpConfig,
   } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import PermissionsEditor from './PermissionsEditor.svelte';
 
   const PROFILES: LabProfile[] = ['plant_tissue_culture', 'cell_culture', 'mycology'];
 
@@ -111,6 +115,121 @@
       saving = false;
     }
   }
+
+  // WP-52 — Notification preferences (self-service, every user) + SMTP config (admin only).
+  const SEVERITY_OPTIONS = ['normal', 'high', 'critical'] as const;
+
+  let notifPrefs = $state<NotificationPreference[]>([]);
+  let notifLoading = $state(true);
+  let testingDesktop = $state(false);
+
+  let smtpConfig = $state<SmtpConfig | null>(null);
+  let smtpLoading = $state(true);
+  let smtpForm = $state({ host: '', port: 587, username: '', password: '', from_address: '', use_tls: true });
+  let savingSmtp = $state(false);
+  let testEmailAddress = $state('');
+  let testingEmail = $state(false);
+
+  onMount(async () => {
+    notifLoading = true;
+    try {
+      notifPrefs = await getNotificationPreferences();
+    } catch {
+      // Leave empty — the UI falls back to "enabled, normal" defaults per channel.
+    } finally {
+      notifLoading = false;
+    }
+
+    if ($currentUser?.role === 'admin') {
+      await loadSmtpConfig();
+    } else {
+      smtpLoading = false;
+    }
+  });
+
+  function prefFor(channel: string): { enabled: boolean; min_severity: string } {
+    const p = notifPrefs.find((p) => p.channel === channel);
+    return p ? { enabled: p.enabled, min_severity: p.min_severity } : { enabled: true, min_severity: 'normal' };
+  }
+
+  async function updatePreference(channel: string, enabled: boolean, minSeverity: string) {
+    try {
+      await setNotificationPreference(channel, enabled, minSeverity);
+      const idx = notifPrefs.findIndex((p) => p.channel === channel);
+      if (idx >= 0) {
+        notifPrefs[idx] = { ...notifPrefs[idx], enabled, min_severity: minSeverity as any };
+      } else {
+        notifPrefs = [...notifPrefs, { id: channel, user_id: '', channel: channel as any, enabled, min_severity: minSeverity as any }];
+      }
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    }
+  }
+
+  async function handleTestDesktopNotification() {
+    testingDesktop = true;
+    try {
+      await sendTestDesktopNotification();
+      addNotification('Test notification sent — check your desktop notification tray', 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      testingDesktop = false;
+    }
+  }
+
+  async function loadSmtpConfig() {
+    smtpLoading = true;
+    try {
+      smtpConfig = await getSmtpConfig();
+      smtpForm = {
+        host: smtpConfig.host ?? '',
+        port: smtpConfig.port,
+        username: smtpConfig.username ?? '',
+        password: '',
+        from_address: smtpConfig.from_address ?? '',
+        use_tls: smtpConfig.use_tls,
+      };
+    } catch {
+      // Leave null — the SMTP card shows its own quiet unavailable state.
+    } finally {
+      smtpLoading = false;
+    }
+  }
+
+  async function handleSaveSmtp() {
+    savingSmtp = true;
+    try {
+      await setSmtpConfig({
+        host: smtpForm.host || undefined,
+        port: smtpForm.port,
+        username: smtpForm.username || undefined,
+        password: smtpForm.password || undefined,
+        from_address: smtpForm.from_address || undefined,
+        use_tls: smtpForm.use_tls,
+      });
+      smtpForm.password = '';
+      await loadSmtpConfig();
+      addNotification('SMTP configuration saved', 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      savingSmtp = false;
+    }
+  }
+
+  async function handleTestEmail() {
+    if (!testEmailAddress.trim()) return;
+    testingEmail = true;
+    try {
+      await sendTestEmail(testEmailAddress.trim());
+      addNotification(`Test email sent to ${testEmailAddress.trim()}`, 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      testingEmail = false;
+    }
+  }
 </script>
 
 <div>
@@ -118,9 +237,53 @@
     <h1>Settings</h1>
   </div>
 
+  <!-- Notification Preferences — every user configures their own (WP-52) -->
+  <div class="card" style="max-width: 640px; margin-bottom: 24px;">
+    <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Notification Preferences</h2>
+    <p style="font-size: 13px; color: #6b7280; margin-bottom: 20px;">
+      Choose which channels notify you about overdue Work Queue items, and the minimum severity
+      that should reach you on each one.
+    </p>
+
+    {#if notifLoading}
+      <div class="loading-pulse" aria-busy="true" aria-label="Loading notification preferences"></div>
+    {:else}
+      {#each ['desktop', 'email'] as channel}
+        {@const pref = prefFor(channel)}
+        <div class="form-row" style="align-items:center; margin-bottom: 12px;">
+          <label class="notif-channel-toggle" for="notif-enabled-{channel}">
+            <input
+              id="notif-enabled-{channel}"
+              type="checkbox"
+              checked={pref.enabled}
+              onchange={(e) => updatePreference(channel, (e.currentTarget as HTMLInputElement).checked, pref.min_severity)}
+            />
+            {channel === 'desktop' ? 'Desktop notifications' : 'Email notifications'}
+          </label>
+          <div class="form-group" style="flex: 0 0 160px; margin: 0 0 0 16px;">
+            <label for="notif-severity-{channel}" class="visually-hidden">Minimum severity for {channel}</label>
+            <select
+              id="notif-severity-{channel}"
+              value={pref.min_severity}
+              disabled={!pref.enabled}
+              onchange={(e) => updatePreference(channel, pref.enabled, (e.currentTarget as HTMLSelectElement).value)}
+            >
+              {#each SEVERITY_OPTIONS as sev}
+                <option value={sev}>{sev} and above</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/each}
+      <button class="btn" onclick={handleTestDesktopNotification} disabled={testingDesktop} title="Send a test desktop notification">
+        {testingDesktop ? 'Sending…' : 'Send Test Desktop Notification'}
+      </button>
+    {/if}
+  </div>
+
   {#if $currentUser?.role !== 'admin'}
     <div class="card">
-      <p style="color: var(--color-text-muted, #6b7280);">Only administrators can change lab settings.</p>
+      <p style="color: var(--color-text-muted, #6b7280);">Only administrators can change lab-wide settings.</p>
     </div>
   {:else}
     <!-- Lab Profile -->
@@ -335,6 +498,71 @@
         {/if}
       {/if}
     </div>
+
+    <!-- SMTP Configuration (admin only) — WP-52 -->
+    <div class="card" style="max-width: 640px; margin-top: 24px;">
+      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Email (SMTP) Configuration</h2>
+      <p style="font-size: 13px; color: #6b7280; margin-bottom: 20px;">
+        Used to send email notifications for overdue Work Queue items. The password is never
+        displayed once saved — leave it blank to keep the current one.
+      </p>
+
+      {#if smtpLoading}
+        <div class="loading-pulse" aria-busy="true" aria-label="Loading SMTP configuration"></div>
+      {:else}
+        <div class="form-row">
+          <div class="form-group" style="flex:2;">
+            <label for="smtp-host">Host</label>
+            <input id="smtp-host" type="text" placeholder="smtp.example.com" bind:value={smtpForm.host} />
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label for="smtp-port">Port</label>
+            <input id="smtp-port" type="number" bind:value={smtpForm.port} />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group" style="flex:1;">
+            <label for="smtp-username">Username</label>
+            <input id="smtp-username" type="text" bind:value={smtpForm.username} autocomplete="off" />
+          </div>
+          <div class="form-group" style="flex:1;">
+            <label for="smtp-password">Password {smtpConfig?.password_set ? '(currently set)' : ''}</label>
+            <input id="smtp-password" type="password" placeholder="Leave blank to keep current" bind:value={smtpForm.password} autocomplete="new-password" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="smtp-from">From Address</label>
+          <input id="smtp-from" type="email" placeholder="lab@example.com" bind:value={smtpForm.from_address} />
+        </div>
+        <div class="form-group" style="margin-bottom: 16px;">
+          <label class="notif-channel-toggle" for="smtp-tls">
+            <input id="smtp-tls" type="checkbox" bind:checked={smtpForm.use_tls} />
+            Use STARTTLS
+          </label>
+        </div>
+        <div class="action-row">
+          <button class="btn btn-primary" onclick={handleSaveSmtp} disabled={savingSmtp} title="Save SMTP configuration">
+            {savingSmtp ? 'Saving…' : 'Save SMTP Configuration'}
+          </button>
+        </div>
+
+        <div class="form-row" style="margin-top: 20px; align-items: flex-end;">
+          <div class="form-group" style="flex:1;">
+            <label for="smtp-test-address">Send test email to</label>
+            <input id="smtp-test-address" type="email" placeholder="you@example.com" bind:value={testEmailAddress} />
+          </div>
+          <button class="btn" onclick={handleTestEmail} disabled={testingEmail || !testEmailAddress.trim()} title="Send a test email using the saved SMTP configuration">
+            {testingEmail ? 'Sending…' : 'Send Test Email'}
+          </button>
+        </div>
+      {/if}
+    </div>
+
+    <!-- Field-Level Permissions (admin only) — WP-55 -->
+    <div class="card" style="max-width: 900px; margin-top: 24px;">
+      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Field-Level Permissions</h2>
+      <PermissionsEditor />
+    </div>
   {/if}
 </div>
 
@@ -475,5 +703,21 @@
     color: #6b7280;
     margin-top: 2px;
     text-align: center;
+  }
+
+  .notif-channel-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    white-space: nowrap;
   }
 </style>

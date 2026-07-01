@@ -1249,3 +1249,158 @@ export async function registerSyncPeer(deviceId: string, deviceName: string) {
 export async function listSyncPeers() {
   return call<SyncPeer[]>('list_sync_peers');
 }
+
+// ---------------------------------------------------------------------------
+// WP-55 — Field-level permissions
+// ---------------------------------------------------------------------------
+
+/** Sentinel value a masked field is replaced with. Matches db::permissions::RESTRICTED_MARKER. */
+export const RESTRICTED_MARKER = '[RESTRICTED]';
+
+export interface FieldPermission {
+  id: string;
+  role: 'admin' | 'supervisor' | 'tech' | 'guest';
+  entity_type: string;
+  field_name: string;
+  visible: boolean;
+}
+
+export async function listFieldPermissions() {
+  return call<FieldPermission[]>('list_field_permissions');
+}
+
+export async function setFieldPermission(role: string, entityType: string, fieldName: string, visible: boolean) {
+  return call<void>('set_field_permission', {
+    request: { role, entity_type: entityType, field_name: fieldName, visible },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// WP-54 — Environmental sensor integration
+// ---------------------------------------------------------------------------
+
+export interface EnvironmentalReading {
+  id: string;
+  specimen_id: string | null;
+  subculture_id: string | null;
+  reading_type: string;
+  value: number;
+  unit: string | null;
+  source: 'manual' | 'usb_serial' | 'bluetooth' | 'mqtt';
+  recorded_at: string;
+  notes: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface CreateEnvironmentalReadingRequest {
+  specimen_id?: string;
+  subculture_id?: string;
+  reading_type: string;
+  value: number;
+  unit?: string;
+  source?: string;
+  recorded_at?: string;
+  notes?: string;
+}
+
+export interface EnvironmentalAlert {
+  specimen_id: string | null;
+  reading_type: string;
+  value: number;
+  threshold_min: number | null;
+  threshold_max: number | null;
+  message: string;
+  recorded_at: string;
+}
+
+export async function createEnvironmentalReading(request: CreateEnvironmentalReadingRequest) {
+  return call<string>('create_environmental_reading', { request });
+}
+
+export async function ingestSensorPayload(
+  source: string,
+  rawPayload: string,
+  specimenId?: string,
+  subcultureId?: string,
+) {
+  return call<string[]>('ingest_sensor_payload', {
+    specimenId: specimenId ?? null,
+    subcultureId: subcultureId ?? null,
+    source,
+    rawPayload,
+  });
+}
+
+export async function listEnvironmentalReadings(specimenId: string, limit?: number) {
+  return call<EnvironmentalReading[]>('list_environmental_readings', { specimenId, limit: limit ?? null });
+}
+
+export async function getEnvironmentalAlerts() {
+  return call<EnvironmentalAlert[]>('get_environmental_alerts');
+}
+
+// ---------------------------------------------------------------------------
+// WP-52 — Email/desktop notifications
+// ---------------------------------------------------------------------------
+
+export interface NotificationPreference {
+  id: string;
+  user_id: string;
+  channel: 'desktop' | 'email' | 'mobile_push';
+  enabled: boolean;
+  min_severity: 'normal' | 'high' | 'critical';
+}
+
+export interface SmtpConfig {
+  host: string | null;
+  port: number;
+  username: string | null;
+  password_set: boolean;
+  from_address: string | null;
+  use_tls: boolean;
+}
+
+export interface DispatchNotificationsResult {
+  candidates_found: number;
+  desktop_sent: number;
+  email_sent: number;
+  recipients_notified: number;
+}
+
+export async function getNotificationPreferences() {
+  return call<NotificationPreference[]>('get_notification_preferences');
+}
+
+export async function setNotificationPreference(channel: string, enabled: boolean, minSeverity: string) {
+  return call<void>('set_notification_preference', {
+    request: { channel, enabled, min_severity: minSeverity },
+  });
+}
+
+export async function getSmtpConfig() {
+  return call<SmtpConfig>('get_smtp_config');
+}
+
+export async function setSmtpConfig(config: {
+  host?: string;
+  port: number;
+  username?: string;
+  password?: string;
+  from_address?: string;
+  use_tls: boolean;
+}) {
+  return call<void>('set_smtp_config', { request: config });
+}
+
+export async function sendTestDesktopNotification() {
+  return call<void>('send_test_desktop_notification');
+}
+
+export async function sendTestEmail(toAddress: string) {
+  return call<void>('send_test_email', { toAddress });
+}
+
+export async function dispatchDueNotificationsNow() {
+  return call<DispatchNotificationsResult>('dispatch_due_notifications_now');
+}

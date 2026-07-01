@@ -15,6 +15,9 @@ pub mod fruiting;
 pub mod breeding;
 pub mod backend;
 pub mod sync;
+pub mod permissions;
+pub mod sensors;
+pub mod notifications;
 
 // Re-export common types
 pub use specimen::*;

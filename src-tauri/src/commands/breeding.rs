@@ -28,15 +28,27 @@ pub fn create_breeding_program(
         .map_err(|e| format!("Failed to retrieve breeding program: {}", e))
 }
 
+/// WP-55: masks `goal` and `target_traits` per the calling user's role.
+fn apply_field_permissions(conn: &rusqlite::Connection, role: &str, mut program: BreedingProgram) -> BreedingProgram {
+    program.goal = crate::db::permissions::mask_optional_field(conn, role, "breeding_program", "goal", program.goal);
+    program.target_traits =
+        crate::db::permissions::mask_optional_field(conn, role, "breeding_program", "target_traits", program.target_traits);
+    program
+}
+
 #[tauri::command]
 pub fn list_breeding_programs(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<BreedingProgram>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let _user = auth_service::validate_session(&db, &token)?;
-    queries::list_breeding_programs(&db.conn)
-        .map_err(|e| format!("Failed to list breeding programs: {}", e))
+    let user = auth_service::validate_session(&db, &token)?;
+    let programs = queries::list_breeding_programs(&db.conn)
+        .map_err(|e| format!("Failed to list breeding programs: {}", e))?;
+    Ok(programs
+        .into_iter()
+        .map(|p| apply_field_permissions(&db.conn, user.role.as_str(), p))
+        .collect())
 }
 
 #[tauri::command]
@@ -46,9 +58,10 @@ pub fn get_breeding_program(
     id: String,
 ) -> Result<BreedingProgram, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let _user = auth_service::validate_session(&db, &token)?;
-    queries::get_breeding_program(&db.conn, &id)
-        .map_err(|e| format!("Failed to get breeding program: {}", e))
+    let user = auth_service::validate_session(&db, &token)?;
+    let program = queries::get_breeding_program(&db.conn, &id)
+        .map_err(|e| format!("Failed to get breeding program: {}", e))?;
+    Ok(apply_field_permissions(&db.conn, user.role.as_str(), program))
 }
 
 #[tauri::command]
