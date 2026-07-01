@@ -1,8 +1,10 @@
 # SteloPTC User Manual
 
-**Current as of:** June 2026 · **v1.32.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1 complete; Phase TX-2 fully shipped — NCBI sync, pedigree tools, advanced hybridization, advanced Taxonomy Navigator; Phase D Cell Culture features WP-30–34 shipped; Phase E Mycology features WP-40–44 fully shipped including colonization tracking, contaminant typing, genetic lineage markers, fruiting/yield tracking, and mycology QC compliance rules)
+**Current as of:** July 2026 · **v1.40.2** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis, interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, and taxon chain re-anchoring)
 
 > **Scope note:** This manual documents both shipping features and planned functionality. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, basic Taxonomy Navigator) fully shipped as of v1.17.0. Phase TX-2 is fully shipped: WP-35 taxonomy backbone (v1.18.0), WP-36 NCBI import/sync (v1.19.0), WP-37 pedigree tools (v1.20.0), WP-38 advanced hybridization (v1.21.0), WP-39 advanced multi-column Taxonomy Navigator (v1.22.0). Cell Culture features (WP-30–34) shipped v1.23.0–v1.27.0. Mycology features (WP-40–44) fully shipped v1.28.0–v1.32.0: WP-40 vocabulary (v1.28.0), WP-41 colonization & contamination tracking (v1.29.0), WP-42 genetic lineage markers (v1.30.0), WP-43 fruiting conditions & yield tracking (v1.31.0), WP-44 mycology QC compliance rules (v1.32.0). **Phase E complete.** Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
+>
+> **Known documentation gap:** Sections 1–17 below cover the app through Phase E (v1.32.0) in detail. **Phase F (v1.38.0–v1.40.2 — WP-50 through WP-65) has shipped in the application but is not yet written up here**: the multi-user/PostgreSQL and LAN sync foundations, desktop/email notifications, environmental sensor logging, field-level permissions, local AI note assistance, the interactive lab map, the analytics dashboard, encrypted cloud backup, FDA/USDA/CITES compliance export bundles, the plugin system, the installable PWA, and the taxon re-anchoring tool all exist in the running app today. See `CHANGELOG.md` and `ROADMAP.md` for what each does and its current limitations until this manual is expanded to cover them (tracked in `DailyClaudeRoutineCheckup.md`).
 
 SteloPTC is a desktop application for managing plant tissue culture laboratories with a strong focus on **provenance, traceability, and cryptographic data integrity**.
 
@@ -359,25 +361,27 @@ The chain protects against *undetected* changes. It does not prevent authorized 
 
 ## 18. Future Features & Roadmap
 
-SteloPTC development continues along two main tracks: the **Phase C de-hardening** (making vocabulary data-driven for multi-vertical support) and the **Taxonomic & Provenance Module (Phase TX)**. The Trust Layer (WP-18–21) shipped completely in v1.9.0–v1.10.0; Phase C began with WP-22 (lab profile + dead specimen workflow) in v1.11.0.
+Everything below was still "planned" the last time this section was rewritten; nearly all of it has since shipped. It's kept here as a landmark, corrected against the current state — see `ROADMAP.md` for full detail on every work packet (`WP-xx`) and `CHANGELOG.md` for release-by-release history.
 
-### Phase TX-1 (v2.0.0 target)
-- Strain/Cultivar registry with hash chain and version binding
-- Four-level strain status model
-- Hybridization as a distinct event with bidirectional audit entries
-- Basic Taxonomy Navigator (Species → Strains → Specimens)
+### Already shipped (was "planned" here previously)
+- Strain/Cultivar registry, hash chain version binding, four-level status model, Hybrid Wizard, Taxonomy Navigator — Phase TX-1/TX-2/TX-3, v1.16.0–v1.37.0
+- Cell Culture and Mycology lab profiles — Phase D/E, v1.23.0–v1.32.0
+- Local AI note/passage-comment assistance (Ollama, human-approval-gated) — WP-56, v1.40.0
+- Environmental sensor logging (manual entry; hardware transport still not wired — see below) — WP-54, v1.39.0
+- iOS build scaffold (still unverified end-to-end — see below) — WP-53, v1.39.0
+- Interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, installable PWA, taxon chain re-anchoring — Phase F WP-57–65, v1.40.0
 
-### Phase TX-2 (v2.x target)
-- Full multi-rank taxonomy backbone
-- Multi-generational pedigree queries and visualization
-- Advanced Taxonomy Navigator with filtering and keyboard support
-
-### Other Planned Work
-- Cell Culture (SteloCC) and Mycology (SteloMyco) verticals
-- On-chain anchoring (Dogecoin)
-- Local AI assistance
-- Environmental sensor integration
-- iOS support
+### Genuinely still planned / incomplete
+- **On-chain anchoring (Dogecoin `OP_RETURN`)** — reserved as Trust Layer Phase 2 (WP-66), not started
+- **Specimen events as signed transactions** — reserved as Trust Layer Phase 3 (WP-67), not started
+- **PostgreSQL as a live backend** — connector compiles and unit-tests but has never been run against a real PostgreSQL server; SQLite remains the only backend a lab can actually use
+- **LAN sync transport** — change-detection and conflict-recording exist, but there is no network transport or automatic merge yet
+- **iOS end-to-end verification** — the build workflow has never completed a real device/simulator build (no Apple Developer access in CI)
+- **Sensor hardware transport** (USB/BLE/MQTT) — only manual entry is wired up today
+- **Cloud backup to S3/SFTP** — configurable today but not connected; only `local_nas`/`smb` targets work
+- **Plugin WASM rule execution** — plugin manifests are validated and recorded, but a plugin's compliance rules are not yet executed by a sandboxed runtime
+- **Multi-institutional/federated networks, shared taxonomy registry, cross-lab breeding coordination** — reserved as Phase G (WP-70–72), not started
+- **Automated regulatory submission pipeline** — reserved (WP-68+), not started
 
 For the latest status, refer to `ROADMAP.md` in the repository.
 
