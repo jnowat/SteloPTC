@@ -1,6 +1,6 @@
 [package]
 name = "stelo-ptc"
-version = "1.38.0"
+version = "1.39.0"
 description = "Plant Tissue Culture Specimen Tracking System"
 authors = ["SteloPTC"]
 edition = "2021"
@@ -19,7 +19,7 @@ path = "src/main.rs"
 # Disable for unit-test builds in environments without GTK/WebKit system libraries:
 #   cargo test --lib --no-default-features
 default = ["tauri-commands"]
-tauri-commands = ["tauri", "tauri-plugin-dialog", "tauri-plugin-fs", "tauri-plugin-shell"]
+tauri-commands = ["tauri", "tauri-plugin-dialog", "tauri-plugin-fs", "tauri-plugin-shell", "tauri-plugin-notification"]
 # WP-50: PostgreSQL backend foundation. Off by default — SQLite remains the sole
 # active backend for all read/write commands. Enabling this feature compiles a
 # standalone PostgreSQL connector (db::postgres) used for connectivity testing
@@ -39,6 +39,9 @@ tauri = { version = "2", features = [], optional = true }
 tauri-plugin-dialog = { version = "2", optional = true }
 tauri-plugin-fs = { version = "2", optional = true }
 tauri-plugin-shell = { version = "2", optional = true }
+# WP-52: desktop push notifications. Part of the tauri-commands group (like
+# dialog/fs/shell) since it's a core desktop capability, not an opt-in extra.
+tauri-plugin-notification = { version = "2", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -54,3 +57,11 @@ tokio = { version = "1", features = ["full"] }
 # No `macros` feature — we deliberately avoid compile-time query checking
 # (sqlx::query!) since that requires a live database at build time.
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }
+# WP-52: SMTP email client. Kept as an always-on (non-optional) dependency —
+# like bcrypt/sha2, it is pure business logic with no system dependency, so
+# template-building and address-validation logic stays testable under
+# --no-default-features. Actual sending requires a configured SMTP server
+# (see commands::notifications::send_test_email) and cannot be unit-tested
+# without one, matching the same limitation already documented for WP-50's
+# PostgreSQL connector.
+lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "hostname"] }

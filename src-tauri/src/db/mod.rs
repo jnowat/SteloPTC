@@ -1,10 +1,14 @@
 pub mod backend;
 pub mod dashboard;
 pub mod migrations;
+pub mod notifications;
+pub mod permissions;
 pub mod postgres;
 pub mod queries;
+pub mod sensors;
 pub mod sync;
 pub mod vocabulary;
+pub mod work_queue;
 
 use rusqlite::Connection;
 use std::path::PathBuf;

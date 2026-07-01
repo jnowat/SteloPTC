@@ -10,6 +10,7 @@
     type BreedingProgram,
     type BreedingRecord,
     type GenerationalSummary,
+    RESTRICTED_MARKER,
   } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
@@ -211,7 +212,7 @@
           >
             <span class="bm-prog-name">{prog.name}</span>
             {#if prog.goal}
-              <span class="bm-prog-goal">{prog.goal}</span>
+              <span class="bm-prog-goal">{prog.goal === RESTRICTED_MARKER ? '🔒 Restricted' : prog.goal}</span>
             {/if}
             <span class="bm-prog-date">{prog.start_date ?? 'No date'}</span>
           </button>
@@ -226,13 +227,13 @@
           <div>
             <h3 class="bm-detail-title">{selectedProgram.name}</h3>
             {#if selectedProgram.goal}
-              <p class="bm-detail-goal">{selectedProgram.goal}</p>
+              <p class="bm-detail-goal">{selectedProgram.goal === RESTRICTED_MARKER ? '🔒 Restricted' : selectedProgram.goal}</p>
             {/if}
             {#if selectedProgram.start_date}
               <span class="bm-chip">Started {selectedProgram.start_date}</span>
             {/if}
             {#if selectedProgram.target_traits}
-              <span class="bm-chip">Traits: {selectedProgram.target_traits}</span>
+              <span class="bm-chip">Traits: {selectedProgram.target_traits === RESTRICTED_MARKER ? '🔒 Restricted' : selectedProgram.target_traits}</span>
             {/if}
           </div>
           {#if canWrite}

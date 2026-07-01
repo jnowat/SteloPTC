@@ -1,6 +1,6 @@
 # SteloPTC — Plant Tissue Culture Tracking System
 
-A desktop and Android application for tracking plant tissue culture specimens in commercial and research laboratories. Built with Rust, Tauri v2, and Svelte 5 for native performance on Windows, Linux, macOS, and Android.
+A desktop, Android, and (in progress) iOS application for tracking plant tissue culture specimens in commercial and research laboratories. Built with Rust, Tauri v2, and Svelte 5 for native performance on Windows, Linux, macOS, Android, and iOS.
 
 ---
 
@@ -13,6 +13,7 @@ A desktop and Android application for tracking plant tissue culture specimens in
 | **Windows** | [Latest Release →](../../releases/latest) | `.msi` installer attached to every GitHub Release |
 | **Android** | [Latest Release →](../../releases/latest) | Release-signed `.apk` attached to every GitHub Release |
 | **Android (debug)** | [Latest Actions run →](../../actions/workflows/build-android.yml) | `SteloPTC-Android-Debug` artifact — every push, 30-day retention |
+| **iOS** | *Not yet distributed* | See [iOS support status](#ios-support-status-wp-53) below |
 
 On every **GitHub Release**, both the Windows MSI and the Android release APK are attached directly to the release assets. The Android release APK is signed with the project release keystore (see `.github/SIGNING.md`) — **not** debug-signed — so it supports in-place upgrades on Android.
 
@@ -35,6 +36,18 @@ The debug APK is built on **every push** and available as a workflow artifact fo
 4. Launch **SteloPTC** from your app drawer
 
 > **Requirements:** Android 7.0 (API 24) or later. The APK contains native libraries for all supported architectures (arm64-v8a, armeabi-v7a, x86, x86_64).
+
+### iOS support status (WP-53)
+
+iOS is not yet distributed via TestFlight or the App Store. Current status:
+
+- **UI layout** — the app's responsive layout already accounts for iOS Safe Areas throughout (`env(safe-area-inset-*)` in `App.svelte` and `Sidebar.svelte`, `viewport-fit=cover` in `index.html`), from earlier mobile-polish work. No additional layout work was needed for this packet.
+- **Build workflow** — `.github/workflows/build-ios.yml` is a best-effort scaffold modeled on the Android workflow, **authored without access to a macOS/Xcode environment and not yet verified to run successfully**. It builds an unsigned simulator target on every push (validates the Rust/Swift/Xcode project compiles) and attempts a signed release IPA on GitHub Release events.
+- **Outstanding prerequisites**, both requiring a maintainer with a Mac and an active Apple Developer Program membership:
+  1. Run `cargo tauri ios init` once locally to confirm the generated Xcode project (`src-tauri/gen/apple/`) actually builds — this has not been verified for this codebase.
+  2. Add five repository secrets for release signing: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`, `APPLE_TEAM_ID`, `APPLE_SIGNING_IDENTITY` (see comments in the workflow file for what each one is).
+  3. TestFlight/App Store Connect upload additionally requires an App Store Connect API key and is not yet automated — the release job stops at producing a signed `.ipa` artifact.
+- **Core flows on-device** (specimen CRUD, QR camera scanning, attachment/backup file access, notifications) have **not been verified on iOS** — there is no iOS device or simulator available in the environment this packet was developed in.
 
 ---
 
@@ -139,7 +152,7 @@ All scan events are stored in the `qr_scans` SQLite table with raw data, accessi
 | Database  | SQLite (bundled, WAL mode); optional PostgreSQL connector behind the `postgres` Cargo feature (foundation only — not yet wired into the live query layer, v1.38.0) |
 | Auth      | bcrypt password hashing, session tokens, forced first-login password change |
 | Security  | Tauri CSP: `script-src 'self'`; no remote scripts; `data:`/`blob:` image/worker sources scoped explicitly |
-| Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile        |
+| Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile; iOS build scaffold in progress, not yet distributed (WP-53) |
 | QR Codes  | qrcode 1.5.4 (generation), html5-qrcode 2.3.8 (scanning) |
 | Excel     | xlsx 0.18.5 (SheetJS — multi-sheet workbook export and import) |
 | Crypto    | sha2 0.10 (Rust — SHA-256 for per-lineage audit hash chain) |

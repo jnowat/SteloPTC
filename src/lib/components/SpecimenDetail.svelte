@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, type ColonizationEntry, type FruitingRecord } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, listEnvironmentalReadings, createEnvironmentalReading, type ColonizationEntry, type FruitingRecord, type EnvironmentalReading } from '../api';
   import { labProfile } from '../profile';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
@@ -34,6 +34,15 @@
     fruiting_rh_percent: '',
     fae_rate: '',
     light_hours_per_day: '',
+    notes: '',
+  });
+  let environmentalReadings = $state<EnvironmentalReading[]>([]);
+  let showReadingForm = $state(false);
+  let readingSubmitting = $state(false);
+  let readingForm = $state({
+    reading_type: 'temp_c',
+    value: '',
+    unit: '',
     notes: '',
   });
   let complianceRecords = $state<any[]>([]);
@@ -383,6 +392,14 @@
         colonizationHistory = [];
         fruitingRecords = [];
       }
+
+      // WP-54: environmental readings, gated to cell_culture / mycology profiles.
+      const profile = get(labProfile);
+      if (profile === 'cell_culture' || profile === 'mycology') {
+        environmentalReadings = await listEnvironmentalReadings(id).catch(() => []);
+      } else {
+        environmentalReadings = [];
+      }
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -613,6 +630,40 @@
     } finally {
       fruitingSubmitting = false;
     }
+  }
+
+  async function submitReading() {
+    if (!specimen || !readingForm.value) return;
+    readingSubmitting = true;
+    try {
+      await createEnvironmentalReading({
+        specimen_id: specimen.id,
+        reading_type: readingForm.reading_type,
+        value: parseFloat(readingForm.value),
+        unit: readingForm.unit || undefined,
+        notes: readingForm.notes || undefined,
+      });
+      environmentalReadings = await listEnvironmentalReadings(specimen.id).catch(() => environmentalReadings);
+      showReadingForm = false;
+      readingForm = { reading_type: 'temp_c', value: '', unit: '', notes: '' };
+      addNotification('Environmental reading saved', 'success');
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      readingSubmitting = false;
+    }
+  }
+
+  // Simple dependency-free sparkline: normalizes values to a 0-40 y-range over a 200px-wide SVG.
+  function sparklinePoints(values: number[]): string {
+    if (values.length < 2) return '';
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = max - min || 1;
+    const stepX = 200 / (values.length - 1);
+    return values
+      .map((v, i) => `${(i * stepX).toFixed(1)},${(40 - ((v - min) / range) * 40).toFixed(1)}`)
+      .join(' ');
   }
 
   function printCultureReport() {
@@ -1667,6 +1718,94 @@ ${footnotesHtml}
               </div>
             {:else if !showFruitingForm}
               <p style="font-size:13px;color:var(--text-secondary);margin:0;">No fruiting records yet.</p>
+            {/if}
+          </div>
+        {/if}
+
+        <!-- Environmental Readings (cell_culture / mycology only) — WP-54 -->
+        {#if $labProfile === 'cell_culture' || $labProfile === 'mycology'}
+          <div class="fruiting-section" style="margin-top:24px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+              <h4 style="font-size:14px;margin:0;color:var(--text-secondary);">Environmental Readings</h4>
+              <button class="btn btn-sm" onclick={() => { showReadingForm = !showReadingForm; }}>
+                {showReadingForm ? 'Cancel' : '+ Add Reading'}
+              </button>
+            </div>
+
+            {#if showReadingForm}
+              <div class="reading-form card" style="padding:14px;margin-bottom:14px;">
+                <div class="form-row">
+                  <div class="form-group" style="flex:1;">
+                    <label for="er-type">Reading Type</label>
+                    <select id="er-type" bind:value={readingForm.reading_type}>
+                      <option value="temp_c">Temperature (°C)</option>
+                      <option value="humidity_pct">Humidity (%)</option>
+                      <option value="co2_ppm">CO₂ (ppm)</option>
+                      <option value="light_lux">Light (lux)</option>
+                      <option value="ph">pH</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label for="er-value">Value</label>
+                    <input id="er-value" type="number" step="0.01" placeholder="e.g. 24.5" bind:value={readingForm.value} />
+                  </div>
+                  <div class="form-group" style="flex:0 0 90px;">
+                    <label for="er-unit">Unit</label>
+                    <input id="er-unit" type="text" placeholder="optional" bind:value={readingForm.unit} />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="er-notes">Notes</label>
+                  <textarea id="er-notes" rows="2" placeholder="Observations, sensor location, etc." bind:value={readingForm.notes}></textarea>
+                </div>
+                <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+                  <button class="btn" onclick={() => showReadingForm = false} disabled={readingSubmitting}>Cancel</button>
+                  <button class="btn btn-primary" onclick={submitReading} disabled={readingSubmitting || !readingForm.value}>
+                    {readingSubmitting ? 'Saving…' : 'Save Reading'}
+                  </button>
+                </div>
+              </div>
+            {/if}
+
+            {#if environmentalReadings.length > 0}
+              {#each ['temp_c', 'humidity_pct', 'co2_ppm', 'ph'] as rt}
+                {@const series = environmentalReadings.filter(r => r.reading_type === rt).slice().reverse()}
+                {#if series.length >= 2}
+                  <div style="margin-bottom:14px;">
+                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px;">{rt}</div>
+                    <svg viewBox="0 0 200 40" width="200" height="40" role="img" aria-label="{rt} trend sparkline">
+                      <polyline points={sparklinePoints(series.map(r => r.value))} fill="none" stroke="var(--color-primary, #2563eb)" stroke-width="1.5" />
+                    </svg>
+                  </div>
+                {/if}
+              {/each}
+              <div class="fruiting-table-wrap">
+                <table class="fruiting-table">
+                  <thead>
+                    <tr>
+                      <th>Type</th>
+                      <th>Value</th>
+                      <th>Source</th>
+                      <th>Recorded</th>
+                      <th>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each environmentalReadings as r}
+                      <tr>
+                        <td class="ctr">{r.reading_type}</td>
+                        <td class="ctr">{r.value}{r.unit ? ` ${r.unit}` : ''}</td>
+                        <td class="ctr">{r.source}</td>
+                        <td>{r.recorded_at}</td>
+                        <td class="note-cell">{r.notes ?? ''}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {:else if !showReadingForm}
+              <p style="font-size:13px;color:var(--text-secondary);margin:0;">No environmental readings recorded yet.</p>
             {/if}
           </div>
         {/if}

@@ -36,6 +36,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(state)
         .invoke_handler(tauri::generate_handler![
             // Auth
@@ -225,12 +226,54 @@ pub fn run() {
             commands::sync::resolve_sync_conflict,
             commands::sync::register_sync_peer,
             commands::sync::list_sync_peers,
+            // Field-level permissions (WP-55)
+            commands::permissions::list_field_permissions,
+            commands::permissions::set_field_permission,
+            // Environmental sensor integration (WP-54)
+            commands::sensors::create_environmental_reading,
+            commands::sensors::ingest_sensor_payload,
+            commands::sensors::list_environmental_readings,
+            commands::sensors::get_environmental_alerts,
+            // Notifications (WP-52)
+            commands::notifications::get_notification_preferences,
+            commands::notifications::set_notification_preference,
+            commands::notifications::get_smtp_config,
+            commands::notifications::set_smtp_config,
+            commands::notifications::send_test_desktop_notification,
+            commands::notifications::send_test_email,
+            commands::notifications::list_recent_notifications,
+            commands::notifications::dispatch_due_notifications_now,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
             let db = state.db.lock().map_err(|e| format!("DB lock error: {}", e))?;
             db.run_migrations().map_err(|e| format!("Migration error: {}", e))?;
             db.seed_defaults().map_err(|e| format!("Seed error: {}", e))?;
+            drop(db);
+
+            // WP-52: background scheduler. Sleeps for the configured interval
+            // (default 15 minutes, `notification_check_interval_minutes` in
+            // app_settings) before each check, so restarting the app during
+            // development never immediately fires a notification burst.
+            let app_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    let interval_minutes: i64 = {
+                        let state = app_handle.state::<AppState>();
+                        let Ok(db) = state.db.lock() else { break };
+                        db::queries::read_setting(&db.conn, "notification_check_interval_minutes", "15")
+                            .parse()
+                            .unwrap_or(15)
+                    };
+                    tokio::time::sleep(std::time::Duration::from_secs((interval_minutes.max(1) as u64) * 60)).await;
+
+                    let state = app_handle.state::<AppState>();
+                    if let Err(e) = commands::notifications::dispatch_due_notifications(&app_handle, &state) {
+                        eprintln!("Notification dispatch failed: {}", e);
+                    }
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())

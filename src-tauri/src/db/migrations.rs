@@ -188,6 +188,131 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (35)", [])?;
     }
 
+    if current < 36 {
+        migration_036_field_permissions(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (36)", [])?;
+    }
+
+    if current < 37 {
+        migration_037_environmental_readings(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (37)", [])?;
+    }
+
+    if current < 38 {
+        migration_038_notifications(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (38)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_036_field_permissions(conn: &Connection) -> DbResult<()> {
+    // WP-55: Field-level permissions foundation for shared lab use.
+    //
+    // `field_permissions` is a plain (role, entity_type, field_name) -> visible
+    // lookup. Absence of a row means "visible" (see db::permissions::is_field_visible),
+    // so this table only needs rows for fields that are actually gated — it seeds
+    // permissive defaults (visible = 1) for the three fields currently wired into
+    // the masking layer: strains.genomic_fingerprint and
+    // breeding_programs.{goal,target_traits}. Existing deployments see no change
+    // in behavior until an admin explicitly restricts a role via PermissionsEditor.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS field_permissions (
+            id          TEXT PRIMARY KEY,
+            role        TEXT NOT NULL CHECK (role IN ('admin','supervisor','tech','guest')),
+            entity_type TEXT NOT NULL,
+            field_name  TEXT NOT NULL,
+            visible     INTEGER NOT NULL DEFAULT 1,
+            UNIQUE (role, entity_type, field_name)
+        );
+        CREATE INDEX IF NOT EXISTS idx_field_permissions_entity ON field_permissions(entity_type, field_name);",
+    )?;
+
+    let roles = ["admin", "supervisor", "tech", "guest"];
+    let seeds: [(&str, &str); 3] = [
+        ("strain", "genomic_fingerprint"),
+        ("breeding_program", "goal"),
+        ("breeding_program", "target_traits"),
+    ];
+    for (entity_type, field_name) in seeds {
+        for role in roles {
+            conn.execute(
+                "INSERT OR IGNORE INTO field_permissions (id, role, entity_type, field_name, visible) \
+                 VALUES (?1, ?2, ?3, ?4, 1)",
+                rusqlite::params![uuid::Uuid::new_v4().to_string(), role, entity_type, field_name],
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+fn migration_037_environmental_readings(conn: &Connection) -> DbResult<()> {
+    // WP-54: Environmental sensor integration foundation.
+    //
+    // A reading always belongs to a specimen and/or a subculture (at least one
+    // must be set — enforced by CHECK). `source` records where the value came
+    // from; `manual` is fully supported today, the other three values are
+    // recorded for forward-compatibility with a future hardware transport
+    // layer (see db::sensors for the parsing/validation foundation that
+    // already exists independent of any live hardware connection).
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS environmental_readings (
+            id            TEXT PRIMARY KEY,
+            specimen_id   TEXT REFERENCES specimens(id) ON DELETE CASCADE,
+            subculture_id TEXT REFERENCES subcultures(id) ON DELETE CASCADE,
+            reading_type  TEXT NOT NULL CHECK (reading_type IN ('temp_c','humidity_pct','co2_ppm','light_lux','ph','custom')),
+            value         REAL NOT NULL,
+            unit          TEXT,
+            source        TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','usb_serial','bluetooth','mqtt')),
+            recorded_at   TEXT NOT NULL DEFAULT (datetime('now')),
+            notes         TEXT,
+            created_by    TEXT,
+            created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+            CHECK (specimen_id IS NOT NULL OR subculture_id IS NOT NULL)
+        );
+        CREATE INDEX IF NOT EXISTS idx_environmental_readings_specimen ON environmental_readings(specimen_id, recorded_at);
+        CREATE INDEX IF NOT EXISTS idx_environmental_readings_subculture ON environmental_readings(subculture_id, recorded_at);",
+    )?;
+    Ok(())
+}
+
+fn migration_038_notifications(conn: &Connection) -> DbResult<()> {
+    // WP-52: Email/push notification foundation.
+    //
+    // `notification_preferences` is per-user, per-channel (one row per user
+    // per channel they've configured; absence of a row means "use the
+    // built-in default" — see db::notifications::effective_preference).
+    // `smtp_config` is a single-row table (id = 1) for the lab's outbound
+    // mail server. The `password` column is stored as given by the admin —
+    // see the WP-52 "As built" note in ROADMAP.md for the disclosed
+    // trade-off (no OS-keychain integration in this packet, unlike the
+    // zero-knowledge design used for WP-59 cloud-backup credentials).
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS notification_preferences (
+            id           TEXT PRIMARY KEY,
+            user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            channel      TEXT NOT NULL CHECK (channel IN ('desktop','email','mobile_push')),
+            enabled      INTEGER NOT NULL DEFAULT 1,
+            min_severity TEXT NOT NULL DEFAULT 'normal' CHECK (min_severity IN ('normal','high','critical')),
+            UNIQUE (user_id, channel)
+        );
+        CREATE INDEX IF NOT EXISTS idx_notification_preferences_user ON notification_preferences(user_id);
+
+        CREATE TABLE IF NOT EXISTS smtp_config (
+            id           INTEGER PRIMARY KEY CHECK (id = 1),
+            host         TEXT,
+            port         INTEGER NOT NULL DEFAULT 587,
+            username     TEXT,
+            password     TEXT,
+            from_address TEXT,
+            use_tls      INTEGER NOT NULL DEFAULT 1,
+            updated_at   TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        INSERT OR IGNORE INTO smtp_config (id) VALUES (1);
+
+        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('notification_check_interval_minutes', '15');",
+    )?;
     Ok(())
 }
 
@@ -3954,5 +4079,127 @@ mod tests {
             )
             .unwrap();
         assert_eq!(value, "sqlite", "second run must not duplicate or corrupt the seeded setting");
+    }
+
+    // ── Migration 036: field_permissions ──────────────────────────────────────
+
+    #[test]
+    fn migration_036_field_permissions_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='field_permissions'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn migration_036_seeds_twelve_permissive_rows() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM field_permissions WHERE visible = 1", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 12, "4 roles x 3 seeded fields = 12 rows, all visible");
+    }
+
+    #[test]
+    fn migration_036_rejects_unknown_role() {
+        let conn = migrated_db();
+        let result = conn.execute(
+            "INSERT INTO field_permissions (id, role, entity_type, field_name) VALUES ('x', 'superadmin', 'strain', 'foo')",
+            [],
+        );
+        assert!(result.is_err(), "CHECK constraint must reject roles outside admin/supervisor/tech/guest");
+    }
+
+    // ── Migration 037: environmental_readings ─────────────────────────────────
+
+    #[test]
+    fn migration_037_environmental_readings_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='environmental_readings'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn migration_037_rejects_row_with_neither_specimen_nor_subculture() {
+        let conn = migrated_db();
+        let result = conn.execute(
+            "INSERT INTO environmental_readings (id, reading_type, value) VALUES ('r1', 'temp_c', 24.0)",
+            [],
+        );
+        assert!(result.is_err(), "CHECK must require at least one of specimen_id/subculture_id");
+    }
+
+    #[test]
+    fn migration_037_rejects_unknown_reading_type() {
+        let conn = migrated_db();
+        let result = conn.execute(
+            "INSERT INTO environmental_readings (id, specimen_id, reading_type, value) VALUES ('r1', 'sp-1', 'bogus_type', 1.0)",
+            [],
+        );
+        assert!(result.is_err());
+    }
+
+    // ── Migration 038: notification_preferences + smtp_config ────────────────
+
+    #[test]
+    fn migration_038_notification_preferences_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='notification_preferences'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn migration_038_smtp_config_seeded_single_row() {
+        let conn = migrated_db();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM smtp_config", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 1, "smtp_config must always have exactly one row (id = 1)");
+    }
+
+    #[test]
+    fn migration_038_check_interval_default_seeded() {
+        let conn = migrated_db();
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'notification_check_interval_minutes'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, "15");
+    }
+
+    #[test]
+    fn migration_038_rejects_duplicate_preference_per_channel() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, display_name, role) VALUES ('u1','tester','x','Tester','tech')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO notification_preferences (id, user_id, channel) VALUES ('p1', 'u1', 'desktop')",
+            [],
+        ).unwrap();
+        let dup = conn.execute(
+            "INSERT INTO notification_preferences (id, user_id, channel) VALUES ('p2', 'u1', 'desktop')",
+            [],
+        );
+        assert!(dup.is_err(), "UNIQUE(user_id, channel) must reject a second row for the same channel");
     }
 }
