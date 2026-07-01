@@ -212,6 +212,19 @@ pub fn run() {
             commands::breeding::list_breeding_records_for_program,
             commands::breeding::list_breeding_records_for_strain,
             commands::breeding::get_generational_summary,
+            // Backend configuration (WP-50)
+            commands::backend_config::get_backend_config,
+            commands::backend_config::set_backend_type,
+            commands::backend_config::test_postgres_connection,
+            commands::backend_config::bootstrap_postgres_schema,
+            // LAN sync foundation (WP-51)
+            commands::sync::get_sync_status,
+            commands::sync::get_changes_since_cursor,
+            commands::sync::apply_incoming_changes,
+            commands::sync::list_sync_conflicts,
+            commands::sync::resolve_sync_conflict,
+            commands::sync::register_sync_peer,
+            commands::sync::list_sync_peers,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

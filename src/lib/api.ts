@@ -1119,3 +1119,133 @@ export async function listTaxonMappings() {
 export async function exportDarwinCore(rootId?: string) {
   return call<DarwinCoreExport>('export_darwin_core', { rootId: rootId ?? null });
 }
+
+// ---------------------------------------------------------------------------
+// WP-50 — Backend configuration foundation
+// ---------------------------------------------------------------------------
+// SQLite remains the only backend actually serving reads/writes. These calls
+// let an admin record an intended future backend and test PostgreSQL
+// connectivity; neither reconnects the live app.
+
+export interface BackendConfigInfo {
+  backend_type: 'sqlite' | 'postgres';
+  postgres_feature_compiled: boolean;
+}
+
+export async function getBackendConfig() {
+  return call<BackendConfigInfo>('get_backend_config');
+}
+
+export async function setBackendType(backendType: 'sqlite' | 'postgres', connectionString?: string) {
+  return call<void>('set_backend_type', {
+    backendType,
+    connectionString: connectionString ?? null,
+  });
+}
+
+export async function testPostgresConnection(connectionString: string) {
+  return call<string>('test_postgres_connection', { connectionString });
+}
+
+export async function bootstrapPostgresSchema(connectionString: string) {
+  return call<string[]>('bootstrap_postgres_schema', { connectionString });
+}
+
+// ---------------------------------------------------------------------------
+// WP-51 — LAN sync foundation
+// ---------------------------------------------------------------------------
+// Data-model and command surface only — there is no networking/transport
+// layer yet. These calls reuse the existing audit hash chain for change
+// detection; `applyIncomingChanges` records conflicts durably but does not
+// yet write accepted changes back into specimens/subcultures/etc.
+
+export interface SyncCursor {
+  lineage_id: string;
+  last_seen_chain_seq: number;
+}
+
+export interface ChangeRecord {
+  lineage_id: string;
+  chain_seq: number;
+  entity_type: string;
+  entity_id: string | null;
+  action: string;
+  old_value: string | null;
+  new_value: string | null;
+  details: string | null;
+  prev_hash: string | null;
+  entry_hash: string | null;
+  created_at: string;
+}
+
+export interface ChangeSetResponse {
+  changes: ChangeRecord[];
+  has_more: boolean;
+}
+
+export interface SyncConflict {
+  id: string;
+  lineage_id: string;
+  chain_seq: number;
+  local_entry_hash: string | null;
+  incoming_entry_hash: string | null;
+  incoming_source_device_id: string | null;
+  reason: string;
+  resolved: boolean;
+  resolved_by: string | null;
+  resolved_at: string | null;
+  detected_at: string;
+}
+
+export interface ApplyChangesResult {
+  applied: number;
+  skipped_duplicate: number;
+  pending_manual_apply: number;
+  conflicts: SyncConflict[];
+}
+
+export interface SyncPeer {
+  id: string;
+  device_id: string;
+  device_name: string;
+  last_seen_at: string | null;
+  last_sync_at: string | null;
+  created_at: string;
+}
+
+export interface SyncStatusResponse {
+  lineages_tracked: number;
+  max_chain_seq_overall: number;
+  unresolved_conflicts: number;
+  known_peers: number;
+}
+
+export async function getSyncStatus() {
+  return call<SyncStatusResponse>('get_sync_status');
+}
+
+export async function getChangesSinceCursor(cursors: SyncCursor[], limit?: number) {
+  return call<ChangeSetResponse>('get_changes_since_cursor', { cursors, limit: limit ?? null });
+}
+
+export async function applyIncomingChanges(changes: ChangeRecord[], sourceDeviceId: string) {
+  return call<ApplyChangesResult>('apply_incoming_changes', {
+    request: { changes, source_device_id: sourceDeviceId },
+  });
+}
+
+export async function listSyncConflicts(unresolvedOnly?: boolean) {
+  return call<SyncConflict[]>('list_sync_conflicts', { unresolvedOnly: unresolvedOnly ?? null });
+}
+
+export async function resolveSyncConflict(conflictId: string, resolutionNote: string) {
+  return call<void>('resolve_sync_conflict', { conflictId, resolutionNote });
+}
+
+export async function registerSyncPeer(deviceId: string, deviceName: string) {
+  return call<string>('register_sync_peer', { deviceId, deviceName });
+}
+
+export async function listSyncPeers() {
+  return call<SyncPeer[]>('list_sync_peers');
+}

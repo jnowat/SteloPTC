@@ -1,6 +1,6 @@
 [package]
 name = "stelo-ptc"
-version = "1.37.1"
+version = "1.38.0"
 description = "Plant Tissue Culture Specimen Tracking System"
 authors = ["SteloPTC"]
 edition = "2021"
@@ -20,6 +20,12 @@ path = "src/main.rs"
 #   cargo test --lib --no-default-features
 default = ["tauri-commands"]
 tauri-commands = ["tauri", "tauri-plugin-dialog", "tauri-plugin-fs", "tauri-plugin-shell"]
+# WP-50: PostgreSQL backend foundation. Off by default — SQLite remains the sole
+# active backend for all read/write commands. Enabling this feature compiles a
+# standalone PostgreSQL connector (db::postgres) used for connectivity testing
+# and schema bootstrap only; it is not wired into the live query/command layer.
+#   cargo check --no-default-features --features postgres
+postgres = ["dep:sqlx"]
 
 [build-dependencies]
 # tauri-build is a pure Rust code-generator — no system libs required.
@@ -44,3 +50,7 @@ rand = "0.8"
 base64 = "0.22"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
+# WP-50: optional PostgreSQL connector, enabled only by the `postgres` feature.
+# No `macros` feature — we deliberately avoid compile-time query checking
+# (sqlx::query!) since that requires a live database at build time.
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }

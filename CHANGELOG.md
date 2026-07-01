@@ -5,6 +5,37 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.38.0] - 2026-07-01
+
+### Added — WP-50 & WP-51: Multi-user backend + LAN sync foundation (implemented together)
+
+Both packets were implemented in a single coherent session, as scoped, so the backend-selection
+model and the sync change-vector share design assumptions from the start. SQLite remains the
+default and the only backend actually wired into `AppState`/the query and command layer — neither
+packet performs a live backend switch or moves data over a network.
+
+**WP-50 — PostgreSQL backend foundation:**
+- New optional Cargo feature `postgres` (off by default): `cargo check --no-default-features --features postgres`. Pulls in `sqlx` (runtime-tokio, tls-rustls, postgres; no `macros` feature, so no compile-time query checking against a live database is required).
+- New `db::backend` module (always compiled, no feature gate): `BackendKind` enum, `current_backend_kind`/`set_backend_kind` (reads/writes `app_settings.backend_type`), `validate_connection_string`, `validate_backend_switch`.
+- New `db::postgres` module: `BOOTSTRAP_SCHEMA_SQL` (PostgreSQL-flavored DDL for the five core tables — specimens, subcultures, audit_log, taxa, strains — mirroring current SQLite logical structure, not a 1:1 port of all 34 migrations), `split_sql_statements` helper, and `test_connection`/`bootstrap_schema` async functions with two implementations selected by the `postgres` feature (a real `sqlx`-backed one, and a stub returning a clear "rebuild with `--features postgres`" error) so callers use one call site regardless of how the binary was compiled.
+- **Migration 035** adds `backend_type` (default `'sqlite'`) to the existing `app_settings` key/value table. Deliberately does **not** persist a connection string — those may embed credentials and are supplied fresh on each call, never written to disk (same zero-knowledge posture as the WP-59 cloud-backup design in ROADMAP.md).
+- New commands (`commands/backend_config.rs`): `get_backend_config` (any user), `set_backend_type` (admin; records intent only), `test_postgres_connection` and `bootstrap_postgres_schema` (admin; kept as synchronous commands bridging to the async `sqlx` calls via `tauri::async_runtime::block_on`, matching every other command in the codebase rather than introducing the first `async fn` Tauri command).
+- Settings UI: new "Multi-User Backend (Preview)" card — shows the active backend (always SQLite), lets an admin record an intended backend preference, and (when compiled with the `postgres` feature) exposes a connection-string field and "Test Connection" action.
+- 22 new Rust unit tests across `db::backend` and `db::postgres` (connection-string validation, backend-switch validation matrix, bootstrap-schema statement splitting and table coverage, feature-off stub error messages).
+
+**WP-51 — LAN sync foundation:**
+- New `db::sync` module: change detection and conflict recording built entirely on the *existing* per-lineage hash chain (`lineage_id`, `chain_seq`, `prev_hash`, `entry_hash` on `audit_log`) — no parallel change-tracking mechanism was introduced. `get_changes_since` (cursor-based, per-lineage), `detect_sync_conflicts` (classifies each incoming change as new / duplicate / a genuine fork), `record_sync_conflict` / `list_sync_conflicts` / `resolve_sync_conflict`, `register_sync_peer` / `list_sync_peers` (upsert by `device_id`), `get_sync_status`.
+- **Migration 035** (shared with WP-50) also adds `sync_peers` (known LAN devices, `device_id` unique) and `sync_conflicts` (durable fork records — a local and an incoming entry disagreeing on `entry_hash` at the same `(lineage_id, chain_seq)` position is never silently discarded or auto-merged).
+- New commands (`commands/sync.rs`): `get_sync_status` (any user), `get_changes_since_cursor` (supervisor+), `apply_incoming_changes` (admin — detects and durably records conflicts/duplicates; does **not** yet write genuinely-new changes into specimens/subcultures/etc., since replaying a generic change record into the correct domain table requires per-entity-type handlers that are future work — see `pending_manual_apply` in the response), `list_sync_conflicts` / `resolve_sync_conflict` (admin — administratively closes a conflict record; does not itself reconcile the data divergence), `register_sync_peer` / `list_sync_peers`.
+- Settings UI: "Sync Status (Preview)" panel showing lineages tracked, unresolved conflicts, and known peers — read-only, with an explicit note that LAN discovery/networking is not yet implemented.
+- 18 new Rust unit tests across `db::sync` and migration 035 (change-vector correctness with single/multiple cursors and limits, all three conflict-classification outcomes including a mixed batch, conflict/peer CRUD round-trips, aggregate status counts).
+
+**Explicitly not implemented in this packet** (see ROADMAP.md WP-50/WP-51 for the deferred-work list): a dual-backend query layer (the ~5,800-line `db::queries` module and 24 command files continue to address SQLite directly via `rusqlite::Connection`); any live backend switch; LAN peer discovery (mDNS/WebSocket) and the networking transport itself; write-back of accepted incoming sync changes into domain tables; encryption of the (never-persisted) PostgreSQL connection string in transit.
+
+**Verification:** `cargo test --lib --no-default-features` (322/322 passing, up from 282), `cargo clippy --no-default-features --lib -- -D warnings` (clean), and `npm run check` (0 errors, 85 pre-existing warnings — unchanged) all pass. Additionally verified clean across three more feature combinations not covered by the mandated checks: `cargo check`/`clippy` with default features (the full desktop `tauri-commands` build, after installing the required GTK/WebKit system libraries in this environment), `--features postgres` alone, and default+postgres combined.
+
+**Bump:** minor — **v1.38.0**.
+
 ## [1.37.1] - 2026-06-29
 
 ### Changed — ROADMAP.md comprehensive review & Phase F expansion (two passes)

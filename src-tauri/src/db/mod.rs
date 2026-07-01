@@ -1,6 +1,9 @@
+pub mod backend;
 pub mod dashboard;
 pub mod migrations;
+pub mod postgres;
 pub mod queries;
+pub mod sync;
 pub mod vocabulary;
 
 use rusqlite::Connection;
