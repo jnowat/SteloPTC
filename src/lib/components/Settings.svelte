@@ -1,7 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { labProfile, LAB_PROFILE_LABELS, loadLabProfile, type LabProfile } from '../profile';
-  import { setLabProfile, getSpecimenStats } from '../api';
+  import {
+    setLabProfile, getSpecimenStats,
+    getBackendConfig, setBackendType, testPostgresConnection,
+    getSyncStatus, type BackendConfigInfo, type SyncStatusResponse,
+  } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
@@ -30,6 +34,62 @@
       loading = false;
     }
   });
+
+  // WP-50/WP-51 — Multi-user backend + LAN sync foundation (preview).
+  let backendConfig = $state<BackendConfigInfo | null>(null);
+  let syncStatus = $state<SyncStatusResponse | null>(null);
+  let multiUserLoading = $state(true);
+  let backendSelected = $state<'sqlite' | 'postgres'>('sqlite');
+  let connectionStringInput = $state('');
+  let testingConnection = $state(false);
+  let testResult = $state<{ ok: boolean; message: string } | null>(null);
+  let savingBackendType = $state(false);
+
+  onMount(async () => {
+    multiUserLoading = true;
+    try {
+      backendConfig = await getBackendConfig();
+      backendSelected = backendConfig.backend_type;
+      syncStatus = await getSyncStatus();
+    } catch {
+      // Leave both null — the section renders a quiet "unavailable" state below.
+    } finally {
+      multiUserLoading = false;
+    }
+  });
+
+  async function handleTestConnection() {
+    testingConnection = true;
+    testResult = null;
+    try {
+      const message = await testPostgresConnection(connectionStringInput);
+      testResult = { ok: true, message };
+    } catch (e: any) {
+      testResult = { ok: false, message: e.message };
+    } finally {
+      testingConnection = false;
+    }
+  }
+
+  async function handleSaveBackendType() {
+    savingBackendType = true;
+    try {
+      await setBackendType(
+        backendSelected,
+        backendSelected === 'postgres' ? connectionStringInput : undefined,
+      );
+      backendConfig = await getBackendConfig();
+      addNotification(
+        `Intended backend recorded as ${backendSelected === 'postgres' ? 'PostgreSQL' : 'SQLite'}. ` +
+        `The active database is unchanged — this records a future-migration preference only.`,
+        'success',
+      );
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      savingBackendType = false;
+    }
+  }
 
   function handleCancel() {
     selected = $labProfile;
@@ -165,6 +225,116 @@
         migration process or by contacting the system owner.
       </p>
     </div>
+
+    <!-- Multi-User Backend (Preview) — WP-50 / WP-51 foundation -->
+    <div class="card" style="max-width: 640px; margin-top: 24px;">
+      <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Multi-User Backend (Preview)</h2>
+      <p style="font-size: 13px; color: #6b7280; margin-bottom: 20px;">
+        Foundation work for multi-user deployments. SQLite remains the active database for all
+        reads and writes — nothing below changes that. This section records a future backend
+        preference and previews the LAN sync data model.
+      </p>
+
+      {#if multiUserLoading}
+        <div class="loading-pulse" aria-busy="true" aria-label="Loading backend settings"></div>
+      {:else if !backendConfig}
+        <div class="info-box" style="margin-bottom: 12px;">
+          <p>Backend configuration is currently unavailable.</p>
+        </div>
+      {:else}
+        <div class="current-badge" style="margin-bottom: 16px;">
+          Active database: <strong>SQLite</strong> · Intended backend: <strong>{backendConfig.backend_type === 'postgres' ? 'PostgreSQL' : 'SQLite'}</strong>
+        </div>
+
+        {#if !backendConfig.postgres_feature_compiled}
+          <div class="info-notice" role="note">
+            <strong>PostgreSQL support not compiled in</strong>
+            <p>
+              This build was compiled without the <code>postgres</code> Cargo feature.
+              Connectivity testing and schema bootstrap are unavailable until a build with
+              <code>--features postgres</code> is used.
+            </p>
+          </div>
+        {:else}
+          <div class="form-group">
+            <label for="backend-select" title="Select the intended database backend">Intended Backend</label>
+            <select id="backend-select" bind:value={backendSelected} title="Choose the intended backend">
+              <option value="sqlite">SQLite (default, active)</option>
+              <option value="postgres">PostgreSQL (foundation only — not yet active)</option>
+            </select>
+          </div>
+
+          {#if backendSelected === 'postgres'}
+            <div class="form-group" style="margin-top: 12px;">
+              <label for="pg-connection-string" title="PostgreSQL connection string">
+                Connection String
+              </label>
+              <input
+                id="pg-connection-string"
+                type="text"
+                placeholder="postgres://user:password@host:5432/database"
+                bind:value={connectionStringInput}
+                title="postgres:// or postgresql:// connection string — never saved to disk"
+                autocomplete="off"
+              />
+              <p style="font-size: 12px; color: #6b7280; margin-top: 4px;">
+                Never persisted — supplied fresh for each test or save action.
+              </p>
+            </div>
+
+            <div class="action-row">
+              <button
+                class="btn"
+                onclick={handleTestConnection}
+                disabled={testingConnection || !connectionStringInput.trim()}
+                title="Test connectivity to the PostgreSQL server"
+              >
+                {testingConnection ? 'Testing…' : 'Test Connection'}
+              </button>
+            </div>
+
+            {#if testResult}
+              <div class={testResult.ok ? 'info-notice' : 'warning-box'} style="margin-top: 12px;" role={testResult.ok ? 'note' : 'alert'}>
+                <p style="margin:0;">{testResult.message}</p>
+              </div>
+            {/if}
+          {/if}
+
+          <div class="action-row">
+            <button
+              class="btn btn-primary"
+              onclick={handleSaveBackendType}
+              disabled={savingBackendType || backendSelected === backendConfig.backend_type}
+              title="Save the intended backend preference (does not change the active database)"
+            >
+              {savingBackendType ? 'Saving…' : 'Save Preference'}
+            </button>
+          </div>
+        {/if}
+
+        {#if syncStatus}
+          <h3 style="font-size: 14px; font-weight: 700; margin: 24px 0 8px;">Sync Status (Preview)</h3>
+          <p style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">
+            LAN discovery and networking are not yet implemented. These counts reflect the
+            audit-chain data foundation only.
+          </p>
+          <div class="sync-stats-grid">
+            <div class="sync-stat">
+              <span class="sync-stat-value">{syncStatus.lineages_tracked}</span>
+              <span class="sync-stat-label">Lineages tracked</span>
+            </div>
+            <div class="sync-stat">
+              <span class="sync-stat-value">{syncStatus.unresolved_conflicts}</span>
+              <span class="sync-stat-label">Unresolved conflicts</span>
+            </div>
+            <div class="sync-stat">
+              <span class="sync-stat-value">{syncStatus.known_peers}</span>
+              <span class="sync-stat-label">Known peers</span>
+            </div>
+          </div>
+        {/if}
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -274,5 +444,36 @@
   :global(.dark) code {
     background: #0f172a;
     color: #e2e8f0;
+  }
+
+  .sync-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+  }
+  .sync-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 8px;
+    background: #f8fafc;
+    border-radius: 8px;
+  }
+  :global(.dark) .sync-stat {
+    background: #1e293b;
+  }
+  .sync-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: #1e293b;
+  }
+  :global(.dark) .sync-stat-value {
+    color: #e2e8f0;
+  }
+  .sync-stat-label {
+    font-size: 11px;
+    color: #6b7280;
+    margin-top: 2px;
+    text-align: center;
   }
 </style>

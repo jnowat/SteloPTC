@@ -183,6 +183,70 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (34)", [])?;
     }
 
+    if current < 35 {
+        migration_035_multiuser_foundation(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (35)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_035_multiuser_foundation(conn: &Connection) -> DbResult<()> {
+    // WP-50/WP-51: Multi-user backend + LAN sync foundation, implemented together
+    // for architectural coherence (see ROADMAP.md Phase F).
+    //
+    // WP-50: records the lab's intended database backend ('sqlite' | 'postgres')
+    // in the existing app_settings key/value table. SQLite remains the only
+    // backend actually wired into AppState/the query layer — this setting is
+    // forward-looking metadata for a future full backend switch, not a live
+    // toggle. Deliberately does NOT store a connection string here: connection
+    // strings may embed credentials and must never be persisted in plaintext
+    // (consistent with the zero-knowledge posture already established for
+    // WP-59 cloud backup targets). Callers supply the connection string fresh
+    // on each `test_postgres_connection` / `bootstrap_postgres_schema` call.
+    //
+    // WP-51: two new tables provide the data-model foundation for LAN sync
+    // change-detection, reusing the existing hash-chain columns
+    // (lineage_id, chain_seq, entry_hash) already on audit_log rather than
+    // introducing a parallel change-tracking mechanism.
+    //   - sync_peers: known LAN peer devices. Populated by a future discovery
+    //     layer; for now, peers are registered explicitly by an admin.
+    //   - sync_conflicts: durable record of any (lineage_id, chain_seq) position
+    //     where a local entry and an incoming entry disagree on entry_hash — a
+    //     genuine fork that must never be silently discarded or auto-merged.
+    conn.execute(
+        "INSERT OR IGNORE INTO app_settings (key, value) VALUES ('backend_type', 'sqlite')",
+        [],
+    )?;
+
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS sync_peers (
+            id            TEXT PRIMARY KEY,
+            device_id     TEXT NOT NULL UNIQUE,
+            device_name   TEXT NOT NULL,
+            last_seen_at  TEXT,
+            last_sync_at  TEXT,
+            created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_sync_peers_device ON sync_peers(device_id);
+
+        CREATE TABLE IF NOT EXISTS sync_conflicts (
+            id                        TEXT PRIMARY KEY,
+            lineage_id                TEXT NOT NULL,
+            chain_seq                 INTEGER NOT NULL,
+            local_entry_hash          TEXT,
+            incoming_entry_hash       TEXT,
+            incoming_source_device_id TEXT,
+            reason                    TEXT NOT NULL,
+            resolved                  INTEGER NOT NULL DEFAULT 0,
+            resolved_by               TEXT,
+            resolved_at               TEXT,
+            detected_at               TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_sync_conflicts_lineage  ON sync_conflicts(lineage_id, chain_seq);
+        CREATE INDEX IF NOT EXISTS idx_sync_conflicts_resolved ON sync_conflicts(resolved);
+    ")?;
+
     Ok(())
 }
 
@@ -3807,5 +3871,88 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM taxon_mappings WHERE id = 'tm1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 0, "taxon_mappings must cascade-delete when provisional taxon is removed");
+    }
+
+    // ── Migration 035: multi-user backend + LAN sync foundation ──────────────
+
+    #[test]
+    fn migration_035_backend_type_defaults_to_sqlite() {
+        let conn = migrated_db();
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'backend_type'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, "sqlite");
+    }
+
+    #[test]
+    fn migration_035_sync_peers_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_peers'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "sync_peers table must exist after migration 035");
+    }
+
+    #[test]
+    fn migration_035_sync_peers_device_id_unique() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO sync_peers (id, device_id, device_name) VALUES ('p1', 'dev-1', 'Lab PC 1')",
+            [],
+        ).unwrap();
+        let dup = conn.execute(
+            "INSERT INTO sync_peers (id, device_id, device_name) VALUES ('p2', 'dev-1', 'Lab PC 1 (dup)')",
+            [],
+        );
+        assert!(dup.is_err(), "duplicate device_id must be rejected by the UNIQUE constraint");
+    }
+
+    #[test]
+    fn migration_035_sync_conflicts_table_exists() {
+        let conn = migrated_db();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='sync_conflicts'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "sync_conflicts table must exist after migration 035");
+    }
+
+    #[test]
+    fn migration_035_sync_conflicts_resolved_defaults_to_zero() {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO sync_conflicts (id, lineage_id, chain_seq, reason) \
+             VALUES ('c1', 'sp-1', 3, 'fork detected')",
+            [],
+        ).unwrap();
+        let resolved: i64 = conn
+            .query_row("SELECT resolved FROM sync_conflicts WHERE id = 'c1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(resolved, 0);
+    }
+
+    #[test]
+    fn migration_035_is_idempotent_alongside_full_run() {
+        let conn = migrated_db();
+        run_all(&conn).expect("re-running all migrations including 035 must not error");
+        let value: String = conn
+            .query_row(
+                "SELECT value FROM app_settings WHERE key = 'backend_type'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(value, "sqlite", "second run must not duplicate or corrupt the seeded setting");
     }
 }

@@ -13,6 +13,8 @@ pub mod taxon;
 pub mod cryo;
 pub mod fruiting;
 pub mod breeding;
+pub mod backend;
+pub mod sync;
 
 // Re-export common types
 pub use specimen::*;
