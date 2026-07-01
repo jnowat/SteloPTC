@@ -706,6 +706,7 @@ ${mainHtml}
             role="dialog"
             aria-label="Print report options"
             aria-modal="true"
+            tabindex="-1"
             onkeydown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); showPrintOptions = false; } }}
           >
             <div class="pop-title">Report Options</div>

@@ -195,10 +195,11 @@ pub fn get_analytics_kpi_summary(state: State<AppState>, token: String) -> Resul
     })
 }
 
-/// Reads the user's saved Analytics panel visibility configuration (which
-/// panels are toggled on/off), persisted as a JSON blob in `app_settings`.
-/// Returns `"{}"` (empty object) when nothing has been saved yet — the
-/// frontend treats every panel as visible-by-default in that case.
+/// Reads the lab-wide Analytics panel visibility configuration (which panels
+/// are toggled on/off), persisted as a JSON blob in `app_settings`. Returns
+/// `"{}"` (empty object) when nothing has been saved yet — the frontend
+/// treats every panel as visible-by-default in that case. Readable by any
+/// authenticated user (the layout is shared, not per-user).
 #[tauri::command]
 pub fn get_analytics_panel_config(state: State<AppState>, token: String) -> Result<String, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
@@ -206,10 +207,18 @@ pub fn get_analytics_panel_config(state: State<AppState>, token: String) -> Resu
     Ok(crate::db::queries::read_setting(&db.conn, "analytics_panel_config", "{}"))
 }
 
+/// Writes the lab-wide Analytics panel configuration. Supervisor/admin only:
+/// this is a single shared `app_settings` key, so one user's toggles override
+/// everyone else's — gating it (like `set_ai_config` and other lab-wide
+/// settings) prevents a read-only or technician account from silently
+/// reshaping the analytics view for the whole lab.
 #[tauri::command]
 pub fn set_analytics_panel_config(state: State<AppState>, token: String, config_json: String) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let _user = auth_service::validate_session(&db, &token)?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Only supervisors and admins can change the shared analytics layout".to_string());
+    }
     // Cheap validity check — reject non-JSON before persisting.
     serde_json::from_str::<serde_json::Value>(&config_json)
         .map_err(|e| format!("Invalid panel config JSON: {}", e))?;

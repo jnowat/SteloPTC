@@ -11,6 +11,12 @@
 {#if $notifications.length > 0}
   <div class="notifications">
     {#each $notifications as notif (notif.id)}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- False positive: `tabindex={0}` is only ever set on the same
+           condition that also sets `role="button"` (error/warning
+           notifications), so the element is always interactive when
+           focusable. svelte-check can't prove the two ternaries share a
+           condition, so we suppress this one rule with justification. -->
       <div
         class="notif notif-{notif.type}"
         class:notif-clickable={notif.type === 'error' || notif.type === 'warning'}

@@ -5,6 +5,33 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.40.1] - 2026-07-01
+
+### Security & Hardening — Phase F review pass (no new features)
+
+A focused quality/security review of the v1.40.0 Phase F release. Three independent audits (field-masking bypass paths, dashboard-cache invalidation coverage, and command-layer code hygiene) were run over the new code; the concrete findings below were fixed. All three mandated verification commands pass clean at the end: `cargo test --lib --no-default-features` (464 passing), `cargo clippy --no-default-features --lib -- -D warnings` (clean), and `npm run check` (**0 errors, 0 warnings** — down from 3).
+
+**Security & data integrity (Priority 1):**
+- **SMTP credential redaction now also covers cloud backups (WP-52/WP-59).** The local backup path (WP-16) already redacts the plaintext `smtp_config.password` before a backup file leaves the machine, but the WP-59 cloud backup path read the raw DB file and encrypted it *without* redacting first. `cloud_backup` now stages the checkpointed DB to a temp copy, redacts the SMTP password from that copy (reusing the exact tested `redact_smtp_password_in_backup` helper), then encrypts — so no plaintext SMTP secret is ever written into a cloud backup, consistent with the local path. The live DB is never touched. A restored cloud backup re-prompts for the SMTP password, exactly like a restored local backup.
+- **Field-masking bypass audit (WP-55) — no leaks found; guard made uniform.** A full read-path audit of the new Analytics (WP-58), Notifications (WP-52), and Work Queue paths confirmed none of them select or leak the masked fields (`strain.genomic_fingerprint`, `breeding_program.goal`/`target_traits`): the analytics `strain_performance` query selects only `st.id`/`st.name`; the notification pipeline has a marker-substring backstop that drops any candidate containing `"[RESTRICTED]"`; and `WorkQueueItem` never touches the `strains` table. The genomic-fingerprint corruption guard (`reject_if_restricted_marker`) was re-confirmed present on the sole fingerprint-writing path with regression coverage. As defense-in-depth, `create_breeding_program` now also rejects the `"[RESTRICTED]"` marker on its `goal`/`target_traits` inputs, making the write-path guard uniform across both masked entities.
+- **Cloud backup encryption reviewed and hardened (WP-59).** Argon2id parameters (128 MiB / 3 iterations / 4-way), fresh-random-nonce-per-call, and AEAD-tag verification were all confirmed correct, and `restore_from_cloud` authenticates (decrypts + verifies the tag) *before* any destructive write to the live database — a wrong passphrase or tampered blob fails safely. `derive_key` and `encrypt` now return `Result` instead of `.expect()`-panicking: the Argon2id 128 MiB allocation can fail at runtime on a memory-constrained device, and that must surface as a clean error string rather than unwinding a panic across the Tauri command boundary. The whole `cloud::crypto` API (`derive_key`/`encrypt`/`decrypt`) is now uniformly fallible.
+
+**Code quality (Priority 2):**
+- **Dashboard cache invalidation gap fixed (WP-63).** A cache-coverage audit found exactly one production write path that changes a cached dashboard count but failed to invalidate the materialized cache: `thaw_vial` inserts a brand-new specimen (stage `thaw_recovery`), so a thawed specimen could be missing from the dashboard for up to the 60 s TTL. `thaw_vial` now invalidates the cache like every other specimen-creating path. (All other write paths — including the location-only writes that correctly do *not* invalidate, and the restore paths that restart the app — were confirmed correct.)
+- **`set_analytics_panel_config` is now supervisor/admin-gated (WP-58).** The analytics panel layout is a single shared lab-wide `app_settings` key; previously any authenticated user (including read-only roles) could overwrite it for the whole lab. It now requires `can_manage()`, matching `set_ai_config` and the other lab-wide settings, and the "Customize panels" UI is hidden for non-managers so no one hits a permission error.
+- **Plugin loader hardened against non-whitelisted table names (WP-61).** `apply_vocabulary_seed` interpolates a table name into SQL and is `pub`; it now re-checks the name against the `SEEDABLE_VOCAB_TABLES` whitelist itself (not only relying on the caller having run `validate_manifest`), closing the sole path by which a table identifier could be attacker-influenced. New regression test covers it.
+
+**Documentation & polish (Priorities 3–4):**
+- **Accessibility warnings driven to zero.** `npm run check` now reports 0 warnings (was 3): added `tabindex="-1"` to the SpecimenList print-options dialog, replaced the redundant `alt="Specimen photo"` on the WP-56 lightbox image, and suppressed one documented false-positive in `Notifications.svelte` (its `tabindex` is only ever set together with an interactive `role`).
+- **SMTP plaintext-storage warning added to Settings.** The Email (SMTP) card now carries an explicit security note that the password is stored unencrypted locally (no OS-keychain integration yet), is redacted from all backups, and that a dedicated least-privilege mail account should be used.
+- **Honesty review of WP-50/51/53/54/59/61 disclosures.** The existing "Not yet implemented" / "scaffolding" / "unverified" language in ROADMAP.md was reviewed and confirmed accurate — WP-50 is still documented as "a well-tested skeleton, not a working [second backend]," WP-51 as "data-model and detection logic only... no transport, no merge," WP-53 iOS as "explicitly unverified end-to-end," and the WP-54 sensor `source` trust gap is fully disclosed. No overstatement required correcting.
+
+### Reviewed but intentionally left unchanged
+- The `.ok()` on the post-backup `last_status` metadata UPDATE in `cloud_backup` (a failure there is cosmetic — the backup file is already durably written; changing it to `?` would make a *successful* backup report failure).
+- The sensor `source` trust model (WP-54): the code is already correctly designed for forward-compatible ingestion and exhaustively documents that `source` is a caller-supplied label, not verified provenance. Adding a behavioral rejection would break the intended (tested) forward-compatible pipeline; documentation is the right control here.
+
+**Bump:** patch — **v1.40.1**.
+
 ## [1.40.0] - 2026-07-01
 
 ### Added — WP-56 through WP-65: Phase F cross-cutting features (combined release)

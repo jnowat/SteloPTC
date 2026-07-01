@@ -176,15 +176,32 @@ pub fn cloud_backup(state: State<AppState>, token: String, target_id: String, pa
         ));
     }
 
-    let plaintext = std::fs::read(&db_path).map_err(|e| format!("Failed to read database: {}", e))?;
+    // Security: like the local backup path (WP-16/WP-52), the cloud backup must
+    // never carry the plaintext `smtp_config.password` off the machine. The
+    // AES-256-GCM envelope already protects it in transit and at rest in the
+    // cloud, but redacting it from the plaintext *before* encryption is the
+    // same defense-in-depth the local path applies, and keeps the two paths
+    // consistent — a restored cloud backup re-prompts for the SMTP password
+    // exactly like a restored local backup does. We copy the checkpointed DB to
+    // a temp file, redact that copy, read it back, then delete it; the live DB
+    // is never touched.
+    let backup_id = format!("stelo_cloud_{}", chrono::Local::now().format("%Y%m%d_%H%M%S"));
+    let temp_path = db_path.with_file_name(format!("{}.tmp", backup_id));
+    std::fs::copy(&db_path, &temp_path).map_err(|e| format!("Failed to stage backup copy: {}", e))?;
+    if let Err(e) = crate::commands::backup::redact_smtp_password_in_backup(&temp_path) {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(format!("Failed to redact SMTP credential from backup copy: {}", e));
+    }
+    let read_result = std::fs::read(&temp_path).map_err(|e| format!("Failed to read staged backup: {}", e));
+    let _ = std::fs::remove_file(&temp_path);
+    let plaintext = read_result?;
+
     let salt = crypto::generate_salt();
-    let key = crypto::derive_key(&passphrase, &salt);
-    let encrypted = crypto::encrypt(&key, &plaintext);
+    let key = crypto::derive_key(&passphrase, &salt)?;
+    let encrypted = crypto::encrypt(&key, &plaintext)?;
     let mut blob = Vec::with_capacity(salt.len() + encrypted.len());
     blob.extend_from_slice(&salt);
     blob.extend_from_slice(&encrypted);
-
-    let backup_id = format!("stelo_cloud_{}", chrono::Local::now().format("%Y%m%d_%H%M%S"));
     let dest_dir = std::path::PathBuf::from(&config.bucket_or_path);
     std::fs::create_dir_all(&dest_dir).map_err(|e| format!("Failed to reach destination path: {}", e))?;
     let dest_path = dest_dir.join(format!("{}.stelobak", backup_id));
@@ -236,7 +253,7 @@ pub fn restore_from_cloud(
         return Err("Backup file is too short to be valid".to_string());
     }
     let (salt, encrypted) = blob.split_at(16);
-    let key = crypto::derive_key(&passphrase, salt);
+    let key = crypto::derive_key(&passphrase, salt)?;
     // Authenticate the blob BEFORE touching the live database — a wrong
     // passphrase or corrupted/tampered file must never reach the swap step.
     let plaintext = crypto::decrypt(&key, encrypted)?;

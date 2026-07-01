@@ -25,8 +25,8 @@ pub struct TargetConfig {
 pub fn encrypt_target_config(passphrase: &str, config: &TargetConfig) -> Result<String, String> {
     let json = serde_json::to_vec(config).map_err(|e| e.to_string())?;
     let salt = crypto::generate_salt();
-    let key = crypto::derive_key(passphrase, &salt);
-    let blob = crypto::encrypt(&key, &json);
+    let key = crypto::derive_key(passphrase, &salt)?;
+    let blob = crypto::encrypt(&key, &json)?;
 
     let mut combined = Vec::with_capacity(salt.len() + blob.len());
     combined.extend_from_slice(&salt);
@@ -42,7 +42,7 @@ pub fn decrypt_target_config(passphrase: &str, stored_b64: &str) -> Result<Targe
         return Err("Corrupted stored config: too short".to_string());
     }
     let (salt, blob) = combined.split_at(16);
-    let key = crypto::derive_key(passphrase, salt);
+    let key = crypto::derive_key(passphrase, salt)?;
     let json = crypto::decrypt(&key, blob)?;
     serde_json::from_slice(&json).map_err(|e| format!("Corrupted stored config JSON: {}", e))
 }
