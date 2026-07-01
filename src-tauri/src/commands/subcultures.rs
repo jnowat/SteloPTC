@@ -80,6 +80,7 @@ pub fn record_specimen_death(
     ).map_err(|e| format!("Failed to write death audit: {}", e))?;
 
     tx.commit().map_err(|e| format!("Failed to commit death transaction: {}", e))?;
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     db.conn.query_row(
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
@@ -301,6 +302,7 @@ pub fn create_subculture(
     ).map_err(|e| format!("Failed to write passage audit: {}", e))?;
 
     tx.commit().map_err(|e| format!("Failed to commit subculture transaction: {}", e))?;
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     db.conn.query_row(
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
@@ -381,6 +383,7 @@ pub fn update_subculture(
         &db.conn, Some(&user.id), "update", "subculture", Some(&request.id),
         None, None, Some("Subculture updated"),
     ).ok();
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     Ok(())
 }
@@ -449,7 +452,15 @@ pub fn get_contamination_stats(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
-    crate::db::dashboard::query_contamination_stats(&db.conn, &profile)
+    // WP-63: same materialized cache as get_specimen_stats — both stats are
+    // computed and cached together on whichever of the two is read first.
+    let (_stats, contamination) = crate::db::dashboard::get_or_refresh_dashboard_cache(
+        &db.conn,
+        &profile,
+        &state.dashboard_cache,
+        crate::db::dashboard::DASHBOARD_CACHE_TTL,
+    )?;
+    Ok(contamination)
 }
 
 // ── Subculture Schedule ──────────────────────────────────────────────────────

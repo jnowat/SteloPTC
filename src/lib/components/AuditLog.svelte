@@ -3,7 +3,8 @@
   import { getAuditLog, verifyAuditEntry, verifyAuditLineage,
            createAuditCheckpoint, verifyAgainstCheckpoint, listAuditCheckpoints,
            exportAuditProof, verifyExportedProof,
-           getAutoCheckpointConfig, setAutoCheckpointConfig, runAutoCheckpoint } from '../api';
+           getAutoCheckpointConfig, setAutoCheckpointConfig, runAutoCheckpoint,
+           listAuditEntriesCursor } from '../api';
   import { addNotification } from '../stores/app';
   import DataState from './DataState.svelte';
 
@@ -25,6 +26,46 @@
   // Batch verification state (Verify All Lineages button)
   let batchVerifying = $state(false);
   let batchResult = $state<{ total: number; passed: number; failed: number } | null>(null);
+
+  // WP-63: cursor-paginated single-lineage detail panel. At 1M+ entries per
+  // lineage, loading the whole chain at once (as any naive "view lineage"
+  // feature would) is prohibitively slow — this loads a fixed-size window
+  // oldest-first using chain_seq as the stable cursor, with an explicit
+  // "Load more" control rather than an unbounded fetch.
+  let viewingLineageId = $state<string | null>(null);
+  let lineageEntries = $state<any[]>([]);
+  let lineageHasMore = $state(false);
+  let lineageNextCursor = $state<number | null>(null);
+  let lineageLoadingMore = $state(false);
+  const LINEAGE_PAGE_SIZE = 50;
+
+  async function openLineageView(lineageId: string) {
+    viewingLineageId = lineageId;
+    lineageEntries = [];
+    lineageHasMore = false;
+    lineageNextCursor = null;
+    await loadLineagePage(null);
+  }
+
+  function closeLineageView() {
+    viewingLineageId = null;
+    lineageEntries = [];
+  }
+
+  async function loadLineagePage(afterSeq: number | null) {
+    if (!viewingLineageId) return;
+    lineageLoadingMore = true;
+    try {
+      const result = await listAuditEntriesCursor(viewingLineageId, afterSeq, LINEAGE_PAGE_SIZE);
+      lineageEntries = afterSeq === null ? result.items : [...lineageEntries, ...result.items];
+      lineageHasMore = result.has_more;
+      lineageNextCursor = result.next_cursor;
+    } catch (e: any) {
+      addNotification(e?.message || 'Failed to load lineage entries', 'error');
+    } finally {
+      lineageLoadingMore = false;
+    }
+  }
 
   onMount(() => { load(); });
 
@@ -610,6 +651,12 @@
                   <span class="seq-badge" title="Lineage: {e.lineage_id}  |  chain_seq: {e.chain_seq}">
                     🔒 {e.chain_seq}
                   </span>
+                  <button
+                    class="hash-btn"
+                    style="margin-left:4px;"
+                    title="View this lineage's full entry history (paginated, does not load everything at once)"
+                    onclick={() => openLineageView(e.lineage_id)}
+                  >view</button>
                 {:else}
                   <span class="dim">—</span>
                 {/if}
@@ -688,6 +735,59 @@
     {/if}
   </DataState>
 </div>
+
+<!-- WP-63: cursor-paginated single-lineage detail panel -->
+{#if viewingLineageId}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div
+    class="lineage-modal-backdrop"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Lineage history"
+    onclick={closeLineageView}
+    onkeydown={(e) => { if (e.key === 'Escape') closeLineageView(); }}
+    tabindex="-1"
+  >
+    <div class="lineage-modal" onclick={(e) => e.stopPropagation()}>
+      <div class="lineage-modal-header">
+        <h3 style="font-size:15px;margin:0;">Lineage history — <code>{viewingLineageId.slice(0, 12)}…</code></h3>
+        <button class="btn btn-sm" aria-label="Close lineage history" onclick={closeLineageView}>✕</button>
+      </div>
+      <p style="font-size:12px;color:var(--color-text-muted, #64748b);margin:0 0 10px;">
+        Loaded oldest-first, {LINEAGE_PAGE_SIZE} entries at a time (chain_seq-based cursor) — never the full lineage at once.
+      </p>
+      <div class="lineage-entries-scroll">
+        <table>
+          <thead>
+            <tr><th>Seq</th><th>Date</th><th>Action</th><th>Entity</th><th>Details</th></tr>
+          </thead>
+          <tbody>
+            {#each lineageEntries as le}
+              <tr>
+                <td>{le.chain_seq}</td>
+                <td style="white-space:nowrap;">{le.created_at}</td>
+                <td><span class="badge badge-blue">{le.action}</span></td>
+                <td>{le.entity_type}</td>
+                <td>{le.details || le.new_value || '—'}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+        {#if lineageEntries.length === 0 && !lineageLoadingMore}
+          <p class="dim" style="text-align:center;padding:12px;">No entries found for this lineage.</p>
+        {/if}
+      </div>
+      {#if lineageHasMore}
+        <div style="text-align:center;margin-top:10px;">
+          <button class="btn btn-sm" disabled={lineageLoadingMore} onclick={() => loadLineagePage(lineageNextCursor)}>
+            {lineageLoadingMore ? 'Loading…' : 'Load more'}
+          </button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
 
 <style>
   .chain-banner {
@@ -955,4 +1055,40 @@
     font-weight: 600;
     color: var(--color-success, #16a34a);
   }
+
+  .lineage-modal-backdrop {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,0.5);
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .lineage-modal {
+    background: var(--color-surface, #fff);
+    border-radius: 10px;
+    padding: 18px 20px;
+    width: min(720px, 100%);
+    max-height: 80vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.3);
+  }
+  :global(.dark) .lineage-modal { background: #0f172a; }
+  .lineage-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .lineage-entries-scroll {
+    overflow-y: auto;
+    flex: 1;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+  }
+  :global(.dark) .lineage-entries-scroll { border-color: #334155; }
+  .lineage-entries-scroll table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .lineage-entries-scroll th {
+    position: sticky; top: 0;
+    background: #f1f5f9; text-align: left; padding: 6px 8px;
+  }
+  :global(.dark) .lineage-entries-scroll th { background: #1e293b; }
+  .lineage-entries-scroll td { padding: 5px 8px; border-top: 1px solid #f1f5f9; }
+  :global(.dark) .lineage-entries-scroll td { border-top-color: #1e293b; }
 </style>

@@ -278,6 +278,7 @@ pub fn create_specimen(
     }
 
     tx.commit().map_err(|e| format!("Failed to commit specimen: {}", e))?;
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     drop(db);
     get_specimen(state, token, id)
@@ -360,6 +361,7 @@ pub fn update_specimen(
         &db.conn, Some(&user.id), "update", "specimen", Some(&request.id),
         None, None, Some("Specimen updated"),
     ).ok();
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     drop(db);
     get_specimen(state, token, request.id)
@@ -383,6 +385,7 @@ pub fn delete_specimen(state: State<AppState>, token: String, id: String) -> Res
         &db.conn, Some(&user.id), "archive", "specimen", Some(&id),
         None, None, Some("Specimen archived"),
     ).ok();
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     Ok(())
 }
@@ -553,7 +556,16 @@ pub fn get_specimen_stats(state: State<AppState>, token: String) -> Result<Speci
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
-    crate::db::dashboard::query_specimen_stats(&db.conn, &profile)
+    // WP-63: served from the materialized dashboard cache (60s TTL, invalidated
+    // immediately on any write that changes specimen/subculture counts) rather
+    // than recomputing the multi-join aggregate on every dashboard load.
+    let (stats, _contamination) = crate::db::dashboard::get_or_refresh_dashboard_cache(
+        &db.conn,
+        &profile,
+        &state.dashboard_cache,
+        crate::db::dashboard::DASHBOARD_CACHE_TTL,
+    )?;
+    Ok(stats)
 }
 
 #[tauri::command]
@@ -584,6 +596,9 @@ pub fn bulk_archive_specimens(
                 None, None, Some("Bulk archived"),
             ).ok();
         }
+    }
+    if count > 0 {
+        crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
     }
     Ok(count)
 }
@@ -903,6 +918,7 @@ pub fn split_specimen(
     }
 
     tx.commit().map_err(|e| format!("Failed to commit split: {}", e))?;
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     Ok(SplitResult {
         archived_parent_id: request.parent_specimen_id,
@@ -1028,6 +1044,9 @@ pub fn bulk_update_stage(
                 None, None, Some(&format!("Bulk stage update: {}", stage)),
             ).ok();
         }
+    }
+    if count > 0 {
+        crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
     }
     Ok(count)
 }

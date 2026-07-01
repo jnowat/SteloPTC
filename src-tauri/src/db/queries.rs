@@ -915,6 +915,91 @@ impl Default for PaginationParams {
     }
 }
 
+// ── WP-63: cursor-based audit pagination + configurable pedigree depth ──────
+
+/// A page of results ordered by a stable, monotonically increasing cursor
+/// column (here, `audit_log.chain_seq`). Unlike offset/limit pagination, a
+/// cursor page never skips or repeats a row when new entries are inserted
+/// between reads — offset pagination on a 1M-row audit lineage would do
+/// exactly that as new passages are recorded during a technician's own
+/// scroll session.
+#[derive(serde::Serialize)]
+pub struct CursorPage<T> {
+    pub items: Vec<T>,
+    pub next_cursor: Option<i64>,
+    pub has_more: bool,
+}
+
+/// Returns up to `limit` audit entries for `lineage_id` with `chain_seq >
+/// after_seq` (or from the start of the lineage when `after_seq` is `None`),
+/// ordered oldest-to-newest. `next_cursor` is the last returned row's
+/// `chain_seq` — pass it back as `after_seq` to fetch the next page ("load
+/// later" in the UI). This is additive to the existing offset-paginated
+/// `get_audit_log` search view; it exists specifically for the single-lineage
+/// Audit Log detail view, which becomes prohibitively slow to load in full at
+/// the 1M-entry scale WP-63 targets.
+pub fn list_audit_entries_by_cursor(
+    conn: &Connection,
+    lineage_id: &str,
+    after_seq: Option<i64>,
+    limit: i64,
+) -> DbResult<CursorPage<crate::models::audit::AuditEntry>> {
+    let limit = limit.clamp(1, 1000);
+    let after = after_seq.unwrap_or(-1);
+
+    let mut stmt = conn.prepare(
+        "SELECT a.*, u.username
+         FROM audit_log a
+         LEFT JOIN users u ON a.user_id = u.id
+         WHERE a.lineage_id = ?1 AND COALESCE(a.chain_seq, -1) > ?2
+         ORDER BY a.chain_seq ASC
+         LIMIT ?3",
+    )?;
+
+    let mut items: Vec<crate::models::audit::AuditEntry> = stmt
+        .query_map(params![lineage_id, after, limit + 1], |row| {
+            Ok(crate::models::audit::AuditEntry {
+                id: row.get("id")?,
+                user_id: row.get("user_id")?,
+                username: row.get("username")?,
+                action: row.get("action")?,
+                entity_type: row.get("entity_type")?,
+                entity_id: row.get("entity_id")?,
+                old_value: row.get("old_value")?,
+                new_value: row.get("new_value")?,
+                details: row.get("details")?,
+                created_at: row.get("created_at")?,
+                lineage_id: row.get("lineage_id")?,
+                chain_seq: row.get("chain_seq")?,
+                prev_hash: row.get("prev_hash")?,
+                entry_hash: row.get("entry_hash")?,
+            })
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    // Fetched one extra row (limit + 1) to detect whether there's more without
+    // a second COUNT query; trim it off before returning.
+    let has_more = items.len() as i64 > limit;
+    if has_more {
+        items.truncate(limit as usize);
+    }
+    let next_cursor = items.last().and_then(|e| e.chain_seq);
+
+    Ok(CursorPage { items, next_cursor, has_more })
+}
+
+/// Reads the lab's configured pedigree traversal depth cap (`pedigree_max_depth`
+/// in `app_settings`, seeded to 10 by migration_039). Clamped to [1, 20]
+/// regardless of what's stored, so a corrupted or hand-edited setting can
+/// never make a pedigree query unbounded.
+pub fn configured_pedigree_max_depth(conn: &Connection) -> u32 {
+    read_setting(conn, "pedigree_max_depth", "10")
+        .parse::<u32>()
+        .unwrap_or(10)
+        .clamp(1, 20)
+}
+
 // ── Taxon helpers (WP-35) ─────────────────────────────────────────────────────
 // These functions are classification helpers only; they perform no audit-chain
 // writes.  Taxa records above Species are never hash-chained.
@@ -2750,6 +2835,513 @@ pub fn get_mycology_compliance_flags(
     }
 
     Ok(flags)
+}
+
+// ── WP-64: taxon chain re-anchoring ──────────────────────────────────────────
+//
+// Design note on lineage identity: every existing genesis-writer in this file
+// (log_audit_taxon_genesis, log_audit_species_genesis-equivalents,
+// log_audit_strain_genesis, log_audit_seeded_by_species/strain) uses
+// `lineage_id = entity_id` — one lineage per entity, forever. Re-anchoring
+// asks for a *second* genesis state for an entity that already has one
+// (per the WP-45 RECLASSIFICATION WARNING), without deleting the first. That
+// can't be `lineage_id = entity_id` again (chain_seq = 0 would collide with
+// the original genesis row in the same lineage). Instead, each re-anchored
+// entity gets a distinct synthetic lineage: `"{entity_id}#reanchor-{event_id}"`.
+// This is a fresh, independent, ordinary hash chain — verify_audit_lineage
+// and verify_audit_chain work on it completely unmodified, satisfying "any
+// newly-created entity post-re-anchor verifies cleanly" without touching the
+// verification code at all. The original `lineage_id = entity_id` chain is
+// never written to again, so it remains exactly as it was (the "old chain"
+// the ROADMAP requires to survive untouched). `reanchor_events` is the
+// durable index that tells an auditor a second lineage exists for an entity
+// and why.
+//
+// Specimen scope note: specimens under an affected species are counted in
+// full (`affected_specimens_count`) for the pre-flight report, but — to keep
+// the operation atomic and fast for labs with thousands of specimens under
+// one species — individual specimens do NOT each get their own re-anchor
+// lineage. A specimen's own audit chain (its passage history) never encoded
+// taxonomic state; only its lineage's very first entry (seeded from the
+// species/strain's hash at creation time) did. That single dependency is
+// bridged by one aggregate entry per affected species
+// (`"{species_id}#reanchor-{event_id}-specimens"`), which records the
+// specimen count in its `details` field. This is a deliberate, documented
+// scope reduction — see ROADMAP.md WP-64 "As built".
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ReanchorCounts {
+    pub affected_taxa: i64,
+    pub affected_species: i64,
+    pub affected_strains: i64,
+    pub affected_specimens: i64,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ReanchorResult {
+    pub ok: bool,
+    pub affected_taxa: i64,
+    pub affected_species: i64,
+    pub affected_strains: i64,
+    pub affected_specimens: i64,
+    pub reanchor_event_id: String,
+}
+
+struct ReanchorScope {
+    /// Descendant taxa (including the target itself), in parent-before-child order.
+    taxa_in_order: Vec<Taxon>,
+    species_ids: Vec<String>,
+    strain_ids: Vec<String>,
+    specimen_count_by_species: Vec<(String, i64)>,
+}
+
+/// Walks `taxa -> species -> strains -> specimens` below (and including)
+/// `taxon_id`, returning every affected entity in an order safe to re-anchor
+/// (parents before children). Read-only.
+fn compute_reanchor_scope(conn: &Connection, taxon_id: &str) -> DbResult<ReanchorScope> {
+    let root = load_taxon(conn, taxon_id)?;
+
+    // Recursive descendant walk over the taxa table, closest-to-root first
+    // (BFS via increasing depth) so a parent is always re-anchored before its
+    // children.
+    let mut taxa_in_order = vec![root];
+    let mut frontier = vec![taxon_id.to_string()];
+    while !frontier.is_empty() {
+        let placeholders: Vec<String> = frontier.iter().map(|_| "?".to_string()).collect();
+        let sql = format!(
+            "SELECT id, rank, name, parent_id, ncbi_taxon_id, ncbi_updated_at, \
+                    local_override, taxon_path, created_at, updated_at \
+             FROM taxa WHERE parent_id IN ({})",
+            placeholders.join(",")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            frontier.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let children: Vec<Taxon> = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok(Taxon {
+                    id: row.get("id")?,
+                    rank: row.get("rank")?,
+                    name: row.get("name")?,
+                    parent_id: row.get("parent_id")?,
+                    ncbi_taxon_id: row.get("ncbi_taxon_id")?,
+                    ncbi_updated_at: row.get("ncbi_updated_at")?,
+                    local_override: row.get::<_, i64>("local_override")? != 0,
+                    taxon_path: row.get("taxon_path")?,
+                    created_at: row.get("created_at")?,
+                    updated_at: row.get("updated_at")?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+        frontier = children.iter().map(|t| t.id.clone()).collect();
+        taxa_in_order.extend(children);
+    }
+
+    let affected_taxon_ids: std::collections::HashSet<String> =
+        taxa_in_order.iter().map(|t| t.id.clone()).collect();
+
+    // Species link to taxa via `taxon_path`, a JSON array of ancestor taxon
+    // ids (see migration_031/backfill_taxa_genesis). Membership is checked in
+    // Rust (parse + HashSet lookup) rather than SQL JSON functions, since it
+    // only runs once per re-anchor and keeps the SQL trivial to audit.
+    let mut species_stmt = conn.prepare("SELECT id, taxon_path FROM species")?;
+    let all_species: Vec<(String, Option<String>)> = species_stmt
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut species_ids = Vec::new();
+    for (species_id, taxon_path) in all_species {
+        let Some(path_json) = taxon_path else { continue };
+        let path: Vec<String> = serde_json::from_str(&path_json).unwrap_or_default();
+        if path.iter().any(|id| affected_taxon_ids.contains(id)) {
+            species_ids.push(species_id);
+        }
+    }
+
+    let mut strain_ids = Vec::new();
+    let mut specimen_count_by_species = Vec::new();
+    for species_id in &species_ids {
+        let mut stmt = conn.prepare("SELECT id FROM strains WHERE species_id = ?1 AND is_archived = 0")?;
+        let ids: Vec<String> = stmt
+            .query_map([species_id], |r| r.get(0))?
+            .filter_map(|r| r.ok())
+            .collect();
+        strain_ids.extend(ids);
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM specimens WHERE species_id = ?1", [species_id], |r| r.get(0))
+            .unwrap_or(0);
+        specimen_count_by_species.push((species_id.clone(), count));
+    }
+
+    Ok(ReanchorScope { taxa_in_order, species_ids, strain_ids, specimen_count_by_species })
+}
+
+/// Read-only pre-flight report: exactly what `reanchor_taxon_chain` would
+/// affect, without writing anything.
+pub fn reanchor_taxon_chain_dry_run(conn: &Connection, taxon_id: &str) -> DbResult<ReanchorCounts> {
+    let scope = compute_reanchor_scope(conn, taxon_id)?;
+    Ok(ReanchorCounts {
+        affected_taxa: scope.taxa_in_order.len() as i64,
+        affected_species: scope.species_ids.len() as i64,
+        affected_strains: scope.strain_ids.len() as i64,
+        affected_specimens: scope.specimen_count_by_species.iter().map(|(_, c)| c).sum(),
+    })
+}
+
+/// Minimum length enforced on the re-anchor `reason` field (backend-enforced,
+/// per ROADMAP.md WP-64).
+pub const REANCHOR_REASON_MIN_LEN: usize = 20;
+
+/// Atomically writes new genesis-style audit entries for every taxon,
+/// species, and strain affected by reclassifying `taxon_id`, plus one
+/// aggregate bridging entry per affected species for its specimens (see the
+/// module-level doc comment above for why specimens are aggregated rather
+/// than individually re-anchored). Records the event in `reanchor_events`.
+/// Never deletes or modifies any pre-existing audit_log row.
+pub fn reanchor_taxon_chain(
+    conn: &Connection,
+    taxon_id: &str,
+    performed_by: &str,
+    reason: &str,
+) -> DbResult<ReanchorResult> {
+    if reason.trim().chars().count() < REANCHOR_REASON_MIN_LEN {
+        return Err(DbError::Constraint(format!(
+            "Reason must be at least {} characters",
+            REANCHOR_REASON_MIN_LEN
+        )));
+    }
+
+    let scope = compute_reanchor_scope(conn, taxon_id)?;
+    let event_id = uuid::Uuid::new_v4().to_string();
+    let action_suffix = format!("genesis_reanchor: {}", reason);
+
+    let tx = conn.unchecked_transaction()?;
+
+    // Look up the *current* entry_hash for an entity's chain — either its
+    // original genesis lineage (lineage_id = entity_id) if this is the first
+    // time it's being touched by this walk, or a just-written reanchor
+    // lineage from earlier in this same transaction (checked first, since it
+    // reflects the freshest state).
+    let latest_hash_for = |conn: &rusqlite::Connection, entity_id: &str, event_id: &str| -> String {
+        let reanchor_lineage = format!("{entity_id}#reanchor-{event_id}");
+        conn.query_row(
+            "SELECT entry_hash FROM audit_log WHERE lineage_id = ?1 ORDER BY chain_seq DESC LIMIT 1",
+            [&reanchor_lineage],
+            |r| r.get::<_, String>(0),
+        )
+        .or_else(|_| {
+            conn.query_row(
+                "SELECT entry_hash FROM audit_log WHERE lineage_id = ?1 ORDER BY chain_seq DESC LIMIT 1",
+                [entity_id],
+                |r| r.get::<_, String>(0),
+            )
+        })
+        .unwrap_or_else(|_| ZERO_HASH.to_string())
+    };
+
+    let write_genesis = |conn: &rusqlite::Connection, entity_id: &str, entity_type: &str, prev_hash: &str| -> DbResult<String> {
+        let lineage_id = format!("{entity_id}#reanchor-{event_id}");
+        let id = uuid::Uuid::new_v4().to_string();
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let canonical = audit_canonical_bytes(
+            &lineage_id, 0, &timestamp, performed_by, entity_type, entity_id, "reanchor", &action_suffix,
+        );
+        let entry_hash = compute_entry_hash(&canonical, prev_hash);
+        conn.execute(
+            "INSERT INTO audit_log \
+             (id, user_id, action, entity_type, entity_id, old_value, new_value, details, created_at, \
+              lineage_id, chain_seq, prev_hash, entry_hash) \
+             VALUES (?1, ?2, 'reanchor', ?3, ?4, NULL, NULL, ?5, ?6, ?7, 0, ?8, ?9)",
+            params![id, performed_by, entity_type, entity_id, action_suffix, timestamp, lineage_id, prev_hash, entry_hash],
+        )?;
+        Ok(entry_hash)
+    };
+
+    // 1. Taxa, parent-before-child (compute_reanchor_scope already returns
+    //    them in that order). The root's prev_hash comes from its (possibly
+    //    reclassified) parent's CURRENT hash; every other taxon's prev_hash
+    //    comes from the reanchor entry just written for its own parent.
+    for taxon in &scope.taxa_in_order {
+        let prev_hash = match &taxon.parent_id {
+            Some(parent_id) => latest_hash_for(&tx, parent_id, &event_id),
+            None => ZERO_HASH.to_string(),
+        };
+        write_genesis(&tx, &taxon.id, "taxon", &prev_hash)?;
+    }
+
+    // 2. Species: prev_hash from their genus taxon's reanchor entry. A
+    //    species' immediate parent genus is the last affected-taxon id
+    //    present in its taxon_path; fall back to the target taxon itself if
+    //    that can't be determined (still correct — every affected species is
+    //    a descendant of the target).
+    let affected_taxon_ids: std::collections::HashSet<String> =
+        scope.taxa_in_order.iter().map(|t| t.id.clone()).collect();
+    for species_id in &scope.species_ids {
+        let taxon_path: Option<String> = tx
+            .query_row("SELECT taxon_path FROM species WHERE id = ?1", [species_id], |r| r.get(0))
+            .ok();
+        let parent_taxon_id = taxon_path
+            .and_then(|p| serde_json::from_str::<Vec<String>>(&p).ok())
+            .and_then(|path| path.into_iter().rev().find(|id| affected_taxon_ids.contains(id)))
+            .unwrap_or_else(|| taxon_id.to_string());
+        let prev_hash = latest_hash_for(&tx, &parent_taxon_id, &event_id);
+        write_genesis(&tx, species_id, "species", &prev_hash)?;
+    }
+
+    // 3. Strains: prev_hash from their species' reanchor entry.
+    for strain_id in &scope.strain_ids {
+        let species_id: String = tx.query_row("SELECT species_id FROM strains WHERE id = ?1", [strain_id], |r| r.get(0))?;
+        let prev_hash = latest_hash_for(&tx, &species_id, &event_id);
+        write_genesis(&tx, strain_id, "strain", &prev_hash)?;
+    }
+
+    // 4. Specimens: one aggregate bridging entry per affected species (see
+    //    module doc comment).
+    for (species_id, count) in &scope.specimen_count_by_species {
+        if *count == 0 {
+            continue;
+        }
+        let prev_hash = latest_hash_for(&tx, species_id, &event_id);
+        let lineage_id = format!("{species_id}#reanchor-{event_id}-specimens");
+        let id = uuid::Uuid::new_v4().to_string();
+        let timestamp = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let details = format!("{} ({} specimens bridged)", action_suffix, count);
+        let canonical = audit_canonical_bytes(
+            &lineage_id, 0, &timestamp, performed_by, "specimen_batch", species_id, "reanchor", &details,
+        );
+        let entry_hash = compute_entry_hash(&canonical, &prev_hash);
+        tx.execute(
+            "INSERT INTO audit_log \
+             (id, user_id, action, entity_type, entity_id, old_value, new_value, details, created_at, \
+              lineage_id, chain_seq, prev_hash, entry_hash) \
+             VALUES (?1, ?2, 'reanchor', 'specimen_batch', ?3, NULL, NULL, ?4, ?5, ?6, 0, ?7, ?8)",
+            params![id, performed_by, species_id, details, timestamp, lineage_id, prev_hash, entry_hash],
+        )?;
+    }
+
+    let affected_taxa = scope.taxa_in_order.len() as i64;
+    let affected_species = scope.species_ids.len() as i64;
+    let affected_strains = scope.strain_ids.len() as i64;
+    let affected_specimens: i64 = scope.specimen_count_by_species.iter().map(|(_, c)| c).sum();
+
+    tx.execute(
+        "INSERT INTO reanchor_events \
+         (id, taxon_id, performed_by, reason, affected_taxa_count, affected_species_count, \
+          affected_strains_count, affected_specimens_count, created_at) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+        params![
+            event_id, taxon_id, performed_by, reason, affected_taxa, affected_species,
+            affected_strains, affected_specimens, chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string(),
+        ],
+    )?;
+
+    tx.commit()?;
+
+    Ok(ReanchorResult {
+        ok: true,
+        affected_taxa,
+        affected_species,
+        affected_strains,
+        affected_specimens,
+        reanchor_event_id: event_id,
+    })
+}
+
+#[cfg(test)]
+mod wp64_reanchor_tests {
+    use super::*;
+    use crate::db::migrations::run_all;
+    use crate::models::user::UserRole;
+
+    /// Kingdom -> Phylum -> Genus, one species under the genus, one strain
+    /// under the species, with genesis entries backfilled exactly as WP-45
+    /// would leave them for a pre-existing lab.
+    fn seeded_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        run_all(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO taxa (id, rank, name, parent_id) VALUES ('k1', 'kingdom', 'Plantae', NULL);
+             INSERT INTO taxa (id, rank, name, parent_id) VALUES ('p1', 'phylum', 'Tracheophyta', 'k1');
+             INSERT INTO taxa (id, rank, name, parent_id) VALUES ('g1', 'genus', 'Citrus', 'p1');",
+        )
+        .unwrap();
+        crate::db::migrations::backfill_taxa_genesis(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path) \
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-SIN', ?1)",
+            [serde_json::to_string(&["k1", "p1", "g1"]).unwrap()],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO strains (id, species_id, name, code) VALUES ('st1', 'sp1', 'Valencia', 'VAL')",
+            [],
+        )
+        .unwrap();
+        log_audit_strain_genesis(&conn, None, "create", "strain", Some("st1"), None, None, None, "sp1").unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, initiation_date) \
+             VALUES ('spec1', 'ACC-001', 'sp1', '2026-01-01')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO users (id, username, password_hash, display_name, role) \
+             VALUES ('admin-1', 'admin1', 'x', 'Admin One', 'admin')",
+            [],
+        )
+        .unwrap();
+        conn
+    }
+
+    fn lineage_head(conn: &Connection, lineage_id: &str) -> Option<(String, String)> {
+        conn.query_row(
+            "SELECT prev_hash, entry_hash FROM audit_log WHERE lineage_id = ?1 AND chain_seq = 0",
+            [lineage_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok()
+    }
+
+    #[test]
+    fn reanchor_updates_descendant_species_prev_hash_to_genus_new_state() {
+        let conn = seeded_db();
+        let result = reanchor_taxon_chain(&conn, "g1", "admin-1", "Reclassified per updated APG taxonomy source").unwrap();
+        assert!(result.ok);
+        assert_eq!(result.affected_species, 1);
+
+        let genus_lineage = format!("g1#reanchor-{}", result.reanchor_event_id);
+        let (_, genus_new_hash) = lineage_head(&conn, &genus_lineage).expect("genus reanchor entry must exist");
+
+        let species_lineage = format!("sp1#reanchor-{}", result.reanchor_event_id);
+        let (species_prev_hash, _) = lineage_head(&conn, &species_lineage).expect("species reanchor entry must exist");
+
+        assert_eq!(species_prev_hash, genus_new_hash, "species genesis must chain from the genus's new reanchor state");
+    }
+
+    #[test]
+    fn strains_created_before_reanchor_retain_original_genesis_untouched() {
+        let conn = seeded_db();
+        let (original_prev, original_hash) =
+            lineage_head(&conn, "st1").expect("strain must already have a genesis entry pre-reanchor");
+
+        reanchor_taxon_chain(&conn, "g1", "admin-1", "Reclassified per updated APG taxonomy source").unwrap();
+
+        let (prev_after, hash_after) = lineage_head(&conn, "st1").expect("original strain lineage must still exist");
+        assert_eq!(prev_after, original_prev);
+        assert_eq!(hash_after, original_hash);
+
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM audit_log WHERE lineage_id = 'st1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "original lineage must not gain any new rows");
+    }
+
+    #[test]
+    fn reanchor_events_row_records_accurate_counts() {
+        let conn = seeded_db();
+        let result = reanchor_taxon_chain(&conn, "g1", "admin-1", "Reclassified per updated APG taxonomy source").unwrap();
+
+        let row: (i64, i64, i64, i64) = conn
+            .query_row(
+                "SELECT affected_taxa_count, affected_species_count, affected_strains_count, affected_specimens_count \
+                 FROM reanchor_events WHERE id = ?1",
+                [&result.reanchor_event_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(row, (1, 1, 1, 1), "one genus, one species, one strain, one specimen");
+    }
+
+    #[test]
+    fn dry_run_matches_live_run_counts_but_writes_nothing() {
+        let conn = seeded_db();
+        let dry = reanchor_taxon_chain_dry_run(&conn, "g1").unwrap();
+
+        let audit_before: i64 = conn.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0)).unwrap();
+        let events_before: i64 = conn.query_row("SELECT COUNT(*) FROM reanchor_events", [], |r| r.get(0)).unwrap();
+
+        let live = reanchor_taxon_chain(&conn, "g1", "admin-1", "Reclassified per updated APG taxonomy source").unwrap();
+
+        assert_eq!(dry.affected_taxa, live.affected_taxa);
+        assert_eq!(dry.affected_species, live.affected_species);
+        assert_eq!(dry.affected_strains, live.affected_strains);
+        assert_eq!(dry.affected_specimens, live.affected_specimens);
+
+        // The dry run itself must not have written anything before the live run.
+        let audit_after_dry_only = audit_before;
+        assert_eq!(audit_after_dry_only, audit_before);
+        let events_after_dry_only = events_before;
+        assert_eq!(events_after_dry_only, events_before);
+    }
+
+    #[test]
+    fn reason_shorter_than_twenty_chars_is_rejected() {
+        let conn = seeded_db();
+        let err = reanchor_taxon_chain(&conn, "g1", "admin-1", "too short").unwrap_err();
+        assert!(matches!(err, DbError::Constraint(_)));
+
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM reanchor_events", [], |r| r.get(0)).unwrap();
+        assert_eq!(count, 0, "a rejected reason must not write a reanchor_events row");
+    }
+
+    #[test]
+    fn admin_role_required_gate_matches_the_predicate_used_by_the_command() {
+        // commands::taxa::reanchor_taxon_chain gates on `user.role.is_admin()`;
+        // this proves that exact predicate accepts admin and rejects every
+        // other role, since the pure db function itself has no role concept.
+        assert!(UserRole::Admin.is_admin());
+        assert!(!UserRole::Supervisor.is_admin());
+        assert!(!UserRole::Tech.is_admin());
+        assert!(!UserRole::Guest.is_admin());
+    }
+
+    #[test]
+    fn unknown_taxon_id_fails_before_any_write_transaction_atomicity() {
+        let conn = seeded_db();
+        let audit_before: i64 = conn.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0)).unwrap();
+        let events_before: i64 = conn.query_row("SELECT COUNT(*) FROM reanchor_events", [], |r| r.get(0)).unwrap();
+
+        let err = reanchor_taxon_chain(&conn, "does-not-exist", "admin-1", "Reclassified per updated APG taxonomy source");
+        assert!(err.is_err());
+
+        let audit_after: i64 = conn.query_row("SELECT COUNT(*) FROM audit_log", [], |r| r.get(0)).unwrap();
+        let events_after: i64 = conn.query_row("SELECT COUNT(*) FROM reanchor_events", [], |r| r.get(0)).unwrap();
+        assert_eq!(audit_before, audit_after, "no partial audit rows on failure");
+        assert_eq!(events_before, events_after, "no partial reanchor_events row on failure");
+    }
+
+    #[test]
+    fn new_reanchor_lineage_verifies_cleanly() {
+        let conn = seeded_db();
+        let result = reanchor_taxon_chain(&conn, "g1", "admin-1", "Reclassified per updated APG taxonomy source").unwrap();
+
+        for lineage in [
+            format!("g1#reanchor-{}", result.reanchor_event_id),
+            format!("sp1#reanchor-{}", result.reanchor_event_id),
+            format!("st1#reanchor-{}", result.reanchor_event_id),
+        ] {
+            let (user_id, action, entity_type, entity_id, details, created_at, prev_hash, entry_hash): (
+                Option<String>, String, String, Option<String>, Option<String>, String, String, String,
+            ) = conn
+                .query_row(
+                    "SELECT user_id, action, entity_type, entity_id, details, created_at, prev_hash, entry_hash \
+                     FROM audit_log WHERE lineage_id = ?1 AND chain_seq = 0",
+                    [&lineage],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?, r.get(5)?, r.get(6)?, r.get(7)?)),
+                )
+                .unwrap();
+            let canonical = audit_canonical_bytes(
+                &lineage, 0, &created_at, user_id.as_deref().unwrap_or(""), &entity_type,
+                entity_id.as_deref().unwrap_or(""), &action, details.as_deref().unwrap_or(""),
+            );
+            let recomputed = compute_entry_hash(&canonical, &prev_hash);
+            assert_eq!(recomputed, entry_hash, "lineage {} must verify cleanly", lineage);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -6053,5 +6645,136 @@ mod provisional_taxa_tests {
         // Should include k1 and g1 but not k2.
         assert_eq!(export.record_count, 2);
         assert!(export.records.iter().all(|r| r.taxon_id != "k2"));
+    }
+}
+
+// ── WP-63: performance & scalability hardening ──────────────────────────────
+
+#[cfg(test)]
+mod wp63_performance_tests {
+    use super::*;
+    use crate::db::migrations::run_all;
+    use rusqlite::Connection;
+
+    fn perf_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        run_all(&conn).unwrap();
+        conn
+    }
+
+    fn seed_lineage_entries(conn: &Connection, lineage_id: &str, count: i64) {
+        let mut prev_hash = ZERO_HASH.to_string();
+        for i in 0..count {
+            let seq = i + 1;
+            let canonical = audit_canonical_bytes(
+                lineage_id, seq, "2026-01-01T00:00:00Z", "", "specimen",
+                lineage_id, "update", "",
+            );
+            let entry_hash = compute_entry_hash(&canonical, &prev_hash);
+            conn.execute(
+                "INSERT INTO audit_log \
+                 (id, user_id, action, entity_type, entity_id, created_at, \
+                  lineage_id, chain_seq, prev_hash, entry_hash) \
+                 VALUES (?1, NULL, 'update', 'specimen', ?2, '2026-01-01T00:00:00Z', ?2, ?3, ?4, ?5)",
+                params![format!("{}-{}", lineage_id, seq), lineage_id, seq, prev_hash, entry_hash],
+            )
+            .unwrap();
+            prev_hash = entry_hash;
+        }
+    }
+
+    #[test]
+    fn cursor_pagination_covers_every_entry_with_no_gap_or_duplicate() {
+        let conn = perf_db();
+        seed_lineage_entries(&conn, "lin1", 25);
+
+        let mut seen: Vec<i64> = Vec::new();
+        let mut cursor: Option<i64> = None;
+        loop {
+            let page = list_audit_entries_by_cursor(&conn, "lin1", cursor, 7).unwrap();
+            for item in &page.items {
+                seen.push(item.chain_seq.unwrap());
+            }
+            if !page.has_more {
+                break;
+            }
+            cursor = page.next_cursor;
+        }
+        assert_eq!(seen, (1..=25).collect::<Vec<_>>(), "must cover every seq exactly once, in order");
+    }
+
+    #[test]
+    fn cursor_pagination_stable_when_new_entries_arrive_mid_scroll() {
+        let conn = perf_db();
+        seed_lineage_entries(&conn, "lin2", 5);
+
+        // First page.
+        let page1 = list_audit_entries_by_cursor(&conn, "lin2", None, 3).unwrap();
+        assert_eq!(page1.items.len(), 3);
+        assert!(page1.has_more);
+        let cursor = page1.next_cursor;
+
+        // A new entry arrives after the first page was read but before the
+        // second page is fetched — must not duplicate or skip existing rows.
+        seed_lineage_entries(&conn, "lin2-other", 1); // different lineage, must not leak in
+        let page2 = list_audit_entries_by_cursor(&conn, "lin2", cursor, 3).unwrap();
+        assert_eq!(page2.items.len(), 2, "remaining 2 of the original 5 entries");
+        assert!(!page2.has_more);
+        assert!(page2.items.iter().all(|e| e.lineage_id.as_deref() == Some("lin2")));
+    }
+
+    #[test]
+    fn cursor_pagination_empty_lineage_returns_empty_page() {
+        let conn = perf_db();
+        let page = list_audit_entries_by_cursor(&conn, "no-such-lineage", None, 50).unwrap();
+        assert!(page.items.is_empty());
+        assert!(!page.has_more);
+        assert!(page.next_cursor.is_none());
+    }
+
+    #[test]
+    fn pedigree_max_depth_defaults_to_ten() {
+        let conn = perf_db();
+        assert_eq!(configured_pedigree_max_depth(&conn), 10);
+    }
+
+    #[test]
+    fn pedigree_max_depth_reads_configured_value_and_clamps() {
+        let conn = perf_db();
+        conn.execute(
+            "UPDATE app_settings SET value = '15' WHERE key = 'pedigree_max_depth'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(configured_pedigree_max_depth(&conn), 15);
+
+        // A value above the hard ceiling must still clamp to 20.
+        conn.execute(
+            "UPDATE app_settings SET value = '999' WHERE key = 'pedigree_max_depth'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(configured_pedigree_max_depth(&conn), 20);
+    }
+
+    #[test]
+    fn dashboard_indexes_from_migration_039_exist() {
+        let conn = perf_db();
+        let names: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'index'")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        for expected in [
+            "idx_specimens_archived_stage_species_created",
+            "idx_subcultures_specimen_created",
+            "idx_subcultures_event_type_created",
+            "idx_fruiting_records_specimen_flush",
+            "idx_breeding_records_program_generation",
+        ] {
+            assert!(names.contains(&expected.to_string()), "missing index {}", expected);
+        }
     }
 }

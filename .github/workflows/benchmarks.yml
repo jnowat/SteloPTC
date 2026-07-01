@@ -1,0 +1,45 @@
+name: Benchmarks
+
+# WP-63: performance canary. Runs the Criterion suite (benches/performance.rs)
+# on every push to master and uploads the raw results as a build artifact for
+# trend tracking. This job is deliberately non-blocking (continue-on-error) —
+# a benchmark run is a canary, not a merge gate. Automated run-over-run
+# regression comparison (the ROADMAP's ">20% regression" check) is not wired
+# up yet: that requires a persisted baseline (e.g. via
+# benchmark-action/github-action-benchmark against a gh-pages branch), which
+# is future work — for now a maintainer compares the uploaded artifact
+# against the previous run by hand.
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  benchmarks:
+    name: Criterion benchmark canary
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      - name: Run Criterion benchmarks
+        working-directory: src-tauri
+        run: cargo bench --no-default-features --bench performance
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-results
+          path: src-tauri/target/criterion
+          retention-days: 90

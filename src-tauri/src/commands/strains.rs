@@ -673,7 +673,8 @@ pub fn get_strain_ancestry(
 ) -> Result<PedigreeNode, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let depth = max_depth.unwrap_or(5).min(10);
+    let cap = queries::configured_pedigree_max_depth(&db.conn);
+    let depth = max_depth.unwrap_or(5).min(cap);
     queries::get_strain_ancestry(&db.conn, &strain_id, depth).map_err(|e| e.to_string())
 }
 
@@ -688,7 +689,8 @@ pub fn get_strain_descendants(
 ) -> Result<PedigreeNode, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let depth = max_depth.unwrap_or(5).min(10);
+    let cap = queries::configured_pedigree_max_depth(&db.conn);
+    let depth = max_depth.unwrap_or(5).min(cap);
     queries::get_strain_descendants(&db.conn, &strain_id, depth).map_err(|e| e.to_string())
 }
 
@@ -718,7 +720,38 @@ pub fn export_strain_pedigree(
 ) -> Result<PedigreeExport, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
-    let depth = max_depth.unwrap_or(5).min(10);
+    let cap = queries::configured_pedigree_max_depth(&db.conn);
+    let depth = max_depth.unwrap_or(5).min(cap);
     queries::export_strain_pedigree(&db.conn, &strain_id, depth).map_err(|e| e.to_string())
+}
+
+/// Returns the lab's configured pedigree traversal depth cap (1–20, default 10).
+#[tauri::command]
+pub fn get_pedigree_max_depth(state: State<AppState>, token: String) -> Result<u32, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    Ok(queries::configured_pedigree_max_depth(&db.conn))
+}
+
+/// Sets the lab's configured pedigree traversal depth cap. Admin only.
+/// Clamped to [1, 20] regardless of the requested value.
+#[tauri::command]
+pub fn set_pedigree_max_depth(
+    state: State<AppState>,
+    token: String,
+    max_depth: u32,
+) -> Result<u32, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.is_admin() {
+        return Err("Only admins can change the pedigree depth limit".to_string());
+    }
+    let clamped = max_depth.clamp(1, 20);
+    db.conn.execute(
+        "INSERT INTO app_settings (key, value, updated_at) VALUES ('pedigree_max_depth', ?1, datetime('now')) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+        rusqlite::params![clamped.to_string()],
+    ).map_err(|e| e.to_string())?;
+    Ok(clamped)
 }
 

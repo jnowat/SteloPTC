@@ -203,6 +203,41 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (38)", [])?;
     }
 
+    if current < 39 {
+        migration_039_perf_indexes_v2(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (39)", [])?;
+    }
+
+    if current < 40 {
+        migration_040_locations(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (40)", [])?;
+    }
+
+    if current < 41 {
+        migration_041_ai_suggestions(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (41)", [])?;
+    }
+
+    if current < 42 {
+        migration_042_backup_targets(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (42)", [])?;
+    }
+
+    if current < 43 {
+        migration_043_reanchor_events(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (43)", [])?;
+    }
+
+    if current < 44 {
+        migration_044_signing_keys(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (44)", [])?;
+    }
+
+    if current < 45 {
+        migration_045_installed_plugins(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (45)", [])?;
+    }
+
     Ok(())
 }
 
@@ -315,6 +350,233 @@ fn migration_038_notifications(conn: &Connection) -> DbResult<()> {
         INSERT OR IGNORE INTO smtp_config (id) VALUES (1);
 
         INSERT OR IGNORE INTO app_settings (key, value) VALUES ('notification_check_interval_minutes', '15');",
+    )?;
+    Ok(())
+}
+
+fn migration_039_perf_indexes_v2(conn: &Connection) -> DbResult<()> {
+    // WP-63: Performance & scalability hardening — exhaustive index audit follow-up
+    // to migration_007. Each index below resolves a specific `EXPLAIN QUERY PLAN`
+    // scan identified against the hot paths at 100k-specimen / 1M-subculture scale:
+    //
+    //   - specimens(is_archived, stage, species_id, created_at DESC): covers the
+    //     SpecimenList filter+sort query (WHERE is_archived = ? AND stage = ? AND
+    //     species_id = ? ORDER BY created_at DESC) without a secondary sort step.
+    //     idx_specimens_archived_created (migration_007) already covers the
+    //     2-column case; this is the full covering index for the 3-predicate case.
+    //   - subcultures(specimen_id, created_at DESC): the passage timeline query
+    //     orders by created_at, not passage_number — idx_subcultures_specimen_passage
+    //     (migration_007) doesn't serve an ORDER BY created_at DESC.
+    //   - subcultures(event_type, created_at DESC): compliance queries filter by
+    //     event_type and want the most recent first; idx_subcultures_event_type
+    //     (migration_015) is a single-column index with no sort component.
+    //   - fruiting_records(specimen_id, flush_number): fruiting history is always
+    //     read per-specimen ordered by flush number; the existing index
+    //     (migration_030) is specimen_id-only.
+    //   - breeding_records(program_id, generation_number): generational summaries
+    //     group by program and order by generation; the existing indexes
+    //     (migration_033) are single-column.
+    //
+    // audit_log(lineage_id, chain_seq) and audit_log(entity_type, entity_id) are
+    // already covered by idx_audit_lineage (migration_009) and idx_audit_entity
+    // (migration_001) respectively — no new index needed there.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_specimens_archived_stage_species_created
+            ON specimens(is_archived, stage, species_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_subcultures_specimen_created
+            ON subcultures(specimen_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_subcultures_event_type_created
+            ON subcultures(event_type, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_fruiting_records_specimen_flush
+            ON fruiting_records(specimen_id, flush_number);
+        CREATE INDEX IF NOT EXISTS idx_breeding_records_program_generation
+            ON breeding_records(program_id, generation_number);
+
+        INSERT OR IGNORE INTO app_settings (key, value) VALUES ('pedigree_max_depth', '10');",
+    )?;
+    Ok(())
+}
+
+fn migration_040_locations(conn: &Connection) -> DbResult<()> {
+    // WP-57: Interactive lab map — optional location entity with floor-plan
+    // coordinates. Purely additive: the existing free-text `specimens.location` /
+    // `location_details` columns are completely unchanged and remain the
+    // default way to record where a specimen lives. `location_id` is an
+    // optional pin placement used only by the new map view; specimens with no
+    // `location_id` simply don't appear on the map.
+    //
+    // Floor-plan images are stored inline as base64 (matching the existing
+    // `attachments` inline-storage convention) rather than as a filesystem path,
+    // so a location row travels intact inside a database backup. Coordinates are
+    // fractional (0.0–1.0) positions on the floor-plan image; the frontend's
+    // Leaflet `CRS.Simple` overlay derives pixel coordinates from the image's
+    // natural dimensions at render time, so no DPI/scale metadata needs to be
+    // stored here.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS locations (
+            id               TEXT PRIMARY KEY,
+            name             TEXT NOT NULL UNIQUE,
+            description      TEXT,
+            floor_plan_image TEXT,
+            floor_plan_x     REAL,
+            floor_plan_y     REAL,
+            created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at       TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_locations_name ON locations(name);",
+    )?;
+
+    let _ = conn.execute("ALTER TABLE specimens ADD COLUMN location_id TEXT REFERENCES locations(id)", []);
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_specimens_location_id ON specimens(location_id)",
+        [],
+    )?;
+
+    Ok(())
+}
+
+fn migration_041_ai_suggestions(conn: &Connection) -> DbResult<()> {
+    // WP-56: Local AI analysis — draft suggestions requiring explicit approval.
+    //
+    // An AI suggestion is never written directly into a `notes` field. It is
+    // stored here as a standalone draft with full attribution (which model,
+    // which exact prompt) and a `status` gate; only `approve_ai_suggestion`
+    // (commands::ai) copies its text into the real notes column, and that copy
+    // goes through the normal update command's own audit-log write — so the
+    // audit trail always shows a human-attributed update, never a synthetic
+    // "AI wrote this" entry pretending to be unattended.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS ai_suggestions (
+            id          TEXT PRIMARY KEY,
+            entity_type TEXT NOT NULL CHECK (entity_type IN ('specimen','subculture','attachment')),
+            entity_id   TEXT NOT NULL,
+            kind        TEXT NOT NULL CHECK (kind IN ('summarize_notes','suggest_passage_comment','analyze_photo')),
+            model_name  TEXT NOT NULL,
+            prompt      TEXT NOT NULL,
+            suggestion  TEXT NOT NULL,
+            status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+            created_by  TEXT REFERENCES users(id),
+            reviewed_by TEXT REFERENCES users(id),
+            reviewed_at TEXT,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_suggestions_entity ON ai_suggestions(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_ai_suggestions_status ON ai_suggestions(status);",
+    )?;
+    Ok(())
+}
+
+fn migration_042_backup_targets(conn: &Connection) -> DbResult<()> {
+    // WP-59: Cloud backup & multi-device sync with end-to-end encryption.
+    //
+    // `config_encrypted` holds an AES-256-GCM-encrypted JSON blob (endpoint,
+    // credentials, bucket/path) — the master key is derived from a
+    // user-supplied passphrase via Argon2id and is never itself persisted to
+    // disk (see src-tauri/src/cloud/crypto.rs). No CHECK constraint on `type`
+    // so future target kinds can be added without another migration.
+    //
+    // `cloud_sync_segments` records which per-device WAL/audit segments
+    // (identified by their chain_seq range, the audit chain's authoritative
+    // ordering — see WP-51's sync_conflicts precedent) have already been
+    // applied from a given peer for a given target, so `reconcile_cloud_sync`
+    // never re-applies a segment it has already merged.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS backup_targets (
+            id                     TEXT PRIMARY KEY,
+            name                   TEXT NOT NULL,
+            type                   TEXT NOT NULL,
+            config_encrypted       TEXT NOT NULL,
+            schedule_cron          TEXT,
+            last_backup_at         TEXT,
+            last_backup_size_bytes INTEGER,
+            last_status            TEXT CHECK (last_status IN ('ok','failed','pending')),
+            last_error             TEXT,
+            is_enabled             INTEGER NOT NULL DEFAULT 1,
+            created_at             TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_backup_targets_enabled ON backup_targets(is_enabled);
+
+        CREATE TABLE IF NOT EXISTS cloud_sync_segments (
+            id              TEXT PRIMARY KEY,
+            target_id       TEXT NOT NULL REFERENCES backup_targets(id) ON DELETE CASCADE,
+            device_id       TEXT NOT NULL,
+            chain_seq_start INTEGER NOT NULL,
+            chain_seq_end   INTEGER NOT NULL,
+            applied_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_cloud_sync_segments_target ON cloud_sync_segments(target_id, device_id);",
+    )?;
+    Ok(())
+}
+
+fn migration_043_reanchor_events(conn: &Connection) -> DbResult<()> {
+    // WP-64: Taxon chain re-anchoring tool (WP-45 production-safety follow-up).
+    //
+    // A permanent, queryable record of every re-anchoring event, kept alongside
+    // (never replacing) the audit hash chain itself — see
+    // db::queries::reanchor_taxon_chain for how this bridges old and new
+    // genesis entries after a taxon reclassification.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS reanchor_events (
+            id                       TEXT PRIMARY KEY,
+            taxon_id                 TEXT NOT NULL REFERENCES taxa(id),
+            performed_by             TEXT NOT NULL,
+            reason                   TEXT NOT NULL,
+            affected_taxa_count      INTEGER NOT NULL DEFAULT 0,
+            affected_species_count  INTEGER NOT NULL DEFAULT 0,
+            affected_strains_count   INTEGER NOT NULL DEFAULT 0,
+            affected_specimens_count INTEGER NOT NULL DEFAULT 0,
+            created_at               TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_reanchor_events_taxon ON reanchor_events(taxon_id);",
+    )?;
+    Ok(())
+}
+
+fn migration_044_signing_keys(conn: &Connection) -> DbResult<()> {
+    // WP-60: Regulatory compliance export modules — signing key storage.
+    //
+    // Single-row table (id = 1, like smtp_config) holding the lab's Ed25519
+    // signing keypair used to sign FDA 21 CFR Part 11 attestation bundles.
+    // Ed25519 is used in place of the RSA-4096 originally sketched in the
+    // ROADMAP — a deliberate, documented deviation (see ROADMAP.md WP-60
+    // "As built"): it gives the same sign/verify/public-certificate guarantee
+    // with a far smaller, audited pure-Rust dependency and no PEM/ASN.1
+    // certificate-authority machinery, which is unnecessary for a
+    // self-attested lab signature that an inspector verifies against the
+    // bundled public key directly (not a certificate chain).
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS signing_keys (
+            id              INTEGER PRIMARY KEY CHECK (id = 1),
+            public_key_b64  TEXT NOT NULL,
+            private_key_b64 TEXT NOT NULL,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )?;
+    Ok(())
+}
+
+fn migration_045_installed_plugins(conn: &Connection) -> DbResult<()> {
+    // WP-61: Plugin / extension system for new verticals.
+    //
+    // Tracks installed plugins in the database (rather than relying solely on
+    // a filesystem scan) so install/uninstall state survives independently of
+    // the plugins/ directory and can be listed without re-parsing every
+    // manifest on every app start. `vocabulary_seeded` records whether this
+    // plugin's vocabulary rows have already been applied — seeding is
+    // idempotent-by-design (INSERT OR IGNORE) but this flag lets the UI show
+    // accurate status without re-running the seed step every launch.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS installed_plugins (
+            id                TEXT PRIMARY KEY,
+            plugin_name       TEXT NOT NULL,
+            version           TEXT NOT NULL,
+            profile           TEXT,
+            manifest_json     TEXT NOT NULL,
+            vocabulary_seeded INTEGER NOT NULL DEFAULT 0,
+            installed_at      TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (plugin_name)
+        );",
     )?;
     Ok(())
 }

@@ -181,8 +181,8 @@
     <!-- Filter bar -->
     <div class="el-filters">
       <div class="el-filter-group">
-        <label title="Filter error log entries by severity level" class="el-filter-label">Severity</label>
-        <select title="Filter by severity: critical = app-breaking; error = serious failure; warning = potential issue; info = informational" class="el-select" bind:value={filterSeverity}>
+        <label for="error-log-severity" title="Filter error log entries by severity level" class="el-filter-label">Severity</label>
+        <select id="error-log-severity" title="Filter by severity: critical = app-breaking; error = serious failure; warning = potential issue; info = informational" class="el-select" bind:value={filterSeverity}>
           <option value="">All severities</option>
           <option value="critical">Critical</option>
           <option value="error">Error</option>
@@ -191,8 +191,8 @@
         </select>
       </div>
       <div class="el-filter-group">
-        <label title="Filter error log entries by the application module that generated the error" class="el-filter-label">Module</label>
-        <input title="Type a module name to filter entries (e.g. specimens.create, media_batch.update)" class="el-input" type="text" bind:value={filterModule} placeholder="e.g. specimens.create" />
+        <label for="error-log-module" title="Filter error log entries by the application module that generated the error" class="el-filter-label">Module</label>
+        <input id="error-log-module" title="Type a module name to filter entries (e.g. specimens.create, media_batch.update)" class="el-input" type="text" bind:value={filterModule} placeholder="e.g. specimens.create" />
       </div>
       <label title="Show only entries that have not been read yet" class="el-filter-check">
         <input title="Toggle to show only unread error log entries" type="checkbox" bind:checked={filterUnreadOnly} />

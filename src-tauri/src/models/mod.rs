@@ -18,6 +18,8 @@ pub mod sync;
 pub mod permissions;
 pub mod sensors;
 pub mod notifications;
+pub mod location;
+pub mod ai;
 
 // Re-export common types
 pub use specimen::*;

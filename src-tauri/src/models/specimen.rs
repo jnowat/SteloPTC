@@ -131,7 +131,10 @@ pub struct SpecimenSearchParams {
     pub best_performer_only: Option<bool>,
 }
 
-#[derive(Debug, Serialize)]
+// WP-63: Clone is needed so a computed snapshot can be stored in the
+// in-memory dashboard cache (db::dashboard::DashboardCacheEntry) and handed
+// back to multiple callers without recomputing the underlying query.
+#[derive(Debug, Clone, Serialize)]
 pub struct SpecimenStats {
     pub total_specimens: i64,
     pub active_specimens: i64,
@@ -142,13 +145,13 @@ pub struct SpecimenStats {
     pub recent_subcultures: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StageCount {
     pub stage: String,
     pub count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SpeciesCount {
     pub species_code: String,
     pub count: i64,

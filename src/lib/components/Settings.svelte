@@ -12,6 +12,8 @@
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import PermissionsEditor from './PermissionsEditor.svelte';
+  import CloudBackupPanel from './CloudBackupPanel.svelte';
+  import PluginManagerPanel from './PluginManagerPanel.svelte';
 
   const PROFILES: LabProfile[] = ['plant_tissue_culture', 'cell_culture', 'mycology'];
 
@@ -565,6 +567,12 @@
       <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Field-Level Permissions</h2>
       <PermissionsEditor />
     </div>
+
+    <!-- Cloud Backup & Multi-Device Sync (admin only) — WP-59 -->
+    <CloudBackupPanel />
+
+    <!-- Plugin Manager (admin only) — WP-61 -->
+    <PluginManagerPanel />
   {/if}
 </div>
 

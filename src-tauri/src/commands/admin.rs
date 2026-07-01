@@ -67,6 +67,7 @@ pub fn set_lab_profile(
         None,
         Some(&format!("Lab profile set to '{}'", profile)),
     ).ok();
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     Ok(())
 }
@@ -118,6 +119,7 @@ pub fn reset_database(
         None,
         Some("Full database reset performed by admin"),
     ).ok();
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     Ok("Database reset complete. All specimens, media, subcultures, inventory, compliance records, reminders, QR scan history, error logs, and prepared solutions have been cleared. Users and species definitions were preserved.".to_string())
 }
@@ -333,6 +335,7 @@ pub fn load_demo_data(
         None,
         Some("Demo data loaded by user"),
     ).ok();
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     Ok(format!(
         "Demo data loaded: 1 media batch, {} specimens ({} root + 2 split children from {}), \

@@ -1,10 +1,75 @@
 use rusqlite::Connection;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use crate::models::specimen::{SpeciesCount, SpecimenStats, StageCount};
 use crate::models::subculture::{
     ContaminantTypeCount, ContaminationStats, CultureMaintenanceAlert, RecentContaminationEvent,
     SubcultureScheduleEntry, VesselContaminationCount, VialLineSummary,
 };
+
+/// WP-63: materialized dashboard cache. Holds the last-computed
+/// `SpecimenStats` + `ContaminationStats` for a given profile, in memory only
+/// (never persisted — recomputed fresh on every app start, per the ROADMAP
+/// design). A `Mutex<Option<DashboardCacheEntry>>` field lives on `AppState`;
+/// this module only depends on `&Mutex<..>` directly (not on the `AppState`
+/// type itself) so the cache logic is unit-testable without a Tauri runtime.
+#[derive(Clone)]
+pub struct DashboardCacheEntry {
+    pub profile: String,
+    pub computed_at: Instant,
+    pub specimen_stats: SpecimenStats,
+    pub contamination_stats: ContaminationStats,
+}
+
+/// Default time-to-live for a cached dashboard snapshot before it is
+/// recomputed on the next read. The ROADMAP default is 60 seconds; any write
+/// that changes specimen/subculture counts should also call
+/// `invalidate_dashboard_cache` directly so users never wait out the TTL to
+/// see their own change reflected.
+pub const DASHBOARD_CACHE_TTL: Duration = Duration::from_secs(60);
+
+/// Returns the cached `(SpecimenStats, ContaminationStats)` for `profile` if
+/// it is still fresh (within `ttl` and computed for the same profile),
+/// otherwise recomputes both queries, stores the fresh snapshot, and returns it.
+pub fn get_or_refresh_dashboard_cache(
+    conn: &Connection,
+    profile: &str,
+    cache: &Mutex<Option<DashboardCacheEntry>>,
+    ttl: Duration,
+) -> Result<(SpecimenStats, ContaminationStats), String> {
+    {
+        let guard = cache.lock().map_err(|e| e.to_string())?;
+        if let Some(entry) = guard.as_ref() {
+            if entry.profile == profile && entry.computed_at.elapsed() < ttl {
+                return Ok((entry.specimen_stats.clone(), entry.contamination_stats.clone()));
+            }
+        }
+    }
+
+    let specimen_stats = query_specimen_stats(conn, profile)?;
+    let contamination_stats = query_contamination_stats(conn, profile)?;
+
+    let mut guard = cache.lock().map_err(|e| e.to_string())?;
+    *guard = Some(DashboardCacheEntry {
+        profile: profile.to_string(),
+        computed_at: Instant::now(),
+        specimen_stats: specimen_stats.clone(),
+        contamination_stats: contamination_stats.clone(),
+    });
+
+    Ok((specimen_stats, contamination_stats))
+}
+
+/// Drops the cached snapshot so the next read recomputes from scratch. Call
+/// this from any write path that changes specimen or subculture counts
+/// (create/update/delete/archive/split/passage/restore) so a cached dashboard
+/// never contradicts a change the user just made.
+pub fn invalidate_dashboard_cache(cache: &Mutex<Option<DashboardCacheEntry>>) {
+    if let Ok(mut guard) = cache.lock() {
+        *guard = None;
+    }
+}
 
 /// Returns specimen statistics fully scoped to stages defined for `profile` in
 /// the `stages` vocabulary table.  Every count — including the top-line
@@ -1070,5 +1135,78 @@ mod tests {
         assert_eq!(alerts.len(), 1);
         assert!(alerts[0].days_since_passage.unwrap() >= 7);
         assert!(alerts[0].last_passage_date.is_none());
+    }
+
+    // ── WP-63: materialized dashboard cache ───────────────────────────────────
+
+    #[test]
+    fn dashboard_cache_matches_direct_query_and_is_reused() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        insert_specimen(&conn, "s2", "ACC-002", "sp1", "callus");
+
+        let cache: Mutex<Option<DashboardCacheEntry>> = Mutex::new(None);
+        let (stats, _contam) =
+            get_or_refresh_dashboard_cache(&conn, "plant_tissue_culture", &cache, DASHBOARD_CACHE_TTL)
+                .unwrap();
+        let direct = query_specimen_stats(&conn, "plant_tissue_culture").unwrap();
+        assert_eq!(stats.total_specimens, direct.total_specimens);
+        assert_eq!(stats.active_specimens, 2);
+
+        // A third specimen inserted directly (bypassing any invalidation call)
+        // must NOT show up while the cache is still fresh — proves the second
+        // call is served from cache, not recomputed.
+        insert_specimen(&conn, "s3", "ACC-003", "sp1", "explant");
+        let (cached_again, _) =
+            get_or_refresh_dashboard_cache(&conn, "plant_tissue_culture", &cache, DASHBOARD_CACHE_TTL)
+                .unwrap();
+        assert_eq!(cached_again.active_specimens, 2, "cached snapshot must not see the new insert");
+    }
+
+    #[test]
+    fn dashboard_cache_invalidation_forces_recompute() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+
+        let cache: Mutex<Option<DashboardCacheEntry>> = Mutex::new(None);
+        let (first, _) =
+            get_or_refresh_dashboard_cache(&conn, "plant_tissue_culture", &cache, DASHBOARD_CACHE_TTL)
+                .unwrap();
+        assert_eq!(first.active_specimens, 1);
+
+        insert_specimen(&conn, "s2", "ACC-002", "sp1", "explant");
+        invalidate_dashboard_cache(&cache);
+
+        let (after, _) =
+            get_or_refresh_dashboard_cache(&conn, "plant_tissue_culture", &cache, DASHBOARD_CACHE_TTL)
+                .unwrap();
+        assert_eq!(after.active_specimens, 2, "invalidated cache must recompute and see the new insert");
+    }
+
+    #[test]
+    fn dashboard_cache_recomputes_when_profile_changes() {
+        let conn = setup_db();
+        seed_ptc_stages(&conn);
+        seed_cell_culture_stages(&conn);
+        insert_species(&conn, "sp1", "ARABTH", None);
+        insert_specimen(&conn, "s1", "ACC-001", "sp1", "explant");
+        insert_specimen(&conn, "s2", "ACC-002", "sp1", "adherent");
+
+        let cache: Mutex<Option<DashboardCacheEntry>> = Mutex::new(None);
+        let (ptc, _) =
+            get_or_refresh_dashboard_cache(&conn, "plant_tissue_culture", &cache, DASHBOARD_CACHE_TTL)
+                .unwrap();
+        assert_eq!(ptc.active_specimens, 1);
+
+        // Switching profile must not return the PTC snapshot even though the
+        // cache is still within its TTL — cache entries are profile-scoped.
+        let (cc, _) =
+            get_or_refresh_dashboard_cache(&conn, "cell_culture", &cache, DASHBOARD_CACHE_TTL).unwrap();
+        assert_eq!(cc.active_specimens, 1);
+        assert_eq!(cc.by_stage.first().map(|s| s.stage.as_str()), Some("Adherent"));
     }
 }

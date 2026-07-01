@@ -119,7 +119,9 @@ pub struct UpdateSubcultureRequest {
 }
 
 /// Lab-wide contamination statistics.
-#[derive(Debug, Serialize)]
+// WP-63: Clone is needed so a computed snapshot can be stored in the
+// in-memory dashboard cache (db::dashboard::DashboardCacheEntry).
+#[derive(Debug, Clone, Serialize)]
 pub struct ContaminationStats {
     /// Total active (non-archived) specimens.
     pub total_specimens: i64,
@@ -137,13 +139,13 @@ pub struct ContaminationStats {
     pub recent_events: Vec<RecentContaminationEvent>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct VesselContaminationCount {
     pub vessel_type: String,
     pub count: i64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct RecentContaminationEvent {
     pub subculture_id: String,
     pub specimen_id: String,
@@ -156,7 +158,7 @@ pub struct RecentContaminationEvent {
     pub contaminant_type: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ContaminantTypeCount {
     pub contaminant_type: String,
     pub count: i64,

@@ -1,6 +1,20 @@
 import { mount } from 'svelte';
 import App from './App.svelte';
 import './lib/styles/tokens.css';
+import { isTauri } from './lib/isTauri';
+
+// WP-62: register the PWA service worker only when NOT running inside the
+// Tauri desktop webview — the SW must never intercept Tauri's `ipc://`
+// requests. `vite-plugin-pwa` is configured with `injectRegister: false`
+// specifically so this is the only place registration can happen.
+if (!isTauri() && 'serviceWorker' in navigator) {
+  import('virtual:pwa-register')
+    .then(({ registerSW }) => registerSW({ immediate: true }))
+    .catch(() => {
+      // Non-fatal — the app works fully without a service worker, it just
+      // won't be installable/offline-capable in this browser session.
+    });
+}
 
 let app: ReturnType<typeof mount> | undefined;
 
