@@ -506,10 +506,18 @@
     <!-- SMTP Configuration (admin only) — WP-52 -->
     <div class="card" style="max-width: 640px; margin-top: 24px;">
       <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Email (SMTP) Configuration</h2>
-      <p style="font-size: 13px; color: #6b7280; margin-bottom: 20px;">
+      <p style="font-size: 13px; color: #6b7280; margin-bottom: 12px;">
         Used to send email notifications for overdue Work Queue items. The password is never
         displayed once saved — leave it blank to keep the current one.
       </p>
+      <div class="warning-box" style="margin-bottom: 20px;" role="note">
+        <strong>⚠ Security note — password stored in plaintext.</strong>
+        This SMTP password is stored unencrypted in the local database (there is no OS-keychain
+        integration yet). It is automatically <em>redacted</em> from every backup file — local
+        and cloud — so it never leaves this machine, but it is readable by anyone with direct
+        access to the database file on this device. Use a dedicated, least-privilege mail account
+        (e.g. an app-specific password limited to sending), not your primary email credentials.
+      </div>
 
       {#if smtpLoading}
         <div class="loading-pulse" aria-busy="true" aria-label="Loading SMTP configuration"></div>

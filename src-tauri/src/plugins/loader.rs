@@ -34,6 +34,19 @@ pub fn apply_vocabulary_seed(conn: &Connection, manifest: &PluginManifest) -> Db
     };
     let mut applied = 0;
     for row in &manifest.vocabulary_seed {
+        // Defense-in-depth: `row.table` is interpolated into the SQL string
+        // below, so it MUST be a whitelisted vocabulary table name. Callers
+        // are expected to have run `validate_manifest` first (which rejects
+        // any other table), but this function is `pub` — re-checking here
+        // guarantees a non-whitelisted table can never reach the interpolation
+        // even if some future caller skips validation. This closes the only
+        // path by which a table name could be attacker-influenced.
+        if !super::manifest::SEEDABLE_VOCAB_TABLES.contains(&row.table.as_str()) {
+            return Err(crate::db::DbError::Constraint(format!(
+                "Refusing to seed unknown vocabulary table '{}'",
+                row.table
+            )));
+        }
         let sql = format!(
             "INSERT OR IGNORE INTO {} (profile, code, label, sort_order, is_terminal) VALUES (?1, ?2, ?3, ?4, ?5)",
             row.table
@@ -118,6 +131,36 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM stages WHERE profile = 'algae_culture'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn apply_vocabulary_seed_rejects_a_non_whitelisted_table_even_without_validate_manifest() {
+        // Defense-in-depth: construct a manifest DIRECTLY (bypassing
+        // `validate_manifest`, which would normally reject this) with a table
+        // name that is not in SEEDABLE_VOCAB_TABLES, and confirm
+        // `apply_vocabulary_seed` refuses it rather than interpolating the
+        // name into a SQL string. This protects the one path by which a table
+        // identifier could be attacker-influenced.
+        let conn = plugin_test_db();
+        let malicious = super::PluginManifest {
+            name: "Evil".to_string(),
+            version: "1.0.0".to_string(),
+            profile: Some("evil_profile".to_string()),
+            vocabulary_seed: vec![super::super::manifest::VocabSeedRow {
+                table: "users".to_string(), // not a whitelisted vocabulary table
+                code: "x".to_string(),
+                label: "X".to_string(),
+                sort_order: 0,
+                is_terminal: false,
+            }],
+            dashboard_panels: vec![],
+            compliance_rules: vec![],
+            report_templates: vec![],
+        };
+        let result = apply_vocabulary_seed(&conn, &malicious);
+        assert!(result.is_err(), "seeding a non-whitelisted table must be refused");
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(msg.contains("users"), "error should name the rejected table");
     }
 
     #[test]

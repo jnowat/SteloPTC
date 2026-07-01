@@ -18,6 +18,16 @@ pub fn create_breeding_program(
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    // WP-55 defense-in-depth: never let the literal "[RESTRICTED]" marker be
+    // persisted into a masked field, even on create. There is no
+    // update_breeding_program path today (so no read-masked value can
+    // round-trip here the way it could for strains), but applying the same
+    // guard the strain write path uses means a future edit path — or a
+    // client that echoes a masked value straight back — can never corrupt
+    // these fields with the placeholder string. Cheap, uniform, and matches
+    // the pattern already established in `strains::update_strain_status`.
+    crate::db::permissions::reject_if_restricted_marker(request.goal.as_deref(), "Breeding program goal")?;
+    crate::db::permissions::reject_if_restricted_marker(request.target_traits.as_deref(), "Breeding program target traits")?;
     let id = queries::create_breeding_program(&db.conn, &request, Some(&user.id))
         .map_err(|e| format!("Failed to create breeding program: {}", e))?;
     queries::log_audit(
@@ -35,11 +45,13 @@ pub fn create_breeding_program(
 ///
 /// There is currently no `update_breeding_program` command, so unlike
 /// `strains::update_strain_status` there is no write path that could
-/// round-trip a masked "[RESTRICTED]" value back into these fields. If one
-/// is added later, it **must** call
-/// `crate::db::permissions::reject_if_restricted_marker` on both `goal` and
-/// `target_traits` before persisting — see the WP-55 write-path-guard doc
-/// comment in `db::permissions` for why.
+/// round-trip a masked "[RESTRICTED]" value back into these fields.
+/// `create_breeding_program` nonetheless already rejects the marker on both
+/// fields as defense-in-depth (see its body). If an update command is added
+/// later, it **must** apply the same
+/// `crate::db::permissions::reject_if_restricted_marker` guard before
+/// persisting — see the WP-55 write-path-guard doc comment in
+/// `db::permissions` for why.
 fn apply_field_permissions(perms: &crate::db::permissions::FieldPermissionSet, mut program: BreedingProgram) -> BreedingProgram {
     program.goal = perms.mask_optional_field("breeding_program", "goal", program.goal);
     program.target_traits = perms.mask_optional_field("breeding_program", "target_traits", program.target_traits);

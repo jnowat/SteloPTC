@@ -429,7 +429,11 @@
     </div>
   </div>
 
-  <!-- Customize panels -->
+  <!-- Customize panels — the layout is a single shared lab-wide setting, so
+       only supervisors/admins can change it (the backend enforces this too;
+       hiding the control for others avoids a confusing permission-denied
+       toast on toggle). -->
+  {#if isSupervisorOrAdmin}
   <div class="card customize-card">
     <button class="customize-toggle" onclick={() => (showCustomize = !showCustomize)} aria-expanded={showCustomize}>
       <span>Customize panels</span>
@@ -452,6 +456,7 @@
       </div>
     {/if}
   </div>
+  {/if}
 
   <!-- KPI strip -->
   <DataState loading={loadingKpi} error={kpiError} onretry={loadKpi}>

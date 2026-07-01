@@ -203,7 +203,7 @@
       bind:this={lightboxCloseBtn}
     >&#10005;</button>
     <div class="lightbox-content" onclick={(e) => e.stopPropagation()}>
-      <img src={lightboxSrc} alt="Specimen photo" />
+      <img src={lightboxSrc} alt="Specimen, enlarged view" />
       {#if $currentUser?.role !== 'guest'}
         <div class="lightbox-ai-panel">
           <button class="btn btn-secondary btn-sm" disabled={analyzingPhoto} onclick={analyzeCurrentPhoto} title="Analyze this photo for signs of contamination using a local AI vision model">

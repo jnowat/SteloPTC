@@ -85,6 +85,14 @@ pub fn thaw_vial(
         Some(&user.id),
     ).map_err(|e| format!("Thaw failed: {}", e))?;
 
+    // WP-63: thawing a vial inserts a brand-new, non-archived specimen
+    // (stage 'thaw_recovery'), which changes total/active/by-stage/by-species
+    // dashboard counts. Every other specimen-creating path invalidates the
+    // materialized dashboard cache; this one was missed, so a thawed specimen
+    // would not appear on the dashboard for up to the 60s TTL. Invalidate here
+    // to match the create_specimen / split_specimen / import paths.
+    crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
+
     let updated_vial = queries::get_frozen_vial(&db.conn, &request.vial_id)
         .map_err(|e| format!("Failed to retrieve updated vial: {}", e))?;
 

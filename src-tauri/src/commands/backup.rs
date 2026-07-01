@@ -232,7 +232,11 @@ pub fn restore_backup(
 /// password. Switching to DELETE mode first forces SQLite to checkpoint and
 /// write directly into the single `.db` file, and leaves no `-wal`/`-shm`
 /// behind afterward.
-fn redact_smtp_password_in_backup(backup_path: &std::path::Path) -> Result<(), String> {
+/// `pub(crate)` so the WP-59 cloud-backup path (`commands::cloud_backup`) can
+/// reuse the exact same redaction on the temp copy it encrypts, keeping the
+/// "no plaintext SMTP secret leaves the machine" guarantee consistent across
+/// both the local and cloud backup paths.
+pub(crate) fn redact_smtp_password_in_backup(backup_path: &std::path::Path) -> Result<(), String> {
     let conn = rusqlite::Connection::open(backup_path).map_err(|e| e.to_string())?;
     conn.pragma_update(None, "journal_mode", "DELETE")
         .map_err(|e| e.to_string())?;
