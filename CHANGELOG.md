@@ -5,6 +5,29 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.1] - 2026-07-01
+
+### Fixed — WP-53: iOS CI workflow and configuration hardening
+
+The v1.39.0 iOS workflow was failing. This patch makes it fail *usefully* rather than *silently or noisily* — it still cannot produce a real iOS build without Apple Developer credentials this repository doesn't have, but it now behaves correctly given that constraint instead of attempting steps that were guaranteed to fail.
+
+- **`tauri.conf.json`** — added a `bundle.iOS` section with `minimumSystemVersion: "13.0"`. `developmentTeam` is deliberately left unset: Tauri reads the Apple Developer Team ID from the `APPLE_DEVELOPMENT_TEAM` environment variable at build time (a real, documented Tauri behavior, confirmed directly against `tauri-utils`' `IosConfig` and `tauri-cli`'s source — not custom scripting), so the value never needs to be hardcoded or committed.
+  - **The top-level `identifier` (`com.steloptc.app`) was deliberately left unchanged.** Investigation found that Tauri's config schema has exactly one `identifier` field shared across every platform (Android's `applicationId`, iOS's bundle ID, Windows/macOS identity) — there is no per-platform override. Changing it to a more "iOS-idiomatic" value would have silently broken in-place upgrades for any existing Android install, which this project's own `.github/SIGNING.md` explicitly treats as a property worth preserving. `com.steloptc.app` is valid reverse-domain notation as-is.
+- **`.github/workflows/build-ios.yml`** — rewritten:
+  - **Fixed a real bug:** the previous workflow set `APPLE_TEAM_ID` as the environment variable for the release build step, but Tauri's CLI reads `APPLE_DEVELOPMENT_TEAM` — confirmed directly in `tauri-cli`'s source (`APPLE_DEVELOPMENT_TEAM_ENV_VAR_NAME` constant). The old variable name was silently ignored.
+  - **Triggers changed** from `push`/`pull_request`/`release` to `workflow_dispatch`/`schedule` (weekly)/`release` — a workflow this unverified failing on every unrelated push wasn't a useful CI gate.
+  - **Tiered credential checking:** a new `Check for Apple signing configuration` step determines `has_dev_team` (is `APPLE_DEVELOPMENT_TEAM` set?) and `has_release_signing` (are all five signing secrets set?) up front.
+    - With neither configured (the current, real state of this repository): the job now runs `cargo check --target aarch64-apple-ios-sim` instead of attempting `cargo tauri ios init`/`ios build`, which were guaranteed to fail without a team ID (Tauri falls back to auto-detecting a signed-in Xcode account, which a CI runner never has). This validates Rust-level iOS compilation without needing Xcode signing at all.
+    - With `APPLE_DEVELOPMENT_TEAM` configured: attempts the real `cargo tauri ios init` + unsigned simulator build.
+    - With the full signing secret set configured on a `release` event: attempts the signed `.ipa` export (unchanged from v1.39.0, aside from the `APPLE_DEVELOPMENT_TEAM` fix above).
+  - Every step's `if:` condition now depends on the credential-check outputs rather than only on the GitHub event type, so a partially-configured repository degrades gracefully instead of hitting a hard failure partway through.
+- **Documentation** — README.md's `Downloads` table and "iOS support status" section, and ROADMAP.md's WP-53 "As built" entry, now describe the tiered fallback behavior and state plainly that no build has been confirmed to succeed end-to-end. Removed language that could be read as implying iOS support is closer to production-ready than it is.
+- **Minor polish:** `Settings.svelte`'s Notification Preferences card now shows a small "New" badge referencing v1.39.0. `PermissionsEditor.svelte`'s checkbox cells gained `title` tooltips for consistency with the tooltip convention used throughout the rest of the app; its table/label structure already matched existing accessibility patterns (this was verified, not changed).
+
+**Verification:** `cargo test --lib --no-default-features` (364/364 passing, unchanged), `cargo clippy --no-default-features --lib -- -D warnings` (clean), and `npm run check` (0 errors, 85 pre-existing warnings — unchanged) all pass. Also re-verified the full default `tauri-commands` build (which validates `tauri.conf.json` against Tauri's schema) compiles and lints cleanly. The iOS workflow's YAML was validated for syntax; its actual runtime behavior on a real macOS runner remains unverified, as disclosed throughout.
+
+**Bump:** patch — **v1.39.1**.
+
 ## [1.39.0] - 2026-07-01
 
 ### Added — WP-52, WP-53, WP-54, WP-55: Notifications, iOS scaffold, sensor integration, field-level permissions (implemented together)
