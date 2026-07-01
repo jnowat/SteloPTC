@@ -78,8 +78,17 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       # ── Tauri CLI ──────────────────────────────────────────────────────────
+      # Pin the CLI to the SAME version as the `tauri` runtime crate resolved in
+      # src-tauri/Cargo.lock (2.11.3). An unpinned `cargo install tauri-cli`
+      # installs the newest published CLI (2.11.4+), which regenerates the
+      # gen/android Gradle project from newer templates than the runtime the app
+      # links against. The build still succeeds, but the generated output layout
+      # can shift — leaving the "Collect debug APK" glob with nothing to match
+      # and failing the job seconds after a green build. Locking the CLI to the
+      # runtime version keeps the generated project and the linked runtime in
+      # lockstep. Bump this in step with the `tauri` crate in Cargo.toml.
       - name: Install Tauri CLI
-        run: cargo install tauri-cli --locked
+        run: cargo install tauri-cli --version 2.11.3 --locked
 
       # ── Decode release keystore (release events only) ─────────────────────
       # Signing secrets required for release APKs:
@@ -131,21 +140,26 @@ jobs:
       - name: Collect debug APK
         run: |
           mkdir -p artifacts
+          OUT=src-tauri/gen/android/app/build/outputs
           # With the RustPlugin flavors the APK lands in universalDebug/;
-          # fall back to any debug APK if the exact path changes.
-          APK=$(find src-tauri/gen/android/app/build/outputs/apk \
-                  -name "*.apk" -path "*universal*debug*" -type f | head -1)
+          # fall back progressively if the exact path shifts between CLI
+          # versions. Search the whole outputs/ tree (not just apk/) so a
+          # relocated-but-valid debug APK is still found rather than silently
+          # missed. Prefer the universal debug variant, then any debug APK.
+          APK=$(find "$OUT" -name "*.apk" -path "*universal*ebug*" -type f 2>/dev/null | head -1)
           if [ -z "$APK" ]; then
-            APK=$(find src-tauri/gen/android/app/build/outputs/apk \
-                    -name "*.apk" -path "*debug*" -type f | head -1)
+            APK=$(find "$OUT" -name "*.apk" -path "*ebug*" -type f 2>/dev/null | head -1)
           fi
           if [ -z "$APK" ]; then
-            echo "ERROR: No debug APK found. Build output tree:"
-            find src-tauri/gen/android/app/build/outputs -type f 2>/dev/null || true
+            APK=$(find "$OUT" -name "*.apk" -type f 2>/dev/null | head -1)
+          fi
+          if [ -z "$APK" ]; then
+            echo "::error::No debug APK found under $OUT. Full build output tree:"
+            find "$OUT" -type f 2>/dev/null || echo "(outputs/ directory does not exist)"
             exit 1
           fi
           cp "$APK" artifacts/SteloPTC-Android-Debug.apk
-          echo "Packaged: $(basename $APK) → SteloPTC-Android-Debug.apk"
+          echo "Packaged: $(basename "$APK") → SteloPTC-Android-Debug.apk"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -230,19 +244,23 @@ jobs:
       - name: Collect release APK
         if: github.event_name == 'release'
         run: |
-          APK=$(find src-tauri/gen/android/app/build/outputs/apk \
-                  -name "*.apk" -path "*universal*release*" -type f | head -1)
+          mkdir -p artifacts
+          OUT=src-tauri/gen/android/app/build/outputs
+          # Release event only. Deliberately NO bare "*.apk" fallback here: the
+          # always-run debug build also leaves a universalDebug APK in this tree,
+          # and attaching that unsigned debug APK to a GitHub Release would be
+          # worse than failing. Match only release-variant APKs, then fail loudly.
+          APK=$(find "$OUT" -name "*.apk" -path "*universal*elease*" -type f 2>/dev/null | head -1)
           if [ -z "$APK" ]; then
-            APK=$(find src-tauri/gen/android/app/build/outputs/apk \
-                    -name "*.apk" -path "*release*" -type f | head -1)
+            APK=$(find "$OUT" -name "*.apk" -path "*elease*" -type f 2>/dev/null | head -1)
           fi
           if [ -z "$APK" ]; then
-            echo "ERROR: No release APK found. Build output tree:"
-            find src-tauri/gen/android/app/build/outputs -type f 2>/dev/null || true
+            echo "::error::No release APK found under $OUT. Full build output tree:"
+            find "$OUT" -type f 2>/dev/null || echo "(outputs/ directory does not exist)"
             exit 1
           fi
           cp "$APK" artifacts/SteloPTC-Android-Release.apk
-          echo "Packaged: $(basename $APK) → SteloPTC-Android-Release.apk"
+          echo "Packaged: $(basename "$APK") → SteloPTC-Android-Release.apk"
 
           # Verify the APK is signed with the release key (not debug).
           echo "--- APK signature info ---"
