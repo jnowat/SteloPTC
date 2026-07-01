@@ -13,7 +13,7 @@ A desktop, Android, and (in progress) iOS application for tracking plant tissue 
 | **Windows** | [Latest Release →](../../releases/latest) | `.msi` installer attached to every GitHub Release |
 | **Android** | [Latest Release →](../../releases/latest) | Release-signed `.apk` attached to every GitHub Release |
 | **Android (debug)** | [Latest Actions run →](../../actions/workflows/build-android.yml) | `SteloPTC-Android-Debug` artifact — every push, 30-day retention |
-| **iOS** | *Not yet distributed* | See [iOS support status](#ios-support-status-wp-53) below |
+| **iOS** | *Not yet distributed — best-effort / experimental* | Manual/weekly CI validation only, not on every push. See [iOS support status](#ios-support-status-wp-53) below |
 
 On every **GitHub Release**, both the Windows MSI and the Android release APK are attached directly to the release assets. The Android release APK is signed with the project release keystore (see `.github/SIGNING.md`) — **not** debug-signed — so it supports in-place upgrades on Android.
 
@@ -39,15 +39,20 @@ The debug APK is built on **every push** and available as a workflow artifact fo
 
 ### iOS support status (WP-53)
 
-iOS is not yet distributed via TestFlight or the App Store. Current status:
+**Status: best-effort / experimental.** iOS is not yet distributed via TestFlight or the App Store, and no build in `build-ios.yml` has been confirmed to succeed end-to-end. Treat everything below as in-progress infrastructure, not a supported platform.
 
 - **UI layout** — the app's responsive layout already accounts for iOS Safe Areas throughout (`env(safe-area-inset-*)` in `App.svelte` and `Sidebar.svelte`, `viewport-fit=cover` in `index.html`), from earlier mobile-polish work. No additional layout work was needed for this packet.
-- **Build workflow** — `.github/workflows/build-ios.yml` is a best-effort scaffold modeled on the Android workflow, **authored without access to a macOS/Xcode environment and not yet verified to run successfully**. It builds an unsigned simulator target on every push (validates the Rust/Swift/Xcode project compiles) and attempts a signed release IPA on GitHub Release events.
-- **Outstanding prerequisites**, both requiring a maintainer with a Mac and an active Apple Developer Program membership:
-  1. Run `cargo tauri ios init` once locally to confirm the generated Xcode project (`src-tauri/gen/apple/`) actually builds — this has not been verified for this codebase.
-  2. Add five repository secrets for release signing: `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`, `APPLE_TEAM_ID`, `APPLE_SIGNING_IDENTITY` (see comments in the workflow file for what each one is).
+- **`tauri.conf.json`** — `bundle.iOS.minimumSystemVersion` is set to `13.0`. The Apple Developer Team ID is deliberately **not** hardcoded anywhere in the repo: Tauri reads it from the `APPLE_DEVELOPMENT_TEAM` environment variable at build time (this is a real, documented Tauri behavior — not custom scripting), which is set from a CI secret of the same name. The app's `identifier` (`com.steloptc.app`) is intentionally left unchanged — it is shared across Android/Windows/iOS in Tauri's config schema, and changing it would break in-place upgrades for existing Android installs. `com.steloptc.app` is valid reverse-domain notation even though the ending reads a little unusually.
+- **Build workflow** — `.github/workflows/build-ios.yml` no longer runs on every push (a job this unverified failing on unrelated changes wasn't a useful signal). It now runs on-demand (`workflow_dispatch`), weekly (to catch drift), and on GitHub Release events. It checks for Apple credentials before attempting anything Xcode-related:
+  - **No `APPLE_DEVELOPMENT_TEAM` configured** (the current state): falls back to `cargo check --target aarch64-apple-ios-sim`, which validates that the Rust side compiles for iOS. This does **not** validate the Swift/Xcode side of the build.
+  - **`APPLE_DEVELOPMENT_TEAM` configured**: attempts a real `cargo tauri ios init` + unsigned simulator build via the full Tauri/Xcode pipeline.
+  - **Full signing secret set configured** (`APPLE_DEVELOPMENT_TEAM`, `APPLE_CERTIFICATE_BASE64`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_PROVISIONING_PROFILE_BASE64`, `APPLE_SIGNING_IDENTITY`) **and** a GitHub Release event: attempts a signed `.ipa` export.
+  - None of these secrets exist in this repository yet, so every run today takes the `cargo check`-only path.
+- **Outstanding prerequisites**, all requiring a maintainer with a Mac and an active Apple Developer Program membership:
+  1. Manually run `cargo tauri ios init` on macOS to confirm the generated Xcode project (`src-tauri/gen/apple/`) actually builds — never verified for this codebase.
+  2. Add `APPLE_DEVELOPMENT_TEAM` as a repository secret to unlock the simulator-build path; add the remaining four signing secrets to unlock signed release IPAs.
   3. TestFlight/App Store Connect upload additionally requires an App Store Connect API key and is not yet automated — the release job stops at producing a signed `.ipa` artifact.
-- **Core flows on-device** (specimen CRUD, QR camera scanning, attachment/backup file access, notifications) have **not been verified on iOS** — there is no iOS device or simulator available in the environment this packet was developed in.
+- **Core flows on-device** (specimen CRUD, QR camera scanning, attachment/backup file access, notifications) are expected to work based on Tauri's cross-platform APIs, but have **not been verified on iOS** — there is no iOS device or simulator available in the environment these packets were developed in.
 
 ---
 
@@ -152,7 +157,7 @@ All scan events are stored in the `qr_scans` SQLite table with raw data, accessi
 | Database  | SQLite (bundled, WAL mode); optional PostgreSQL connector behind the `postgres` Cargo feature (foundation only — not yet wired into the live query layer, v1.38.0) |
 | Auth      | bcrypt password hashing, session tokens, forced first-login password change |
 | Security  | Tauri CSP: `script-src 'self'`; no remote scripts; `data:`/`blob:` image/worker sources scoped explicitly |
-| Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile; iOS build scaffold in progress, not yet distributed (WP-53) |
+| Mobile    | Android 7.0+ (API 24–35), Tauri 2 mobile; iOS 13.0+ target configured, best-effort/experimental CI only, not yet distributed (WP-53) |
 | QR Codes  | qrcode 1.5.4 (generation), html5-qrcode 2.3.8 (scanning) |
 | Excel     | xlsx 0.18.5 (SheetJS — multi-sheet workbook export and import) |
 | Crypto    | sha2 0.10 (Rust — SHA-256 for per-lineage audit hash chain) |

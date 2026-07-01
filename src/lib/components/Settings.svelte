@@ -239,10 +239,12 @@
 
   <!-- Notification Preferences — every user configures their own (WP-52) -->
   <div class="card" style="max-width: 640px; margin-bottom: 24px;">
-    <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">Notification Preferences</h2>
+    <h2 style="font-size: 16px; font-weight: 700; margin-bottom: 4px;">
+      Notification Preferences <span class="new-feature-badge">New</span>
+    </h2>
     <p style="font-size: 13px; color: #6b7280; margin-bottom: 20px;">
       Choose which channels notify you about overdue Work Queue items, and the minimum severity
-      that should reach you on each one.
+      that should reach you on each one. Desktop and email notifications are now available (v1.39.0).
     </p>
 
     {#if notifLoading}
@@ -711,6 +713,22 @@
     gap: 8px;
     font-size: 14px;
     cursor: pointer;
+  }
+  .new-feature-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 7px;
+    border-radius: 10px;
+    background: #dbeafe;
+    color: #1e40af;
+    vertical-align: middle;
+  }
+  :global(.dark) .new-feature-badge {
+    background: #1e3a5f;
+    color: #93c5fd;
   }
   .visually-hidden {
     position: absolute;

@@ -1,31 +1,40 @@
 name: Build iOS App
 
-# WP-53 — best-effort scaffold, modeled on build-android.yml's structure.
+# WP-53 — iOS support: best-effort / experimental, hardened in v1.39.1.
 #
-# UNVERIFIED: this workflow was authored without access to a macOS/Xcode
-# environment or a real Apple Developer account, and has not been run. Two
-# prerequisites must be completed by a maintainer on macOS before it can
-# succeed at all:
-#   1. `cargo tauri ios init` must be run once locally to generate the Xcode
-#      project scaffold (src-tauri/gen/apple/), the same way gen/android/ was
-#      bootstrapped for the Android target. This job regenerates it fresh on
-#      every run (matching the Android job's `rm -rf gen/android && cargo
-#      tauri android init --ci` pattern) — but the very first successful run
-#      of `cargo tauri ios init --ci` on this codebase has not been verified.
-#   2. Real Apple Developer signing material must be added as repository
-#      secrets before the "release" path below can produce a signed IPA (see
-#      the secrets list in the release job step). Until then, only the
-#      unsigned-simulator build path can be expected to work.
+# CURRENT STATUS: no step in this workflow has been confirmed to succeed
+# end-to-end. It was authored and iterated on without access to a macOS/
+# Xcode environment or a real Apple Developer account. Two things must
+# happen before iOS can be considered reliable:
+#   1. A maintainer with Xcode access needs to confirm the compile-check
+#      path below (and ideally a full simulator build) actually succeeds
+#      against this codebase.
+#   2. Real Apple Developer signing material needs to be added as
+#      repository secrets (see "Signed release build" below) before a
+#      distributable IPA can be produced.
 #
-# Treat this as a documented starting point, not a working pipeline.
+# Because of that, this job intentionally does NOT run on every push/PR —
+# it would either fail noisily on an unrelated change or silently no-op,
+# and neither is a useful CI gate yet. It runs:
+#   - on demand (workflow_dispatch), for a maintainer to check current status
+#   - weekly, to catch Tauri/Xcode/dependency drift before it piles up
+#   - on GitHub Release events, where a real signed build is actually wanted
+#
+# Two tiers of Apple credentials are checked for, independently:
+#   - APPLE_DEVELOPMENT_TEAM alone lets Tauri generate the Xcode project and
+#     attempt a full (still unsigned-for-distribution) simulator build.
+#   - The full signing secret set (below) additionally allows exporting a
+#     distributable, signed .ipa on release events.
+# With neither configured, the job falls back to `cargo check` against the
+# iOS simulator target — this catches Rust-level compilation breakage
+# without needing Xcode signing, a real Apple Developer account, or a
+# device/simulator to run on. It does NOT catch Swift/Xcode-side issues;
+# that requires at least APPLE_DEVELOPMENT_TEAM to be configured.
 
 on:
-  push:
-    branches:
-      - master
-      - 'claude/**'
-  pull_request:
-    branches: [master]
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 6 * * 1' # weekly, Monday 06:00 UTC
   release:
     types: [published]
 
@@ -66,47 +75,82 @@ jobs:
       - name: Install Tauri CLI
         run: cargo install tauri-cli --locked
 
-      # ── Generate the Xcode project ─────────────────────────────────────────
-      # Always regenerated fresh, matching the Android job's approach, so the
-      # committed repo never needs to carry a generated Xcode project.
+      # ── Determine what level of Apple signing is configured ────────────────
+      # `has_dev_team` gates whether we attempt a real Tauri/Xcode build at
+      # all. `has_release_signing` additionally requires the distribution
+      # certificate and provisioning profile, and gates the signed-IPA
+      # export path further down. Neither secret exists in this repository
+      # yet, so both currently evaluate to "false" on every run.
+      - name: Check for Apple signing configuration
+        id: signing
+        run: |
+          if [ -n "${{ secrets.APPLE_DEVELOPMENT_TEAM }}" ]; then
+            echo "has_dev_team=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_dev_team=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::APPLE_DEVELOPMENT_TEAM is not set. Skipping the Tauri/Xcode build and falling back to 'cargo check' for iOS — this validates Rust compilation only, not the Swift/Xcode side."
+          fi
+
+          if [ -n "${{ secrets.APPLE_DEVELOPMENT_TEAM }}" ] && \
+             [ -n "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ] && \
+             [ -n "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ] && \
+             [ -n "${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}" ] && \
+             [ -n "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]; then
+            echo "has_release_signing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_release_signing=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── No credentials: compile-time validation only ───────────────────────
+      # Deliberately independent of `cargo tauri ios init` — that step needs
+      # a development team to generate a working Xcode project (Tauri falls
+      # back to auto-detecting a signed-in Xcode account otherwise, which a
+      # CI runner never has), so it is skipped entirely rather than attempted
+      # and allowed to fail. `cargo check` needs no Xcode project at all.
+      - name: Compile-check for iOS (no Apple credentials configured)
+        if: steps.signing.outputs.has_dev_team == 'false'
+        run: cargo check --target aarch64-apple-ios-sim --manifest-path src-tauri/Cargo.toml
+
+      # ── APPLE_DEVELOPMENT_TEAM configured: attempt a real build ────────────
+      # Tauri reads the team ID from this exact environment variable name
+      # (see IosConfig::development_team in tauri-utils — it takes priority
+      # over any developmentTeam value in tauri.conf.json, which is
+      # deliberately left unset there for this reason). Always regenerated
+      # fresh, matching the Android job's `rm -rf gen/android` approach, so
+      # the committed repo never needs to carry a generated Xcode project.
       - name: Initialize Tauri iOS project
+        if: steps.signing.outputs.has_dev_team == 'true'
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
         run: |
           rm -rf src-tauri/gen/apple
           cargo tauri ios init --ci
 
-      # ── Unsigned simulator build (every push / PR) ─────────────────────────
-      # Building for the simulator requires no code signing at all, so this
-      # path can validate that the Rust/Swift/Xcode project actually builds
-      # without needing any Apple Developer secrets.
-      - name: Build for iOS Simulator (debug, unsigned)
+      - name: Build for iOS Simulator (debug)
+        if: steps.signing.outputs.has_dev_team == 'true'
+        env:
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
         run: cargo tauri ios build --debug --target aarch64-sim
 
-      # ── Signed release IPA (GitHub Release events only) ────────────────────
-      # Requires these secrets to be configured before this step can succeed:
-      #   APPLE_CERTIFICATE_BASE64             – base64-encoded .p12 distribution certificate
-      #   APPLE_CERTIFICATE_PASSWORD           – password for the .p12 file
-      #   APPLE_PROVISIONING_PROFILE_BASE64    – base64-encoded .mobileprovision file
-      #   APPLE_TEAM_ID                        – Apple Developer Team ID
-      #   APPLE_SIGNING_IDENTITY                – e.g. "Apple Distribution: Your Org (TEAMID)"
-      # None of these exist yet — see the workflow-level comment above.
-      - name: Verify signing secrets present
+      # ── Signed release IPA (GitHub Release events, full signing secrets only) ──
+      # Requires these secrets, none of which exist in this repository yet:
+      #   APPLE_DEVELOPMENT_TEAM             – Apple Developer Team ID
+      #   APPLE_CERTIFICATE_BASE64           – base64-encoded .p12 distribution certificate
+      #   APPLE_CERTIFICATE_PASSWORD         – password for the .p12 file
+      #   APPLE_PROVISIONING_PROFILE_BASE64  – base64-encoded .mobileprovision file
+      #   APPLE_SIGNING_IDENTITY             – e.g. "Apple Distribution: Your Org (TEAMID)"
+      - name: Verify release signing secrets present
         if: github.event_name == 'release'
         run: |
-          missing=()
-          [ -z "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" ]          && missing+=("APPLE_CERTIFICATE_BASE64")
-          [ -z "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" ]        && missing+=("APPLE_CERTIFICATE_PASSWORD")
-          [ -z "${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}" ] && missing+=("APPLE_PROVISIONING_PROFILE_BASE64")
-          [ -z "${{ secrets.APPLE_TEAM_ID }}" ]                     && missing+=("APPLE_TEAM_ID")
-          [ -z "${{ secrets.APPLE_SIGNING_IDENTITY }}" ]            && missing+=("APPLE_SIGNING_IDENTITY")
-          if [ ${#missing[@]} -gt 0 ]; then
-            echo "::error::Release build requires signing secrets that are not set: ${missing[*]}"
+          if [ "${{ steps.signing.outputs.has_release_signing }}" != "true" ]; then
+            echo "::error::Release build requires all Apple signing secrets: APPLE_DEVELOPMENT_TEAM, APPLE_CERTIFICATE_BASE64, APPLE_CERTIFICATE_PASSWORD, APPLE_PROVISIONING_PROFILE_BASE64, APPLE_SIGNING_IDENTITY. See the comment block at the top of this workflow."
             echo "iOS distribution requires a real Apple Developer account — these cannot be generated automatically."
             exit 1
           fi
-          echo "All signing secrets are present."
+          echo "All release signing secrets are present."
 
       - name: Import signing certificate and provisioning profile
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.signing.outputs.has_release_signing == 'true'
         run: |
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
           KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
@@ -124,14 +168,14 @@ jobs:
             > ~/Library/MobileDevice/Provisioning\ Profiles/profile.mobileprovision
 
       - name: Build signed release IPA
-        if: github.event_name == 'release'
-        run: cargo tauri ios build --export-method app-store-connect
+        if: github.event_name == 'release' && steps.signing.outputs.has_release_signing == 'true'
         env:
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: cargo tauri ios build --export-method app-store-connect
 
       - name: Collect release IPA
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.signing.outputs.has_release_signing == 'true'
         run: |
           mkdir -p artifacts
           IPA=$(find src-tauri/gen/apple -name "*.ipa" -type f | head -1)
@@ -144,7 +188,7 @@ jobs:
           echo "Packaged: $(basename "$IPA") → SteloPTC-iOS-Release.ipa"
 
       - name: Upload release IPA artifact
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.signing.outputs.has_release_signing == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: SteloPTC-iOS-Release
@@ -156,7 +200,7 @@ jobs:
       # as a manual step for now — see README.md "Downloads" for the current
       # distribution status.
       - name: Attach release IPA to GitHub Release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && steps.signing.outputs.has_release_signing == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/SteloPTC-iOS-Release.ipa

@@ -101,7 +101,7 @@
               {@const key = `${role}:${row.entity_type}:${row.field_name}`}
               {@const visible = isVisible(row.entity_type, row.field_name, role)}
               <td class="pe-cell">
-                <label class="pe-checkbox-label">
+                <label class="pe-checkbox-label" title="{visible ? 'Visible' : 'Restricted'} — click to {visible ? 'restrict' : 'allow'} {ROLE_LABELS[role]} from viewing {row.entity_type}.{row.field_name}">
                   <input
                     type="checkbox"
                     checked={visible}
