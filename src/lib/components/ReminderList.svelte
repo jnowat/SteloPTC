@@ -96,12 +96,12 @@
         <h3 style="margin-bottom:16px;">New Reminder</h3>
         <div class="form-row">
           <div class="form-group">
-            <label title="Short descriptive name for this reminder">Title *</label>
-            <input type="text" title="Enter a short descriptive title for the reminder" bind:value={form.title} required placeholder="e.g., Subculture citrus batch" />
+            <label for="reminder-title" title="Short descriptive name for this reminder">Title *</label>
+            <input id="reminder-title" type="text" title="Enter a short descriptive title for the reminder" bind:value={form.title} required placeholder="e.g., Subculture citrus batch" />
           </div>
           <div class="form-group">
-            <label title="Category that classifies this reminder">Type</label>
-            <select title="Select the reminder category" bind:value={form.reminder_type}>
+            <label for="reminder-type" title="Category that classifies this reminder">Type</label>
+            <select id="reminder-type" title="Select the reminder category" bind:value={form.reminder_type}>
               {#each types as t}
                 <option value={t}>{t.replace(/_/g, ' ')}</option>
               {/each}
@@ -110,12 +110,12 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label title="Date by which this reminder must be acted upon">Due Date *</label>
-            <input type="date" title="Select the due date for this reminder" bind:value={form.due_date} required />
+            <label for="reminder-due-date" title="Date by which this reminder must be acted upon">Due Date *</label>
+            <input id="reminder-due-date" type="date" title="Select the due date for this reminder" bind:value={form.due_date} required />
           </div>
           <div class="form-group">
-            <label title="Priority level of this reminder">Urgency</label>
-            <select title="Select how urgent this reminder is" bind:value={form.urgency}>
+            <label for="reminder-urgency" title="Priority level of this reminder">Urgency</label>
+            <select id="reminder-urgency" title="Select how urgent this reminder is" bind:value={form.urgency}>
               <option value="low">Low</option>
               <option value="normal">Normal</option>
               <option value="high">High</option>
@@ -134,8 +134,8 @@
             {/if}
           </div>
           <div class="form-group">
-            <label title="Optional longer description providing more context for the reminder">Description</label>
-            <textarea title="Enter an optional description with more detail about the reminder" bind:value={form.description} rows="2"></textarea>
+            <label for="reminder-description" title="Optional longer description providing more context for the reminder">Description</label>
+            <textarea id="reminder-description" title="Enter an optional description with more detail about the reminder" bind:value={form.description} rows="2"></textarea>
           </div>
         </div>
         <div style="text-align:right;">

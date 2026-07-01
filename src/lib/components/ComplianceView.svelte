@@ -4,12 +4,14 @@
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
+  import ComplianceExportWizard from './ComplianceExportWizard.svelte';
 
   let records = $state<any[]>([]);
   let flags = $state<any[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let showForm = $state(false);
+  let showExportWizard = $state(false);
   let activeTab = $state<'flags' | 'records'>('flags');
   let page = $state(1);
   let totalPages = $state(1);
@@ -67,17 +69,38 @@
   function getSeverityClass(s: string) {
     return s === 'critical' ? 'badge-red' : s === 'high' ? 'badge-yellow' : 'badge-blue';
   }
+
+  function toggleExportWizard() {
+    showExportWizard = !showExportWizard;
+  }
+
+  const canExport = $derived($currentUser?.role === 'admin' || $currentUser?.role === 'supervisor');
 </script>
 
 <div>
   <div class="page-header">
     <h1>Compliance</h1>
-    {#if $currentUser?.role !== 'guest'}
-      <button class="btn btn-primary" title={showForm ? 'Cancel and close the form' : 'Open form to add a new compliance record'} onclick={() => showForm = !showForm}>
-        {showForm ? 'Cancel' : '+ New Record'}
-      </button>
-    {/if}
+    <div style="display:flex; gap:8px;">
+      {#if canExport}
+        <button
+          class="btn"
+          title={showExportWizard ? 'Close the regulatory export wizard' : 'Open the regulatory export wizard to generate FDA, USDA, or CITES compliance bundles'}
+          onclick={toggleExportWizard}
+        >
+          {showExportWizard ? 'Hide Regulatory Export' : 'Regulatory Export ↗'}
+        </button>
+      {/if}
+      {#if $currentUser?.role !== 'guest'}
+        <button class="btn btn-primary" title={showForm ? 'Cancel and close the form' : 'Open form to add a new compliance record'} onclick={() => showForm = !showForm}>
+          {showForm ? 'Cancel' : '+ New Record'}
+        </button>
+      {/if}
+    </div>
   </div>
+
+  {#if showExportWizard && canExport}
+    <ComplianceExportWizard onclose={() => showExportWizard = false} />
+  {/if}
 
   {#if showForm}
     <div class="card" style="margin-bottom:16px;">
@@ -85,12 +108,12 @@
         <h3 style="margin-bottom:16px;">New Compliance Record</h3>
         <div class="form-row">
           <div class="form-group">
-            <label title="The unique identifier of the specimen this record applies to">Specimen ID *</label>
-            <input type="text" title="Enter the UUID of the specimen" bind:value={form.specimen_id} required placeholder="Specimen UUID" />
+            <label for="compliance-specimen-id" title="The unique identifier of the specimen this record applies to">Specimen ID *</label>
+            <input id="compliance-specimen-id" type="text" title="Enter the UUID of the specimen" bind:value={form.specimen_id} required placeholder="Specimen UUID" />
           </div>
           <div class="form-group">
-            <label title="Category of compliance record being created">Record Type</label>
-            <select title="Select the type of compliance record" bind:value={form.record_type}>
+            <label for="compliance-record-type" title="Category of compliance record being created">Record Type</label>
+            <select id="compliance-record-type" title="Select the type of compliance record" bind:value={form.record_type}>
               {#each recordTypes as t}
                 <option value={t.code}>{t.label}</option>
               {/each}
@@ -99,8 +122,8 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label title="Regulatory agency responsible for this compliance record">Agency</label>
-            <select title="Select the governing regulatory agency" bind:value={form.agency}>
+            <label for="compliance-agency" title="Regulatory agency responsible for this compliance record">Agency</label>
+            <select id="compliance-agency" title="Select the governing regulatory agency" bind:value={form.agency}>
               <option value="">Select...</option>
               {#each agencies as a}
                 <option value={a.code}>{a.label}</option>
@@ -108,28 +131,28 @@
             </select>
           </div>
           <div class="form-group">
-            <label title="Name of the disease or diagnostic test performed">Test Type</label>
-            <input type="text" title="Enter the test or disease type, e.g. HLB or ELISA" bind:value={form.test_type} placeholder="e.g., HLB, ELISA, PCR" />
+            <label for="compliance-test-type" title="Name of the disease or diagnostic test performed">Test Type</label>
+            <input id="compliance-test-type" type="text" title="Enter the test or disease type, e.g. HLB or ELISA" bind:value={form.test_type} placeholder="e.g., HLB, ELISA, PCR" />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label title="Laboratory method used to conduct the test">Test Method</label>
-            <input type="text" title="Enter the testing method, e.g. PCR or ELISA" bind:value={form.test_method} placeholder="e.g., PCR, ELISA" />
+            <label for="compliance-test-method" title="Laboratory method used to conduct the test">Test Method</label>
+            <input id="compliance-test-method" type="text" title="Enter the testing method, e.g. PCR or ELISA" bind:value={form.test_method} placeholder="e.g., PCR, ELISA" />
           </div>
           <div class="form-group">
-            <label title="Date the test or inspection was conducted">Test Date</label>
-            <input type="date" title="Select the date the test was conducted" bind:value={form.test_date} />
+            <label for="compliance-test-date" title="Date the test or inspection was conducted">Test Date</label>
+            <input id="compliance-test-date" type="date" title="Select the date the test was conducted" bind:value={form.test_date} />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label title="Name of the laboratory that performed the test">Lab</label>
-            <input type="text" title="Enter the name of the testing laboratory" bind:value={form.test_lab} />
+            <label for="compliance-test-lab" title="Name of the laboratory that performed the test">Lab</label>
+            <input id="compliance-test-lab" type="text" title="Enter the name of the testing laboratory" bind:value={form.test_lab} />
           </div>
           <div class="form-group">
-            <label title="Outcome of the test or inspection">Result</label>
-            <select title="Select the test result" bind:value={form.test_result}>
+            <label for="compliance-test-result" title="Outcome of the test or inspection">Result</label>
+            <select id="compliance-test-result" title="Select the test result" bind:value={form.test_result}>
               <option value="">Pending</option>
               <option value="negative">Negative</option>
               <option value="positive">Positive</option>
@@ -138,8 +161,8 @@
           </div>
         </div>
         <div class="form-group">
-          <label title="Additional notes or observations about this compliance record">Notes</label>
-          <textarea title="Enter any additional notes about this record" bind:value={form.notes} rows="2"></textarea>
+          <label for="compliance-notes" title="Additional notes or observations about this compliance record">Notes</label>
+          <textarea id="compliance-notes" title="Enter any additional notes about this record" bind:value={form.notes} rows="2"></textarea>
         </div>
         <div style="text-align:right;">
           <button type="submit" class="btn btn-primary" title="Save this new compliance record">Create Record</button>

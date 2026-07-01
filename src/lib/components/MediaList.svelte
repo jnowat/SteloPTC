@@ -4,6 +4,7 @@
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
+  import FormField from './FormField.svelte';
 
   type ReagentRow = {
     item_id: string;
@@ -374,61 +375,73 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label title="Human-readable name for this media batch (e.g., MS Full + BAP)">Name</label>
-              <input
-                type="text"
-                bind:value={editForm.name}
-                title="Human-readable name for this media batch (e.g., MS Full + BAP)"
-              />
+              <FormField label="Name" fieldId="media-edit-name" title="Human-readable name for this media batch (e.g., MS Full + BAP)">
+                <input
+                  id="media-edit-name"
+                  type="text"
+                  bind:value={editForm.name}
+                  title="Human-readable name for this media batch (e.g., MS Full + BAP)"
+                />
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="Date after which this media batch should no longer be used">Expiration Date</label>
-              <input
-                type="date"
-                bind:value={editForm.expiration_date}
-                title="Date after which this media batch should no longer be used"
-              />
+              <FormField label="Expiration Date" fieldId="media-edit-expiration-date" title="Date after which this media batch should no longer be used">
+                <input
+                  id="media-edit-expiration-date"
+                  type="date"
+                  bind:value={editForm.expiration_date}
+                  title="Date after which this media batch should no longer be used"
+                />
+              </FormField>
             </div>
           </div>
 
           <div class="compact-row">
             <div class="form-group compact-field">
-              <label title="Current volume of media remaining in stock (mL)">Volume Remaining (mL)</label>
-              <input
-                type="number"
-                step="0.1"
-                bind:value={editForm.volume_remaining_ml}
-                title="Current volume of media remaining in stock (mL)"
-              />
+              <FormField label="Volume Remaining (mL)" fieldId="media-edit-volume-remaining" title="Current volume of media remaining in stock (mL)">
+                <input
+                  id="media-edit-volume-remaining"
+                  type="number"
+                  step="0.1"
+                  bind:value={editForm.volume_remaining_ml}
+                  title="Current volume of media remaining in stock (mL)"
+                />
+              </FormField>
             </div>
             <div class="form-group compact-field-wide">
-              <label title="How and where this batch is being stored (e.g., 4°C in the dark)">Storage Conditions</label>
-              <input
-                type="text"
-                bind:value={editForm.storage_conditions}
-                placeholder="e.g., 4°C dark"
-                title="How and where this batch is being stored (e.g., 4°C in the dark)"
-              />
+              <FormField label="Storage Conditions" fieldId="media-edit-storage-conditions" title="How and where this batch is being stored (e.g., 4°C in the dark)">
+                <input
+                  id="media-edit-storage-conditions"
+                  type="text"
+                  bind:value={editForm.storage_conditions}
+                  placeholder="e.g., 4°C dark"
+                  title="How and where this batch is being stored (e.g., 4°C in the dark)"
+                />
+              </FormField>
             </div>
           </div>
 
           <div class="form-group">
-            <label title="Quality control observations — contamination checks, colour, clarity, gelation">QC Notes</label>
-            <input
-              type="text"
-              bind:value={editForm.qc_notes}
-              placeholder="Quality control observations..."
-              title="Quality control observations — contamination checks, colour, clarity, gelation"
-            />
+            <FormField label="QC Notes" fieldId="media-edit-qc-notes" title="Quality control observations — contamination checks, colour, clarity, gelation">
+              <input
+                id="media-edit-qc-notes"
+                type="text"
+                bind:value={editForm.qc_notes}
+                placeholder="Quality control observations..."
+                title="Quality control observations — contamination checks, colour, clarity, gelation"
+              />
+            </FormField>
           </div>
 
           <div class="form-group">
-            <label title="General notes about this batch — amendments, deviations from protocol, etc.">Notes</label>
-            <textarea
-              bind:value={editForm.notes}
-              rows="3"
-              title="General notes about this batch — amendments, deviations from protocol, etc."
-            ></textarea>
+            <FormField label="Notes" fieldId="media-edit-notes" title="General notes about this batch — amendments, deviations from protocol, etc.">
+              <textarea
+                id="media-edit-notes"
+                bind:value={editForm.notes}
+                rows="3"
+                title="General notes about this batch — amendments, deviations from protocol, etc."
+              ></textarea>
+            </FormField>
           </div>
 
           <div style="display:flex;align-items:center;gap:16px;justify-content:space-between;">
@@ -467,65 +480,75 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label title="Descriptive name for this batch — include basal salts type and key supplements">Name *</label>
-              <input
-                type="text"
-                bind:value={batchForm.name}
-                placeholder="e.g., MS Full Strength + BAP"
-                required
-                title="Descriptive name for this batch — include basal salts type and key supplements"
-              />
+              <FormField label="Name *" fieldId="media-create-name" title="Descriptive name for this batch — include basal salts type and key supplements">
+                <input
+                  id="media-create-name"
+                  type="text"
+                  bind:value={batchForm.name}
+                  placeholder="e.g., MS Full Strength + BAP"
+                  required
+                  title="Descriptive name for this batch — include basal salts type and key supplements"
+                />
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="Date on which this media batch was prepared and autoclaved">Preparation Date *</label>
-              <input
-                type="date"
-                bind:value={batchForm.preparation_date}
-                required
-                title="Date on which this media batch was prepared and autoclaved"
-              />
+              <FormField label="Preparation Date *" fieldId="media-create-preparation-date" title="Date on which this media batch was prepared and autoclaved">
+                <input
+                  id="media-create-preparation-date"
+                  type="date"
+                  bind:value={batchForm.preparation_date}
+                  required
+                  title="Date on which this media batch was prepared and autoclaved"
+                />
+              </FormField>
             </div>
           </div>
 
           <!-- Employee ID -->
           <div class="form-row">
             <div class="form-group" style="max-width:260px;">
-              <label title="ID or badge number of the technician who prepared this batch — used for traceability">Employee ID / Badge #</label>
-              <input
-                type="text"
-                bind:value={batchForm.employee_id}
-                placeholder="e.g., EMP-042"
-                title="ID or badge number of the technician who prepared this batch — used for traceability"
-              />
+              <FormField label="Employee ID / Badge #" fieldId="media-create-employee-id" title="ID or badge number of the technician who prepared this batch — used for traceability">
+                <input
+                  id="media-create-employee-id"
+                  type="text"
+                  bind:value={batchForm.employee_id}
+                  placeholder="e.g., EMP-042"
+                  title="ID or badge number of the technician who prepared this batch — used for traceability"
+                />
+              </FormField>
             </div>
           </div>
 
           <!-- Basal salts -->
           <div class="form-row">
             <div class="form-group">
-              <label title="Type of basal medium formulation (MS=Murashige &amp; Skoog, WPM=Woody Plant Medium, B5=Gamborg's B5, etc.)">Basal Salts</label>
-              <select
-                bind:value={batchForm.basal_salts}
-                title="Type of basal medium formulation (MS=Murashige &amp; Skoog, WPM=Woody Plant Medium, B5=Gamborg's B5, etc.)"
-              >
-                <option value="MS">Murashige &amp; Skoog (MS)</option>
-                <option value="1/2 MS">Half-strength MS</option>
-                <option value="WPM">Woody Plant Medium</option>
-                <option value="B5">Gamborg's B5</option>
-                <option value="N6">Chu's N6</option>
-                <option value="LS">Linsmaier &amp; Skoog</option>
-                <option value="White">White's Medium</option>
-                <option value="DKW">Driver &amp; Kuniyuki</option>
-                <option value="custom">Custom</option>
-              </select>
+              <FormField label="Basal Salts" fieldId="media-create-basal-salts" title="Type of basal medium formulation (MS=Murashige &amp; Skoog, WPM=Woody Plant Medium, B5=Gamborg's B5, etc.)">
+                <select
+                  id="media-create-basal-salts"
+                  bind:value={batchForm.basal_salts}
+                  title="Type of basal medium formulation (MS=Murashige &amp; Skoog, WPM=Woody Plant Medium, B5=Gamborg's B5, etc.)"
+                >
+                  <option value="MS">Murashige &amp; Skoog (MS)</option>
+                  <option value="1/2 MS">Half-strength MS</option>
+                  <option value="WPM">Woody Plant Medium</option>
+                  <option value="B5">Gamborg's B5</option>
+                  <option value="N6">Chu's N6</option>
+                  <option value="LS">Linsmaier &amp; Skoog</option>
+                  <option value="White">White's Medium</option>
+                  <option value="DKW">Driver &amp; Kuniyuki</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="Date after which this media batch should no longer be used">Expiration Date</label>
-              <input
-                type="date"
-                bind:value={batchForm.expiration_date}
-                title="Date after which this media batch should no longer be used"
-              />
+              <FormField label="Expiration Date" fieldId="media-create-expiration-date" title="Date after which this media batch should no longer be used">
+                <input
+                  id="media-create-expiration-date"
+                  type="date"
+                  bind:value={batchForm.expiration_date}
+                  title="Date after which this media batch should no longer be used"
+                />
+              </FormField>
             </div>
           </div>
 
@@ -548,45 +571,53 @@
 
             {#if premadeSolution}
               <div class="form-group" style="max-width:200px;">
-                <label title="Known concentration of the pre-made basal salts stock solution in g/L">Basal Salts Concentration (g/L)</label>
-                <input
-                  type="number"
-                  step="0.001"
-                  bind:value={batchForm.basal_salts_concentration}
-                  placeholder="e.g., 4.4"
-                  title="Known concentration of the pre-made basal salts stock solution in g/L (e.g., 4.4 g/L for full-strength MS)"
-                />
+                <FormField label="Basal Salts Concentration (g/L)" fieldId="media-create-basal-conc-premade" title="Known concentration of the pre-made basal salts stock solution in g/L (e.g., 4.4 g/L for full-strength MS)">
+                  <input
+                    id="media-create-basal-conc-premade"
+                    type="number"
+                    step="0.001"
+                    bind:value={batchForm.basal_salts_concentration}
+                    placeholder="e.g., 4.4"
+                    title="Known concentration of the pre-made basal salts stock solution in g/L (e.g., 4.4 g/L for full-strength MS)"
+                  />
+                </FormField>
               </div>
             {:else}
               <div class="compact-row">
                 <div class="form-group compact-field">
-                  <label title="Mass of basal salts powder weighed out for this batch (grams)">Basal Salts Added (g)</label>
-                  <input
-                    type="number"
-                    step="0.001"
-                    bind:value={basalWeightG}
-                    placeholder="e.g., 4.4"
-                    title="Mass of basal salts powder weighed out for this batch (grams) — used to auto-calculate concentration"
-                  />
+                  <FormField label="Basal Salts Added (g)" fieldId="media-create-basal-weight" title="Mass of basal salts powder weighed out for this batch (grams) — used to auto-calculate concentration">
+                    <input
+                      id="media-create-basal-weight"
+                      type="number"
+                      step="0.001"
+                      bind:value={basalWeightG}
+                      placeholder="e.g., 4.4"
+                      title="Mass of basal salts powder weighed out for this batch (grams) — used to auto-calculate concentration"
+                    />
+                  </FormField>
                 </div>
                 <div class="form-group compact-field">
-                  <label title="Total water volume used to dissolve the basal salts (mL) — used to auto-calculate concentration">Water Volume (mL)</label>
-                  <input
-                    type="number"
-                    step="1"
-                    bind:value={basalWaterMl}
-                    placeholder="e.g., 1000"
-                    title="Total water volume used to dissolve the basal salts (mL) — used to auto-calculate concentration"
-                  />
+                  <FormField label="Water Volume (mL)" fieldId="media-create-basal-water" title="Total water volume used to dissolve the basal salts (mL) — used to auto-calculate concentration">
+                    <input
+                      id="media-create-basal-water"
+                      type="number"
+                      step="1"
+                      bind:value={basalWaterMl}
+                      placeholder="e.g., 1000"
+                      title="Total water volume used to dissolve the basal salts (mL) — used to auto-calculate concentration"
+                    />
+                  </FormField>
                 </div>
                 <div class="form-group compact-field">
-                  <label title="Resulting basal salts concentration in g/L — auto-calculated from weight and volume, or enter manually">Concentration (g/L)</label>
-                  <input
-                    type="number" step="0.001"
-                    bind:value={batchForm.basal_salts_concentration}
-                    placeholder={autoConcentration || '—'}
-                    title={autoConcentration ? `Auto-calculated: ${autoConcentration} g/L` : 'Enter weight and volume to auto-calculate, or type a value manually'}
-                  />
+                  <FormField label="Concentration (g/L)" fieldId="media-create-basal-conc-calc" title={autoConcentration ? `Auto-calculated: ${autoConcentration} g/L` : 'Enter weight and volume to auto-calculate, or type a value manually'}>
+                    <input
+                      id="media-create-basal-conc-calc"
+                      type="number" step="0.001"
+                      bind:value={batchForm.basal_salts_concentration}
+                      placeholder={autoConcentration || '—'}
+                      title={autoConcentration ? `Auto-calculated: ${autoConcentration} g/L` : 'Enter weight and volume to auto-calculate, or type a value manually'}
+                    />
+                  </FormField>
                 </div>
               </div>
               {#if autoConcentration}
@@ -598,67 +629,79 @@
           <!-- Numeric fields row -->
           <div class="compact-row">
             <div class="form-group compact-field">
-              <label title="Carbon source concentration in g/L (typical 20–30 g/L for most plant tissue culture media)">Sucrose (g/L)</label>
-              <input
-                type="number"
-                step="0.1"
-                bind:value={batchForm.sucrose_g_per_l}
-                title="Carbon source (sucrose) concentration in g/L — typical range 20–30 g/L; provides energy for non-photosynthetic explants"
-              />
+              <FormField label="Sucrose (g/L)" fieldId="media-create-sucrose" title="Carbon source (sucrose) concentration in g/L — typical range 20–30 g/L; provides energy for non-photosynthetic explants">
+                <input
+                  id="media-create-sucrose"
+                  type="number"
+                  step="0.1"
+                  bind:value={batchForm.sucrose_g_per_l}
+                  title="Carbon source (sucrose) concentration in g/L — typical range 20–30 g/L; provides energy for non-photosynthetic explants"
+                />
+              </FormField>
             </div>
             <div class="form-group compact-field">
-              <label title="Agar concentration in g/L — controls gel firmness (6–8 g/L solid; 0 for liquid/suspension media)">Agar (g/L)</label>
-              <input
-                type="number"
-                step="0.1"
-                bind:value={batchForm.agar_g_per_l}
-                title="Agar concentration in g/L — typical 6–8 g/L for solid media; set to 0 for liquid or suspension cultures"
-              />
+              <FormField label="Agar (g/L)" fieldId="media-create-agar" title="Agar concentration in g/L — typical 6–8 g/L for solid media; set to 0 for liquid or suspension cultures">
+                <input
+                  id="media-create-agar"
+                  type="number"
+                  step="0.1"
+                  bind:value={batchForm.agar_g_per_l}
+                  title="Agar concentration in g/L — typical 6–8 g/L for solid media; set to 0 for liquid or suspension cultures"
+                />
+              </FormField>
             </div>
             <div class="form-group compact-field">
-              <label title="pH measured before autoclave sterilization — typically adjusted to 5.5–6.0 for most plant tissue culture media">pH (pre-autoclave)</label>
-              <input
-                type="number"
-                step="0.01"
-                bind:value={batchForm.ph_before_autoclave}
-                title="pH measured before autoclave sterilization — typical range 5.5–6.0; adjust with KOH or HCl before autoclaving"
-              />
+              <FormField label="pH (pre-autoclave)" fieldId="media-create-ph" title="pH measured before autoclave sterilization — typical range 5.5–6.0; adjust with KOH or HCl before autoclaving">
+                <input
+                  id="media-create-ph"
+                  type="number"
+                  step="0.01"
+                  bind:value={batchForm.ph_before_autoclave}
+                  title="pH measured before autoclave sterilization — typical range 5.5–6.0; adjust with KOH or HCl before autoclaving"
+                />
+              </FormField>
             </div>
             <div class="form-group compact-field">
-              <label title="Total volume of media prepared in this batch (mL) — used to calculate reagent concentrations">Volume Prepared (mL)</label>
-              <input
-                type="number"
-                bind:value={batchForm.volume_prepared_ml}
-                title="Total volume of media prepared in this batch (mL) — used to auto-calculate reagent final concentrations"
-              />
+              <FormField label="Volume Prepared (mL)" fieldId="media-create-volume-prepared" title="Total volume of media prepared in this batch (mL) — used to auto-calculate reagent final concentrations">
+                <input
+                  id="media-create-volume-prepared"
+                  type="number"
+                  bind:value={batchForm.volume_prepared_ml}
+                  title="Total volume of media prepared in this batch (mL) — used to auto-calculate reagent final concentrations"
+                />
+              </FormField>
             </div>
             <div class="form-group compact-field">
-              <label title="Number of culture vessels (jars, plates, tubes) filled from this batch">Vessels/Jars Prepared</label>
-              <input
-                type="number"
-                step="1"
-                bind:value={batchForm.vessels_prepared}
-                placeholder="e.g., 24"
-                title="Number of culture vessels (jars, Magenta boxes, Petri dishes, tubes) filled from this batch"
-              />
+              <FormField label="Vessels/Jars Prepared" fieldId="media-create-vessels" title="Number of culture vessels (jars, Magenta boxes, Petri dishes, tubes) filled from this batch">
+                <input
+                  id="media-create-vessels"
+                  type="number"
+                  step="1"
+                  bind:value={batchForm.vessels_prepared}
+                  placeholder="e.g., 24"
+                  title="Number of culture vessels (jars, Magenta boxes, Petri dishes, tubes) filled from this batch"
+                />
+              </FormField>
             </div>
             <div class="form-group compact-sterilization">
-              <label title="Method used to sterilize this media batch">Sterilization</label>
-              <select
-                bind:value={batchForm.sterilization_method}
-                title="Sterilization method — autoclave (121°C, 15 psi, 20 min) is standard; filter sterilization (0.22 µm) for heat-labile additives"
-              >
-                <option value="autoclave">Autoclave</option>
-                <option value="filter">Filter Sterilization</option>
-                <option value="uv">UV</option>
-                <option value="other">Other</option>
-              </select>
+              <FormField label="Sterilization" fieldId="media-create-sterilization" title="Sterilization method — autoclave (121°C, 15 psi, 20 min) is standard; filter sterilization (0.22 µm) for heat-labile additives">
+                <select
+                  id="media-create-sterilization"
+                  bind:value={batchForm.sterilization_method}
+                  title="Sterilization method — autoclave (121°C, 15 psi, 20 min) is standard; filter sterilization (0.22 µm) for heat-labile additives"
+                >
+                  <option value="autoclave">Autoclave</option>
+                  <option value="filter">Filter Sterilization</option>
+                  <option value="uv">UV</option>
+                  <option value="other">Other</option>
+                </select>
+              </FormField>
             </div>
           </div>
 
           <!-- Reagents -->
           <div class="form-group" style="margin-top:8px;">
-            <label title="Hormones, growth regulators, vitamins, or other stock reagents added to this media batch">Stock Reagents Used</label>
+            <span class="group-label" title="Hormones, growth regulators, vitamins, or other stock reagents added to this media batch">Stock Reagents Used</span>
             {#if reagentRows.length > 0}
               <div class="reagent-table">
                 <div class="reagent-header">
@@ -831,13 +874,15 @@
           </div>
 
           <div class="form-group">
-            <label title="Free-text notes about this batch — QC observations, deviations, contamination risk, etc.">Notes</label>
-            <textarea
-              bind:value={batchForm.notes}
-              rows="2"
-              placeholder="QC notes, observations..."
-              title="Free-text notes about this batch — QC observations, deviations from protocol, contamination risk, etc."
-            ></textarea>
+            <FormField label="Notes" fieldId="media-create-notes" title="Free-text notes about this batch — QC observations, deviations from protocol, contamination risk, etc.">
+              <textarea
+                id="media-create-notes"
+                bind:value={batchForm.notes}
+                rows="2"
+                placeholder="QC notes, observations..."
+                title="Free-text notes about this batch — QC observations, deviations from protocol, contamination risk, etc."
+              ></textarea>
+            </FormField>
           </div>
 
           <div style="text-align:right;">
@@ -946,6 +991,17 @@
 <style>
   .expired { color: #dc2626; font-weight: 600; }
   .expiring { color: #d97706; font-weight: 600; }
+
+  /* Matches global :global(label) styling for a heading that labels a group of
+     controls (the reagent table) rather than a single control. */
+  .group-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 4px;
+  }
+  :global(.dark) .group-label { color: #94a3b8; }
 
   .compact-row {
     display: flex;

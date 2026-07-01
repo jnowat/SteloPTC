@@ -1404,3 +1404,294 @@ export async function sendTestEmail(toAddress: string) {
 export async function dispatchDueNotificationsNow() {
   return call<DispatchNotificationsResult>('dispatch_due_notifications_now');
 }
+
+// ── WP-58: Analytics & reporting dashboards ─────────────────────────────────
+
+export type AnalyticsTimeRange = '30d' | '90d' | '1y' | 'all';
+
+export async function getSpecimenGrowthRate(timeRange: AnalyticsTimeRange) {
+  return call<Array<{ bucket: string; value: number }>>('get_specimen_growth_rate', { timeRange });
+}
+
+export async function getSubcultureFrequencyTrend(timeRange: AnalyticsTimeRange, speciesId?: string) {
+  return call<Array<{ bucket: string; value: number }>>('get_subculture_frequency_trend', { timeRange, speciesId: speciesId ?? null });
+}
+
+export async function getContaminationRateTrend(timeRange: AnalyticsTimeRange) {
+  return call<Array<{ bucket: string; value: number }>>('get_contamination_rate_trend', { timeRange });
+}
+
+export async function getPassageSuccessRate(timeRange: AnalyticsTimeRange) {
+  return call<{ total_passages: number; successful_passages: number; success_rate_pct: number; trend_delta_pct: number }>(
+    'get_passage_success_rate', { timeRange },
+  );
+}
+
+export async function getMediaBatchEfficiency(timeRange: AnalyticsTimeRange) {
+  return call<Array<{ batch_id: string; name: string; specimens_supported: number; waste_rate_pct: number }>>(
+    'get_media_batch_efficiency', { timeRange },
+  );
+}
+
+export async function getStrainPerformance(speciesId: string) {
+  return call<Array<{
+    strain_id: string; strain_name: string; mean_health: number | null;
+    total_specimens: number; avg_days_between_passages: number | null; best_performer_rate_pct: number;
+  }>>('get_strain_performance', { speciesId });
+}
+
+export async function getCryoUtilization() {
+  return call<Array<{ species_id: string; species_code: string; vials_active: number; vials_depleted_or_discarded: number; utilization_rate_pct: number }>>(
+    'get_cryo_utilization',
+  );
+}
+
+export async function getTechnicianActivity(timeRange: AnalyticsTimeRange) {
+  return call<Array<{ user_id: string; display_name: string; passages_recorded: number; contamination_events: number }>>(
+    'get_technician_activity', { timeRange },
+  );
+}
+
+export async function getAnalyticsKpiSummary() {
+  return call<{
+    total_active_specimens: number; passages_this_week: number; contamination_rate_this_month_pct: number;
+    pending_work_queue_items: number; passages_per_active_specimen: number;
+    new_specimens_this_month: number; new_specimens_last_month: number;
+  }>('get_analytics_kpi_summary');
+}
+
+export async function getAnalyticsPanelConfig() {
+  return call<string>('get_analytics_panel_config');
+}
+
+export async function setAnalyticsPanelConfig(configJson: string) {
+  return call<void>('set_analytics_panel_config', { configJson });
+}
+
+// ── WP-57: Interactive lab map ───────────────────────────────────────────────
+
+export interface Location {
+  id: string;
+  name: string;
+  description: string | null;
+  floor_plan_image: string | null;
+  floor_plan_x: number | null;
+  floor_plan_y: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listLocations() {
+  return call<Location[]>('list_locations');
+}
+
+export async function getLocation(id: string) {
+  return call<Location>('get_location', { id });
+}
+
+export async function createLocation(request: {
+  name: string; description?: string; floor_plan_image?: string; floor_plan_x?: number; floor_plan_y?: number;
+}) {
+  return call<Location>('create_location', { request });
+}
+
+export async function updateLocation(request: {
+  id: string; name?: string; description?: string; floor_plan_image?: string; floor_plan_x?: number; floor_plan_y?: number;
+}) {
+  return call<Location>('update_location', { request });
+}
+
+export async function deleteLocation(id: string) {
+  return call<void>('delete_location', { id });
+}
+
+export async function setSpecimenLocationPin(specimenId: string, locationId: string | null) {
+  return call<void>('set_specimen_location_pin', { specimenId, locationId });
+}
+
+export async function getLocationMapData() {
+  return call<Array<{
+    location_id: string; name: string; floor_plan_x: number | null; floor_plan_y: number | null;
+    specimen_count: number; contaminated_count: number; avg_age_days: number | null;
+  }>>('get_location_map_data');
+}
+
+// ── WP-56: Local AI analysis ─────────────────────────────────────────────────
+
+export interface AiSuggestion {
+  id: string;
+  entity_type: string;
+  entity_id: string;
+  kind: string;
+  model_name: string;
+  prompt: string;
+  suggestion: string;
+  status: string;
+  created_by: string | null;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+}
+
+export async function getAiConfig() {
+  return call<{ base_url: string; text_model: string; vision_model: string }>('get_ai_config');
+}
+
+export async function setAiConfig(baseUrl: string, textModel: string, visionModel: string) {
+  return call<void>('set_ai_config', { baseUrl, textModel, visionModel });
+}
+
+export async function summarizeNotes(entityType: 'specimen' | 'subculture', entityId: string) {
+  return call<AiSuggestion>('summarize_notes', { request: { entity_type: entityType, entity_id: entityId } });
+}
+
+export async function suggestPassageComment(specimenId: string) {
+  return call<AiSuggestion>('suggest_passage_comment', { specimenId });
+}
+
+export async function analyzePhotoForContamination(attachmentId: string) {
+  return call<AiSuggestion>('analyze_photo_for_contamination', { request: { attachment_id: attachmentId } });
+}
+
+export async function listAiSuggestions(entityType: string, entityId: string) {
+  return call<AiSuggestion[]>('list_ai_suggestions', { entityType, entityId });
+}
+
+export async function approveAiSuggestion(suggestionId: string) {
+  return call<void>('approve_ai_suggestion', { suggestionId });
+}
+
+export async function rejectAiSuggestion(suggestionId: string) {
+  return call<void>('reject_ai_suggestion', { suggestionId });
+}
+
+// ── WP-59: Cloud backup & multi-device sync ──────────────────────────────────
+
+export interface BackupTargetSummary {
+  id: string;
+  name: string;
+  target_type: string;
+  schedule_cron: string | null;
+  last_backup_at: string | null;
+  last_backup_size_bytes: number | null;
+  last_backup_size_display: string | null;
+  last_status: string | null;
+  last_error: string | null;
+  is_enabled: boolean;
+}
+
+export async function listBackupTargets() {
+  return call<BackupTargetSummary[]>('list_backup_targets');
+}
+
+export async function createBackupTarget(request: {
+  name: string; targetType: string; passphrase: string; bucketOrPath: string;
+  endpoint?: string; accessKey?: string; secretKey?: string; scheduleCron?: string;
+}) {
+  return call<BackupTargetSummary>('create_backup_target', {
+    name: request.name, targetType: request.targetType, passphrase: request.passphrase,
+    bucketOrPath: request.bucketOrPath, endpoint: request.endpoint ?? null,
+    accessKey: request.accessKey ?? null, secretKey: request.secretKey ?? null,
+    scheduleCron: request.scheduleCron ?? null,
+  });
+}
+
+export async function deleteBackupTarget(id: string) {
+  return call<void>('delete_backup_target', { id });
+}
+
+export async function cloudBackup(targetId: string, passphrase: string) {
+  return call<{ ok: boolean; backup_id: string; size_bytes: number; duration_ms: number; merkle_root_included: boolean }>(
+    'cloud_backup', { targetId, passphrase },
+  );
+}
+
+export async function restoreFromCloud(targetId: string, passphrase: string, backupFileName: string) {
+  return call<string>('restore_from_cloud', { targetId, passphrase, backupFileName });
+}
+
+export async function reconcileCloudSync(targetId: string, passphrase: string, deviceId: string) {
+  return call<{ segments_published: boolean; peer_segments_found: number; new_changes: number; duplicates: number; conflicts_recorded: number }>(
+    'reconcile_cloud_sync', { targetId, passphrase, deviceId },
+  );
+}
+
+// ── WP-60: Regulatory compliance export modules ──────────────────────────────
+
+export async function getSigningPublicKey() {
+  return call<string>('get_signing_public_key');
+}
+
+export async function exportFdaPart11Bundle(fromDate: string, toDate: string, labName: string) {
+  return call<{ ok: boolean; file_path: string; size_bytes: number }>('export_fda_part11_bundle', { fromDate, toDate, labName });
+}
+
+export async function exportUsdaPermit(specimenIds: string[], authorizedScientist: string) {
+  return call<{ ok: boolean; file_path: string; size_bytes: number }>('export_usda_permit', { specimenIds, authorizedScientist });
+}
+
+export async function exportCitesDossier(rootSpecimenId: string, citesAppendix: string) {
+  return call<{ ok: boolean; file_path: string; size_bytes: number }>('export_cites_dossier', { rootSpecimenId, citesAppendix });
+}
+
+// ── WP-61: Plugin / extension system ─────────────────────────────────────────
+
+export interface InstalledPlugin {
+  id: string;
+  plugin_name: string;
+  version: string;
+  profile: string | null;
+  vocabulary_seeded: boolean;
+  installed_at: string;
+}
+
+export async function listInstalledPlugins() {
+  return call<InstalledPlugin[]>('list_installed_plugins');
+}
+
+export async function validatePluginManifest(manifestJson: string) {
+  return call<any>('validate_plugin_manifest', { manifestJson });
+}
+
+export async function installPlugin(manifestJson: string) {
+  return call<InstalledPlugin>('install_plugin', { manifestJson });
+}
+
+export async function installPluginFromZip(zipB64: string) {
+  return call<InstalledPlugin>('install_plugin_from_zip', { zipB64 });
+}
+
+export async function uninstallPlugin(pluginId: string) {
+  return call<void>('uninstall_plugin', { pluginId });
+}
+
+// ── WP-63: Performance & scalability — cursor pagination + pedigree depth ────
+
+export async function listAuditEntriesCursor(lineageId: string, afterSeq: number | null, limit: number) {
+  return call<{ items: any[]; next_cursor: number | null; has_more: boolean }>(
+    'list_audit_entries_cursor', { lineageId, afterSeq, limit },
+  );
+}
+
+export async function getPedigreeMaxDepth() {
+  return call<number>('get_pedigree_max_depth');
+}
+
+export async function setPedigreeMaxDepth(maxDepth: number) {
+  return call<number>('set_pedigree_max_depth', { maxDepth });
+}
+
+// ── WP-64: Taxon chain re-anchoring ──────────────────────────────────────────
+
+export async function reanchorTaxonChainDryRun(taxonId: string) {
+  return call<{ affected_taxa: number; affected_species: number; affected_strains: number; affected_specimens: number }>(
+    'reanchor_taxon_chain_dry_run', { taxonId },
+  );
+}
+
+export async function reanchorTaxonChain(taxonId: string, reason: string) {
+  return call<{
+    ok: boolean; affected_taxa: number; affected_species: number;
+    affected_strains: number; affected_specimens: number; reanchor_event_id: string;
+  }>('reanchor_taxon_chain', { taxonId, reason });
+}

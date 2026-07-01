@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
+import { VitePWA } from "vite-plugin-pwa";
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -17,6 +18,46 @@ export default defineConfig(async () => ({
       onwarn: (warning, defaultHandler) => {
         if (warning.code.startsWith("a11y")) return;
         defaultHandler(warning);
+      },
+    }),
+    // WP-62: PWA support for the web-export build target only. This plugin
+    // always emits a manifest + service worker into `dist/`, since Tauri and
+    // the PWA build share the same `npm run build` output — but the actual
+    // `navigator.serviceWorker.register(...)` call (in `src/main.ts`) is
+    // gated behind a runtime Tauri-detection check, so the service worker
+    // never activates inside the desktop webview and can never intercept
+    // Tauri's `ipc://` calls. `injectRegister: false` disables the plugin's
+    // own auto-injected registration script so that gate is the only place
+    // registration happens.
+    VitePWA({
+      registerType: "autoUpdate",
+      injectRegister: false,
+      manifest: {
+        name: "Stelo Lab Suite",
+        short_name: "Stelo",
+        description: "Plant Tissue Culture / Cell Culture / Mycology specimen tracking",
+        display: "standalone",
+        orientation: "portrait",
+        theme_color: "#0f172a",
+        background_color: "#0f172a",
+        icons: [
+          { src: "pwa-128x128.png", sizes: "128x128", type: "image/png" },
+          { src: "pwa-256x256.png", sizes: "256x256", type: "image/png", purpose: "any maskable" },
+        ],
+      },
+      workbox: {
+        // Precache the built static assets; use a network-first strategy
+        // for navigation so the PWA always prefers fresh content when
+        // online and falls back to the cached shell when offline.
+        globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+        navigateFallback: "index.html",
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === "navigate",
+            handler: "NetworkFirst",
+            options: { cacheName: "stelo-pages" },
+          },
+        ],
       },
     }),
   ],

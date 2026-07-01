@@ -546,6 +546,7 @@ pub fn import_xlsx(
         conn.execute_batch("ROLLBACK").map_err(|e| e.to_string())?;
     } else {
         conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+        crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
     }
 
     Ok(ImportResult {

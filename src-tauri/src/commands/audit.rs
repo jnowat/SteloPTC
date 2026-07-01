@@ -123,6 +123,30 @@ pub fn get_audit_log(
     })
 }
 
+/// WP-63: cursor-based pagination over a single lineage's audit entries,
+/// using `chain_seq` as the stable cursor. Additive to `get_audit_log` (the
+/// general cross-entity search view, which remains offset-paginated) — this
+/// exists for the per-lineage Audit Log detail view, which becomes
+/// prohibitively slow to load in full at the 1M-entry scale WP-63 targets.
+/// `after_seq: None` starts from the beginning of the lineage; pass back the
+/// previous page's `next_cursor` to fetch the next page ("load later").
+#[tauri::command]
+pub fn list_audit_entries_cursor(
+    state: State<AppState>,
+    token: String,
+    lineage_id: String,
+    after_seq: Option<i64>,
+    limit: i64,
+) -> Result<queries::CursorPage<AuditEntry>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Insufficient permissions".to_string());
+    }
+    queries::list_audit_entries_by_cursor(&db.conn, &lineage_id, after_seq, limit)
+        .map_err(|e| e.to_string())
+}
+
 /// Verify a single audit entry by recomputing its hash from stored fields.
 /// Returns ok=true if the stored entry_hash matches the recomputed value.
 ///

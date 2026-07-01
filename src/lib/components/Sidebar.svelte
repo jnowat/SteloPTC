@@ -20,6 +20,8 @@
   const navItems: NavItem[] = [
     { id: 'dashboard', label: 'Dashboard', icon: '&#9633;' },
     { id: 'work-queue', label: 'Work Queue', icon: '&#9989;' },
+    { id: 'analytics', label: 'Analytics', icon: '&#128200;' },
+    { id: 'lab-map', label: 'Lab Map', icon: '&#128506;' },
     { id: 'specimens', label: 'Specimens', icon: '&#127793;' },
     { id: 'media', label: 'Media Logs', icon: '&#129514;' },
     { id: 'reminders', label: 'Reminders', icon: '&#128276;' },

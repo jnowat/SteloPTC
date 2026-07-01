@@ -59,27 +59,27 @@
         <h3 style="margin-bottom:16px;">Create User</h3>
         <div class="form-row">
           <div class="form-group">
-            <label title="Unique login name for this user">Username *</label>
-            <input type="text" title="Enter a unique username for login" bind:value={form.username} required />
+            <label for="user-username" title="Unique login name for this user">Username *</label>
+            <input id="user-username" type="text" title="Enter a unique username for login" bind:value={form.username} required />
           </div>
           <div class="form-group">
-            <label title="Password for this user account">Password *</label>
-            <input type="password" title="Enter a secure password for this user" bind:value={form.password} required />
+            <label for="user-password" title="Password for this user account">Password *</label>
+            <input id="user-password" type="password" title="Enter a secure password for this user" bind:value={form.password} required />
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label title="Full name shown in the interface for this user">Display Name *</label>
-            <input type="text" title="Enter the user's full display name" bind:value={form.display_name} required />
+            <label for="user-display-name" title="Full name shown in the interface for this user">Display Name *</label>
+            <input id="user-display-name" type="text" title="Enter the user's full display name" bind:value={form.display_name} required />
           </div>
           <div class="form-group">
-            <label title="Optional email address for notifications and contact">Email</label>
-            <input type="email" title="Enter the user's email address (optional)" bind:value={form.email} />
+            <label for="user-email" title="Optional email address for notifications and contact">Email</label>
+            <input id="user-email" type="email" title="Enter the user's email address (optional)" bind:value={form.email} />
           </div>
         </div>
         <div class="form-group">
-          <label title="Permission level assigned to this user">Role</label>
-          <select title="Select the role that determines user permissions" bind:value={form.role}>
+          <label for="user-role" title="Permission level assigned to this user">Role</label>
+          <select id="user-role" title="Select the role that determines user permissions" bind:value={form.role}>
             {#each roles as r}
               <option value={r}>{r}</option>
             {/each}

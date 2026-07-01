@@ -16,14 +16,22 @@
   import FirstRun from './FirstRun.svelte';
   import DataState from './DataState.svelte';
 
+  // `specimens` holds only the currently-loaded page (used for page-scoped
+  // things like "select all on this page" and the print report, which
+  // intentionally reports on what's currently in view).
+  // `loadedSpecimens` accumulates every page fetched so far and is what the
+  // virtualized table actually renders from — this is what grows as the
+  // user scrolls, while `specimens` stays "current page" sized.
   let specimens = $state<any[]>([]);
+  let loadedSpecimens = $state<any[]>([]);
   let species = $state<any[]>([]);
   let projects = $state<any[]>([]);
   let total = $state(0);
   let page = $state(1);
-  let perPage = $state(50);
+  let perPage = $state(200);
   let totalPages = $state(0);
   let loading = $state(true);
+  let loadingMore = $state(false);
   let error = $state<string | null>(null);
   let searchQuery = $state('');
   let filterSpecies = $state('');
@@ -55,18 +63,102 @@
 
   let stages = $state<any[]>([]);
 
+  // "select all" now spans everything currently loaded into the buffer
+  // (there's no longer a discrete "page" of rows on screen — continuous
+  // scroll accumulates rows into `loadedSpecimens`).
   let allPageSelected = $derived(
-    specimens.length > 0 && specimens.every(s => selectedIds.has(s.id))
+    loadedSpecimens.length > 0 && loadedSpecimens.every(s => selectedIds.has(s.id))
   );
   let someSelected = $derived(
-    specimens.some(s => selectedIds.has(s.id)) && !allPageSelected
+    loadedSpecimens.some(s => selectedIds.has(s.id)) && !allPageSelected
   );
+
+  // ── Virtual scrolling ───────────────────────────────────────────
+  // The table body only ever renders the rows within [start, end] (plus a
+  // small overscan buffer) no matter how many rows are loaded — the rest of
+  // the scroll height is represented purely by the spacer's computed height,
+  // and each rendered row is absolutely positioned at `index * ROW_HEIGHT`.
+  const ROW_HEIGHT = 44; // px — enforced via CSS below so this stays authoritative
+  const OVERSCAN = 10; // rows rendered above/below the visible window
+  const PREFETCH_THRESHOLD = 0.8; // fetch next page at 80% scroll through the buffer
+
+  let scrollContainer = $state<HTMLDivElement | null>(null);
+  let sentinelEl = $state<HTMLDivElement | null>(null);
+  let scrollTop = $state(0);
+  let viewportHeight = $state(600);
+  let containerObserver: ResizeObserver | null = null;
+  let sentinelObserver: IntersectionObserver | null = null;
+
+  let startIndex = $derived(
+    Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN)
+  );
+  let endIndex = $derived(
+    Math.min(
+      loadedSpecimens.length,
+      Math.ceil((scrollTop + viewportHeight) / ROW_HEIGHT) + OVERSCAN
+    )
+  );
+  let visibleSpecimens = $derived(loadedSpecimens.slice(startIndex, endIndex));
+  let totalScrollHeight = $derived(loadedSpecimens.length * ROW_HEIGHT);
+  // Sentinel sits 80% of the way through the currently-loaded buffer so it
+  // intersects (and triggers the next page fetch) well before the user
+  // reaches the bottom of what's actually rendered.
+  let sentinelOffset = $derived(
+    Math.max(0, Math.floor(loadedSpecimens.length * PREFETCH_THRESHOLD) * ROW_HEIGHT)
+  );
+
+  function handleScroll() {
+    if (scrollContainer) scrollTop = scrollContainer.scrollTop;
+  }
+
+  function setupSentinelObserver() {
+    sentinelObserver?.disconnect();
+    if (!sentinelEl || !scrollContainer) return;
+    sentinelObserver = new IntersectionObserver(
+      (entries) => {
+        if (entries.some(e => e.isIntersecting)) loadNextPage();
+      },
+      { root: scrollContainer, rootMargin: '0px', threshold: 0 }
+    );
+    sentinelObserver.observe(sentinelEl);
+  }
+
+  // Re-attach the observer whenever the sentinel's position moves (i.e. the
+  // loaded buffer changed), since its target element is re-rendered at a new
+  // offset rather than being a stable DOM node across loads.
+  $effect(() => {
+    // touch reactive deps so this reruns when the buffer grows/shrinks
+    void loadedSpecimens.length;
+    void sentinelEl;
+    setupSentinelObserver();
+  });
+
+  // `scrollContainer` only exists once the table (rather than a loading/
+  // empty state) is actually rendered, so wire up the ResizeObserver
+  // reactively rather than once at onMount — it may not be mounted yet the
+  // first time onMount runs.
+  $effect(() => {
+    const el = scrollContainer;
+    containerObserver?.disconnect();
+    if (!el) return;
+    viewportHeight = el.clientHeight;
+    containerObserver = new ResizeObserver(() => {
+      viewportHeight = el.clientHeight;
+    });
+    containerObserver.observe(el);
+    return () => containerObserver?.disconnect();
+  });
 
   onMount(() => {
     load();
     loadSpecies();
     loadProjects();
     listStages().then(s => stages = s).catch((e: any) => addNotification(e.message, 'error'));
+
+    return () => {
+      containerObserver?.disconnect();
+      sentinelObserver?.disconnect();
+    };
   });
 
   async function loadSpecies() {
@@ -77,8 +169,21 @@
     try { projects = await listProjects(); } catch (_e) {}
   }
 
-  async function load() {
-    loading = true;
+  // `reset` = true: fresh load (filters changed, initial mount) — clears the
+  // accumulated buffer and starts back at page 1.
+  // `reset` = false: append the next page to the buffer (virtual-scroll
+  // prefetch triggered by the sentinel below).
+  async function load(reset = true) {
+    if (reset) {
+      page = 1;
+      loading = true;
+      loadedSpecimens = [];
+    } else {
+      if (loadingMore || loading) return;
+      if (totalPages > 0 && page >= totalPages) return; // no more pages
+      loadingMore = true;
+      page += 1;
+    }
     error = null;
     try {
       let result;
@@ -97,12 +202,19 @@
       specimens = result.items;
       total = result.total;
       totalPages = result.total_pages;
+      loadedSpecimens = reset ? result.items : [...loadedSpecimens, ...result.items];
     } catch (e: any) {
       error = e.message;
       addNotification(e.message, 'error');
+      if (!reset) page -= 1; // roll back the optimistic page bump on failure
     } finally {
       loading = false;
+      loadingMore = false;
     }
+  }
+
+  function loadNextPage() {
+    load(false);
   }
 
   function openDetail(id: string) {
@@ -147,14 +259,14 @@
   function toggleSelectAll(e: MouseEvent) {
     e.stopPropagation();
     if (allPageSelected) {
-      // deselect all on page
+      // deselect all loaded rows
       const next = new Set(selectedIds);
-      for (const s of specimens) next.delete(s.id);
+      for (const s of loadedSpecimens) next.delete(s.id);
       selectedIds = next;
     } else {
-      // select all on page
+      // select all loaded rows
       const next = new Set(selectedIds);
-      for (const s of specimens) next.add(s.id);
+      for (const s of loadedSpecimens) next.add(s.id);
       selectedIds = next;
     }
   }
@@ -665,13 +777,13 @@ ${mainHtml}
     </div>
   {/if}
 
-  <DataState {loading} {error} rows={6} cols={5} onretry={load}>
-    {#if specimens.length === 0 && !searchQuery && !filterSpecies && !filterStage && !filterProject && total === 0}
+  <DataState {loading} {error} rows={6} cols={5} onretry={() => load()}>
+    {#if loadedSpecimens.length === 0 && !searchQuery && !filterSpecies && !filterStage && !filterProject && total === 0}
       <FirstRun
         onAddSpecimen={() => { showForm = true; window.scrollTo({ top: 0, behavior: 'smooth' }); }}
         onDemoLoaded={() => { load(); loadSpecies(); }}
       />
-    {:else if specimens.length === 0}
+    {:else if loadedSpecimens.length === 0}
       <DataState
         empty={true}
         emptyIcon="🔍"
@@ -679,8 +791,23 @@ ${mainHtml}
         emptyMessage="Try adjusting your search or filters."
       />
     {:else}
+    {#snippet colgroup()}
+      <colgroup>
+        <col class="col-check" />
+        <col class="col-accession" />
+        <col class="col-species" />
+        <col class="col-stage" />
+        <col class="col-location" />
+        <col class="col-passages" />
+        <col class="col-health" />
+        <col class="col-status" />
+        <col class="col-initiated" />
+        <col class="col-action" />
+      </colgroup>
+    {/snippet}
     <div class="card table-card">
-      <table>
+      <table class="vscroll-header-table">
+        {@render colgroup()}
         <thead>
           <tr>
             <th class="check-col" title="Select specimens for bulk actions">
@@ -690,7 +817,7 @@ ${mainHtml}
                 checked={allPageSelected}
                 indeterminate={someSelected}
                 onclick={toggleSelectAll}
-                title={allPageSelected ? 'Deselect all on this page' : 'Select all on this page'}
+                title={allPageSelected ? 'Deselect all loaded rows' : 'Select all loaded rows'}
               />
             </th>
             <th title="Unique accession number assigned to this specimen">Accession</th>
@@ -704,62 +831,90 @@ ${mainHtml}
             <th class="action-col" title="Row actions: view QR code, archive specimen"></th>
           </tr>
         </thead>
-        <tbody>
-          {#each specimens as s}
-            <tr
-              class="clickable"
-              class:selected={selectedIds.has(s.id)}
-              onclick={() => openDetail(s.id)}
-            >
-              <td class="check-col" onclick={(e) => toggleSelect(e, s.id)}>
-                <input
-                  type="checkbox"
-                  style="width:auto;margin:0;"
-                  checked={selectedIds.has(s.id)}
-                  onclick={(e) => toggleSelect(e, s.id)}
-                  title="Select this specimen for bulk actions"
-                />
-              </td>
-              <td><strong>{s.accession_number}</strong></td>
-              <td>{s.species_code || '—'}</td>
-              <td><span class="badge badge-blue" title="Development stage: {s.stage}">{stageFmt(s.stage)}</span></td>
-              <td>{s.location || '—'}</td>
-              <td>{s.subculture_count}</td>
-              <td>{healthLabel(s.health_status)}</td>
-              <td>
-                {#if s.quarantine_flag}
-                  <span class="badge badge-red" title="This specimen is under quarantine restrictions">Quarantine</span>
-                {:else}
-                  <span class="badge badge-green" title="This specimen is active and cleared for normal handling">Active</span>
-                {/if}
-                {#if s.has_contamination}
-                  <span class="badge badge-red" title="One or more subcultures for this specimen have been flagged as contaminated">Contaminated</span>
-                {/if}
-              </td>
-              <td>{s.initiation_date}</td>
-              <td class="action-col">
-                <div class="row-actions">
-                  <button class="btn btn-sm btn-qr" onclick={(e) => openQr(e, s)} title="View and print the QR code label for this specimen">
-                    &#9641; QR
-                  </button>
-                  {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
-                    <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }} title="Archive this specimen (soft delete — record is preserved)">Archive</button>
-                  {/if}
-                </div>
-              </td>
-            </tr>
-          {/each}
-        </tbody>
       </table>
+
+      <!-- Virtual-scroll viewport: fixed height, scrolls internally. Only
+           rows in [startIndex, endIndex) are ever mounted in the DOM — the
+           `.vscroll-spacer` below is sized to the full (unrendered) row
+           count so the scrollbar behaves as if every row were present. -->
+      <div
+        class="vscroll-viewport"
+        bind:this={scrollContainer}
+        onscroll={handleScroll}
+      >
+        <div class="vscroll-spacer" style="height:{totalScrollHeight}px;">
+          <table class="vscroll-table">
+            {@render colgroup()}
+            <tbody>
+              {#each visibleSpecimens as s, i (s.id)}
+                <tr
+                  class="clickable vscroll-row"
+                  class:selected={selectedIds.has(s.id)}
+                  style="top:{(startIndex + i) * ROW_HEIGHT}px; height:{ROW_HEIGHT}px;"
+                  onclick={() => openDetail(s.id)}
+                >
+                  <td class="check-col" onclick={(e) => toggleSelect(e, s.id)}>
+                    <input
+                      type="checkbox"
+                      style="width:auto;margin:0;"
+                      checked={selectedIds.has(s.id)}
+                      onclick={(e) => toggleSelect(e, s.id)}
+                      title="Select this specimen for bulk actions"
+                    />
+                  </td>
+                  <td><strong>{s.accession_number}</strong></td>
+                  <td>{s.species_code || '—'}</td>
+                  <td><span class="badge badge-blue" title="Development stage: {s.stage}">{stageFmt(s.stage)}</span></td>
+                  <td>{s.location || '—'}</td>
+                  <td>{s.subculture_count}</td>
+                  <td>{healthLabel(s.health_status)}</td>
+                  <td>
+                    {#if s.quarantine_flag}
+                      <span class="badge badge-red" title="This specimen is under quarantine restrictions">Quarantine</span>
+                    {:else}
+                      <span class="badge badge-green" title="This specimen is active and cleared for normal handling">Active</span>
+                    {/if}
+                    {#if s.has_contamination}
+                      <span class="badge badge-red" title="One or more subcultures for this specimen have been flagged as contaminated">Contaminated</span>
+                    {/if}
+                  </td>
+                  <td>{s.initiation_date}</td>
+                  <td class="action-col">
+                    <div class="row-actions">
+                      <button class="btn btn-sm btn-qr" onclick={(e) => openQr(e, s)} title="View and print the QR code label for this specimen">
+                        &#9641; QR
+                      </button>
+                      {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
+                        <button class="btn btn-sm btn-danger" onclick={(e) => { e.stopPropagation(); handleDelete(s.id); }} title="Archive this specimen (soft delete — record is preserved)">Archive</button>
+                      {/if}
+                    </div>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+
+          <!-- Sentinel positioned 80% through the loaded buffer — when it
+               scrolls into view we prefetch the next page (if any). -->
+          {#if totalPages > 1 && page < totalPages}
+            <div
+              bind:this={sentinelEl}
+              class="vscroll-sentinel"
+              style="top:{sentinelOffset}px;"
+              aria-hidden="true"
+            ></div>
+          {/if}
+        </div>
+      </div>
     </div>
 
-    {#if totalPages > 1}
-      <div class="pagination">
-        <button class="btn btn-sm" disabled={page <= 1} onclick={() => { page--; load(); }} title="Go to the previous page">Prev</button>
-        <span title="Current page position">Page {page} of {totalPages}</span>
-        <button class="btn btn-sm" disabled={page >= totalPages} onclick={() => { page++; load(); }} title="Go to the next page">Next</button>
-      </div>
-    {/if}
+    <div class="pagination">
+      <span title="Rows loaded into memory vs. total matching records">
+        Showing {loadedSpecimens.length} of {total}
+        {#if totalPages > 0}&nbsp;&middot;&nbsp;Page {Math.min(page, totalPages)} of {totalPages}{/if}
+        {#if loadingMore}&nbsp;&middot;&nbsp;Loading more…{/if}
+      </span>
+    </div>
     {/if}
   </DataState>
 </div>
@@ -858,6 +1013,20 @@ ${mainHtml}
     text-align: center;
     padding: 0 8px;
   }
+
+  /* Explicit column widths shared by the header table and the virtualized
+     body table (via matching <colgroup>s) so the two independently-scrolled
+     tables stay pixel-aligned regardless of cell content. */
+  .col-check     { width: 52px; }
+  .col-accession { width: 14%; }
+  .col-species   { width: 10%; }
+  .col-stage     { width: 12%; }
+  .col-location  { width: 16%; }
+  .col-passages  { width: 9%; }
+  .col-health    { width: 10%; }
+  .col-status    { width: 14%; }
+  .col-initiated { width: 11%; }
+  .col-action    { width: 140px; }
 
   .header-actions {
     display: flex;
@@ -979,6 +1148,66 @@ ${mainHtml}
   :global(.dark) .btn-qr { background: rgba(34,197,94,0.1); color: #4ade80; border-color: #166534; }
 
   .table-card { overflow-x: auto; }
+
+  .vscroll-header-table { table-layout: fixed; }
+
+  /* ── Virtual scroll ──────────────────────────────────────────
+     The viewport is a fixed-height scroll container; the spacer inside it
+     is sized to `totalRows * ROW_HEIGHT` so the native scrollbar behaves
+     exactly as if every row were rendered. Only the rows within the
+     current window are mounted, each absolutely positioned at
+     `index * ROW_HEIGHT` — this keeps DOM node count bounded regardless
+     of how many specimens are loaded. */
+  .vscroll-viewport {
+    max-height: 65vh;
+    overflow-y: auto;
+    position: relative;
+  }
+  .vscroll-spacer {
+    position: relative;
+    width: 100%;
+  }
+  .vscroll-table {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    table-layout: fixed;
+  }
+  .vscroll-row {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    display: table;
+    table-layout: fixed;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .vscroll-row td {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* Tighter vertical padding than the default :global(td) rule so cell
+       content (badges, the 32px-tall QR/Archive buttons) fits within the
+       fixed ROW_HEIGHT used for absolute positioning. */
+    padding-top: 4px;
+    padding-bottom: 4px;
+    vertical-align: middle;
+  }
+  .vscroll-row .row-actions {
+    flex-wrap: nowrap;
+  }
+  .vscroll-sentinel {
+    position: absolute;
+    left: 0;
+    width: 1px;
+    height: 1px;
+    pointer-events: none;
+  }
+
+  @media (max-width: 1024px) {
+    .vscroll-viewport { max-height: 55vh; }
+  }
 
   .row-actions {
     display: flex;

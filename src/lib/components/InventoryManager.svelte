@@ -4,6 +4,7 @@
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
+  import FormField from './FormField.svelte';
 
   let items = $state<any[]>([]);
   let loading = $state(true);
@@ -267,19 +268,21 @@
         <h3 style="margin-bottom:16px;">{editingId ? 'Edit Item' : 'New Inventory Item'}</h3>
         <div class="form-row-3">
           <div class="form-group">
-            <label title="The name of this inventory item (e.g., Agar Powder, MS Salts)">Name *</label>
-            <input type="text" title="Enter the full name of the inventory item" bind:value={form.name} placeholder="e.g., Agar Powder" required />
+            <FormField label="Name *" fieldId="inv-create-name" title="Enter the full name of the inventory item">
+              <input id="inv-create-name" type="text" title="Enter the full name of the inventory item" bind:value={form.name} placeholder="e.g., Agar Powder" required />
+            </FormField>
           </div>
           <div class="form-group">
-            <label title="The category this item belongs to — affects how it is grouped and reported">Category *</label>
-            <select title="Select the category: media ingredient, vessel, hormone, chemical, consumable, equipment, or other" bind:value={form.category} required>
-              {#each categories as cat}
-                <option value={cat.code}>{cat.label}</option>
-              {/each}
-            </select>
+            <FormField label="Category *" fieldId="inv-create-category" title="Select the category: media ingredient, vessel, hormone, chemical, consumable, equipment, or other">
+              <select id="inv-create-category" title="Select the category: media ingredient, vessel, hormone, chemical, consumable, equipment, or other" bind:value={form.category} required>
+                {#each categories as cat}
+                  <option value={cat.code}>{cat.label}</option>
+                {/each}
+              </select>
+            </FormField>
           </div>
           <div class="form-group">
-            <label title="Whether this item is a solid (weighed by mass) or liquid (measured by volume)">Physical State</label>
+            <span class="group-label" title="Whether this item is a solid (weighed by mass) or liquid (measured by volume)">Physical State</span>
             <div style="display:flex; gap:16px; align-items:center; margin-top:4px;">
               <label title="Select Solid if this item is a powder or other solid measured by mass (g, mg)" style="display:inline-flex; align-items:center; gap:6px; text-transform:none; letter-spacing:0; cursor:pointer; font-weight:normal;">
                 <input type="radio" title="This item is a solid (powder, crystals, etc.) measured by mass" bind:group={form.physical_state} value="solid" style="width:auto;" /> Solid
@@ -292,88 +295,101 @@
         </div>
         <div class="form-row-3">
           <div class="form-group">
-            <label title="The unit used to measure stock quantity (e.g., g, mL, units)">Unit *</label>
-            <input type="text" title="Type or select the unit of measurement — used for all stock quantities and alerts" list="unit-options" bind:value={form.unit} placeholder="g, mg, mL..." required />
-            <datalist id="unit-options">
-              <option value="g">g (grams)</option>
-              <option value="mg">mg (milligrams)</option>
-              <option value="mL">mL (milliliters)</option>
-              <option value="L">L (liters)</option>
-              <option value="units">units</option>
-              <option value="pcs">pcs (pieces)</option>
-              <option value="µg">µg (micrograms)</option>
-              <option value="µL">µL (microliters)</option>
-            </datalist>
+            <FormField label="Unit *" fieldId="inv-create-unit" title="Type or select the unit of measurement — used for all stock quantities and alerts">
+              <input id="inv-create-unit" type="text" title="Type or select the unit of measurement — used for all stock quantities and alerts" list="unit-options" bind:value={form.unit} placeholder="g, mg, mL..." required />
+              <datalist id="unit-options">
+                <option value="g">g (grams)</option>
+                <option value="mg">mg (milligrams)</option>
+                <option value="mL">mL (milliliters)</option>
+                <option value="L">L (liters)</option>
+                <option value="units">units</option>
+                <option value="pcs">pcs (pieces)</option>
+                <option value="µg">µg (micrograms)</option>
+                <option value="µL">µL (microliters)</option>
+              </datalist>
+            </FormField>
           </div>
           <div class="form-group">
-            <label title="The current amount in stock in the selected unit">Current Stock</label>
-            <input type="number" title="Enter the current quantity on hand — used to track low-stock alerts" step="0.01" bind:value={form.current_stock} />
+            <FormField label="Current Stock" fieldId="inv-create-current-stock" title="Enter the current quantity on hand — used to track low-stock alerts">
+              <input id="inv-create-current-stock" type="number" title="Enter the current quantity on hand — used to track low-stock alerts" step="0.01" bind:value={form.current_stock} />
+            </FormField>
           </div>
           <div class="form-group">
-            <label title="The minimum stock level below which a low-stock alert is triggered">Minimum Stock</label>
-            <input type="number" title="When current stock falls to or below this amount, a low-stock alert is raised" step="0.01" bind:value={form.minimum_stock} />
+            <FormField label="Minimum Stock" fieldId="inv-create-minimum-stock" title="When current stock falls to or below this amount, a low-stock alert is raised">
+              <input id="inv-create-minimum-stock" type="number" title="When current stock falls to or below this amount, a low-stock alert is raised" step="0.01" bind:value={form.minimum_stock} />
+            </FormField>
           </div>
         </div>
         {#if form.physical_state === 'liquid'}
         <div class="form-row">
           <div class="form-group" style="flex:2;">
-            <label title="The concentration of this stock solution (numeric value only — select unit separately)">Stock Concentration</label>
-            <input type="number" title="Enter the numeric concentration value of this stock solution (e.g., 10 for 10 mM BAP)" step="any" bind:value={form.concentration} placeholder="e.g., 10" />
+            <FormField label="Stock Concentration" fieldId="inv-create-concentration" title="Enter the numeric concentration value of this stock solution (e.g., 10 for 10 mM BAP)">
+              <input id="inv-create-concentration" type="number" title="Enter the numeric concentration value of this stock solution (e.g., 10 for 10 mM BAP)" step="any" bind:value={form.concentration} placeholder="e.g., 10" />
+            </FormField>
           </div>
           <div class="form-group" style="flex:1;">
-            <label title="The unit of concentration for this liquid item (e.g., mM, mg/L)">Unit</label>
-            <select title="Select the concentration unit for this liquid item" bind:value={form.concentration_unit}>
-              <option value="nM">nM</option>
-              <option value="µM">µM</option>
-              <option value="mM">mM</option>
-              <option value="M">M</option>
-              <option value="ng/mL">ng/mL</option>
-              <option value="µg/mL">µg/mL</option>
-              <option value="mg/mL">mg/mL</option>
-              <option value="mg/L">mg/L</option>
-              <option value="g/L">g/L</option>
-              <option value="%">% (v/v or w/v)</option>
-            </select>
+            <FormField label="Unit" fieldId="inv-create-concentration-unit" title="Select the concentration unit for this liquid item">
+              <select id="inv-create-concentration-unit" title="Select the concentration unit for this liquid item" bind:value={form.concentration_unit}>
+                <option value="nM">nM</option>
+                <option value="µM">µM</option>
+                <option value="mM">mM</option>
+                <option value="M">M</option>
+                <option value="ng/mL">ng/mL</option>
+                <option value="µg/mL">µg/mL</option>
+                <option value="mg/mL">mg/mL</option>
+                <option value="mg/L">mg/L</option>
+                <option value="g/L">g/L</option>
+                <option value="%">% (v/v or w/v)</option>
+              </select>
+            </FormField>
           </div>
         </div>
         {/if}
         <div class="form-row-3">
           <div class="form-group">
-            <label title="An optional higher threshold at which you'd want to reorder — shown in low-stock reports">Reorder Point</label>
-            <input type="number" title="When stock reaches this level, it appears in reorder alerts (must be above minimum stock)" step="0.01" bind:value={form.reorder_point} placeholder="Optional" />
+            <FormField label="Reorder Point" fieldId="inv-create-reorder-point" title="When stock reaches this level, it appears in reorder alerts (must be above minimum stock)">
+              <input id="inv-create-reorder-point" type="number" title="When stock reaches this level, it appears in reorder alerts (must be above minimum stock)" step="0.01" bind:value={form.reorder_point} placeholder="Optional" />
+            </FormField>
           </div>
           <div class="form-group">
-            <label title="The name of the supplier or manufacturer for this item">Supplier</label>
-            <input type="text" title="Enter the supplier or manufacturer (e.g., Sigma-Aldrich, PhytoTech)" bind:value={form.supplier} placeholder="e.g., Sigma-Aldrich" />
+            <FormField label="Supplier" fieldId="inv-create-supplier" title="Enter the supplier or manufacturer (e.g., Sigma-Aldrich, PhytoTech)">
+              <input id="inv-create-supplier" type="text" title="Enter the supplier or manufacturer (e.g., Sigma-Aldrich, PhytoTech)" bind:value={form.supplier} placeholder="e.g., Sigma-Aldrich" />
+            </FormField>
           </div>
           <div class="form-group">
-            <label title="The supplier's catalog or product number for this item">Catalog Number</label>
-            <input type="text" title="Enter the supplier catalog number for quick reordering" bind:value={form.catalog_number} />
-          </div>
-        </div>
-        <div class="form-row-3">
-          <div class="form-group">
-            <label title="The lot or batch number from the supplier — used for quality traceability">Lot Number</label>
-            <input type="text" title="Enter the lot or batch number from the supplier for traceability" bind:value={form.lot_number} />
-          </div>
-          <div class="form-group">
-            <label title="The physical location where this item is stored in the lab">Storage Location</label>
-            <input type="text" title="Enter the storage location (e.g., Shelf B-3, Fridge 2, -20°C Freezer)" bind:value={form.storage_location} placeholder="e.g., Shelf B-3" />
-          </div>
-          <div class="form-group">
-            <label title="The date after which this item should no longer be used">Expiration Date</label>
-            <input type="date" title="Select the expiration date — expired items will be highlighted in the inventory table" bind:value={form.expiration_date} />
+            <FormField label="Catalog Number" fieldId="inv-create-catalog-number" title="Enter the supplier catalog number for quick reordering">
+              <input id="inv-create-catalog-number" type="text" title="Enter the supplier catalog number for quick reordering" bind:value={form.catalog_number} />
+            </FormField>
           </div>
         </div>
         <div class="form-row-3">
           <div class="form-group">
-            <label title="The cost per unit in USD — used for budget tracking and reports">Cost per Unit ($)</label>
-            <input type="number" title="Enter the cost per unit in USD for budget and usage reports" step="0.01" bind:value={form.cost_per_unit} />
+            <FormField label="Lot Number" fieldId="inv-create-lot-number" title="Enter the lot or batch number from the supplier for traceability">
+              <input id="inv-create-lot-number" type="text" title="Enter the lot or batch number from the supplier for traceability" bind:value={form.lot_number} />
+            </FormField>
+          </div>
+          <div class="form-group">
+            <FormField label="Storage Location" fieldId="inv-create-storage-location" title="Enter the storage location (e.g., Shelf B-3, Fridge 2, -20°C Freezer)">
+              <input id="inv-create-storage-location" type="text" title="Enter the storage location (e.g., Shelf B-3, Fridge 2, -20°C Freezer)" bind:value={form.storage_location} placeholder="e.g., Shelf B-3" />
+            </FormField>
+          </div>
+          <div class="form-group">
+            <FormField label="Expiration Date" fieldId="inv-create-expiration-date" title="Select the expiration date — expired items will be highlighted in the inventory table">
+              <input id="inv-create-expiration-date" type="date" title="Select the expiration date — expired items will be highlighted in the inventory table" bind:value={form.expiration_date} />
+            </FormField>
+          </div>
+        </div>
+        <div class="form-row-3">
+          <div class="form-group">
+            <FormField label="Cost per Unit ($)" fieldId="inv-create-cost-per-unit" title="Enter the cost per unit in USD for budget and usage reports">
+              <input id="inv-create-cost-per-unit" type="number" title="Enter the cost per unit in USD for budget and usage reports" step="0.01" bind:value={form.cost_per_unit} />
+            </FormField>
           </div>
         </div>
         <div class="form-group">
-          <label title="Any additional notes about this inventory item (storage requirements, hazards, preparation tips)">Notes</label>
-          <textarea title="Enter any additional notes: special storage requirements, hazards, handling instructions, etc." bind:value={form.notes} rows="2"></textarea>
+          <FormField label="Notes" fieldId="inv-create-notes" title="Enter any additional notes: special storage requirements, hazards, handling instructions, etc.">
+            <textarea id="inv-create-notes" title="Enter any additional notes: special storage requirements, hazards, handling instructions, etc." bind:value={form.notes} rows="2"></textarea>
+          </FormField>
         </div>
         <div style="text-align:right;">
           <button type="submit" title={editingId ? 'Save changes to this inventory item' : 'Create a new inventory item with the details entered above'} class="btn btn-primary">{editingId ? 'Update Item' : 'Create Item'}</button>
@@ -408,12 +424,14 @@
         <h3 style="margin-bottom:12px;">Adjust Stock</h3>
         <div class="form-row">
           <div class="form-group">
-            <label title="The amount to add or subtract from current stock — use negative values to deduct (e.g., -5 to use 5 units)">Amount (+/-)</label>
-            <input type="number" title="Enter a positive number to add stock, or a negative number to deduct (e.g., -5 to record usage of 5 units)" step="0.01" bind:value={adjustForm.amount} placeholder="e.g., -5 or 100" required />
+            <FormField label="Amount (+/-)" fieldId="inv-adjust-amount" title="Enter a positive number to add stock, or a negative number to deduct (e.g., -5 to record usage of 5 units)">
+              <input id="inv-adjust-amount" type="number" title="Enter a positive number to add stock, or a negative number to deduct (e.g., -5 to record usage of 5 units)" step="0.01" bind:value={adjustForm.amount} placeholder="e.g., -5 or 100" required />
+            </FormField>
           </div>
           <div class="form-group">
-            <label title="A brief explanation of why the stock level is being adjusted">Reason</label>
-            <input type="text" title="Enter the reason for the adjustment (e.g., Used for media prep, Received new shipment, Waste/spillage)" bind:value={adjustForm.reason} placeholder="e.g., Used for media prep" />
+            <FormField label="Reason" fieldId="inv-adjust-reason" title="Enter the reason for the adjustment (e.g., Used for media prep, Received new shipment, Waste/spillage)">
+              <input id="inv-adjust-reason" type="text" title="Enter the reason for the adjustment (e.g., Used for media prep, Received new shipment, Waste/spillage)" bind:value={adjustForm.reason} placeholder="e.g., Used for media prep" />
+            </FormField>
           </div>
         </div>
         <div style="display:flex; gap:8px; justify-content:flex-end;">
@@ -539,79 +557,92 @@
           <h3 style="margin-bottom:16px;">New Prepared Solution</h3>
           <div class="form-row-3">
             <div class="form-group">
-              <label title="The name or description of this prepared solution (e.g., 10 mM BAP stock, 1 mg/mL IBA in DMSO)">Solution Name *</label>
-              <input type="text" title="Enter a descriptive name for this prepared solution" bind:value={solutionForm.name} placeholder="e.g., 10 mM BAP stock" required />
+              <FormField label="Solution Name *" fieldId="inv-solution-name" title="Enter a descriptive name for this prepared solution">
+                <input id="inv-solution-name" type="text" title="Enter a descriptive name for this prepared solution" bind:value={solutionForm.name} placeholder="e.g., 10 mM BAP stock" required />
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="The inventory item used as the starting material for this solution — links this record to raw stock">Source Inventory Item</label>
-              <select title="Select the inventory item this solution was prepared from — the source amount will be deducted from that item's stock" bind:value={solutionForm.source_item_id}>
-                <option value="">— None —</option>
-                {#each items as item}
-                  <option value={item.id}>{item.name}</option>
-                {/each}
-              </select>
+              <FormField label="Source Inventory Item" fieldId="inv-solution-source-item" title="Select the inventory item this solution was prepared from — the source amount will be deducted from that item's stock">
+                <select id="inv-solution-source-item" title="Select the inventory item this solution was prepared from — the source amount will be deducted from that item's stock" bind:value={solutionForm.source_item_id}>
+                  <option value="">— None —</option>
+                  {#each items as item}
+                    <option value={item.id}>{item.name}</option>
+                  {/each}
+                </select>
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="The amount of the source inventory item consumed to prepare this solution (deducted from stock)">Source Amount Used</label>
-              <input type="number" title="Enter the amount of source material used — this will be subtracted from the selected inventory item's stock" step="any" bind:value={solutionForm.source_amount_used} placeholder="Amount deducted from stock" />
+              <FormField label="Source Amount Used" fieldId="inv-solution-source-amount" title="Enter the amount of source material used — this will be subtracted from the selected inventory item's stock">
+                <input id="inv-solution-source-amount" type="number" title="Enter the amount of source material used — this will be subtracted from the selected inventory item's stock" step="any" bind:value={solutionForm.source_amount_used} placeholder="Amount deducted from stock" />
+              </FormField>
             </div>
           </div>
           <div class="form-row">
             <div class="form-group" style="flex:2;">
-              <label title="The concentration of this prepared stock solution (numeric value only — select unit separately)">Concentration</label>
-              <input type="number" title="Enter the numeric concentration of the prepared solution (e.g., 10 for 10 mM)" step="any" bind:value={solutionForm.concentration} placeholder="e.g., 10" />
+              <FormField label="Concentration" fieldId="inv-solution-concentration" title="Enter the numeric concentration of the prepared solution (e.g., 10 for 10 mM)">
+                <input id="inv-solution-concentration" type="number" title="Enter the numeric concentration of the prepared solution (e.g., 10 for 10 mM)" step="any" bind:value={solutionForm.concentration} placeholder="e.g., 10" />
+              </FormField>
             </div>
             <div class="form-group" style="flex:1;">
-              <label title="The unit for the solution concentration (e.g., mM, µM, mg/mL)">Unit</label>
-              <select title="Select the concentration unit for this prepared solution" bind:value={solutionForm.concentration_unit}>
-                <option value="nM">nM</option>
-                <option value="µM">µM</option>
-                <option value="mM">mM</option>
-                <option value="M">M</option>
-                <option value="ng/mL">ng/mL</option>
-                <option value="µg/mL">µg/mL</option>
-                <option value="mg/mL">mg/mL</option>
-                <option value="mg/L">mg/L</option>
-                <option value="g/L">g/L</option>
-                <option value="%">% (v/v or w/v)</option>
-              </select>
+              <FormField label="Unit" fieldId="inv-solution-concentration-unit" title="Select the concentration unit for this prepared solution">
+                <select id="inv-solution-concentration-unit" title="Select the concentration unit for this prepared solution" bind:value={solutionForm.concentration_unit}>
+                  <option value="nM">nM</option>
+                  <option value="µM">µM</option>
+                  <option value="mM">mM</option>
+                  <option value="M">M</option>
+                  <option value="ng/mL">ng/mL</option>
+                  <option value="µg/mL">µg/mL</option>
+                  <option value="mg/mL">mg/mL</option>
+                  <option value="mg/L">mg/L</option>
+                  <option value="g/L">g/L</option>
+                  <option value="%">% (v/v or w/v)</option>
+                </select>
+              </FormField>
             </div>
             <div class="form-group" style="flex:2;">
-              <label title="The solvent used to dissolve or dilute the source material (e.g., DMSO, distilled water, ethanol)">Solvent</label>
-              <input type="text" title="Enter the solvent used to prepare this solution (e.g., DMSO, dH2O, 70% ethanol)" bind:value={solutionForm.solvent} placeholder="e.g., DMSO, dH2O" />
+              <FormField label="Solvent" fieldId="inv-solution-solvent" title="Enter the solvent used to prepare this solution (e.g., DMSO, dH2O, 70% ethanol)">
+                <input id="inv-solution-solvent" type="text" title="Enter the solvent used to prepare this solution (e.g., DMSO, dH2O, 70% ethanol)" bind:value={solutionForm.solvent} placeholder="e.g., DMSO, dH2O" />
+              </FormField>
             </div>
             <div class="form-group" style="flex:1;">
-              <label title="The total volume of solution prepared in milliliters">Volume (mL)</label>
-              <input type="number" title="Enter the total volume of prepared solution in mL — remaining volume can be updated later" step="any" bind:value={solutionForm.volume_ml} placeholder="e.g., 10" />
+              <FormField label="Volume (mL)" fieldId="inv-solution-volume" title="Enter the total volume of prepared solution in mL — remaining volume can be updated later">
+                <input id="inv-solution-volume" type="number" title="Enter the total volume of prepared solution in mL — remaining volume can be updated later" step="any" bind:value={solutionForm.volume_ml} placeholder="e.g., 10" />
+              </FormField>
             </div>
           </div>
           <div class="form-row-3">
             <div class="form-group">
-              <label title="The person who prepared this solution — for traceability and QC purposes">Prepared By</label>
-              <input type="text" title="Enter the name or initials of the person who prepared this solution" bind:value={solutionForm.prepared_by} placeholder="Name or initials" />
+              <FormField label="Prepared By" fieldId="inv-solution-prepared-by" title="Enter the name or initials of the person who prepared this solution">
+                <input id="inv-solution-prepared-by" type="text" title="Enter the name or initials of the person who prepared this solution" bind:value={solutionForm.prepared_by} placeholder="Name or initials" />
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="The date this solution was prepared">Preparation Date</label>
-              <input type="date" title="Select the date this solution was prepared" bind:value={solutionForm.preparation_date} />
+              <FormField label="Preparation Date" fieldId="inv-solution-preparation-date" title="Select the date this solution was prepared">
+                <input id="inv-solution-preparation-date" type="date" title="Select the date this solution was prepared" bind:value={solutionForm.preparation_date} />
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="The date after which this prepared solution should be discarded">Expiration Date</label>
-              <input type="date" title="Select the expiration date — solutions past this date will be flagged in the table" bind:value={solutionForm.expiration_date} />
+              <FormField label="Expiration Date" fieldId="inv-solution-expiration-date" title="Select the expiration date — solutions past this date will be flagged in the table">
+                <input id="inv-solution-expiration-date" type="date" title="Select the expiration date — solutions past this date will be flagged in the table" bind:value={solutionForm.expiration_date} />
+              </FormField>
             </div>
           </div>
           <div class="form-row-3">
             <div class="form-group">
-              <label title="The lot number of the source material used to prepare this solution">Lot Number</label>
-              <input type="text" title="Enter the lot number from the source reagent for traceability" bind:value={solutionForm.lot_number} />
+              <FormField label="Lot Number" fieldId="inv-solution-lot-number" title="Enter the lot number from the source reagent for traceability">
+                <input id="inv-solution-lot-number" type="text" title="Enter the lot number from the source reagent for traceability" bind:value={solutionForm.lot_number} />
+              </FormField>
             </div>
             <div class="form-group">
-              <label title="The required storage conditions to maintain solution stability">Storage Conditions</label>
-              <input type="text" title="Enter storage requirements (e.g., -20°C in dark, 4°C, aliquot and freeze)" bind:value={solutionForm.storage_conditions} placeholder="e.g., -20°C, dark" />
+              <FormField label="Storage Conditions" fieldId="inv-solution-storage-conditions" title="Enter storage requirements (e.g., -20°C in dark, 4°C, aliquot and freeze)">
+                <input id="inv-solution-storage-conditions" type="text" title="Enter storage requirements (e.g., -20°C in dark, 4°C, aliquot and freeze)" bind:value={solutionForm.storage_conditions} placeholder="e.g., -20°C, dark" />
+              </FormField>
             </div>
           </div>
           <div class="form-group">
-            <label title="Any additional notes about this prepared solution (hazards, protocol reference, pH adjustments, etc.)">Notes</label>
-            <textarea title="Enter any additional notes: hazards, preparation protocol details, pH adjustments, known issues, etc." bind:value={solutionForm.notes} rows="2"></textarea>
+            <FormField label="Notes" fieldId="inv-solution-notes" title="Enter any additional notes: hazards, preparation protocol details, pH adjustments, known issues, etc.">
+              <textarea id="inv-solution-notes" title="Enter any additional notes: hazards, preparation protocol details, pH adjustments, known issues, etc." bind:value={solutionForm.notes} rows="2"></textarea>
+            </FormField>
           </div>
           <div style="text-align:right;">
             <button type="submit" title="Save this prepared solution record to the database" class="btn btn-primary">Create Solution</button>
@@ -713,4 +744,15 @@
   .low-stock { color: #d97706; font-weight: 700; }
   .low-stock-count { color: #d97706; font-weight: 600; }
   .expired { color: #dc2626; font-weight: 600; }
+
+  /* Matches global :global(label) styling for a heading that labels a group of
+     controls (the Solid/Liquid radio pair) rather than a single control. */
+  .group-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6b7280;
+    margin-bottom: 4px;
+  }
+  :global(.dark) .group-label { color: #94a3b8; }
 </style>

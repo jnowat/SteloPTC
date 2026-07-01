@@ -1,6 +1,10 @@
+pub mod ai;
 pub mod auth;
+pub mod cloud;
+pub mod compliance_export;
 pub mod db;
 pub mod models;
+pub mod plugins;
 
 #[cfg(feature = "tauri-commands")]
 pub mod commands;
@@ -10,6 +14,9 @@ use std::sync::Mutex;
 
 pub struct AppState {
     pub db: Mutex<Database>,
+    // WP-63: in-memory materialized dashboard cache (never persisted — see
+    // db::dashboard for the TTL/invalidation logic).
+    pub dashboard_cache: Mutex<Option<db::dashboard::DashboardCacheEntry>>,
 }
 
 #[cfg(feature = "tauri-commands")]
@@ -30,6 +37,7 @@ pub fn run() {
 
     let state = AppState {
         db: Mutex::new(db),
+        dashboard_cache: Mutex::new(None),
     };
 
     tauri::Builder::default()
@@ -100,6 +108,8 @@ pub fn run() {
             commands::audit::create_audit_checkpoint,
             commands::audit::verify_against_checkpoint,
             commands::audit::list_audit_checkpoints,
+            // WP-63: cursor-based per-lineage audit pagination
+            commands::audit::list_audit_entries_cursor,
             // WP-21 — proof export, standalone verification, auto-checkpointing
             commands::audit::export_audit_proof,
             commands::audit::verify_exported_proof,
@@ -154,6 +164,9 @@ pub fn run() {
             commands::strains::get_strain_descendants,
             commands::strains::get_strain_specimen_tree,
             commands::strains::export_strain_pedigree,
+            // WP-63: configurable pedigree depth cap
+            commands::strains::get_pedigree_max_depth,
+            commands::strains::set_pedigree_max_depth,
             // Taxa (WP-35)
             commands::taxa::create_taxon,
             commands::taxa::get_taxon,
@@ -170,6 +183,9 @@ pub fn run() {
             commands::taxa::map_provisional_taxon,
             commands::taxa::list_taxon_mappings,
             commands::taxa::export_darwin_core,
+            // Taxon chain re-anchoring (WP-64)
+            commands::taxa::reanchor_taxon_chain_dry_run,
+            commands::taxa::reanchor_taxon_chain,
             // NCBI Taxonomy (WP-36)
             commands::ncbi::import_ncbi_taxonomy,
             commands::ncbi::resolve_ncbi_conflict,
@@ -243,6 +259,53 @@ pub fn run() {
             commands::notifications::send_test_email,
             commands::notifications::list_recent_notifications,
             commands::notifications::dispatch_due_notifications_now,
+            // Analytics & reporting dashboards (WP-58)
+            commands::analytics::get_specimen_growth_rate,
+            commands::analytics::get_subculture_frequency_trend,
+            commands::analytics::get_contamination_rate_trend,
+            commands::analytics::get_passage_success_rate,
+            commands::analytics::get_media_batch_efficiency,
+            commands::analytics::get_strain_performance,
+            commands::analytics::get_cryo_utilization,
+            commands::analytics::get_technician_activity,
+            commands::analytics::get_analytics_kpi_summary,
+            commands::analytics::get_analytics_panel_config,
+            commands::analytics::set_analytics_panel_config,
+            // Interactive lab map (WP-57)
+            commands::locations::list_locations,
+            commands::locations::get_location,
+            commands::locations::create_location,
+            commands::locations::update_location,
+            commands::locations::delete_location,
+            commands::locations::set_specimen_location_pin,
+            commands::locations::get_location_map_data,
+            // Local AI analysis (WP-56)
+            commands::ai::get_ai_config,
+            commands::ai::set_ai_config,
+            commands::ai::summarize_notes,
+            commands::ai::suggest_passage_comment,
+            commands::ai::analyze_photo_for_contamination,
+            commands::ai::list_ai_suggestions,
+            commands::ai::approve_ai_suggestion,
+            commands::ai::reject_ai_suggestion,
+            // Cloud backup & multi-device sync (WP-59)
+            commands::cloud_backup::list_backup_targets,
+            commands::cloud_backup::create_backup_target,
+            commands::cloud_backup::delete_backup_target,
+            commands::cloud_backup::cloud_backup,
+            commands::cloud_backup::restore_from_cloud,
+            commands::cloud_backup::reconcile_cloud_sync,
+            // Regulatory compliance export modules (WP-60)
+            commands::compliance_export::get_signing_public_key,
+            commands::compliance_export::export_fda_part11_bundle,
+            commands::compliance_export::export_usda_permit,
+            commands::compliance_export::export_cites_dossier,
+            // Plugin / extension system (WP-61)
+            commands::plugins::list_installed_plugins,
+            commands::plugins::validate_plugin_manifest,
+            commands::plugins::install_plugin,
+            commands::plugins::install_plugin_from_zip,
+            commands::plugins::uninstall_plugin,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

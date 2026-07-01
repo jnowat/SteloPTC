@@ -387,3 +387,38 @@ pub fn export_darwin_core(
     let _user = auth_service::validate_session(&db, &token)?;
     queries::export_darwin_core(&db.conn, root_id.as_deref()).map_err(|e| e.to_string())
 }
+
+/// WP-64: read-only pre-flight report for `reanchor_taxon_chain` — exactly
+/// what would be affected, without writing anything. Supervisor/admin only.
+#[tauri::command]
+pub fn reanchor_taxon_chain_dry_run(
+    state: State<AppState>,
+    token: String,
+    taxon_id: String,
+) -> Result<queries::ReanchorCounts, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Only supervisors and admins can preview a taxon re-anchor".to_string());
+    }
+    queries::reanchor_taxon_chain_dry_run(&db.conn, &taxon_id).map_err(|e| e.to_string())
+}
+
+/// WP-64: atomically re-anchors the hash chain for `taxon_id` and every
+/// descendant taxon/species/strain (plus an aggregate specimen bridge)
+/// following a taxonomic reclassification. Admin only. `reason` must be at
+/// least 20 characters (also enforced in `db::queries::reanchor_taxon_chain`).
+#[tauri::command]
+pub fn reanchor_taxon_chain(
+    state: State<AppState>,
+    token: String,
+    taxon_id: String,
+    reason: String,
+) -> Result<queries::ReanchorResult, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.is_admin() {
+        return Err("Only admins can re-anchor a taxon's hash chain".to_string());
+    }
+    queries::reanchor_taxon_chain(&db.conn, &taxon_id, &user.id, &reason).map_err(|e| e.to_string())
+}

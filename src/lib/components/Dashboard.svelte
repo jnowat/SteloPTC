@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, listBackups, restoreBackup, resetDatabase, getContaminationStats, getSubcultureSchedule, getLabProfile, getVialSummaryByLine, getCultureMaintenanceAlerts, getEnvironmentalAlerts } from '../api';
+  import { getSpecimenStats, getActiveReminders, getComplianceFlags, getLowStockAlerts, createBackup, listBackups, restoreBackup, resetDatabase, getContaminationStats, getSubcultureSchedule, getLabProfile, getVialSummaryByLine, getCultureMaintenanceAlerts, getEnvironmentalAlerts, getLocationMapData } from '../api';
   import { navigateTo, addNotification, devMode } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import FirstRun from './FirstRun.svelte';
@@ -15,6 +15,7 @@
   let vialSummary = $state<any[]>([]);
   let maintenanceAlerts = $state<any[]>([]);
   let environmentalAlerts = $state<any[]>([]);
+  let locationMapData = $state<any[]>([]);
   let loading = $state(true);
 
   let overdueItems = $derived(schedule.filter((e: any) => e.is_overdue));
@@ -28,6 +29,8 @@
     f.flag_type === 'myco_slow_colonization'
   ));
   let firstRun = $derived(!loading && stats !== null && stats.total_specimens === 0);
+  let locationsWithPins = $derived(locationMapData.filter((l: any) => l.floor_plan_x !== null && l.floor_plan_y !== null));
+  let contaminatedSpecimenPins = $derived(locationMapData.reduce((sum: number, l: any) => sum + l.contaminated_count, 0));
   let backingUp = $state(false);
   let showResetPanel = $state(false);
   let resetPhrase = $state('');
@@ -49,7 +52,7 @@
   async function loadDashboard() {
     loading = true;
     try {
-      const [s, r, f, ls, cs, sch, lp, vs, ma, ea] = await Promise.all([
+      const [s, r, f, ls, cs, sch, lp, vs, ma, ea, lmd] = await Promise.all([
         getSpecimenStats(),
         getActiveReminders(),
         getComplianceFlags(),
@@ -60,6 +63,7 @@
         getVialSummaryByLine(),
         getCultureMaintenanceAlerts(),
         getEnvironmentalAlerts(),
+        getLocationMapData(),
       ]);
       stats = s;
       reminders = r;
@@ -71,6 +75,7 @@
       vialSummary = vs;
       maintenanceAlerts = ma;
       environmentalAlerts = ea;
+      locationMapData = lmd;
     } catch (e: any) {
       addNotification(e.message, 'error');
     } finally {
@@ -422,6 +427,27 @@
           {/if}
         </div>
       {/if}
+
+      <div class="panel">
+        <h3 title="Overview of the Interactive Lab Map — physical locations, mapped pins, and contamination flags">Lab Map Overview</h3>
+        {#if locationMapData.length === 0}
+          <p class="empty-state">No locations set up yet</p>
+        {:else}
+          <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: var(--space-3);">
+            <div class="stat-card" title="Locations with a pin placed on a floor plan (both x and y coordinates set)">
+              <div class="stat-value">{locationsWithPins.length}</div>
+              <div class="stat-label">Locations Mapped</div>
+            </div>
+            <div class="stat-card" class:alert={contaminatedSpecimenPins > 0} title="Specimens flagged as contaminated or quarantined across all mapped locations">
+              <div class="stat-value">{contaminatedSpecimenPins}</div>
+              <div class="stat-label">Contamination Flags</div>
+            </div>
+          </div>
+        {/if}
+        <button class="btn btn-sm" onclick={() => navigateTo('lab-map')} title="Open the full Interactive Lab Map">
+          View full map →
+        </button>
+      </div>
 
       <div class="panel">
         <h3 title="Inventory items that have fallen below their minimum stock threshold">Inventory Alerts</h3>

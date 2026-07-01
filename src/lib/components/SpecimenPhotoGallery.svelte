@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { uploadAttachment, deleteAttachment, getAttachmentData } from '../api';
+  import { uploadAttachment, deleteAttachment, getAttachmentData, analyzePhotoForContamination, approveAiSuggestion, rejectAiSuggestion, type AiSuggestion } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
 
@@ -17,8 +17,13 @@
   let uploadingPhoto = $state(false);
   let lightboxSrc = $state<string | null>(null);
   let lightboxMime = $state<string>('image/jpeg');
+  let lightboxAttachmentId = $state<string | null>(null);
   let lightboxCloseBtn = $state<HTMLButtonElement | null>(null);
   let fileInputEl = $state<HTMLInputElement | null>(null);
+  // WP-56: local AI photo analysis — always a pending suggestion until approved.
+  let analyzingPhoto = $state(false);
+  let photoSuggestion = $state<AiSuggestion | null>(null);
+  let photoAiError = $state('');
 
   $effect(() => {
     if (lightboxSrc && lightboxCloseBtn) {
@@ -62,6 +67,50 @@
     }
     lightboxMime = mime || 'image/jpeg';
     lightboxSrc = src;
+    lightboxAttachmentId = id;
+    photoSuggestion = null;
+    photoAiError = '';
+  }
+
+  async function analyzeCurrentPhoto() {
+    if (!lightboxAttachmentId) return;
+    analyzingPhoto = true;
+    photoAiError = '';
+    try {
+      photoSuggestion = await analyzePhotoForContamination(lightboxAttachmentId);
+    } catch (err: any) {
+      photoAiError = err?.message || 'Failed to reach the local AI vision model. Is Ollama running with a vision model pulled (e.g. llava)?';
+    } finally {
+      analyzingPhoto = false;
+    }
+  }
+
+  async function approvePhotoSuggestion() {
+    if (!photoSuggestion) return;
+    try {
+      await approveAiSuggestion(photoSuggestion.id);
+      addNotification('AI analysis approved and added to notes', 'success');
+      photoSuggestion = null;
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    }
+  }
+
+  async function rejectPhotoSuggestion() {
+    if (!photoSuggestion) return;
+    try {
+      await rejectAiSuggestion(photoSuggestion.id);
+      photoSuggestion = null;
+    } catch (err: any) {
+      addNotification(err.message, 'error');
+    }
+  }
+
+  function closeLightbox() {
+    lightboxSrc = null;
+    lightboxAttachmentId = null;
+    photoSuggestion = null;
+    photoAiError = '';
   }
 
   async function removePhoto(id: string) {
@@ -142,18 +191,40 @@
     role="dialog"
     aria-modal="true"
     aria-label="Photo viewer"
-    onclick={() => (lightboxSrc = null)}
-    onkeydown={(e) => { if (e.key === 'Escape') lightboxSrc = null; }}
+    onclick={closeLightbox}
+    onkeydown={(e) => { if (e.key === 'Escape') closeLightbox(); }}
     tabindex="-1"
   >
     <button
       class="lightbox-close"
-      onclick={() => (lightboxSrc = null)}
+      onclick={closeLightbox}
       aria-label="Close photo viewer"
       title="Close"
       bind:this={lightboxCloseBtn}
     >&#10005;</button>
-    <img src={lightboxSrc} alt="Specimen photo" onclick={(e) => e.stopPropagation()} />
+    <div class="lightbox-content" onclick={(e) => e.stopPropagation()}>
+      <img src={lightboxSrc} alt="Specimen photo" />
+      {#if $currentUser?.role !== 'guest'}
+        <div class="lightbox-ai-panel">
+          <button class="btn btn-secondary btn-sm" disabled={analyzingPhoto} onclick={analyzeCurrentPhoto} title="Analyze this photo for signs of contamination using a local AI vision model">
+            {#if analyzingPhoto}Analyzing…{:else}🤖 Analyze for Contamination{/if}
+          </button>
+          {#if photoAiError}
+            <p class="lightbox-ai-error">{photoAiError}</p>
+          {/if}
+          {#if photoSuggestion}
+            <div class="lightbox-ai-suggestion">
+              <div class="lightbox-ai-model">Model: {photoSuggestion.model_name} — pending approval</div>
+              <p>{photoSuggestion.suggestion}</p>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary btn-sm" onclick={approvePhotoSuggestion}>Approve — add to notes</button>
+                <button class="btn btn-secondary btn-sm" onclick={rejectPhotoSuggestion}>Reject</button>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
+    </div>
   </div>
 {/if}
 
@@ -212,11 +283,29 @@
     display: flex; align-items: center; justify-content: center;
     cursor: zoom-out;
   }
-  .lightbox img {
-    max-width: 90vw; max-height: 90vh;
+  .lightbox-content {
+    display: flex; flex-direction: column; align-items: center; gap: 12px;
+    max-width: 92vw; max-height: 92vh; cursor: default;
+  }
+  .lightbox-content img {
+    max-width: 90vw; max-height: 74vh;
     border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.6);
     cursor: default;
   }
+  .lightbox-ai-panel {
+    width: min(90vw, 480px);
+    background: rgba(15,23,42,0.92);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 8px;
+    padding: 12px;
+    color: #e2e8f0;
+  }
+  .lightbox-ai-error { font-size: 12px; color: #fca5a5; margin: 8px 0 0; }
+  .lightbox-ai-suggestion {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.15);
+  }
+  .lightbox-ai-model { font-size: 11px; color: #94a3b8; margin-bottom: 4px; }
+  .lightbox-ai-suggestion p { font-size: 13px; white-space: pre-wrap; margin: 0 0 8px; }
   .lightbox-close {
     position: absolute; top: 20px; right: 24px;
     background: rgba(255,255,255,0.12); color: white;

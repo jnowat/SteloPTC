@@ -29,6 +29,9 @@
   import CryoManager from './lib/components/CryoManager.svelte';
   import BreedingProgramManager from './lib/components/BreedingProgramManager.svelte';
   import ProvisionalTaxaManager from './lib/components/ProvisionalTaxaManager.svelte';
+  import AnalyticsDashboard from './lib/components/AnalyticsDashboard.svelte';
+  import LabMap from './lib/components/LabMap.svelte';
+  import PwaInstallPrompt from './lib/components/PwaInstallPrompt.svelte';
 
   let startupError = '';
 
@@ -118,6 +121,8 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+<PwaInstallPrompt />
+
 <div class="app" class:dark={$darkMode}>
   {#if startupError}
     <div class="init-screen">
@@ -188,6 +193,10 @@
           <BreedingProgramManager />
         {:else if $currentView === 'provisional-taxa'}
           <ProvisionalTaxaManager />
+        {:else if $currentView === 'analytics'}
+          <AnalyticsDashboard />
+        {:else if $currentView === 'lab-map'}
+          <LabMap />
         {:else}
           <Dashboard />
         {/if}

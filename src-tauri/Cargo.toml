@@ -1,6 +1,6 @@
 [package]
 name = "stelo-ptc"
-version = "1.39.2"
+version = "1.40.0"
 description = "Plant Tissue Culture Specimen Tracking System"
 authors = ["SteloPTC"]
 edition = "2021"
@@ -65,3 +65,27 @@ sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio",
 # without one, matching the same limitation already documented for WP-50's
 # PostgreSQL connector.
 lettre = { version = "0.11", default-features = false, features = ["builder", "smtp-transport", "rustls-tls", "hostname"] }
+# WP-59: zero-knowledge cloud-backup encryption. Argon2id derives the AES key from
+# a user passphrase (never persisted); aes-gcm performs the actual AEAD encryption.
+# Both are pure-Rust, no system crypto library dependency.
+argon2 = "0.5"
+aes-gcm = "0.10"
+# WP-60: regulatory-export bundle signing. Ed25519 in place of the RSA-4096
+# originally sketched in the ROADMAP — see migration_044_signing_keys for the
+# documented rationale (smaller pure-Rust dependency, no PEM/ASN.1 tooling needed
+# for a self-attested signature verified against a bundled public key).
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+# WP-60: bundles compliance exports into a downloadable .zip. `deflate` is the
+# pure-Rust (miniz_oxide) compression backend — no system zlib/bzip2 dependency.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+# WP-63: Criterion benchmark suite (benches/performance.rs). `html_reports` is
+# left off deliberately — CI treats benchmark output as a non-blocking JSON
+# artifact, not a browsable report, so the extra plotters/tinytemplate deps
+# aren't worth pulling in.
+criterion = "0.5"
+
+[[bench]]
+name = "performance"
+harness = false

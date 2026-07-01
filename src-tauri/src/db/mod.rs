@@ -1,5 +1,7 @@
+pub mod analytics;
 pub mod backend;
 pub mod dashboard;
+pub mod fixtures;
 pub mod migrations;
 pub mod notifications;
 pub mod permissions;

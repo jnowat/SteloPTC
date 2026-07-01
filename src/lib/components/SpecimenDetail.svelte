@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, listEnvironmentalReadings, createEnvironmentalReading, type ColonizationEntry, type FruitingRecord, type EnvironmentalReading } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, listEnvironmentalReadings, createEnvironmentalReading, summarizeNotes, suggestPassageComment, listAiSuggestions, approveAiSuggestion, rejectAiSuggestion, type ColonizationEntry, type FruitingRecord, type EnvironmentalReading, type AiSuggestion } from '../api';
   import { labProfile } from '../profile';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
@@ -16,6 +16,11 @@
   import Tooltip from './Tooltip.svelte';
 
   let specimen = $state<any>(null);
+  // WP-56: local AI analysis — pending suggestions always require explicit
+  // approval before they touch the real notes field (see api.ts / backend).
+  let aiSuggestions = $state<AiSuggestion[]>([]);
+  let aiBusy = $state(false);
+  let aiError = $state('');
   let strainData = $state<any>(null);
   let showQrModal = $state(false);
   let showQrScanner = $state(false);
@@ -286,6 +291,68 @@
     }
   }
 
+  async function loadAiSuggestions(id: string) {
+    try {
+      aiSuggestions = await listAiSuggestions('specimen', id);
+    } catch {
+      // non-fatal — AI features are optional and must never block the specimen view
+      aiSuggestions = [];
+    }
+  }
+
+  async function requestSummarizeNotes() {
+    if (!specimen) return;
+    aiBusy = true;
+    aiError = '';
+    try {
+      await summarizeNotes('specimen', specimen.id);
+      await loadAiSuggestions(specimen.id);
+    } catch (e: any) {
+      aiError = e?.message || 'Failed to reach the local AI model. Is Ollama running?';
+    } finally {
+      aiBusy = false;
+    }
+  }
+
+  async function requestSuggestPassageComment() {
+    if (!specimen) return;
+    aiBusy = true;
+    aiError = '';
+    try {
+      await suggestPassageComment(specimen.id);
+      await loadAiSuggestions(specimen.id);
+    } catch (e: any) {
+      aiError = e?.message || 'Failed to reach the local AI model. Is Ollama running?';
+    } finally {
+      aiBusy = false;
+    }
+  }
+
+  async function approveSuggestion(id: string) {
+    aiBusy = true;
+    try {
+      await approveAiSuggestion(id);
+      await Promise.all([loadAiSuggestions(specimen.id), (async () => { specimen = await getSpecimen(specimen.id); })()]);
+      addNotification('AI suggestion approved and added to notes', 'success');
+    } catch (e: any) {
+      addNotification(e?.message || 'Failed to approve suggestion', 'error');
+    } finally {
+      aiBusy = false;
+    }
+  }
+
+  async function rejectSuggestion(id: string) {
+    aiBusy = true;
+    try {
+      await rejectAiSuggestion(id);
+      await loadAiSuggestions(specimen.id);
+    } catch (e: any) {
+      addNotification(e?.message || 'Failed to reject suggestion', 'error');
+    } finally {
+      aiBusy = false;
+    }
+  }
+
   async function loadAll(id: string) {
     loading = true;
     // Clear ancestral history whenever we switch specimens
@@ -303,6 +370,7 @@
       complianceRecords = cr;
       mediaBatches = mb;
       photos = ph as any[];
+      loadAiSuggestions(id);
 
       // Load strain data if specimen is bound to a strain
       if (s.strain_id) {
@@ -1069,6 +1137,39 @@ ${footnotesHtml}
           <p style="margin-top:4px;font-size:13px;white-space:pre-wrap;color:#374151;">{specimen.notes}</p>
         </div>
       {/if}
+
+      <!-- WP-56: Local AI analysis — every suggestion below requires explicit
+           approval before it touches the real notes field. All processing
+           happens against a local Ollama instance only. -->
+      <div class="ai-assist-block" style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <span class="info-label" title="On-device AI assistance — nothing leaves this machine">🤖 AI Assist (local, optional)</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-secondary" type="button" disabled={aiBusy} onclick={requestSummarizeNotes} title="Summarize this specimen's notes using a local AI model">
+              Summarize Notes
+            </button>
+            <button class="btn btn-secondary" type="button" disabled={aiBusy} onclick={requestSuggestPassageComment} title="Suggest a passage comment based on recent passage history using a local AI model">
+              Suggest Passage Comment
+            </button>
+          </div>
+        </div>
+        {#if aiError}
+          <p style="margin-top:8px;font-size:12.5px;color:#b91c1c;">{aiError}</p>
+        {/if}
+        {#each aiSuggestions.filter(s => s.status === 'pending') as suggestion (suggestion.id)}
+          <div class="ai-suggestion-card" style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+            <div style="font-size:11px;color:#64748b;margin-bottom:4px;">
+              {suggestion.kind === 'summarize_notes' ? 'Summary suggestion' : 'Passage comment suggestion'} — model: {suggestion.model_name}
+            </div>
+            <p style="font-size:13px;white-space:pre-wrap;color:#1e293b;margin:0 0 8px;">{suggestion.suggestion}</p>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-primary" type="button" disabled={aiBusy} onclick={() => approveSuggestion(suggestion.id)}>Approve — add to notes</button>
+              <button class="btn btn-secondary" type="button" disabled={aiBusy} onclick={() => rejectSuggestion(suggestion.id)}>Reject</button>
+            </div>
+          </div>
+        {/each}
+      </div>
+
       {#if specimen.contamination_flag}
         <div class="contam-info-block">
           <span class="contam-info-icon">⚠</span>
