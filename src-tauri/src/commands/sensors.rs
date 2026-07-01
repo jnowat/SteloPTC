@@ -45,6 +45,12 @@ pub fn create_environmental_reading(
 /// USB/BLE/MQTT listener would call for each incoming message — see
 /// `db::sensors` module docs for what is and isn't wired to real hardware
 /// in this packet.
+///
+/// No real listener exists yet, so today this command is only reachable by
+/// whatever calls the Tauri IPC directly — `source` is trusted as given, not
+/// verified. See the `db::sensors` module doc comment's "Trust gap in
+/// `source`" note before treating a non-`manual` value as proof a reading
+/// was machine-collected.
 #[tauri::command]
 pub fn ingest_sensor_payload(
     state: State<AppState>,

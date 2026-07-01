@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listStrainsBySpecies, createStrain, updateStrain, archiveStrain, updateStrainStatus } from '../api';
+  import { listStrainsBySpecies, createStrain, updateStrain, archiveStrain, updateStrainStatus, RESTRICTED_MARKER } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
   import HybridWizard from './HybridWizard.svelte';
   import StrainDetail from './StrainDetail.svelte';
@@ -31,6 +31,10 @@
   let statusForm = $state({ status: '', claimed_by: '', claimed_at: '', confirmation_basis: '', genomic_fingerprint: '' });
   let statusLoading = $state(false);
   let nextStatuses = $derived(statusTarget ? availableStatuses(statusTarget.status) : []);
+  // WP-55: true when the strain's genomic_fingerprint was masked ("[RESTRICTED]")
+  // at the moment the form was opened, because the current user's role can't
+  // see it. The raw marker is never loaded into the form (see openStatusUpdate).
+  let fingerprintIsMasked = $state(false);
 
   // Blocking confirmed_manual acknowledgment modal
   let showConfirmedManualModal = $state(false);
@@ -143,12 +147,19 @@
 
   function openStatusUpdate(s: any) {
     statusTarget = s;
+    // WP-55: `s.genomic_fingerprint` may be the literal "[RESTRICTED]" marker
+    // if this role can't see the real value. Never load that placeholder into
+    // an editable form field — doing so previously allowed it to be silently
+    // resubmitted and permanently overwrite the real fingerprint. Leaving the
+    // field blank instead means "unchanged" (the backend preserves the
+    // existing value when the field is omitted).
+    fingerprintIsMasked = s.genomic_fingerprint === RESTRICTED_MARKER;
     statusForm = {
       status: s.status,
       claimed_by: s.claimed_by || '',
       claimed_at: s.claimed_at || today,
       confirmation_basis: s.confirmation_basis || '',
-      genomic_fingerprint: s.genomic_fingerprint || '',
+      genomic_fingerprint: fingerprintIsMasked ? '' : (s.genomic_fingerprint || ''),
     };
   }
 
@@ -162,6 +173,13 @@
   async function handleStatusUpdate(e: Event) {
     e.preventDefault();
     if (!statusTarget) return;
+    // WP-55 defense-in-depth: the form should never contain the restricted
+    // marker (see openStatusUpdate), but refuse to submit it regardless of
+    // how it got there rather than trust that invariant alone.
+    if (statusForm.genomic_fingerprint === RESTRICTED_MARKER) {
+      addNotification('Genomic fingerprint cannot be saved as the restricted placeholder value.', 'error');
+      return;
+    }
     statusLoading = true;
     try {
       const result = await updateStrainStatus({
@@ -471,6 +489,9 @@
             {/if}
 
             {#if statusForm.status === 'confirmed_genomic'}
+              {#if fingerprintIsMasked}
+                <p class="info-row">🔒 The existing fingerprint is restricted for your role and isn't shown here. Enter the fingerprint value to proceed with this transition.</p>
+              {/if}
               <div class="form-group">
                 <label for="gf">Genomic Fingerprint *</label>
                 <input id="gf" type="text" bind:value={statusForm.genomic_fingerprint} placeholder="Fingerprint ID, hash, or reference" required />

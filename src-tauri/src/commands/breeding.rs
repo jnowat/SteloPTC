@@ -29,10 +29,20 @@ pub fn create_breeding_program(
 }
 
 /// WP-55: masks `goal` and `target_traits` per the calling user's role.
-fn apply_field_permissions(conn: &rusqlite::Connection, role: &str, mut program: BreedingProgram) -> BreedingProgram {
-    program.goal = crate::db::permissions::mask_optional_field(conn, role, "breeding_program", "goal", program.goal);
-    program.target_traits =
-        crate::db::permissions::mask_optional_field(conn, role, "breeding_program", "target_traits", program.target_traits);
+/// Takes a pre-loaded [`crate::db::permissions::FieldPermissionSet`] rather
+/// than querying per call — see the matching comment in `commands::strains`
+/// for why (fixes an N+1 query pattern across list results).
+///
+/// There is currently no `update_breeding_program` command, so unlike
+/// `strains::update_strain_status` there is no write path that could
+/// round-trip a masked "[RESTRICTED]" value back into these fields. If one
+/// is added later, it **must** call
+/// `crate::db::permissions::reject_if_restricted_marker` on both `goal` and
+/// `target_traits` before persisting — see the WP-55 write-path-guard doc
+/// comment in `db::permissions` for why.
+fn apply_field_permissions(perms: &crate::db::permissions::FieldPermissionSet, mut program: BreedingProgram) -> BreedingProgram {
+    program.goal = perms.mask_optional_field("breeding_program", "goal", program.goal);
+    program.target_traits = perms.mask_optional_field("breeding_program", "target_traits", program.target_traits);
     program
 }
 
@@ -45,9 +55,11 @@ pub fn list_breeding_programs(
     let user = auth_service::validate_session(&db, &token)?;
     let programs = queries::list_breeding_programs(&db.conn)
         .map_err(|e| format!("Failed to list breeding programs: {}", e))?;
+    let perms = crate::db::permissions::FieldPermissionSet::load(&db.conn, user.role.as_str())
+        .map_err(|e| e.to_string())?;
     Ok(programs
         .into_iter()
-        .map(|p| apply_field_permissions(&db.conn, user.role.as_str(), p))
+        .map(|p| apply_field_permissions(&perms, p))
         .collect())
 }
 
@@ -61,7 +73,9 @@ pub fn get_breeding_program(
     let user = auth_service::validate_session(&db, &token)?;
     let program = queries::get_breeding_program(&db.conn, &id)
         .map_err(|e| format!("Failed to get breeding program: {}", e))?;
-    Ok(apply_field_permissions(&db.conn, user.role.as_str(), program))
+    let perms = crate::db::permissions::FieldPermissionSet::load(&db.conn, user.role.as_str())
+        .map_err(|e| e.to_string())?;
+    Ok(apply_field_permissions(&perms, program))
 }
 
 #[tauri::command]

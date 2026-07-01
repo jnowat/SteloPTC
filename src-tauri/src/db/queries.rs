@@ -821,6 +821,56 @@ pub fn validate_strain_status_transition(
     Ok(())
 }
 
+/// Validates and applies a strain status transition in one step, including the
+/// WP-55 write-path guard that rejects a masked `"[RESTRICTED]"` genomic
+/// fingerprint value before it can ever reach the database. See
+/// `crate::db::permissions::reject_if_restricted_marker` for why this guard
+/// exists — it is the fix for a real data-corruption bug where a masked read
+/// value could be round-tripped back through this update.
+///
+/// `genomic_fingerprint: None` leaves the existing stored fingerprint
+/// unchanged (via `COALESCE`); only `Some(value)` overwrites it.
+#[allow(clippy::too_many_arguments)]
+pub fn apply_strain_status_update(
+    conn: &Connection,
+    id: &str,
+    current_status: &str,
+    next_status: &str,
+    claimed_by: Option<&str>,
+    claimed_at: Option<&str>,
+    confirmation_basis: Option<&str>,
+    genomic_fingerprint: Option<&str>,
+) -> Result<(), String> {
+    validate_strain_status_transition(
+        current_status,
+        next_status,
+        confirmation_basis,
+        genomic_fingerprint,
+    )?;
+
+    crate::db::permissions::reject_if_restricted_marker(
+        genomic_fingerprint,
+        "Genomic fingerprint",
+    )?;
+
+    conn.execute(
+        "UPDATE strains SET status = ?1, claimed_by = ?2, claimed_at = ?3,
+         confirmation_basis = ?4, genomic_fingerprint = COALESCE(?5, genomic_fingerprint),
+         updated_at = datetime('now') WHERE id = ?6",
+        params![
+            next_status,
+            claimed_by,
+            claimed_at,
+            confirmation_basis,
+            genomic_fingerprint,
+            id
+        ],
+    )
+    .map_err(|e| format!("Failed to update status: {}", e))?;
+
+    Ok(())
+}
+
 /// Returns `Ok(())` if a lab profile change is permitted given the current specimen count.
 /// When `specimen_count > 0`, requires `confirmation` to equal `"CHANGE PROFILE"` (trimmed).
 /// When `specimen_count == 0`, the confirmation argument is ignored.
@@ -3636,6 +3686,140 @@ mod tests {
     #[test]
     fn strain_status_confirmed_genomic_to_claimed_rejected() {
         assert!(validate_strain_status_transition("confirmed_genomic", "claimed", None, None).is_err());
+    }
+
+    // ── WP-55: genomic fingerprint corruption-bug regression tests ────────────
+    //
+    // Regression coverage for a real data-corruption bug: `genomic_fingerprint`
+    // is masked on read for roles without visibility (see
+    // `crate::db::permissions`), and the UI historically pre-filled the status
+    // update form directly from that masked read value. Submitting that form
+    // without editing the field would round-trip the literal "[RESTRICTED]"
+    // placeholder back into the database, permanently destroying the real
+    // fingerprint. `apply_strain_status_update` is the fix: it rejects the
+    // marker outright and treats `None` (not the marker) as "leave unchanged".
+
+    #[test]
+    fn apply_strain_status_update_rejects_masked_fingerprint_and_preserves_real_value() {
+        let conn = mem_conn_with_strains();
+        insert_test_species(&conn, "sp-fp1");
+        insert_test_strain(&conn, "st-fp1", "sp-fp1", "FP01");
+
+        let real_fingerprint = "ATCG-REAL-SEQUENCE-0001";
+        conn.execute(
+            "UPDATE strains SET status = 'confirmed_genomic', genomic_fingerprint = ?1 WHERE id = 'st-fp1'",
+            params![real_fingerprint],
+        ).unwrap();
+
+        // Simulate the exact corruption scenario: a role with this field
+        // masked reads the strain (getting back `RESTRICTED_MARKER` instead
+        // of the real value), then that masked value is resubmitted through
+        // a status update — e.g. because the UI pre-filled the form with it.
+        let masked_value = crate::db::permissions::RESTRICTED_MARKER;
+
+        let result = apply_strain_status_update(
+            &conn,
+            "st-fp1",
+            "confirmed_genomic",
+            "confirmed_genomic",
+            None,
+            None,
+            None,
+            Some(masked_value),
+        );
+        assert!(result.is_err(), "update carrying the masked marker must be rejected");
+
+        let stored: String = conn.query_row(
+            "SELECT genomic_fingerprint FROM strains WHERE id = 'st-fp1'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(stored, real_fingerprint,
+            "real genomic_fingerprint must survive a rejected masked-value update");
+    }
+
+    #[test]
+    fn apply_strain_status_update_none_fingerprint_preserves_existing_value() {
+        let conn = mem_conn_with_strains();
+        insert_test_species(&conn, "sp-fp2");
+        insert_test_strain(&conn, "st-fp2", "sp-fp2", "FP02");
+
+        let real_fingerprint = "ATCG-REAL-SEQUENCE-0002";
+        conn.execute(
+            "UPDATE strains SET status = 'confirmed_manual', confirmation_basis = 'Morphological check', \
+             genomic_fingerprint = ?1 WHERE id = 'st-fp2'",
+            params![real_fingerprint],
+        ).unwrap();
+
+        // A status update that doesn't touch genomic_fingerprint at all (e.g.
+        // a claimed_by reassignment by a role that can't see the field)
+        // passes `None` and must leave the stored value untouched rather
+        // than nulling it out.
+        apply_strain_status_update(
+            &conn,
+            "st-fp2",
+            "confirmed_manual",
+            "confirmed_manual",
+            Some("tech-1"),
+            Some("2026-01-01"),
+            Some("Morphological check"),
+            None,
+        ).unwrap();
+
+        let stored: String = conn.query_row(
+            "SELECT genomic_fingerprint FROM strains WHERE id = 'st-fp2'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(stored, real_fingerprint, "None must preserve, not clear, the existing fingerprint");
+
+        let claimed_by: String = conn.query_row(
+            "SELECT claimed_by FROM strains WHERE id = 'st-fp2'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(claimed_by, "tech-1", "other fields in the same update must still apply");
+    }
+
+    #[test]
+    fn apply_strain_status_update_confirmed_genomic_with_real_fingerprint_succeeds() {
+        let conn = mem_conn_with_strains();
+        insert_test_species(&conn, "sp-fp3");
+        insert_test_strain(&conn, "st-fp3", "sp-fp3", "FP03");
+
+        apply_strain_status_update(
+            &conn,
+            "st-fp3",
+            "unverified",
+            "confirmed_genomic",
+            None,
+            None,
+            None,
+            Some("ATCG-NEW-SEQUENCE-0003"),
+        ).unwrap();
+
+        let (status, fingerprint): (String, String) = conn.query_row(
+            "SELECT status, genomic_fingerprint FROM strains WHERE id = 'st-fp3'",
+            [], |r| Ok((r.get(0)?, r.get(1)?)),
+        ).unwrap();
+        assert_eq!(status, "confirmed_genomic");
+        assert_eq!(fingerprint, "ATCG-NEW-SEQUENCE-0003");
+    }
+
+    #[test]
+    fn apply_strain_status_update_still_enforces_transition_rules() {
+        let conn = mem_conn_with_strains();
+        insert_test_species(&conn, "sp-fp4");
+        insert_test_strain(&conn, "st-fp4", "sp-fp4", "FP04");
+        conn.execute(
+            "UPDATE strains SET status = 'confirmed_manual' WHERE id = 'st-fp4'",
+            [],
+        ).unwrap();
+
+        // Downgrades must still be rejected after the extraction, confirming
+        // `apply_strain_status_update` actually delegates to
+        // `validate_strain_status_transition` rather than bypassing it.
+        let result = apply_strain_status_update(
+            &conn, "st-fp4", "confirmed_manual", "claimed", None, None, None, None,
+        );
+        assert!(result.is_err(), "downgrade must still be rejected after extraction");
     }
 
     // ── hybridization / fork invariant ────────────────────────────────────────

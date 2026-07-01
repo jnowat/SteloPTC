@@ -641,6 +641,8 @@
         <h3 title="Create a snapshot backup of the entire database to the configured backup directory">Database Backup</h3>
         <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
           Create a backup of the database to the default backup directory.
+          For security, the SMTP password (if configured) is not included in
+          the backup file — you'll need to re-enter it after restoring.
         </p>
         {#if $currentUser?.role === 'admin' || $currentUser?.role === 'supervisor'}
           <button class="btn btn-primary" onclick={handleBackup} disabled={backingUp} title="Create a backup of the database to the default backup directory">

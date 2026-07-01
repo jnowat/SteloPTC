@@ -288,6 +288,9 @@ fn migration_038_notifications(conn: &Connection) -> DbResult<()> {
     // see the WP-52 "As built" note in ROADMAP.md for the disclosed
     // trade-off (no OS-keychain integration in this packet, unlike the
     // zero-knowledge design used for WP-59 cloud-backup credentials).
+    // `commands::backup::create_backup` redacts this column (to NULL) in the
+    // backup file it produces, so the plaintext password lives only in the
+    // live database, never in a copy that could leave the machine.
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS notification_preferences (
             id           TEXT PRIMARY KEY,

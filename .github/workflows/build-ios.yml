@@ -30,6 +30,18 @@ name: Build iOS App
 # without needing Xcode signing, a real Apple Developer account, or a
 # device/simulator to run on. It does NOT catch Swift/Xcode-side issues;
 # that requires at least APPLE_DEVELOPMENT_TEAM to be configured.
+#
+# Required Info.plist entries: the app's QR scanner (html5-qrcode, used from
+# the webview) needs camera access, which iOS refuses silently/crashes on
+# without a usage description string. `src-tauri/Info.ios.plist` supplies
+# NSCameraUsageDescription and is wired in via `bundle.iOS.infoPlist` in
+# tauri.conf.json, which `cargo tauri ios init` merges into the generated
+# Xcode project's Info.plist. This has NOT been confirmed against a real
+# `cargo tauri ios init`/build — that requires APPLE_DEVELOPMENT_TEAM, which
+# is not yet configured (see above) — so treat it as "should work per the
+# Tauri config schema" rather than "verified." If a future permission-gated
+# API is added (microphone, photo library, location, etc.), add the matching
+# NS*UsageDescription key to that same file.
 
 on:
   workflow_dispatch: {}

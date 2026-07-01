@@ -260,13 +260,36 @@ pub fn run() {
                 loop {
                     let interval_minutes: i64 = {
                         let state = app_handle.state::<AppState>();
-                        let Ok(db) = state.db.lock() else { break };
+                        // A panic anywhere else in the app while holding this lock poisons
+                        // it permanently. Previously that silently killed this loop forever
+                        // (`let Ok(db) = ... else { break }`) — the scheduler would just stop
+                        // and nothing would ever indicate why. A poisoned rusqlite Connection
+                        // is still structurally valid (the panic that poisoned it happened in
+                        // unrelated Rust logic, not mid-write to this struct), so recovering
+                        // the guard and continuing is safe; we log so the underlying panic
+                        // still gets investigated.
+                        let db = match state.db.lock() {
+                            Ok(db) => db,
+                            Err(poisoned) => {
+                                eprintln!(
+                                    "Notification scheduler: database mutex was poisoned by a \
+                                     panic elsewhere while holding the lock. Recovering and \
+                                     continuing the scheduler loop, but the underlying panic \
+                                     should be investigated."
+                                );
+                                poisoned.into_inner()
+                            }
+                        };
                         db::queries::read_setting(&db.conn, "notification_check_interval_minutes", "15")
                             .parse()
                             .unwrap_or(15)
                     };
                     tokio::time::sleep(std::time::Duration::from_secs((interval_minutes.max(1) as u64) * 60)).await;
 
+                    // `dispatch_due_notifications` already maps a poisoned lock to an `Err`
+                    // (see `commands::notifications`) rather than panicking, so this arm alone
+                    // is sufficient to keep the loop itself alive on that path too — it just
+                    // skips this cycle's dispatch and logs, rather than recovering the guard.
                     let state = app_handle.state::<AppState>();
                     if let Err(e) = commands::notifications::dispatch_due_notifications(&app_handle, &state) {
                         eprintln!("Notification dispatch failed: {}", e);

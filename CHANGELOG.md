@@ -5,6 +5,46 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.39.2] - 2026-07-01
+
+### Fixed — Critical bug fixes following a self-review of WP-50 through WP-55
+
+A self-review of the WP-50–55 body of work surfaced several real issues. This patch fixes them in priority order, adds regression coverage for the highest-severity one, and is honest in the documentation below about what's still incomplete.
+
+**Highest severity — WP-55 genomic fingerprint data corruption:** `genomic_fingerprint` is masked to the literal string `"[RESTRICTED]"` for roles without visibility, but `update_strain_status` persisted whatever the caller sent for that field unconditionally, and `StrainManager.svelte`'s status-update form pre-filled itself directly from the (possibly masked) current value. A role with this field hidden performing *any* status update — not only a genomic-confirmation one — would silently overwrite the real fingerprint with the placeholder string, permanently destroying it short of restoring an older backup.
+- New `db::permissions::reject_if_restricted_marker` rejects the literal marker outright on any write path.
+- `update_strain_status`'s SQL now uses `genomic_fingerprint = COALESCE(?, genomic_fingerprint)`, so omitting the field (`None`) preserves the existing value instead of nulling it. Combined with the guard above, a masked value can never be round-tripped back into the database regardless of what any frontend sends.
+- `StrainManager.svelte` no longer pre-fills the status form with a masked value (it loads blank, with an explanatory notice) and gained a client-side submit guard as defense-in-depth.
+- Extracted the validation + guard + update logic into a new pure `db::queries::apply_strain_status_update`, mirroring this codebase's existing extraction pattern, specifically so the corruption scenario is covered by a real regression test instead of only being reachable through the full command/session/state machinery. Added tests for exactly the reported scenario — read a masked field, perform a status update, verify the real value is preserved — plus COALESCE-preservation and normal-flow (non-masked) cases.
+
+**Structural fix — N+1 query pattern in field-level permission masking:** `get_strain`, `list_strains_by_species`, `get_breeding_program`, and `list_breeding_programs` each queried the permissions table once per row when masking a list. New `db::permissions::FieldPermissionSet` loads a role's full permission set once into a `HashMap`; all four call sites now use it, so listing N strains costs one permission query instead of N. This was blocking any further expansion of field masking to new entities, per the review.
+
+**WP-52 — Scheduler mutex poisoning:** the background notification scheduler silently and permanently stopped if its database-mutex lock was ever poisoned (`let Ok(db) = ... else { break }`, with no logging). It now logs the poisoning and recovers the guard via `PoisonError::into_inner` rather than dying silently — a poisoned `rusqlite::Connection` is still structurally valid, since the panic that poisons the mutex happens in unrelated Rust logic, not mid-mutation of the connection itself.
+
+**WP-53 — iOS camera permission:** added `src-tauri/Info.ios.plist` with `NSCameraUsageDescription` (required for the QR scanner, which would otherwise crash on camera access) and wired it in via `bundle.iOS.infoPlist` in `tauri.conf.json`. Documented in the iOS workflow that this is believed correct per Tauri's config schema but unverified against a real Xcode build, consistent with the rest of that workflow's disclosed status.
+
+**Masking robustness — notification pipeline:** added a defense-in-depth backstop, `db::notifications::drop_candidates_with_restricted_marker`. Every notification candidate is now checked for the restricted-field marker before being returned, regardless of source, so a future change that sources a new `WorkQueueItem` field from a maskable entity can't silently leak a masked value into a desktop popup, an email, or the audit log. No current field triggers this — it guards against a future regression, not an active leak.
+
+**SMTP credential security:** `smtp_config.password` is still stored in plaintext in the *live* database (unchanged — see Known limitations below), but `create_backup` now redacts the password (sets it to `NULL`) in the backup file it produces, so a backup copied to removable media, uploaded to cloud storage, or handed to support no longer carries it. Other SMTP fields (host/username/from address) are preserved so restoring doesn't force reconfiguring the whole mail server — just re-entering the password.
+
+**WP-54 — Sensor source field validation:** added `db::sensors::validate_source`, checked in `create_environmental_reading`, so an invalid `source` value now gets a clear, specific error instead of a raw SQLite CHECK-constraint message. Also documented (module doc comment + ROADMAP.md) that `source` is a caller-supplied label, not a verified fact: since no hardware transport is wired up, nothing has ever legitimately set a non-`manual` source, and neither `create_environmental_reading` nor `ingest_sensor_payload` (which also has no frontend UI wiring at all) can confirm a caller's claim is true.
+
+### Documentation
+- ROADMAP.md's WP-50/WP-51 "As built" sections now disclose, concretely: the PostgreSQL connector's live-database code path has been compile-checked and unit-tested only — it has never been executed against a real PostgreSQL server, in this repository or in CI. LAN sync conflict resolution has no frontend UI at all beyond an aggregate unresolved-conflicts count — there is no way to view or act on an individual conflict without direct database access — and `SyncConflict` itself stores only the two sides' hashes, not the field-level content an admin would need to make an informed resolution decision.
+- README.md, CHANGELOG.md (this file), and ROADMAP.md updated for this pass.
+
+**Tests:** 26 new Rust unit tests — 10 in `db::permissions` (`reject_if_restricted_marker` + `FieldPermissionSet`), 4 in `db::queries` (the corruption-bug regression coverage for `apply_strain_status_update`), 4 in `db::notifications` (the masking backstop), 5 in `db::sensors` (source validation), and 3 in `commands::backup` (SMTP redaction, `tauri-commands`-only). 387/387 passing with `--no-default-features` (up from 364 at v1.39.1), 419/419 passing with the default `tauri-commands` feature.
+
+**Verification:** `cargo test --lib --no-default-features` (387/387), `cargo test --lib` (419/419, default `tauri-commands` feature), `cargo clippy --no-default-features --lib -- -D warnings` (clean), `cargo clippy --lib -- -D warnings` (clean), and `npm run check` (0 errors, 85 pre-existing a11y warnings, unchanged) all pass. Also re-verified `cargo check`/`cargo clippy --features postgres` compile and lint cleanly.
+
+### Known limitations and remaining risk
+- **SMTP password is still stored in plaintext in the live database** — only backup files are now protected. Full OS-keychain integration was assessed and deliberately not attempted in this pass: it would require a new cross-platform dependency (e.g. the `keyring` crate) that cannot be meaningfully verified in this sandboxed environment (no secret-service/keychain daemon available to test against), and shipping unverified security-critical code is worse than disclosing the gap plainly.
+- **PostgreSQL backend and LAN sync remain foundational and unverified** — see the expanded ROADMAP.md disclosures above. Neither is usable by a real lab today at any level of risk tolerance; both are well-tested skeletons, not working features.
+- **iOS remains unverified end-to-end.** The `Info.plist` fix in this patch is believed correct per Tauri's documented config schema but has not been exercised via a real `cargo tauri ios init`/build — no macOS/Xcode/Apple Developer access is available in this environment.
+- **Sensor `source` field validation rejects nonsense values but cannot verify a claimed source is true.** Closing that gap for real requires actual hardware transport work (USB/BLE/MQTT), which remains out of scope.
+
+**Bump:** patch — **v1.39.2**.
+
 ## [1.39.1] - 2026-07-01
 
 ### Fixed — WP-53: iOS CI workflow and configuration hardening
