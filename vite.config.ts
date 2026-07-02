@@ -1,10 +1,23 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { VitePWA } from "vite-plugin-pwa";
 
 const host = process.env.TAURI_DEV_HOST;
 
+// Read directly from package.json rather than importing it, so the build
+// doesn't depend on resolveJsonModule / JSON import-assertion support.
+const pkg = JSON.parse(
+  readFileSync(fileURLToPath(new URL("./package.json", import.meta.url)), "utf-8"),
+);
+
 export default defineConfig(async () => ({
+  // Exposed so the PWA/browser build target — which has no Tauri IPC bridge
+  // to call `getVersion()` on — can still display the running version.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [
     svelte({
       compilerOptions: {

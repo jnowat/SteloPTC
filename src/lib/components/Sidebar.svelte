@@ -2,13 +2,21 @@
   import { currentView, navigateTo, unreadErrorCount, workQueueCount, type View } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import { getVersion } from '@tauri-apps/api/app';
+  import { isTauri } from '../isTauri';
 
   let { onlogout, ontoggleDark, isDark }: { onlogout: () => void; ontoggleDark: () => void; isDark: boolean } = $props();
 
   let mobileOpen = $state(false);
   let appVersion = $state('…');
 
-  getVersion().then(v => { appVersion = `v${v}`; });
+  // Inside the Tauri webview, read the running binary's own version. In the
+  // PWA/browser build there is no Tauri IPC bridge to answer that call, so
+  // fall back to the version baked in at build time (see vite.config.ts).
+  if (isTauri()) {
+    getVersion().then(v => { appVersion = `v${v}`; }).catch(() => { appVersion = `v${__APP_VERSION__}`; });
+  } else {
+    appVersion = `v${__APP_VERSION__}`;
+  }
 
   interface NavItem {
     id: View;
