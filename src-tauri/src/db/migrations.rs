@@ -238,6 +238,47 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (45)", [])?;
     }
 
+    if current < 46 {
+        migration_046_checkpoint_anchors(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (46)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_046_checkpoint_anchors(conn: &Connection) -> DbResult<()> {
+    // WP-66: Trust Layer Phase 2 — on-chain anchoring (Dogecoin OP_RETURN).
+    //
+    // Each row records the lifecycle of anchoring one audit-checkpoint's Merkle
+    // root to a public chain: `prepared` (the OP_RETURN payload was generated),
+    // `submitted` (the operator broadcast it externally and recorded the txid),
+    // and `confirmed` (the on-chain data was independently verified to commit to
+    // this exact root). `merkle_root` and `op_return_hex` are snapshotted at
+    // prepare time so the anchor record stays interpretable even if the covering
+    // checkpoint is later re-examined. When an anchor reaches `submitted`, the
+    // txid is also written back to audit_checkpoints.anchored_txid (the Phase-2
+    // hook reserved since migration 013) so the existing checkpoint row surfaces
+    // its anchor directly.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS checkpoint_anchors (
+            id            TEXT PRIMARY KEY,
+            checkpoint_id TEXT NOT NULL REFERENCES audit_checkpoints(id),
+            chain_name    TEXT NOT NULL DEFAULT 'dogecoin',
+            merkle_root   TEXT NOT NULL,
+            op_return_hex TEXT NOT NULL,
+            txid          TEXT,
+            status        TEXT NOT NULL DEFAULT 'prepared'
+                          CHECK (status IN ('prepared','submitted','confirmed')),
+            verified_at   TEXT,
+            created_by    TEXT REFERENCES users(id),
+            created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_checkpoint_anchors_checkpoint
+            ON checkpoint_anchors(checkpoint_id);
+        CREATE INDEX IF NOT EXISTS idx_checkpoint_anchors_txid
+            ON checkpoint_anchors(txid);",
+    )?;
     Ok(())
 }
 

@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod anchoring;
 pub mod auth;
 pub mod cloud;
 pub mod compliance_export;
@@ -307,6 +308,12 @@ pub fn run() {
             commands::plugins::install_plugin,
             commands::plugins::install_plugin_from_zip,
             commands::plugins::uninstall_plugin,
+            // On-chain anchoring — Trust Layer Phase 2 (WP-66)
+            commands::anchoring::preview_checkpoint_anchor_payload,
+            commands::anchoring::prepare_checkpoint_anchor,
+            commands::anchoring::record_checkpoint_anchor,
+            commands::anchoring::verify_checkpoint_anchor,
+            commands::anchoring::list_checkpoint_anchors,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
