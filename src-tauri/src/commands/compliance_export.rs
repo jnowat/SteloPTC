@@ -9,7 +9,7 @@ use crate::auth as auth_service;
 use crate::compliance_export::{bundle, signing, zip_writer};
 use crate::AppState;
 
-fn exports_dir() -> Result<std::path::PathBuf, String> {
+pub(crate) fn exports_dir() -> Result<std::path::PathBuf, String> {
     let base = crate::db::Database::db_path();
     let parent = base.parent().ok_or_else(|| "Could not determine exports directory".to_string())?;
     let dir = parent.join("compliance_exports");
@@ -17,7 +17,7 @@ fn exports_dir() -> Result<std::path::PathBuf, String> {
     Ok(dir)
 }
 
-fn load_or_create_signing_key(conn: &rusqlite::Connection) -> Result<(String, String), String> {
+pub(crate) fn load_or_create_signing_key(conn: &rusqlite::Connection) -> Result<(String, String), String> {
     let existing: Option<(String, String)> = conn
         .query_row("SELECT public_key_b64, private_key_b64 FROM signing_keys WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?)))
         .ok();
@@ -43,7 +43,7 @@ pub fn get_signing_public_key(state: State<AppState>, token: String) -> Result<S
     Ok(public_key)
 }
 
-fn sign_and_zip(private_key_b64: &str, public_key_b64: &str, documents: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>, String> {
+pub(crate) fn sign_and_zip(private_key_b64: &str, public_key_b64: &str, documents: Vec<(String, Vec<u8>)>) -> Result<Vec<u8>, String> {
     let mut files = Vec::with_capacity(documents.len() * 2 + 1);
     for (name, contents) in documents {
         let signature = signing::sign(private_key_b64, &contents)?;

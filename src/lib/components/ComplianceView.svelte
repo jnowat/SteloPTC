@@ -5,6 +5,7 @@
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
   import ComplianceExportWizard from './ComplianceExportWizard.svelte';
+  import SubmissionPipelinePanel from './SubmissionPipelinePanel.svelte';
 
   let records = $state<any[]>([]);
   let flags = $state<any[]>([]);
@@ -12,6 +13,7 @@
   let error = $state<string | null>(null);
   let showForm = $state(false);
   let showExportWizard = $state(false);
+  let showPipeline = $state(false);
   let activeTab = $state<'flags' | 'records'>('flags');
   let page = $state(1);
   let totalPages = $state(1);
@@ -89,6 +91,13 @@
         >
           {showExportWizard ? 'Hide Regulatory Export' : 'Regulatory Export ↗'}
         </button>
+        <button
+          class="btn"
+          title={showPipeline ? 'Close the submission pipeline' : 'Monitor compliance state and generate signed regulatory submission packages when ready'}
+          onclick={() => showPipeline = !showPipeline}
+        >
+          {showPipeline ? 'Hide Submission Pipeline' : 'Submission Pipeline ⛭'}
+        </button>
       {/if}
       {#if $currentUser?.role !== 'guest'}
         <button class="btn btn-primary" title={showForm ? 'Cancel and close the form' : 'Open form to add a new compliance record'} onclick={() => showForm = !showForm}>
@@ -100,6 +109,10 @@
 
   {#if showExportWizard && canExport}
     <ComplianceExportWizard onclose={() => showExportWizard = false} />
+  {/if}
+
+  {#if showPipeline && canExport}
+    <SubmissionPipelinePanel onclose={() => showPipeline = false} />
   {/if}
 
   {#if showForm}

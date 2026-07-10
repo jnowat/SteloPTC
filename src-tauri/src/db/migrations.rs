@@ -248,6 +248,46 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (47)", [])?;
     }
 
+    if current < 48 {
+        migration_048_regulatory_submissions(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (48)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_048_regulatory_submissions(conn: &Connection) -> DbResult<()> {
+    // WP-68: Regulatory submission pipeline (advanced).
+    //
+    // Tracks the lifecycle of a regulatory submission (built on the WP-60 export
+    // bundles): `ready`/`blocked` reflect the last readiness evaluation against
+    // live compliance state; `generated` means the signed package was produced;
+    // `submitted` means the operator submitted it through the official channel and
+    // recorded the returned reference; `acknowledged` is reserved for a later
+    // confirmation step. `scope` and `readiness` are JSON snapshots. SteloPTC does
+    // not electronically submit to a government portal — see the module docs for
+    // the disclosed scope boundary.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS regulatory_submissions (
+            id                   TEXT PRIMARY KEY,
+            kind                 TEXT NOT NULL,
+            title                TEXT NOT NULL,
+            scope                TEXT NOT NULL,
+            status               TEXT NOT NULL DEFAULT 'draft'
+                                 CHECK (status IN ('draft','ready','blocked','generated','submitted','acknowledged')),
+            readiness            TEXT,
+            package_path         TEXT,
+            package_signature    TEXT,
+            submission_reference TEXT,
+            auto_generate        INTEGER NOT NULL DEFAULT 0,
+            created_by           TEXT REFERENCES users(id),
+            created_at           TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at           TEXT NOT NULL DEFAULT (datetime('now')),
+            submitted_at         TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_regulatory_submissions_status
+            ON regulatory_submissions(status);",
+    )?;
     Ok(())
 }
 

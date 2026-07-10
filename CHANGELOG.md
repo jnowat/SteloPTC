@@ -5,6 +5,31 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.44.0] - 2026-07-10
+
+### Added — WP-68: Regulatory submission pipeline (advanced)
+
+Turns the one-off WP-60 regulatory exports into a **monitored submission lifecycle**: it evaluates whether a submission's preconditions are met against live compliance state, generates and signs the bundle when ready, auto-generates ready submissions on a background tick, and tracks each one through to a recorded external reference. All verification commands pass clean: `cargo test --lib --no-default-features` (**521 passing**, up from 511), `cargo clippy -- -D warnings` (clean, full Tauri build), `npm run check` (**0 errors, 0 warnings**, 410 files), `npm test` (**104 passing**).
+
+**Backend — pipeline engine (`src-tauri/src/reg_submission/`), pure & connection-only:**
+- **Readiness evaluation.** `evaluate_readiness(kind, scope)` runs kind-specific, read-only checks: **Part 11** (valid date range, range has audit entries, audit chain verifies over the range via the reused `verify_audit_range`, users exist); **USDA** (plant-tissue-culture profile, specimens in scope exist and have scientific names, **no expired permits**); **CITES** (root specimen exists, Appendix confirmed, audit chain verifies). A submission is `ready` only when every check passes.
+- **Lifecycle state machine.** Migration **048** adds `regulatory_submissions` (`draft`→`ready`/`blocked`→`generated`→`submitted`→`acknowledged`, with `scope`/`readiness` JSON snapshots). `create_submission` evaluates readiness on creation; `reevaluate_submission` refreshes only non-terminal rows (never silently unwinds a produced package); `attach_package` and `mark_submitted` are guarded transitions.
+- **Generation reuses WP-60 wholesale (`commands/reg_submission.rs`).** For a `ready` submission it assembles the WP-60 documents (`bundle::build_part11_documents`/`build_usda_permit_prefill`/`build_cites_dossier`), signs + zips them via the exact `compliance_export::{signing, zip_writer}` path (now exposed `pub(crate)`), adds a **top-level Ed25519 signature over the delivered `.zip`**, writes it under `compliance_exports/submissions/`, and re-checks readiness immediately before generating so a stale `ready` can't slip a no-longer-compliant package through.
+- **Automated monitoring.** `run_submission_monitor` (and the same `monitor()` wired into the existing background scheduler on each tick, best-effort) re-evaluates every non-terminal submission and auto-generates the package for any now `ready` and flagged `auto_generate`.
+- **Commands** (all supervisor/admin gated, matching WP-60): `evaluate_submission_readiness`, `create_submission`, `reevaluate_submission`, `generate_submission_package`, `mark_submission_submitted`, `list_submissions`, `run_submission_monitor`. Every write is audited.
+- **10 new Rust unit tests** (per-kind readiness ready/blocked incl. expired-permit block, create-sets-status-from-readiness, re-evaluate blocked→ready when fixed, full generate→submit lifecycle, cannot-generate-a-blocked, mark-submitted requires a reference + generated state).
+
+**Honest scope, disclosed (matching the WP-60 "does not submit to APHIS directly" boundary):** SteloPTC produces a ready-to-submit, signed package but does **not** electronically submit to a government portal — that needs authenticated portal credentials, per-agency form APIs, and jurisdiction-specific legal authorization. The operator submits through the official channel and records the returned reference in the pipeline.
+
+**Frontend:**
+- **Submission Pipeline panel** (`SubmissionPipelinePanel.svelte`) in Compliance (admin/supervisor): pick a type, fill kind-specific scope, **Check Readiness** (per-check ✓/✗ list), **Create Submission**, **Run Monitor**, and per-row **Re-check / Generate / Mark Submitted** with status badges. `api.ts` gains the readiness/submission/monitor types and seven helpers.
+
+**Documentation:**
+- **[`docs/regulatory-exports.md`](docs/regulatory-exports.md)** extended with a full submission-pipeline section (honest scope, lifecycle, readiness checks, generation/signing, automated monitoring, role gating).
+- **ROADMAP** — WP-68 moved from "Reserved" to delivered; versioning table and migration footer updated (48 migrations).
+
+**Bump:** minor — **v1.44.0** (new user-facing capability: monitored, auto-generating, signed regulatory submission pipeline).
+
 ## [1.43.0] - 2026-07-10
 
 ### Added — WP-67: Trust Layer Phase 3 — specimen events as signed transactions

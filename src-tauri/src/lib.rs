@@ -6,6 +6,7 @@ pub mod compliance_export;
 pub mod db;
 pub mod models;
 pub mod plugins;
+pub mod reg_submission;
 pub mod signed_ledger;
 
 #[cfg(feature = "tauri-commands")]
@@ -320,6 +321,14 @@ pub fn run() {
             commands::signed_events::record_signed_event,
             commands::signed_events::list_signed_events,
             commands::signed_events::verify_signed_event_ledger,
+            // Regulatory submission pipeline (WP-68)
+            commands::reg_submission::evaluate_submission_readiness,
+            commands::reg_submission::create_submission,
+            commands::reg_submission::reevaluate_submission,
+            commands::reg_submission::generate_submission_package,
+            commands::reg_submission::mark_submission_submitted,
+            commands::reg_submission::list_submissions,
+            commands::reg_submission::run_submission_monitor,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
@@ -371,6 +380,21 @@ pub fn run() {
                     if let Err(e) = commands::notifications::dispatch_due_notifications(&app_handle, &state) {
                         eprintln!("Notification dispatch failed: {}", e);
                     }
+
+                    // WP-68: on the same tick, re-evaluate regulatory submissions
+                    // against current compliance state and auto-generate any that
+                    // became ready. Best-effort — a poisoned lock or error here
+                    // must never stop the scheduler loop.
+                    match state.db.lock() {
+                        Ok(db) => match commands::reg_submission::monitor(&db.conn) {
+                            Ok(r) if r.auto_generated > 0 => {
+                                eprintln!("Submission monitor: auto-generated {} package(s).", r.auto_generated);
+                            }
+                            Ok(_) => {}
+                            Err(e) => eprintln!("Submission monitor failed: {}", e),
+                        },
+                        Err(_) => eprintln!("Submission monitor: db mutex poisoned; skipping this tick."),
+                    };
                 }
             });
 

@@ -1816,3 +1816,73 @@ export async function listSignedEvents(entityId?: string, limit?: number) {
 export async function verifySignedEventLedger() {
   return call<LedgerVerification>('verify_signed_event_ledger');
 }
+
+// ── WP-68: Regulatory submission pipeline ────────────────────────────────────
+
+export interface ReadinessCheck {
+  key: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface Readiness {
+  kind: string;
+  ready: boolean;
+  blocking_count: number;
+  checks: ReadinessCheck[];
+}
+
+export interface RegulatorySubmission {
+  id: string;
+  kind: string;
+  title: string;
+  scope: string;
+  status: 'draft' | 'ready' | 'blocked' | 'generated' | 'submitted' | 'acknowledged';
+  readiness: string | null;
+  package_path: string | null;
+  package_signature: string | null;
+  submission_reference: string | null;
+  auto_generate: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  submitted_at: string | null;
+}
+
+export interface MonitorResult {
+  evaluated: number;
+  became_ready: number;
+  auto_generated: number;
+  still_blocked: number;
+}
+
+export async function evaluateSubmissionReadiness(kind: string, scope: Record<string, unknown>) {
+  return call<Readiness>('evaluate_submission_readiness', { kind, scope });
+}
+
+export async function createSubmission(
+  kind: string, title: string, scope: Record<string, unknown>, autoGenerate: boolean,
+) {
+  return call<RegulatorySubmission>('create_submission', { kind, title, scope, autoGenerate });
+}
+
+export async function reevaluateSubmission(submissionId: string) {
+  return call<RegulatorySubmission>('reevaluate_submission', { submissionId });
+}
+
+export async function generateSubmissionPackage(submissionId: string) {
+  return call<RegulatorySubmission>('generate_submission_package', { submissionId });
+}
+
+export async function markSubmissionSubmitted(submissionId: string, reference: string) {
+  return call<RegulatorySubmission>('mark_submission_submitted', { submissionId, reference });
+}
+
+export async function listSubmissions() {
+  return call<RegulatorySubmission[]>('list_submissions');
+}
+
+export async function runSubmissionMonitor() {
+  return call<MonitorResult>('run_submission_monitor');
+}

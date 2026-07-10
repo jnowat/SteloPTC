@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.43.0-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.44.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-511%20Rust%20·%20104%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-521%20Rust%20·%20104%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -67,8 +67,10 @@ with atomic freeze/thaw.
 
 **📋 Compliance & reporting**
 Auto-flagging rules (expired permits, HLB testing, quarantine, mycoplasma), agency tracking
-(USDA APHIS, TX Ag, FL FDACS), professional print/PDF reports, an analytics dashboard, and
-regulatory export bundles (FDA 21 CFR Part 11, USDA PPQ 526, CITES). See
+(USDA APHIS, TX Ag, FL FDACS), professional print/PDF reports, an analytics dashboard,
+regulatory export bundles (FDA 21 CFR Part 11, USDA PPQ 526, CITES), and a **submission
+pipeline** that monitors compliance state and auto-generates signed, ready-to-submit
+packages when preconditions are met. See
 [`docs/regulatory-exports.md`](docs/regulatory-exports.md).
 
 **🤖 Local AI assistant** *(optional, on-device)*
