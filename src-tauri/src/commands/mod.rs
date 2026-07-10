@@ -33,3 +33,4 @@ pub mod ai;
 pub mod cloud_backup;
 pub mod compliance_export;
 pub mod plugins;
+pub mod anchoring;

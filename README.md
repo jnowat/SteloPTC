@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.41.0-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.42.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-479%20Rust%20·%20104%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-502%20Rust%20·%20104%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -214,13 +214,18 @@ Provenance and integrity are the point of SteloPTC, not an afterthought:
 - **Merkle checkpoints & portable proofs** — seal a range of history to a single Merkle root;
   three-stage verification (count → root → per-entry content) catches deletions, hash
   tampering, and content edits. Proofs verify offline with a standalone script.
+- **On-chain anchoring** — publish a checkpoint's Merkle root to the Dogecoin chain in an
+  `OP_RETURN` output for third-party-verifiable timestamping. SteloPTC prepares the exact
+  bytes and independently verifies the on-chain data (trusting only the block explorer, not
+  the lab); broadcasting uses your own external wallet.
 - **Authentication & roles** — bcrypt password hashing, session tokens, forced first-login
   password change, and four roles (Admin / Supervisor / Tech / Guest).
 - **Locked-down CSP** — `script-src 'self'`; no remote scripts.
 - **Encrypted cloud backup** — Argon2id + AES-256-GCM, passphrase never persisted.
 
-See [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md) and
-[`docs/merkle-proofs.md`](docs/merkle-proofs.md) for the specifications.
+See [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md),
+[`docs/merkle-proofs.md`](docs/merkle-proofs.md), and
+[`docs/on-chain-anchoring.md`](docs/on-chain-anchoring.md) for the specifications.
 
 ---
 
@@ -266,7 +271,7 @@ CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-androi
 | [Roadmap](ROADMAP.md) | The plan, the current state, and per-work-packet status |
 | [Changelog](CHANGELOG.md) | Release-by-release history |
 | [Local AI setup](docs/local-ai.md) | Ollama / LocalAI configuration & troubleshooting |
-| [Merkle checkpoints](docs/merkle-checkpoints.md) · [proofs](docs/merkle-proofs.md) | Hash-chain & tamper-evidence specifications |
+| [Merkle checkpoints](docs/merkle-checkpoints.md) · [proofs](docs/merkle-proofs.md) · [on-chain anchoring](docs/on-chain-anchoring.md) | Hash-chain, tamper-evidence & anchoring specifications |
 | [Regulatory exports](docs/regulatory-exports.md) | FDA / USDA / CITES export bundles |
 | [Plugin authoring](docs/plugin-authoring.md) | `.steloplugin` vocabulary-pack format |
 | [Vocabulary system](docs/vocabulary-system.md) | How lab-profile vocabularies work |

@@ -5,6 +5,30 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.42.0] - 2026-07-10
+
+### Added — WP-66: Trust Layer Phase 2 — on-chain anchoring (Dogecoin `OP_RETURN`)
+
+Publishes an audit **Merkle checkpoint root** (WP-20/21) to a public blockchain so a checkpoint's existence at a point in time is verifiable by anyone — including a party who does not trust, and has no access to, the lab's database. All verification commands pass clean: `cargo test --lib --no-default-features` (**502 passing**, up from 479), `cargo clippy -- -D warnings` (clean, full Tauri build), `npm run check` (**0 errors, 0 warnings**, 409 files), `npm test` (**104 passing**).
+
+**Backend — deterministic, dependency-free anchoring core (`src-tauri/src/anchoring/`):**
+- **`OP_RETURN` wire format.** `anchoring::mod` builds the exact standard Bitcoin/Dogecoin `OP_RETURN` scriptPubKey that carries a checkpoint root: `OP_RETURN` (`0x6a`) + a 37-byte pushdata of `STEL` marker + version byte + the 32-byte Merkle root (39 bytes total, well under Dogecoin's 80-byte relay limit). Hex encode/decode is hand-rolled — no new crate — matching this repo's dependency-avoidance ethos. An all-zero (empty-checkpoint) root is refused.
+- **Trustless verification.** `op_return_matches_root(op_return_hex, expected_root)` extracts the committed root from raw on-chain data and compares it to a checkpoint's stored root, trusting **only those two inputs** — so an external auditor can reproduce it with nothing but a block explorer and the lab's published root (a standalone Python snippet is included in the docs). Tolerant of both shapes an explorer surfaces (full `6a25…` scriptPubKey or the bare payload).
+- **Lifecycle store (`anchoring::store`).** Pure connection-level `prepare → record → verify` over an in-memory migrated DB (no Tauri), exactly like the WP-60 bundle helpers. Migration **046** adds `checkpoint_anchors` (`prepared` → `submitted` → `confirmed`, with `merkle_root`/`op_return_hex` snapshotted). Recording a broadcast txid also writes it back to `audit_checkpoints.anchored_txid` — the Phase-2 hook reserved since migration 013.
+- **Commands (`commands/anchoring.rs`).** `preview_checkpoint_anchor_payload`, `prepare_checkpoint_anchor`, `record_checkpoint_anchor`, `verify_checkpoint_anchor` (all manage-gated), and `list_checkpoint_anchors` (any authenticated). Every lifecycle action is written to the audit log.
+- **23 new Rust unit tests** (17 wire-format: hex round-trip, marker/version/length validation, wrong-opcode/length-mismatch rejection, match/mismatch, garbage-hex handling; 6 store: prepare/record/verify happy paths, malformed-txid rejection, mismatch leaves status unchanged, checkpoint-scoped listing).
+
+**Honest scope, disclosed (matching WP-50 / WP-59 / WP-61 precedent):** SteloPTC prepares the bytes to broadcast and verifies what comes back, but it does **not** broadcast the transaction itself. Publishing an `OP_RETURN` needs a funded wallet and a node or broadcast API (private keys + money); that step is done with an external wallet the operator already controls. The trust guarantee is independent of who broadcasts, so the verifiable core ships now and the value-moving step stays out of the app. No new dependency, no network client.
+
+**Frontend:**
+- **On-Chain Anchoring panel** (`OnChainAnchorPanel.svelte`, admin/supervisor-gated) embedded in **Audit Log → Checkpoints**: pick a sealed checkpoint, **Prepare Anchor** to get the copyable `OP_RETURN` hex + broadcast instructions, **Record txid** after broadcasting externally, and **Verify** against the on-chain data pasted from a block explorer — with a live status table (`prepared`/`submitted`/`confirmed`). `api.ts` gains the anchor types and five helpers.
+
+**Documentation:**
+- **New [`docs/on-chain-anchoring.md`](docs/on-chain-anchoring.md)** — the wire format, the honest ship-vs-defer split, the three-state lifecycle, the standalone trustless-verification recipe (with Python), and the command reference.
+- **ROADMAP** — WP-66 moved from "Reserved" to delivered; versioning table and migration footer updated (46 migrations).
+
+**Bump:** minor — **v1.42.0** (new user-facing capability: publish and independently verify on-chain anchors of audit checkpoints).
+
 ## [1.41.0] - 2026-07-10
 
 ### Added — WP-56b: Local AI runtime hardening (LocalAI/OpenAI-compatible support, status probe, AI Settings panel) + documentation overhaul

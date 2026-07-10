@@ -7,6 +7,7 @@
            listAuditEntriesCursor } from '../api';
   import { addNotification } from '../stores/app';
   import DataState from './DataState.svelte';
+  import OnChainAnchorPanel from './OnChainAnchorPanel.svelte';
 
   let entries = $state<any[]>([]);
   let total = $state(0);
@@ -576,6 +577,9 @@
           </div>
         </div>
       {/if}
+
+      <!-- On-chain anchoring — Trust Layer Phase 2 (WP-66) -->
+      <OnChainAnchorPanel {checkpoints} />
     </div>
   {/if}
 

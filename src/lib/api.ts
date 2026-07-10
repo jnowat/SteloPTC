@@ -1719,3 +1719,57 @@ export async function reanchorTaxonChain(taxonId: string, reason: string) {
     affected_strains: number; affected_specimens: number; reanchor_event_id: string;
   }>('reanchor_taxon_chain', { taxonId, reason });
 }
+
+// ── WP-66: Trust Layer Phase 2 — on-chain anchoring (Dogecoin OP_RETURN) ──────
+
+export interface CheckpointAnchor {
+  id: string;
+  checkpoint_id: string;
+  chain_name: string;
+  merkle_root: string;
+  op_return_hex: string;
+  txid: string | null;
+  status: 'prepared' | 'submitted' | 'confirmed';
+  verified_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AnchorPayloadPreview {
+  merkle_root: string;
+  payload_hex: string;
+  op_return_script_hex: string;
+  chain_name: string;
+  marker: string;
+  version: number;
+  byte_size: number;
+}
+
+export interface AnchorVerifyResult {
+  anchor_id: string;
+  ok: boolean;
+  expected_root: string;
+  found_root: string | null;
+  message: string;
+}
+
+export async function previewCheckpointAnchorPayload(checkpointId: string, chainName?: string) {
+  return call<AnchorPayloadPreview>('preview_checkpoint_anchor_payload', { checkpointId, chainName });
+}
+
+export async function prepareCheckpointAnchor(checkpointId: string, chainName?: string) {
+  return call<CheckpointAnchor>('prepare_checkpoint_anchor', { checkpointId, chainName });
+}
+
+export async function recordCheckpointAnchor(anchorId: string, txid: string) {
+  return call<CheckpointAnchor>('record_checkpoint_anchor', { anchorId, txid });
+}
+
+export async function verifyCheckpointAnchor(anchorId: string, opReturnHex: string) {
+  return call<AnchorVerifyResult>('verify_checkpoint_anchor', { anchorId, opReturnHex });
+}
+
+export async function listCheckpointAnchors(checkpointId?: string) {
+  return call<CheckpointAnchor[]>('list_checkpoint_anchors', { checkpointId });
+}
