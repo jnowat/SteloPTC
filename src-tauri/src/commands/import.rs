@@ -251,7 +251,7 @@ pub fn import_xlsx(
             }
             None => {
                 let id = new_id();
-                let bc = batch_code.unwrap_or_else(|| format!("IMP-{}", &id[..8].to_uppercase()));
+                let bc = batch_code.unwrap_or_else(|| format!("IMP-{}", id[..8].to_uppercase()));
                 if let Err(e) = conn.execute(
                     "INSERT INTO media_batches (id, batch_id, name, ph_before_autoclave, volume_prepared_ml,
                      preparation_date, expiration_date, sterilization_method, notes,
