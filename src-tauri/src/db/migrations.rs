@@ -243,6 +243,53 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (46)", [])?;
     }
 
+    if current < 47 {
+        migration_047_signed_events(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (47)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_047_signed_events(conn: &Connection) -> DbResult<()> {
+    // WP-67: Trust Layer Phase 3 — specimen lifecycle events as signed
+    // transactions.
+    //
+    // `user_signing_keys` holds one Ed25519 keypair per user (distinct from the
+    // single lab-wide WP-60 export key in `signing_keys`), so a signed ledger
+    // entry is attributable to the individual who authorized it. `signed_events`
+    // is a monotonic, hash-chained ledger (`seq` gapless and UNIQUE; `prev_hash`
+    // links each entry to the previous one) where every row additionally carries
+    // a detached Ed25519 signature over its `event_hash` plus the `public_key`
+    // that signed it. Content edits break `event_hash`; deletions break the `seq`
+    // gap; forged attribution fails signature verification. See
+    // db::queries::compute_entry_hash for the shared hashing primitive.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS user_signing_keys (
+            user_id         TEXT PRIMARY KEY REFERENCES users(id),
+            public_key_b64  TEXT NOT NULL,
+            private_key_b64 TEXT NOT NULL,
+            created_at      TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS signed_events (
+            id          TEXT PRIMARY KEY,
+            seq         INTEGER NOT NULL UNIQUE,
+            event_type  TEXT NOT NULL,
+            entity_type TEXT NOT NULL,
+            entity_id   TEXT,
+            user_id     TEXT REFERENCES users(id),
+            payload     TEXT NOT NULL,
+            prev_hash   TEXT NOT NULL,
+            event_hash  TEXT NOT NULL,
+            signature   TEXT NOT NULL,
+            public_key  TEXT NOT NULL,
+            created_at  TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_signed_events_entity
+            ON signed_events(entity_type, entity_id);
+        CREATE INDEX IF NOT EXISTS idx_signed_events_seq
+            ON signed_events(seq);",
+    )?;
     Ok(())
 }
 

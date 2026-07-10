@@ -5,6 +5,31 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.43.0] - 2026-07-10
+
+### Added — WP-67: Trust Layer Phase 3 — specimen events as signed transactions
+
+A ledger of specimen lifecycle events where each entry is hash-chained (tamper-evident, like the WP-18 audit log) **and** individually signed with the acting user's Ed25519 key (non-repudiation) — so an entry's authorship cannot be forged by anyone who can write to the database but does not hold the signer's private key. This is the layer the ROADMAP reserved for Trust Layer Phase 3. All verification commands pass clean: `cargo test --lib --no-default-features` (**511 passing**, up from 502), `cargo clippy -- -D warnings` (clean, full Tauri build), `npm run check` (**0 errors, 0 warnings**, 410 files), `npm test` (**104 passing**).
+
+**Backend — signed-ledger engine (`src-tauri/src/signed_ledger/`):**
+- **Per-user signing keys.** Migration **047** adds `user_signing_keys` — one Ed25519 keypair per user, generated lazily on first use, distinct from the single lab-wide WP-60 export key so a signed entry is attributable to the *individual* who authorized it.
+- **Monotonic, hash-chained, signed ledger.** `signed_events` (migration 047) assigns a global gapless `seq`, chains `prev_hash` from the previous entry, hashes each entry with the shared `db::queries::compute_entry_hash` primitive (`SHA-256(canonical ‖ prev_hash)`), and stores an Ed25519 signature over that hash plus the signing public key. Signing **reuses the WP-60 `compliance_export::signing` module** — no new crypto surface.
+- **Four-invariant verification.** `verify_ledger` walks the whole ledger and detects (with the failing `seq`): content edits (recomputed hash ≠ stored), deletions (a `seq` gap), broken chain linkage, forged signatures (Ed25519 verify fails), and swapped-key forgery (entry key ≠ the user's registered key).
+- **Commands (`commands/signed_events.rs`).** `record_signed_event` (write-capable; signs the caller's own action), `list_signed_events`, `verify_signed_event_ledger`, `get_user_signing_public_key` — all authenticated.
+- **Wired demonstrating integration.** Every newly **created specimen** now automatically records a signed `specimen_created` genesis transaction attributed to the creating user, via a **best-effort** `try_append_signed_event(...)` after commit — a ledger hiccup can never fail specimen creation (mirrors the `log_audit(...).ok()` convention).
+- **9 new Rust unit tests** (key create-once/reuse, sign+chain, empty-ledger verify, full-ledger verify, content-tamper detection, deletion/seq-gap detection, forged-signature detection, swapped-key detection, entity-scoped listing).
+
+**Honest scope, disclosed (matching the WP-63 "exhaustive command-layer sweep is disproportionate" precedent):** the full engine + commands + one wired integration (specimen creation) ship now. Extending *automatic* signing to every one of the ~30 mutation commands (passage, split, death, archive, …) is incremental follow-up — each is a one-line `try_append_signed_event(...)` at the call site, and `record_signed_event` already lets a client sign any event today. The foundation forecloses nothing.
+
+**Frontend:**
+- **Signed Event Ledger panel** (`SignedLedgerPanel.svelte`) in the Audit Log: **Verify Ledger** (walks hashes + sequence + every signature, green/red verdict), a recent-events table (seq, event type, entity, signer, event hash), and **Show My Signing Key**. `api.ts` gains the `SignedEvent`/`LedgerVerification` types and four helpers.
+
+**Documentation:**
+- **New [`docs/signed-event-ledger.md`](docs/signed-event-ledger.md)** — the data model, canonical form, append algorithm, the four verification invariants, the honest ship-vs-incremental split, and the command reference.
+- **ROADMAP** — WP-67 moved from "Reserved" to delivered; versioning table and migration footer updated (47 migrations).
+
+**Bump:** minor — **v1.43.0** (new user-facing capability: sign and cryptographically verify the authorship of lifecycle events).
+
 ## [1.42.0] - 2026-07-10
 
 ### Added — WP-66: Trust Layer Phase 2 — on-chain anchoring (Dogecoin `OP_RETURN`)

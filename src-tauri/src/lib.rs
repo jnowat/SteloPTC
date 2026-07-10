@@ -6,6 +6,7 @@ pub mod compliance_export;
 pub mod db;
 pub mod models;
 pub mod plugins;
+pub mod signed_ledger;
 
 #[cfg(feature = "tauri-commands")]
 pub mod commands;
@@ -314,6 +315,11 @@ pub fn run() {
             commands::anchoring::record_checkpoint_anchor,
             commands::anchoring::verify_checkpoint_anchor,
             commands::anchoring::list_checkpoint_anchors,
+            // Signed-event ledger — Trust Layer Phase 3 (WP-67)
+            commands::signed_events::get_user_signing_public_key,
+            commands::signed_events::record_signed_event,
+            commands::signed_events::list_signed_events,
+            commands::signed_events::verify_signed_event_ledger,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

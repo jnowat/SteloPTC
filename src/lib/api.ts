@@ -1773,3 +1773,46 @@ export async function verifyCheckpointAnchor(anchorId: string, opReturnHex: stri
 export async function listCheckpointAnchors(checkpointId?: string) {
   return call<CheckpointAnchor[]>('list_checkpoint_anchors', { checkpointId });
 }
+
+// ── WP-67: Trust Layer Phase 3 — signed-event ledger ─────────────────────────
+
+export interface SignedEvent {
+  id: string;
+  seq: number;
+  event_type: string;
+  entity_type: string;
+  entity_id: string | null;
+  user_id: string | null;
+  payload: string;
+  prev_hash: string;
+  event_hash: string;
+  signature: string;
+  public_key: string;
+  created_at: string;
+}
+
+export interface LedgerVerification {
+  verified: boolean;
+  total_events: number;
+  signatures_valid: number;
+  first_break_seq: number | null;
+  message: string;
+}
+
+export async function getUserSigningPublicKey() {
+  return call<string>('get_user_signing_public_key');
+}
+
+export async function recordSignedEvent(
+  eventType: string, entityType: string, entityId: string | null, payload: string,
+) {
+  return call<SignedEvent>('record_signed_event', { eventType, entityType, entityId, payload });
+}
+
+export async function listSignedEvents(entityId?: string, limit?: number) {
+  return call<SignedEvent[]>('list_signed_events', { entityId, limit });
+}
+
+export async function verifySignedEventLedger() {
+  return call<LedgerVerification>('verify_signed_event_ledger');
+}
