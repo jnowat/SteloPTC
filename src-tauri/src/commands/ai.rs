@@ -36,6 +36,7 @@ fn row_to_suggestion(row: &rusqlite::Row) -> rusqlite::Result<AiSuggestion> {
 fn load_config(conn: &rusqlite::Connection) -> OllamaConfig {
     let default = OllamaConfig::default();
     OllamaConfig {
+        provider: crate::db::queries::read_setting(conn, "ai_provider", &default.provider),
         base_url: crate::db::queries::read_setting(conn, "ai_ollama_base_url", &default.base_url),
         text_model: crate::db::queries::read_setting(conn, "ai_ollama_text_model", &default.text_model),
         vision_model: crate::db::queries::read_setting(conn, "ai_ollama_vision_model", &default.vision_model),
@@ -45,6 +46,7 @@ fn load_config(conn: &rusqlite::Connection) -> OllamaConfig {
 
 #[derive(serde::Serialize)]
 pub struct AiConfigResponse {
+    pub provider: String,
     pub base_url: String,
     pub text_model: String,
     pub vision_model: String,
@@ -55,13 +57,19 @@ pub fn get_ai_config(state: State<AppState>, token: String) -> Result<AiConfigRe
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
     let cfg = load_config(&db.conn);
-    Ok(AiConfigResponse { base_url: cfg.base_url, text_model: cfg.text_model, vision_model: cfg.vision_model })
+    Ok(AiConfigResponse {
+        provider: cfg.provider,
+        base_url: cfg.base_url,
+        text_model: cfg.text_model,
+        vision_model: cfg.vision_model,
+    })
 }
 
 #[tauri::command]
 pub fn set_ai_config(
     state: State<AppState>,
     token: String,
+    provider: String,
     base_url: String,
     text_model: String,
     vision_model: String,
@@ -71,7 +79,15 @@ pub fn set_ai_config(
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can change the AI configuration".to_string());
     }
+    // Only two providers are supported, both fully local; reject anything else
+    // so a typo can't silently disable AI assistance.
+    let provider_value = if ollama::is_openai_compatible(&provider) {
+        "localai".to_string()
+    } else {
+        "ollama".to_string()
+    };
     for (key, value) in [
+        ("ai_provider", &provider_value),
         ("ai_ollama_base_url", &base_url),
         ("ai_ollama_text_model", &text_model),
         ("ai_ollama_vision_model", &vision_model),
@@ -83,6 +99,68 @@ pub fn set_ai_config(
         ).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// A live reachability probe for the configured local AI runtime. Lists the
+/// models actually installed so the Settings → AI Assistant panel can tell a
+/// user, before they ever run a suggestion, whether their runtime is up and
+/// whether the configured text/vision models are present. Mirrors the
+/// detect-models check Gruper runs in its Add-Agent dialog.
+#[derive(serde::Serialize)]
+pub struct AiStatusResponse {
+    pub provider: String,
+    pub base_url: String,
+    pub reachable: bool,
+    pub models: Vec<String>,
+    pub text_model: String,
+    pub vision_model: String,
+    pub text_model_installed: bool,
+    pub vision_model_installed: bool,
+    pub error: Option<String>,
+}
+
+/// Ollama tags carry a `:tag` suffix (`llama3.1:8b`); a configured model of
+/// `llama3.1` should still count as installed. Match on exact name or on the
+/// base name before the first colon.
+fn model_present(installed: &[String], wanted: &str) -> bool {
+    if wanted.is_empty() {
+        return false;
+    }
+    installed.iter().any(|m| {
+        m == wanted || m.split(':').next() == Some(wanted) || wanted.split(':').next() == m.split(':').next()
+    })
+}
+
+#[tauri::command]
+pub fn get_ai_status(state: State<AppState>, token: String) -> Result<AiStatusResponse, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let cfg = load_config(&db.conn);
+
+    match ollama::list_models(&cfg) {
+        Ok(models) => Ok(AiStatusResponse {
+            provider: cfg.provider,
+            base_url: cfg.base_url,
+            reachable: true,
+            text_model_installed: model_present(&models, &cfg.text_model),
+            vision_model_installed: model_present(&models, &cfg.vision_model),
+            models,
+            text_model: cfg.text_model,
+            vision_model: cfg.vision_model,
+            error: None,
+        }),
+        Err(e) => Ok(AiStatusResponse {
+            provider: cfg.provider,
+            base_url: cfg.base_url,
+            reachable: false,
+            models: Vec::new(),
+            text_model_installed: false,
+            vision_model_installed: false,
+            text_model: cfg.text_model,
+            vision_model: cfg.vision_model,
+            error: Some(e),
+        }),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -368,5 +446,19 @@ mod tests {
         .unwrap();
         let status: String = conn.query_row("SELECT status FROM ai_suggestions WHERE id = 'sug1'", [], |r| r.get(0)).unwrap();
         assert_ne!(status, "pending", "approve_ai_suggestion must reject a non-pending row");
+    }
+
+    #[test]
+    fn model_present_matches_exact_and_tagged_names() {
+        let installed = vec!["llama3.1:8b".to_string(), "llava:latest".to_string()];
+        // Configured base name matches an installed `:tag` variant.
+        assert!(super::model_present(&installed, "llama3.1"));
+        assert!(super::model_present(&installed, "llava"));
+        // Exact match with tag.
+        assert!(super::model_present(&installed, "llama3.1:8b"));
+        // Not installed.
+        assert!(!super::model_present(&installed, "mistral"));
+        // Empty configured model is never "present".
+        assert!(!super::model_present(&installed, ""));
     }
 }

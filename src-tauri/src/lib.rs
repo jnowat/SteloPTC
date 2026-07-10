@@ -279,9 +279,10 @@ pub fn run() {
             commands::locations::delete_location,
             commands::locations::set_specimen_location_pin,
             commands::locations::get_location_map_data,
-            // Local AI analysis (WP-56)
+            // Local AI analysis (WP-56, WP-56b)
             commands::ai::get_ai_config,
             commands::ai::set_ai_config,
+            commands::ai::get_ai_status,
             commands::ai::summarize_notes,
             commands::ai::suggest_passage_comment,
             commands::ai::analyze_photo_for_contamination,

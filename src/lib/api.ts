@@ -1533,12 +1533,36 @@ export interface AiSuggestion {
   created_at: string;
 }
 
-export async function getAiConfig() {
-  return call<{ base_url: string; text_model: string; vision_model: string }>('get_ai_config');
+export interface AiConfig {
+  provider: string; // 'ollama' | 'localai'
+  base_url: string;
+  text_model: string;
+  vision_model: string;
 }
 
-export async function setAiConfig(baseUrl: string, textModel: string, visionModel: string) {
-  return call<void>('set_ai_config', { baseUrl, textModel, visionModel });
+export interface AiStatus {
+  provider: string;
+  base_url: string;
+  reachable: boolean;
+  models: string[];
+  text_model: string;
+  vision_model: string;
+  text_model_installed: boolean;
+  vision_model_installed: boolean;
+  error: string | null;
+}
+
+export async function getAiConfig() {
+  return call<AiConfig>('get_ai_config');
+}
+
+export async function setAiConfig(provider: string, baseUrl: string, textModel: string, visionModel: string) {
+  return call<void>('set_ai_config', { provider, baseUrl, textModel, visionModel });
+}
+
+/** Live reachability probe: is the local AI runtime up, and which models does it have? */
+export async function getAiStatus() {
+  return call<AiStatus>('get_ai_status');
 }
 
 export async function summarizeNotes(entityType: 'specimen' | 'subculture', entityId: string) {
