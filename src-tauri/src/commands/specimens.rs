@@ -280,6 +280,19 @@ pub fn create_specimen(
     tx.commit().map_err(|e| format!("Failed to commit specimen: {}", e))?;
     crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
+    // WP-67: record a signed genesis transaction for the new specimen, attributed
+    // to the creating user's Ed25519 key. Best-effort — a ledger hiccup must never
+    // fail specimen creation (mirrors the `log_audit(...).ok()` convention).
+    let signed_payload = serde_json::json!({
+        "event": "specimen_created",
+        "specimen_id": id,
+        "accession_number": accession,
+    })
+    .to_string();
+    crate::signed_ledger::try_append_signed_event(
+        &db.conn, &user.id, "specimen_created", "specimen", Some(&id), &signed_payload,
+    );
+
     drop(db);
     get_specimen(state, token, id)
 }

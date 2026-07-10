@@ -71,3 +71,49 @@ For the underlying audit-chain hash verification itself (not just the signature 
 ## Role gating
 
 Every export command (`export_fda_part11_bundle`, `export_usda_permit`, `export_cites_dossier`) requires supervisor or admin role. `get_signing_public_key` (which lazily generates the lab's Ed25519 keypair on first call if one doesn't exist yet) is also supervisor/admin only.
+
+---
+
+# Regulatory Submission Pipeline (WP-68)
+
+_Added in v1.44.0. Builds directly on the export bundles above._
+
+The **submission pipeline** turns a one-off export into a monitored lifecycle: it evaluates whether a submission's preconditions are met against live compliance state, generates and signs the bundle when it's ready, and tracks the submission through to a recorded external reference.
+
+## Honest scope
+
+SteloPTC produces a **ready-to-submit, signed package** — it does **not** electronically submit to a government web portal. Automated portal submission needs authenticated portal credentials, per-agency form APIs, and legal authorization that vary by jurisdiction; that is out of scope (and out of a specimen tracker). This is the same boundary WP-60 already draws ("SteloPTC does not submit this form to APHIS directly"). The operator downloads the signed package, submits it through the official channel, and records the returned reference number in the pipeline.
+
+## Lifecycle
+
+Each submission is a row in `regulatory_submissions` (migration 048) with a status:
+
+| Status | Meaning |
+|---|---|
+| `ready` | Last readiness evaluation passed every check |
+| `blocked` | One or more readiness checks failed (see the stored `readiness` JSON) |
+| `generated` | The signed package was produced (`package_path` + top-level `package_signature`) |
+| `submitted` | The operator submitted it externally and recorded a `submission_reference` |
+| `acknowledged` | Reserved for a future authority-confirmation step |
+
+## Readiness checks
+
+`evaluate_submission_readiness(kind, scope)` runs kind-specific, read-only checks:
+
+- **Part 11** — a valid `from`/`to` date range; the range contains audit entries; the audit hash chain verifies over the range (reusing `verify_audit_range`); at least one user exists.
+- **USDA** — the lab profile is plant tissue culture; at least one specimen in scope; every specimen exists and has a scientific name; **no specimen has an expired permit** (a blocking compliance issue).
+- **CITES** — the root specimen exists; a CITES Appendix is confirmed; the audit hash chain verifies (chain-of-custody integrity).
+
+A submission is `ready` only when every check passes.
+
+## Generation & signing
+
+`generate_submission_package(submission_id)` re-checks readiness, assembles the WP-60 documents for the kind, signs each document, zips them with the public key (the same `sign_and_zip` path the exports use), adds a **top-level detached Ed25519 signature over the exact `.zip` artifact** (stored as `package_signature`), writes the package under `compliance_exports/submissions/`, and advances the submission to `generated`.
+
+## Automated monitoring
+
+`run_submission_monitor()` (and the same `monitor()` call wired into the background scheduler on each tick) re-evaluates every non-terminal submission against current compliance state and **auto-generates** the package for any that is now `ready` and flagged `auto_generate`. This is what makes the pipeline "monitor compliance state and, when conditions are met, generate and sign" without manual intervention.
+
+## Role gating
+
+Every submission command (`evaluate_submission_readiness`, `create_submission`, `reevaluate_submission`, `generate_submission_package`, `mark_submission_submitted`, `list_submissions`, `run_submission_monitor`) requires supervisor or admin role. The UI lives in **Compliance → Submission Pipeline**.

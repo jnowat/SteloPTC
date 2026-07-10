@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.42.0-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.44.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-502%20Rust%20·%20104%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-521%20Rust%20·%20104%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -67,8 +67,10 @@ with atomic freeze/thaw.
 
 **📋 Compliance & reporting**
 Auto-flagging rules (expired permits, HLB testing, quarantine, mycoplasma), agency tracking
-(USDA APHIS, TX Ag, FL FDACS), professional print/PDF reports, an analytics dashboard, and
-regulatory export bundles (FDA 21 CFR Part 11, USDA PPQ 526, CITES). See
+(USDA APHIS, TX Ag, FL FDACS), professional print/PDF reports, an analytics dashboard,
+regulatory export bundles (FDA 21 CFR Part 11, USDA PPQ 526, CITES), and a **submission
+pipeline** that monitors compliance state and auto-generates signed, ready-to-submit
+packages when preconditions are met. See
 [`docs/regulatory-exports.md`](docs/regulatory-exports.md).
 
 **🤖 Local AI assistant** *(optional, on-device)*
@@ -218,14 +220,19 @@ Provenance and integrity are the point of SteloPTC, not an afterthought:
   `OP_RETURN` output for third-party-verifiable timestamping. SteloPTC prepares the exact
   bytes and independently verifies the on-chain data (trusting only the block explorer, not
   the lab); broadcasting uses your own external wallet.
+- **Signed event ledger** — a hash-chained ledger of lifecycle events, each additionally
+  signed with the acting user's own Ed25519 key, adding non-repudiation on top of
+  tamper-evidence: an entry's authorship can't be forged by someone who can write to the
+  database but doesn't hold the signer's key.
 - **Authentication & roles** — bcrypt password hashing, session tokens, forced first-login
   password change, and four roles (Admin / Supervisor / Tech / Guest).
 - **Locked-down CSP** — `script-src 'self'`; no remote scripts.
 - **Encrypted cloud backup** — Argon2id + AES-256-GCM, passphrase never persisted.
 
 See [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md),
-[`docs/merkle-proofs.md`](docs/merkle-proofs.md), and
-[`docs/on-chain-anchoring.md`](docs/on-chain-anchoring.md) for the specifications.
+[`docs/merkle-proofs.md`](docs/merkle-proofs.md),
+[`docs/on-chain-anchoring.md`](docs/on-chain-anchoring.md), and
+[`docs/signed-event-ledger.md`](docs/signed-event-ledger.md) for the specifications.
 
 ---
 
@@ -271,7 +278,7 @@ CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-androi
 | [Roadmap](ROADMAP.md) | The plan, the current state, and per-work-packet status |
 | [Changelog](CHANGELOG.md) | Release-by-release history |
 | [Local AI setup](docs/local-ai.md) | Ollama / LocalAI configuration & troubleshooting |
-| [Merkle checkpoints](docs/merkle-checkpoints.md) · [proofs](docs/merkle-proofs.md) · [on-chain anchoring](docs/on-chain-anchoring.md) | Hash-chain, tamper-evidence & anchoring specifications |
+| [Merkle checkpoints](docs/merkle-checkpoints.md) · [proofs](docs/merkle-proofs.md) · [on-chain anchoring](docs/on-chain-anchoring.md) · [signed event ledger](docs/signed-event-ledger.md) | Hash-chain, tamper-evidence, anchoring & signed-ledger specifications |
 | [Regulatory exports](docs/regulatory-exports.md) | FDA / USDA / CITES export bundles |
 | [Plugin authoring](docs/plugin-authoring.md) | `.steloplugin` vocabulary-pack format |
 | [Vocabulary system](docs/vocabulary-system.md) | How lab-profile vocabularies work |

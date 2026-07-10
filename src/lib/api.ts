@@ -1773,3 +1773,116 @@ export async function verifyCheckpointAnchor(anchorId: string, opReturnHex: stri
 export async function listCheckpointAnchors(checkpointId?: string) {
   return call<CheckpointAnchor[]>('list_checkpoint_anchors', { checkpointId });
 }
+
+// ── WP-67: Trust Layer Phase 3 — signed-event ledger ─────────────────────────
+
+export interface SignedEvent {
+  id: string;
+  seq: number;
+  event_type: string;
+  entity_type: string;
+  entity_id: string | null;
+  user_id: string | null;
+  payload: string;
+  prev_hash: string;
+  event_hash: string;
+  signature: string;
+  public_key: string;
+  created_at: string;
+}
+
+export interface LedgerVerification {
+  verified: boolean;
+  total_events: number;
+  signatures_valid: number;
+  first_break_seq: number | null;
+  message: string;
+}
+
+export async function getUserSigningPublicKey() {
+  return call<string>('get_user_signing_public_key');
+}
+
+export async function recordSignedEvent(
+  eventType: string, entityType: string, entityId: string | null, payload: string,
+) {
+  return call<SignedEvent>('record_signed_event', { eventType, entityType, entityId, payload });
+}
+
+export async function listSignedEvents(entityId?: string, limit?: number) {
+  return call<SignedEvent[]>('list_signed_events', { entityId, limit });
+}
+
+export async function verifySignedEventLedger() {
+  return call<LedgerVerification>('verify_signed_event_ledger');
+}
+
+// ── WP-68: Regulatory submission pipeline ────────────────────────────────────
+
+export interface ReadinessCheck {
+  key: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface Readiness {
+  kind: string;
+  ready: boolean;
+  blocking_count: number;
+  checks: ReadinessCheck[];
+}
+
+export interface RegulatorySubmission {
+  id: string;
+  kind: string;
+  title: string;
+  scope: string;
+  status: 'draft' | 'ready' | 'blocked' | 'generated' | 'submitted' | 'acknowledged';
+  readiness: string | null;
+  package_path: string | null;
+  package_signature: string | null;
+  submission_reference: string | null;
+  auto_generate: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  submitted_at: string | null;
+}
+
+export interface MonitorResult {
+  evaluated: number;
+  became_ready: number;
+  auto_generated: number;
+  still_blocked: number;
+}
+
+export async function evaluateSubmissionReadiness(kind: string, scope: Record<string, unknown>) {
+  return call<Readiness>('evaluate_submission_readiness', { kind, scope });
+}
+
+export async function createSubmission(
+  kind: string, title: string, scope: Record<string, unknown>, autoGenerate: boolean,
+) {
+  return call<RegulatorySubmission>('create_submission', { kind, title, scope, autoGenerate });
+}
+
+export async function reevaluateSubmission(submissionId: string) {
+  return call<RegulatorySubmission>('reevaluate_submission', { submissionId });
+}
+
+export async function generateSubmissionPackage(submissionId: string) {
+  return call<RegulatorySubmission>('generate_submission_package', { submissionId });
+}
+
+export async function markSubmissionSubmitted(submissionId: string, reference: string) {
+  return call<RegulatorySubmission>('mark_submission_submitted', { submissionId, reference });
+}
+
+export async function listSubmissions() {
+  return call<RegulatorySubmission[]>('list_submissions');
+}
+
+export async function runSubmissionMonitor() {
+  return call<MonitorResult>('run_submission_monitor');
+}

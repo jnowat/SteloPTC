@@ -8,6 +8,7 @@
   import { addNotification } from '../stores/app';
   import DataState from './DataState.svelte';
   import OnChainAnchorPanel from './OnChainAnchorPanel.svelte';
+  import SignedLedgerPanel from './SignedLedgerPanel.svelte';
 
   let entries = $state<any[]>([]);
   let total = $state(0);
@@ -582,6 +583,9 @@
       <OnChainAnchorPanel {checkpoints} />
     </div>
   {/if}
+
+  <!-- Signed event ledger — Trust Layer Phase 3 (WP-67) -->
+  <SignedLedgerPanel />
 
   <div class="card" style="margin-bottom:16px;">
     <div class="form-row-3">

@@ -34,3 +34,5 @@ pub mod cloud_backup;
 pub mod compliance_export;
 pub mod plugins;
 pub mod anchoring;
+pub mod signed_events;
+pub mod reg_submission;
