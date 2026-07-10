@@ -5,6 +5,29 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.41.0] - 2026-07-10
+
+### Added — WP-56b: Local AI runtime hardening (LocalAI/OpenAI-compatible support, status probe, AI Settings panel) + documentation overhaul
+
+A consumer-readiness pass focused on two things: making the local AI feature genuinely operable (a user can now configure it and confirm it works from inside the app), and rewriting the top-level documentation so a new user can actually get oriented. All verification commands pass clean: `cargo test --lib --no-default-features` (**479 passing**, up from 467), `npm test` (**104 passing**), `npm run check` (**0 errors, 0 warnings**, 407 files), and `npm run build` (clean).
+
+**Local AI runtime (WP-56b — backend):**
+- **Second runtime: LocalAI / OpenAI-compatible.** The AI client (`ai/ollama.rs`) now supports two fully-local providers, selected by a new `ai_provider` setting: `ollama` (native `/api/generate` + `/api/tags`, the default and unchanged) and `localai` (any OpenAI-compatible server — LocalAI, or Ollama's own `/v1` shim — via `/v1/chat/completions` + `/v1/models`). Vision images are attached as OpenAI-style `image_url` data URIs on the compatible path. This directly follows the Ollama-first, LocalAI-optional approach used by the sibling [Gruper](https://github.com/jnowat/gruper) project. No new HTTP-client dependency was added — both paths remain a hand-rolled `std::net::TcpStream` client.
+- **Model listing + live status probe.** New `list_models()` (routes to `/api/tags` or `/v1/models`) and a `get_ai_status` Tauri command that returns reachability, the models actually installed, and whether the configured text/vision models are present — the same "detect models before you run anything" check Gruper does in its Add-Agent dialog. `model_present` tolerates Ollama's `:tag` suffixes (`llama3.1` matches an installed `llama3.1:8b`).
+- **Classified, actionable errors.** A dead endpoint now returns "Could not reach the local Ollama at … — is it running?" and a missing model returns the exact `ollama pull <model>` (or LocalAI equivalent) to fix it, instead of a generic failure string. `get_ai_config`/`set_ai_config` carry the provider; `set_ai_config` normalizes an unknown provider to a supported one so a typo can't silently disable AI.
+- **12 new pure-function unit tests** (provider recognition, OpenAI request/response build+parse, `/api/tags` and `/v1/models` parsing, 404→pull-hint classification) + 1 command-layer test (`model_present`). None require a live network service, matching the existing WP-56 disclosed-limitation pattern.
+
+**Local AI runtime (WP-56b — frontend):**
+- **New Settings → AI Assistant panel** (`AiSettingsPanel.svelte`, admin/supervisor-gated). Pick the runtime (Ollama / LocalAI), set the base URL and text/vision models, and click **Test Connection** for a live green/red status with the installed-model list and per-model ✓/✗ — plus the exact `ollama pull` hint when a configured model is missing. This closes a real gap: the AI backend was configurable but had **no UI to configure it or verify it was running**. `api.ts` gains `AiConfig`/`AiStatus` types, `getAiStatus()`, and the provider argument on `setAiConfig`.
+
+**Documentation overhaul (consumer readiness):**
+- **README rewritten** from a 789-line feature-and-version wall into a scannable ~330-line consumer front door: hero, grouped highlights, an honest **platform support & maturity** table (Windows/Android stable; iOS experimental; PWA read-only; foundation-only features flagged), quick download/install/build, a local-AI quick start, and a documentation index. Every honesty disclaimer from the previous README (iOS unverified, PWA cannot mutate, S3/SFTP config-only, PostgreSQL foundation-only, plugin WASM deferred) is preserved.
+- **New [`docs/local-ai.md`](docs/local-ai.md)** — a full setup & usage guide: what the assistant does, the on-device privacy model, step-by-step Ollama and LocalAI setup, model recommendations, the configuration reference, the draft-and-approve audit flow, and a troubleshooting table.
+- **UserManual expanded to cover Phase F** — the long-standing documentation gap (sections previously stopped at Phase E / v1.32.0). New end-user sections were added for the Local AI assistant, interactive lab map, analytics dashboard, encrypted cloud backup, regulatory compliance exports, plugin manager, desktop/email notifications, environmental sensors, and the installable PWA.
+- **ROADMAP** gains a status-at-a-glance summary and a WP-56b entry; version banners and footers updated to v1.41.0.
+
+**Bump:** minor — **v1.41.0** (new user-facing capability: second AI runtime + AI configuration/status UI).
+
 ## [1.40.2] - 2026-07-01
 
 ### Stabilization & Hardening — Android CI fix + masking-model hardening (no new features)

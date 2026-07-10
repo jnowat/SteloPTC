@@ -1,10 +1,10 @@
 # SteloPTC User Manual
 
-**Current as of:** July 2026 · **v1.40.2** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis, interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, and taxon chain re-anchoring)
+**Current as of:** July 2026 · **v1.41.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 + WP-56b fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis (Ollama + LocalAI), interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, taxon chain re-anchoring, and local-AI runtime hardening)
 
 > **Scope note:** This manual documents both shipping features and planned functionality. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, basic Taxonomy Navigator) fully shipped as of v1.17.0. Phase TX-2 is fully shipped: WP-35 taxonomy backbone (v1.18.0), WP-36 NCBI import/sync (v1.19.0), WP-37 pedigree tools (v1.20.0), WP-38 advanced hybridization (v1.21.0), WP-39 advanced multi-column Taxonomy Navigator (v1.22.0). Cell Culture features (WP-30–34) shipped v1.23.0–v1.27.0. Mycology features (WP-40–44) fully shipped v1.28.0–v1.32.0: WP-40 vocabulary (v1.28.0), WP-41 colonization & contamination tracking (v1.29.0), WP-42 genetic lineage markers (v1.30.0), WP-43 fruiting conditions & yield tracking (v1.31.0), WP-44 mycology QC compliance rules (v1.32.0). **Phase E complete.** Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
 >
-> **Known documentation gap:** Sections 1–17 below cover the app through Phase E (v1.32.0) in detail. **Phase F (v1.38.0–v1.40.2 — WP-50 through WP-65) has shipped in the application but is not yet written up here**: the multi-user/PostgreSQL and LAN sync foundations, desktop/email notifications, environmental sensor logging, field-level permissions, local AI note assistance, the interactive lab map, the analytics dashboard, encrypted cloud backup, FDA/USDA/CITES compliance export bundles, the plugin system, the installable PWA, and the taxon re-anchoring tool all exist in the running app today. See `CHANGELOG.md` and `ROADMAP.md` for what each does and its current limitations until this manual is expanded to cover them (tracked in `DailyClaudeRoutineCheckup.md`).
+> **Phase F is now documented here.** Sections 1–17 cover the core app through Phase E (v1.32.0). **Sections 19–26 (new in v1.41.0) cover Phase F for end users**: the local AI assistant (Ollama + LocalAI), the interactive lab map, the analytics dashboard, encrypted cloud backup & sync, regulatory compliance exports, the plugin manager, desktop/email notifications and environmental monitoring, and the installable web app (PWA). Foundation-only capabilities (the PostgreSQL backend, LAN sync transport, S3/SFTP cloud targets, and plugin WASM rule execution) are called out where they appear. See `CHANGELOG.md` and `ROADMAP.md` for release-by-release detail and per-work-packet limitations.
 
 SteloPTC is a desktop application for managing plant tissue culture laboratories with a strong focus on **provenance, traceability, and cryptographic data integrity**.
 
@@ -32,6 +32,17 @@ It combines traditional lab record-keeping with an immutable, hash-chained audit
 16. Troubleshooting & Common Issues
 17. Best Practices for Tissue Culture Tracking
 18. Future Features & Roadmap
+
+**Phase F features (v1.38.0–v1.41.0):**
+
+19. Local AI Assistant (Ollama & LocalAI)
+20. Interactive Lab Map
+21. Analytics Dashboard
+22. Encrypted Cloud Backup & Multi-Device Sync
+23. Regulatory Compliance Exports (FDA / USDA / CITES)
+24. Plugin Manager
+25. Notifications & Environmental Monitoring
+26. Installable Web App (PWA)
 
 ---
 
@@ -384,6 +395,126 @@ Everything below was still "planned" the last time this section was rewritten; n
 - **Automated regulatory submission pipeline** — reserved (WP-68+), not started
 
 For the latest status, refer to `ROADMAP.md` in the repository.
+
+---
+
+## 19. Local AI Assistant (Ollama & LocalAI)
+
+SteloPTC includes an **optional, fully on-device AI assistant**. It never sends your data to a cloud service — it talks only to a local model runtime you control.
+
+### What it does
+
+- **Summarize Notes** — condenses a specimen's notes into 2–3 sentences, preserving measurements, dates, and contamination observations.
+- **Suggest Passage Comment** — drafts a factual observation for the next passage from the specimen's recent history.
+- **Analyze Photo for Contamination** — examines an attached photo for visible microbial growth, discoloration, or turbidity (needs a vision-capable model).
+
+The **Summarize Notes** and **Suggest Passage Comment** buttons appear in the notes area of the Specimen Detail view; **Analyze Photo** appears in the photo lightbox.
+
+### Draft-and-approve — the AI never edits a record on its own
+
+Every AI result is a **pending draft**. You review it and either **Approve** or **Reject** it. On approval, the text is *appended* (never overwrites) to the record's notes, tagged `[AI-assisted, approved by <you>]`, through the normal audit-logged edit path — so the change is attributed to you, with the model name and prompt preserved for traceability.
+
+### Setting it up
+
+1. Install [Ollama](https://ollama.com) and pull a text model and a vision model:
+   ```
+   ollama pull llama3.1
+   ollama pull llava
+   ```
+2. Open **Settings → AI Assistant** (admin/supervisor). Choose the **Ollama** runtime, then click **Test Connection**. A green result confirms the runtime is reachable and lists your installed models, with a ✓ next to your configured text and vision models.
+
+Prefer an existing OpenAI-compatible server? Choose the **LocalAI** runtime instead and point the base URL at it. Full instructions, model recommendations, and troubleshooting are in **`docs/local-ai.md`**.
+
+> If no runtime is configured or running, the AI buttons simply report that the model is unreachable — every manual workflow is unaffected.
+
+---
+
+## 20. Interactive Lab Map
+
+The lab map gives you a visual floor plan of your lab with a pin for each location.
+
+- Upload a floor-plan image and drop a pin for each **location** (this is purely additive — your existing free-text Room / Rack / Shelf / Tray fields keep working exactly as before).
+- Toggle a **heat map** to shade pins by specimen **density**, **contamination risk**, or **age**, so hotspots are obvious at a glance.
+- Click a pin to manage the specimens at that location.
+- A compact lab-map overview also appears as a **Dashboard** widget.
+
+The map is optional; if you don't configure a floor plan, nothing changes about how you enter locations.
+
+---
+
+## 21. Analytics Dashboard
+
+A dedicated **Analytics** view surfaces lab performance over time:
+
+- A **KPI strip**: active specimens, passages this week, contamination rate, throughput, and growth trend.
+- A **time-range selector** (30 days / 90 days / 1 year / all).
+- **Trend charts** for growth rate, subculture frequency, contamination rate, passage success, and media efficiency.
+- A sortable **Strain Performance** comparison.
+- A **Technician Activity** report (supervisor/admin only, framed as workload visibility).
+- A one-click **multi-sheet Excel export** of the analytics.
+
+Charts are drawn inline — no external charting service is contacted.
+
+---
+
+## 22. Encrypted Cloud Backup & Multi-Device Sync
+
+Beyond the on-demand local backup (Dashboard), SteloPTC can back up to an **encrypted offsite target**, configured in **Settings → Cloud Backup** (admin only).
+
+- **Zero-knowledge encryption.** Backups are encrypted client-side with Argon2id + AES-256-GCM before they ever leave the machine. **Your passphrase is never stored** — you re-enter it for every backup, restore, or sync.
+- **Target types.** **Local / Network Share (NAS)** and **SMB** are fully live for backup, restore, and multi-device sync. **S3** and **SFTP** can be configured today but return a clear "not yet connected" message (no network client was added yet).
+- **Restore** uses the same two-step, type-`RESTORE`-to-confirm destructive flow as the local restore; the app restarts on success.
+- **Sync** (NAS/SMB) reconciles changes between devices using the audit hash chain; genuine conflicts are recorded durably for review rather than silently merged.
+
+---
+
+## 23. Regulatory Compliance Exports (FDA / USDA / CITES)
+
+From **Compliance → Regulatory Export** (supervisor/admin), you can generate agency-ready bundles:
+
+- **FDA 21 CFR Part 11** — a signed attestation bundle (Ed25519 digital signature) suitable for electronic-records compliance.
+- **USDA APHIS PPQ Form 526** — a pre-filled permit export.
+- **CITES Species Provenance Dossier** — a chain-of-custody dossier combined with the Darwin Core taxonomy export.
+
+Each bundle is generated from your existing records; see **`docs/regulatory-exports.md`** for the exact contents and formats.
+
+---
+
+## 24. Plugin Manager
+
+SteloPTC can be extended with **plugin vocabulary packs** (`.steloplugin` files — JSON manifests) that add a new lab profile with its own seeded vocabulary (stages, methods, categories, etc.).
+
+- Install and remove plugins from **Settings → Plugin Manager** (admin only).
+- Vocabulary seeding is **idempotent and profile-isolated** — installing a plugin never disturbs existing profiles, and uninstalling never rolls back seeded vocabulary.
+- **Current limitation:** a plugin's compliance *rules* (WASM) are validated and recorded but **not yet executed** — only the vocabulary is active in this release.
+
+The manifest format and a worked example are documented in **`docs/plugin-authoring.md`**.
+
+---
+
+## 25. Notifications & Environmental Monitoring
+
+### Notifications
+
+SteloPTC can raise **desktop notifications** and send **email digests** for due/overdue work, driven by a background scheduler. Configure email delivery under **Settings → Email (SMTP) Configuration**.
+
+> **Security note:** the SMTP password is currently stored **unencrypted** in the local database (there is no OS-keychain integration yet). It is redacted from all backups, and you should use a dedicated, least-privilege mail account. This caveat is shown directly in the Settings panel.
+
+### Environmental monitoring
+
+You can log **environmental sensor readings** (temperature, humidity, etc.) manually. Readings display as **sparklines** with **threshold alerts** when a value goes out of range. **Current limitation:** automatic hardware ingestion (USB/BLE/MQTT) is not yet wired — entry is manual for now.
+
+---
+
+## 26. Installable Web App (PWA)
+
+The web build of SteloPTC is **installable** as a Progressive Web App (via your browser's "Add to Home Screen"/install prompt) with an offline-capable shell.
+
+**What works in the PWA today:** all read views (Dashboard, Specimen list/detail, Analytics, Audit Log, etc.) once cached, and installability.
+
+**What still requires the desktop app:** any **data mutation**, QR camera scanning, native file access (attachments, local backup/restore), OS print, and desktop notifications. SteloPTC's command layer is desktop-native (Tauri IPC); a browser-only install is a **read-only shell** until a remote API server exists.
+
+The service worker is deliberately gated so it **never** activates inside the desktop app — installing or using the PWA cannot affect the desktop experience.
 
 ---
 

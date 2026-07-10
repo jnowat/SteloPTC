@@ -14,6 +14,7 @@
   import PermissionsEditor from './PermissionsEditor.svelte';
   import CloudBackupPanel from './CloudBackupPanel.svelte';
   import PluginManagerPanel from './PluginManagerPanel.svelte';
+  import AiSettingsPanel from './AiSettingsPanel.svelte';
 
   const PROFILES: LabProfile[] = ['plant_tissue_culture', 'cell_culture', 'mycology'];
 
@@ -581,6 +582,9 @@
 
     <!-- Plugin Manager (admin only) — WP-61 -->
     <PluginManagerPanel />
+
+    <!-- AI Assistant configuration & status (admin only) — WP-56b -->
+    <AiSettingsPanel />
   {/if}
 </div>
 
