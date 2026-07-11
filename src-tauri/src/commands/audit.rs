@@ -112,7 +112,8 @@ pub fn get_audit_log(
       .filter_map(|r| r.ok())
       .collect::<Vec<_>>();
 
-    let total_pages = ((total as f64) / (pg.per_page as f64)).ceil() as u32;
+    // Guard the divisor: a per_page of 0 would make this Inf → u32::MAX pages.
+    let total_pages = ((total as f64) / (pg.per_page.max(1) as f64)).ceil() as u32;
 
     Ok(PaginatedResponse {
         items: entries,
@@ -305,14 +306,17 @@ pub fn verify_audit_lineage(
     // Previous (buggy) code used ZERO_HASH as the fixed anchor, which always
     // reported "Chain broken at seq 1" for any forked lineage.
     let mut prev_entry_hash = rows[0].prev_hash.clone();
-    for row in &rows {
+    // `idx` is the number of entries fully verified before the current row, which is
+    // the correct "checked" count on a break. (Deriving it from `chain_seq - 1`
+    // underflowed to usize::MAX when the break was on a genesis seq-0 entry.)
+    for (idx, row) in rows.iter().enumerate() {
         // Verify the link: this row's prev_hash must equal the previous row's entry_hash
         // (or the anchor for the very first row, which trivially passes).
         if row.prev_hash != prev_entry_hash {
             return Ok(VerifyChainResult {
                 lineage_id,
                 ok: false,
-                checked: (row.chain_seq - 1) as usize,
+                checked: idx,
                 first_break_seq: Some(row.chain_seq),
                 message: format!(
                     "Chain broken at seq {} — prev_hash does not match the preceding entry's hash.",
@@ -337,7 +341,7 @@ pub fn verify_audit_lineage(
             return Ok(VerifyChainResult {
                 lineage_id,
                 ok: false,
-                checked: (row.chain_seq - 1) as usize,
+                checked: idx,
                 first_break_seq: Some(row.chain_seq),
                 message: format!(
                     "Tamper detected at seq {} — stored hash does not match recomputed hash.",

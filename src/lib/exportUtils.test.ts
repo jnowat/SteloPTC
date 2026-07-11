@@ -94,14 +94,22 @@ describe('subcultureRows', () => {
 // ── mediaRows ─────────────────────────────────────────────────────────────────
 
 describe('mediaRows', () => {
-  it('uses prepared_by_name when available', () => {
-    const rows = mediaRows([{ prepared_by_name: 'Alice', prepared_by: 'alice-id' }]);
-    expect(rows[1][3]).toBe('Alice');
+  // Uses the REAL serialized MediaBatch shape so field-name drift is caught.
+  it('maps real MediaBatch fields to every column', () => {
+    const rows = mediaRows([{
+      name: 'MS Base', batch_id: 'MB-001', basal_salts: 'MS',
+      employee_id: 'tech-7', preparation_date: '2026-06-01',
+      expiration_date: '2026-12-01', ph_before_autoclave: 5.8,
+      volume_prepared_ml: 1000, sterilization_method: 'autoclave', notes: 'ok',
+    }]);
+    expect(rows[1]).toEqual(
+      ['MS Base', 'MB-001', 'MS', 'tech-7', '2026-06-01', '2026-12-01', 5.8, 1000, 'autoclave', 'ok'],
+    );
   });
 
-  it('falls back to prepared_by when prepared_by_name is absent', () => {
-    const rows = mediaRows([{ prepared_by: 'bob-id' }]);
-    expect(rows[1][3]).toBe('bob-id');
+  it('falls back to created_by when employee_id is absent', () => {
+    const rows = mediaRows([{ created_by: 'user-uuid' }]);
+    expect(rows[1][3]).toBe('user-uuid');
   });
 
   it('has 10 columns in the header', () => {
@@ -112,6 +120,16 @@ describe('mediaRows', () => {
 // ── inventoryRows ─────────────────────────────────────────────────────────────
 
 describe('inventoryRows', () => {
+  // Real InventoryItem shape: minimum_stock + storage_location (not min_stock/location).
+  it('maps real InventoryItem fields to every column', () => {
+    const rows = inventoryRows([{
+      name: 'Sucrose', category: 'reagent', unit: 'g', current_stock: 500,
+      minimum_stock: 100, supplier: 'Sigma', catalog_number: 'S-1',
+      storage_location: 'Shelf B', notes: 'n',
+    }]);
+    expect(rows[1]).toEqual(['Sucrose', 'reagent', 'g', 500, 100, 'Sigma', 'S-1', 'Shelf B', 'n']);
+  });
+
   it('defaults current_stock to 0 when absent', () => {
     const rows = inventoryRows([{}]);
     expect(rows[1][3]).toBe(0);
@@ -125,14 +143,14 @@ describe('inventoryRows', () => {
 // ── complianceRows ────────────────────────────────────────────────────────────
 
 describe('complianceRows', () => {
-  it('maps all fields correctly', () => {
+  // Real ComplianceRecord shape: agency / permit_number / permit_expiry.
+  it('maps real ComplianceRecord fields correctly', () => {
     const rows = complianceRows([{
-      specimen_id: 'sp1', record_type: 'permit',
-      status: 'valid', authority: 'USDA',
-      issue_date: '2026-01-01', expiry_date: '2027-01-01',
+      specimen_id: 'sp1', record_type: 'permit', status: 'valid',
+      agency: 'USDA', permit_number: 'P-123', permit_expiry: '2027-01-01',
       notes: 'ok',
     }]);
-    expect(rows[1]).toEqual(['sp1', 'permit', 'valid', 'USDA', '2026-01-01', '2027-01-01', 'ok']);
+    expect(rows[1]).toEqual(['sp1', 'permit', 'valid', 'USDA', 'P-123', '2027-01-01', 'ok']);
   });
 
   it('has 7 columns in the header', () => {
@@ -143,6 +161,18 @@ describe('complianceRows', () => {
 // ── prepSolutionRows ──────────────────────────────────────────────────────────
 
 describe('prepSolutionRows', () => {
+  // Real PreparedSolution shape: preparation_date / expiration_date / storage_conditions.
+  it('maps real PreparedSolution fields to every column', () => {
+    const rows = prepSolutionRows([{
+      name: 'IAA 1mM', concentration: 1, solvent: 'EtOH', prepared_by: 'tech-3',
+      preparation_date: '2026-05-01', expiration_date: '2026-08-01',
+      volume_ml: 50, storage_conditions: '4C', notes: 'n',
+    }]);
+    expect(rows[1]).toEqual(
+      ['IAA 1mM', 1, 'EtOH', 'tech-3', '2026-05-01', '2026-08-01', 50, '4C', 'n'],
+    );
+  });
+
   it('uses prepared_by_name over prepared_by', () => {
     const rows = prepSolutionRows([{ prepared_by_name: 'Carol', prepared_by: 'id' }]);
     expect(rows[1][3]).toBe('Carol');

@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable } from 'svelte/store';
 
 export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 'reminders' | 'compliance' | 'species' | 'inventory' | 'users' | 'audit' | 'error-log' | 'export' | 'import' | 'settings' | 'work-queue' | 'taxonomy' | 'ncbi-sync' | 'cryo' | 'breeding' | 'provisional-taxa' | 'analytics' | 'lab-map';
 

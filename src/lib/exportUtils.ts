@@ -53,18 +53,22 @@ export function subcultureRows(items: any[]): any[][] {
 
 export function mediaRows(items: any[]): any[][] {
   const headers = [
-    'Name', 'Batch Code', 'Type', 'Prepared By', 'Date Prepared',
+    'Name', 'Batch Code', 'Base', 'Prepared By', 'Date Prepared',
     'Expiry Date', 'pH', 'Volume mL', 'Sterilization Method', 'Notes',
   ];
+  // Field names below must match the serialized MediaBatch (src-tauri/src/models/media.rs):
+  // batch_id, basal_salts, preparation_date, expiration_date, ph_before_autoclave,
+  // volume_prepared_ml. MediaBatch has no prepared_by field — the preparer is employee_id
+  // (falling back to created_by). Reading the wrong names silently blanked these columns.
   const rows = items.map((m: any) => [
     m.name ?? '',
-    m.batch_code ?? '',
-    m.media_type ?? '',
-    m.prepared_by_name ?? m.prepared_by ?? '',
-    m.date_prepared ?? '',
-    m.expiry_date ?? '',
-    m.ph ?? '',
-    m.volume_ml ?? '',
+    m.batch_id ?? '',
+    m.basal_salts ?? '',
+    m.employee_id ?? m.created_by ?? '',
+    m.preparation_date ?? '',
+    m.expiration_date ?? '',
+    m.ph_before_autoclave ?? '',
+    m.volume_prepared_ml ?? '',
     m.sterilization_method ?? '',
     m.notes ?? '',
   ]);
@@ -76,32 +80,36 @@ export function inventoryRows(items: any[]): any[][] {
     'Name', 'Category', 'Unit', 'Current Stock', 'Min Stock',
     'Supplier', 'Catalog #', 'Location', 'Notes',
   ];
+  // minimum_stock / storage_location per InventoryItem (src-tauri/src/models/inventory.rs).
   const rows = items.map((i: any) => [
     i.name ?? '',
     i.category ?? '',
     i.unit ?? '',
     i.current_stock ?? 0,
-    i.min_stock ?? '',
+    i.minimum_stock ?? '',
     i.supplier ?? '',
     i.catalog_number ?? '',
-    i.location ?? '',
+    i.storage_location ?? '',
     i.notes ?? '',
   ]);
   return [headers, ...rows];
 }
 
 export function complianceRows(items: any[]): any[][] {
+  // Columns map to real ComplianceRecord fields (src-tauri/src/models/compliance.rs):
+  // agency, permit_number, permit_expiry. There is no "issue date" on the record, so the
+  // permit number is surfaced instead of an always-empty column.
   const headers = [
-    'Specimen ID', 'Record Type', 'Status', 'Authority',
-    'Issue Date', 'Expiry Date', 'Notes',
+    'Specimen ID', 'Record Type', 'Status', 'Agency',
+    'Permit #', 'Permit Expiry', 'Notes',
   ];
   const rows = items.map((c: any) => [
     c.specimen_id ?? '',
     c.record_type ?? '',
     c.status ?? '',
-    c.authority ?? '',
-    c.issue_date ?? '',
-    c.expiry_date ?? '',
+    c.agency ?? '',
+    c.permit_number ?? '',
+    c.permit_expiry ?? '',
     c.notes ?? '',
   ]);
   return [headers, ...rows];
@@ -112,15 +120,17 @@ export function prepSolutionRows(items: any[]): any[][] {
     'Name', 'Concentration', 'Solvent', 'Prepared By', 'Date Prepared',
     'Expiry Date', 'Volume mL', 'Storage Condition', 'Notes',
   ];
+  // preparation_date / expiration_date / storage_conditions per PreparedSolution
+  // (src-tauri/src/models/inventory.rs). volume_ml and prepared_by already match.
   const rows = items.map((p: any) => [
     p.name ?? '',
     p.concentration ?? '',
     p.solvent ?? '',
     p.prepared_by_name ?? p.prepared_by ?? '',
-    p.date_prepared ?? '',
-    p.expiry_date ?? '',
+    p.preparation_date ?? '',
+    p.expiration_date ?? '',
     p.volume_ml ?? '',
-    p.storage_condition ?? '',
+    p.storage_conditions ?? '',
     p.notes ?? '',
   ]);
   return [headers, ...rows];

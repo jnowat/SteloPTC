@@ -9,7 +9,7 @@
 [![Version](https://img.shields.io/badge/version-1.44.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-521%20Rust%20·%20104%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-528%20Rust%20·%20106%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -257,12 +257,12 @@ SteloPTC ships with backend (Rust) and frontend (TypeScript) test suites, both r
 every push and required to pass before merge.
 
 ```bash
-npm test                                                 # frontend (Vitest) — 104 assertions
-cd src-tauri && cargo test --lib --no-default-features   # backend — 479 tests
+npm test                                                 # frontend (Vitest) — 106 assertions
+cd src-tauri && cargo test --lib --no-default-features   # backend — 528 tests
 npm run check                                            # svelte-check + TypeScript
 ```
 
-> `cargo test --lib --no-default-features` runs the 479 pure-logic tests without GTK/WebKit.
+> `cargo test --lib --no-default-features` runs the 528 pure-logic tests without GTK/WebKit.
 > The full `tauri-commands` feature build (used in CI) adds the command-layer tests on top.
 
 CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-android.yml`
