@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.44.0-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.45.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-528%20Rust%20·%20106%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-549%20Rust%20·%20106%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -52,8 +52,16 @@ timeline — all recorded on each specimen's own cryptographic chain.
 
 **🔐 Cryptographic audit chain**
 Per-lineage SHA-256 hash chain from species → strain → specimen, with in-app Row/Chain
-verification, **Merkle checkpoints**, and portable, offline-verifiable proofs. See
+verification, **Merkle checkpoints**, portable offline-verifiable proofs, on-chain (Dogecoin)
+anchoring, and a per-user signed-event ledger. See
 [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md).
+
+**🛂 Federated specimen passports** *(inter-lab transfer)*
+Issue a **signed, self-contained specimen passport** — the specimen's identity and full
+provenance — that a partner lab verifies **independently** (with only your public key and the
+embedded, recomputable audit chain) and **imports into its own audit chain**. No central
+authority; a ~40-line standalone verifier ships in the docs. See
+[`docs/specimen-passport.md`](docs/specimen-passport.md).
 
 **🧬 Strains, taxonomy & pedigree**
 First-class strain/cultivar registry with a four-value verification model, a hybridization
@@ -258,11 +266,11 @@ every push and required to pass before merge.
 
 ```bash
 npm test                                                 # frontend (Vitest) — 106 assertions
-cd src-tauri && cargo test --lib --no-default-features   # backend — 528 tests
+cd src-tauri && cargo test --lib --no-default-features   # backend — 549 tests
 npm run check                                            # svelte-check + TypeScript
 ```
 
-> `cargo test --lib --no-default-features` runs the 528 pure-logic tests without GTK/WebKit.
+> `cargo test --lib --no-default-features` runs the 549 pure-logic tests without GTK/WebKit.
 > The full `tauri-commands` feature build (used in CI) adds the command-layer tests on top.
 
 CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-android.yml`

@@ -5,6 +5,70 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.45.0] - 2026-07-11
+
+### Added — WP-70: Federated identity & inter-lab specimen transfer (the "specimen passport")
+
+The first packet of **Phase G** (multi-institutional & federated networks): a **signed,
+self-contained specimen passport** that a partner lab verifies **independently** — with only the
+issuer's public key and the embedded, recomputable audit chain — and then **imports into its own
+audit chain**. This extends the Trust Layer (WP-18 hash chain → WP-20 checkpoints → WP-66 on-chain
+anchoring → WP-67 signed events) from *within one installation* to *across labs*, with no central
+authority. All verification commands pass clean: `cargo test --lib --no-default-features`
+(**549 passing**, up from 528), `cargo clippy --no-default-features` (clean), `npm run check`
+(**0 errors, 0 warnings**, 410 files), `npm test` (**106 passing**).
+
+**Backend — passport core (`src-tauri/src/passport/`), pure & connection-only:**
+- **Document + independent verification (`passport/mod.rs`, no DB, no Tauri).** A passport carries
+  the issuer identity (lab name + Ed25519 public key), the specimen's identity subset, its
+  provenance as canonical audit entries (so every hash is recomputable), an optional Merkle
+  anchor, a `content_hash`, and an Ed25519 `signature` over that hash. `verify_passport` runs five
+  checks — format/version, content-hash recompute, issuer signature, provenance hash-chain
+  (recompute each `SHA-256(canonical ‖ prev_hash)` + ascending seq + linkage), and (if present)
+  Merkle-root rebuild — returning a per-check ✓/✗ list. The content hash commits to every field
+  via a deterministic `label 0x1F value 0x1E` serialization. Signing **reuses the WP-60 lab
+  signing key** — no new crypto surface (the DB key loader was lifted into non-gated
+  `compliance_export::load_or_create_lab_signing_key` so it's shared and unit-testable).
+- **Lifecycle (`passport/store.rs`).** `issue_passport` gathers a local specimen's hashed
+  provenance (and attaches a Merkle anchor **only** when a checkpoint seals exactly those
+  entries, so a verifier's own rebuild always matches), signs, and records it. `import_passport`
+  verifies, **refuses an unverifiable or already-imported passport**, and folds the accepted one
+  into the receiving lab's own audit chain (a hash-chained `passport_imported` entry that commits
+  to the passport's content hash). Migration **049** adds `specimen_passports`
+  (`issued`/`imported`, `UNIQUE(direction, passport_id)`).
+- **Commands (`commands/passport.rs`, session/role gated, audited):** `get_lab_identity`,
+  `set_lab_name` (manage), `issue_specimen_passport` (write), `verify_specimen_passport`,
+  `import_specimen_passport` (write), `list_specimen_passports`, `get_specimen_passport_json`.
+- **21 new Rust unit tests** (round-trip issue→verify; tamper of identity breaks content hash;
+  tamper-then-rehash still fails signature; forged issuer signature; tampered provenance entry;
+  broken/missing Merkle anchor; wrong format/version; import writes exactly one receiving-lab
+  audit entry; duplicate-import rejected; tampered-import rejected; lab-name round-trip; anchor
+  attach/skip; canonical entries recompute to their stored hash).
+
+**Honest scope, disclosed (matching the WP-66 "no broadcast" / WP-51 "no LAN transport"
+boundary):** SteloPTC does **not** transport passports over any network. Issuing downloads a
+signed JSON file; importing reads one; the operator moves the file through their own channel. The
+cryptographic guarantee is independent of who carries the bytes, so the verifiable core ships now
+and the peer-discovery/networking layer (Phase G follow-ups WP-71/72) stays out of the app.
+
+**Frontend:**
+- **Specimen Passports panel** (`SpecimenPassportPanel.svelte`) in the Audit Log, beside the other
+  Trust Layer panels: shows/edits this lab's issuer identity, issues a passport by specimen ID
+  (downloads JSON), verifies **or** verifies-and-imports a pasted/loaded passport with a per-check
+  ✓/✗ verdict, and lists the issued/imported register with re-export. Specimen detail pages gain a
+  one-click **Issue Passport** action. `api.ts` gains the WP-70 types and seven helpers.
+
+**Documentation:**
+- **New [`docs/specimen-passport.md`](docs/specimen-passport.md)** — the format, content-hash and
+  signature construction, the five verification checks, a **~40-line standalone Python verifier**
+  (proving independence from the app), the import/audit-fold behavior, the data model, and the
+  command reference.
+- **ROADMAP** — WP-70 moved from reserved to delivered; versioning table and migration footer
+  updated (**49 migrations**).
+
+**Bump:** minor — **v1.45.0** (new user-facing capability: issue, verify, and import
+cryptographically signed, independently-verifiable specimen passports between labs).
+
 ## [1.44.0] - 2026-07-10
 
 ### Added — WP-68: Regulatory submission pipeline (advanced)
