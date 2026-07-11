@@ -263,6 +263,75 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (50)", [])?;
     }
 
+    if current < 51 {
+        migration_051_breeding_bundles(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (51)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_051_breeding_bundles(conn: &Connection) -> DbResult<()> {
+    // WP-72: Cross-lab breeding program coordination — federated, signed
+    // selection-log exchange.
+    //
+    // `breeding_bundles` registers both directions of a coordination bundle's life:
+    //   - `issued`   : a signed bundle this lab exported for one of its breeding
+    //                  programs (kept so it can be re-exported and to record that
+    //                  we vouched for it).
+    //   - `imported` : a bundle received from a collaborating lab, verified, and
+    //                  merged into this lab's own audit chain (`audit_entry` links
+    //                  the `breeding_merge_imported` audit row committing to
+    //                  `content_hash`).
+    // `bundle_json` is the full signed document. `UNIQUE(direction, bundle_id)`
+    // makes importing the same bundle twice a no-op error rather than a silent
+    // duplicate.
+    //
+    // `breeding_bundle_dispositions` records, per imported bundle, the operator's
+    // per-record decision (`accept` / `skip`) and where a selection record was
+    // merged locally — the audit trail of a federated merge. Merging is additive
+    // and non-destructive (see the coordination module docs).
+    //
+    // `breeding_records.origin_lab` marks a merged selection record's authoring lab
+    // (NULL for a locally-authored record), so provenance is visible and a
+    // re-export preserves the record's true origin rather than reattributing it.
+    conn.execute_batch(
+        "ALTER TABLE breeding_records ADD COLUMN origin_lab TEXT;
+
+        CREATE TABLE IF NOT EXISTS breeding_bundles (
+            id                    TEXT PRIMARY KEY,
+            bundle_id             TEXT NOT NULL,
+            direction             TEXT NOT NULL
+                                  CHECK (direction IN ('issued','imported')),
+            issuer_lab            TEXT NOT NULL,
+            issuer_public_key     TEXT NOT NULL,
+            program_name          TEXT NOT NULL,
+            content_hash          TEXT NOT NULL,
+            record_count          INTEGER NOT NULL DEFAULT 0,
+            verified              INTEGER NOT NULL DEFAULT 0,
+            audit_entry           TEXT,
+            bundle_json           TEXT NOT NULL,
+            created_by            TEXT REFERENCES users(id),
+            created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(direction, bundle_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_breeding_bundles_direction
+            ON breeding_bundles(direction);
+
+        CREATE TABLE IF NOT EXISTS breeding_bundle_dispositions (
+            id                    TEXT PRIMARY KEY,
+            bundle_row_id         TEXT NOT NULL REFERENCES breeding_bundles(id),
+            source_key            TEXT NOT NULL,
+            local_status          TEXT NOT NULL,
+            disposition           TEXT NOT NULL
+                                  CHECK (disposition IN ('accept','skip')),
+            action_taken          TEXT NOT NULL,
+            local_record_id       TEXT,
+            created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_breeding_bundle_dispositions_bundle
+            ON breeding_bundle_dispositions(bundle_row_id);",
+    )?;
     Ok(())
 }
 

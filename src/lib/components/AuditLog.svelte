@@ -11,6 +11,7 @@
   import SignedLedgerPanel from './SignedLedgerPanel.svelte';
   import SpecimenPassportPanel from './SpecimenPassportPanel.svelte';
   import TaxonomyRegistryPanel from './TaxonomyRegistryPanel.svelte';
+  import BreedingCoordinationPanel from './BreedingCoordinationPanel.svelte';
 
   let entries = $state<any[]>([]);
   let total = $state(0);
@@ -594,6 +595,9 @@
 
   <!-- Shared taxonomy registry — federated reference-data exchange (WP-71) -->
   <TaxonomyRegistryPanel />
+
+  <!-- Cross-lab breeding program coordination — federated selection-log merge (WP-72) -->
+  <BreedingCoordinationPanel />
 
   <div class="card" style="margin-bottom:16px;">
     <div class="form-row-3">
