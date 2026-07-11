@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
-  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, listEnvironmentalReadings, createEnvironmentalReading, summarizeNotes, suggestPassageComment, listAiSuggestions, approveAiSuggestion, rejectAiSuggestion, type ColonizationEntry, type FruitingRecord, type EnvironmentalReading, type AiSuggestion } from '../api';
+  import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, listEnvironmentalReadings, createEnvironmentalReading, summarizeNotes, suggestPassageComment, listAiSuggestions, approveAiSuggestion, rejectAiSuggestion, issueSpecimenPassport, type ColonizationEntry, type FruitingRecord, type EnvironmentalReading, type AiSuggestion } from '../api';
   import { labProfile } from '../profile';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
@@ -734,6 +734,30 @@
       .join(' ');
   }
 
+  // WP-70: issue a signed specimen passport and download it as JSON for transfer
+  // to a partner lab. The receiving lab verifies it independently and imports it
+  // into their own audit chain — see the Audit Log → Specimen Passports panel.
+  let issuingPassport = $state(false);
+  async function issuePassport() {
+    if (!specimen) return;
+    issuingPassport = true;
+    try {
+      const passport = await issueSpecimenPassport(specimen.id);
+      const blob = new Blob([JSON.stringify(passport, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `passport-${passport.specimen.accession_number || passport.passport_id}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      addNotification(`Signed passport issued for ${passport.specimen.accession_number}`, 'success');
+    } catch (e: any) {
+      addNotification(e?.message || 'Failed to issue passport', 'error');
+    } finally {
+      issuingPassport = false;
+    }
+  }
+
   function printCultureReport() {
     if (!specimen) return;
     const user = get(currentUser);
@@ -958,6 +982,11 @@ ${footnotesHtml}
         <button class="btn btn-print-report" onclick={printCultureReport} title="Print a full culture certificate for this specimen — includes all passage history and compliance records">
           &#128438; Print Report <Tooltip text="Open a print-ready culture certificate with specimen details, passage history, and compliance records" position="bottom" />
         </button>
+        {#if $currentUser?.role !== 'guest'}
+          <button class="btn btn-qr-detail" disabled={issuingPassport} onclick={issuePassport} title="Issue a signed, independently-verifiable specimen passport for transfer to another lab">
+            &#128499; {issuingPassport ? 'Issuing…' : 'Issue Passport'} <Tooltip text="Download a cryptographically signed passport of this specimen's identity and full provenance that a partner lab can verify and import into their own audit chain" position="bottom" />
+          </button>
+        {/if}
       </div>
     {/if}
   </div>

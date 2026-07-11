@@ -253,6 +253,52 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (48)", [])?;
     }
 
+    if current < 49 {
+        migration_049_specimen_passports(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (49)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_049_specimen_passports(conn: &Connection) -> DbResult<()> {
+    // WP-70: Federated identity & inter-lab specimen transfer — the specimen
+    // passport. A single table records both directions of a passport's life:
+    //   - `issued`   : a signed passport this lab produced for one of its own
+    //                  specimens, kept so it can be re-exported and to record that
+    //                  we vouched for it.
+    //   - `imported` : a passport received from another lab, verified, and folded
+    //                  into this lab's own audit chain (`audit_entry` links the
+    //                  `passport_imported` audit row that commits to `content_hash`).
+    // `passport_json` is the full signed document. `UNIQUE(direction, passport_id)`
+    // makes importing the same passport twice a no-op error rather than a silent
+    // duplicate. SteloPTC does not transport passports over any network — see the
+    // module docs for the disclosed scope boundary.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS specimen_passports (
+            id                    TEXT PRIMARY KEY,
+            passport_id           TEXT NOT NULL,
+            direction             TEXT NOT NULL
+                                  CHECK (direction IN ('issued','imported')),
+            specimen_id           TEXT,
+            issuer_lab            TEXT NOT NULL,
+            issuer_public_key     TEXT NOT NULL,
+            subject_accession     TEXT NOT NULL,
+            subject_scientific_name TEXT,
+            content_hash          TEXT NOT NULL,
+            entry_count           INTEGER NOT NULL DEFAULT 0,
+            verified              INTEGER NOT NULL DEFAULT 0,
+            audit_entry           TEXT,
+            passport_json         TEXT NOT NULL,
+            created_by            TEXT REFERENCES users(id),
+            created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(direction, passport_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_specimen_passports_direction
+            ON specimen_passports(direction);
+        CREATE INDEX IF NOT EXISTS idx_specimen_passports_specimen
+            ON specimen_passports(specimen_id);",
+    )?;
     Ok(())
 }
 

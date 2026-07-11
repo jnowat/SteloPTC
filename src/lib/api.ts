@@ -1886,3 +1886,117 @@ export async function listSubmissions() {
 export async function runSubmissionMonitor() {
   return call<MonitorResult>('run_submission_monitor');
 }
+
+// ── WP-70: Specimen passports — federated inter-lab transfer ──────────────────
+
+export interface IssuerIdentity {
+  lab_name: string;
+  public_key: string;
+}
+
+export interface PassportSpecimen {
+  specimen_id: string;
+  accession_number: string;
+  scientific_name: string | null;
+  strain_id: string | null;
+  stage: string | null;
+  generation: number;
+  origin_type: string | null;
+  provenance_note: string | null;
+  initiation_date: string | null;
+}
+
+export interface PassportAuditEntry {
+  chain_seq: number;
+  canonical: string;
+  prev_hash: string;
+  entry_hash: string;
+}
+
+export interface PassportMerkleAnchor {
+  checkpoint_id: string;
+  merkle_root: string;
+  anchored_txid: string | null;
+}
+
+export interface SpecimenPassport {
+  format: string;
+  version: string;
+  passport_id: string;
+  issued_at: string;
+  issuer: IssuerIdentity;
+  specimen: PassportSpecimen;
+  provenance: PassportAuditEntry[];
+  merkle_anchor: PassportMerkleAnchor | null;
+  content_hash: string;
+  signature: string;
+}
+
+export interface PassportCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface PassportVerification {
+  verified: boolean;
+  passport_id: string;
+  issuer_lab: string;
+  issuer_public_key: string;
+  subject_accession: string;
+  subject_scientific_name: string | null;
+  entry_count: number;
+  checks: PassportCheck[];
+  message: string;
+}
+
+export interface PassportRecord {
+  id: string;
+  passport_id: string;
+  direction: 'issued' | 'imported';
+  specimen_id: string | null;
+  issuer_lab: string;
+  issuer_public_key: string;
+  subject_accession: string;
+  subject_scientific_name: string | null;
+  content_hash: string;
+  entry_count: number;
+  verified: boolean;
+  created_at: string;
+}
+
+export interface ImportPassportResult {
+  imported: boolean;
+  passport_id: string;
+  local_row_id: string;
+  audit_entry_id: string | null;
+  verification: PassportVerification;
+}
+
+export async function getLabIdentity() {
+  return call<IssuerIdentity>('get_lab_identity');
+}
+
+export async function setLabName(name: string) {
+  return call<void>('set_lab_name', { name });
+}
+
+export async function issueSpecimenPassport(specimenId: string) {
+  return call<SpecimenPassport>('issue_specimen_passport', { specimenId });
+}
+
+export async function verifySpecimenPassport(passportJson: string) {
+  return call<PassportVerification>('verify_specimen_passport', { passportJson });
+}
+
+export async function importSpecimenPassport(passportJson: string) {
+  return call<ImportPassportResult>('import_specimen_passport', { passportJson });
+}
+
+export async function listSpecimenPassports(direction?: 'issued' | 'imported') {
+  return call<PassportRecord[]>('list_specimen_passports', { direction });
+}
+
+export async function getSpecimenPassportJson(rowId: string) {
+  return call<string>('get_specimen_passport_json', { rowId });
+}

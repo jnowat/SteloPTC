@@ -2,7 +2,6 @@
 // Every export command is supervisor/admin gated, read-only against the
 // database, and writes only the generated bundle file (plus, once, the
 // lab's Ed25519 signing keypair on first use).
-use rusqlite::params;
 use tauri::State;
 
 use crate::auth as auth_service;
@@ -18,18 +17,9 @@ pub(crate) fn exports_dir() -> Result<std::path::PathBuf, String> {
 }
 
 pub(crate) fn load_or_create_signing_key(conn: &rusqlite::Connection) -> Result<(String, String), String> {
-    let existing: Option<(String, String)> = conn
-        .query_row("SELECT public_key_b64, private_key_b64 FROM signing_keys WHERE id = 1", [], |r| Ok((r.get(0)?, r.get(1)?)))
-        .ok();
-    if let Some(pair) = existing {
-        return Ok(pair);
-    }
-    let keypair = signing::generate_keypair();
-    conn.execute(
-        "INSERT INTO signing_keys (id, public_key_b64, private_key_b64) VALUES (1, ?1, ?2)",
-        params![keypair.public_key_b64, keypair.private_key_b64],
-    ).map_err(|e| e.to_string())?;
-    Ok((keypair.public_key_b64, keypair.private_key_b64))
+    // Delegates to the non-gated helper so this DB logic has a single source of
+    // truth shared with `passport::store` (WP-70).
+    crate::compliance_export::load_or_create_lab_signing_key(conn)
 }
 
 #[tauri::command]

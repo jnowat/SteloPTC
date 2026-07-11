@@ -1,6 +1,6 @@
 # SteloPTC User Manual
 
-**Current as of:** July 2026 · **v1.44.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 + WP-56b fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis (Ollama + LocalAI), interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, taxon chain re-anchoring, and local-AI runtime hardening; **Trust Layer Phase 2 on-chain anchoring (WP-66, v1.42.0), Phase 3 signed-event ledger (WP-67, v1.43.0), and the automated regulatory submission pipeline (WP-68, v1.44.0)**)
+**Current as of:** July 2026 · **v1.45.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 + WP-56b fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis (Ollama + LocalAI), interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, taxon chain re-anchoring, and local-AI runtime hardening; **Trust Layer Phase 2 on-chain anchoring (WP-66, v1.42.0), Phase 3 signed-event ledger (WP-67, v1.43.0), the automated regulatory submission pipeline (WP-68, v1.44.0), and — Phase G begun — federated specimen passports for inter-lab transfer (WP-70, v1.45.0)**)
 
 > **Scope note:** This manual documents both shipping features and planned functionality. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, basic Taxonomy Navigator) fully shipped as of v1.17.0. Phase TX-2 is fully shipped: WP-35 taxonomy backbone (v1.18.0), WP-36 NCBI import/sync (v1.19.0), WP-37 pedigree tools (v1.20.0), WP-38 advanced hybridization (v1.21.0), WP-39 advanced multi-column Taxonomy Navigator (v1.22.0). Cell Culture features (WP-30–34) shipped v1.23.0–v1.27.0. Mycology features (WP-40–44) fully shipped v1.28.0–v1.32.0: WP-40 vocabulary (v1.28.0), WP-41 colonization & contamination tracking (v1.29.0), WP-42 genetic lineage markers (v1.30.0), WP-43 fruiting conditions & yield tracking (v1.31.0), WP-44 mycology QC compliance rules (v1.32.0). **Phase E complete.** Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
 >
@@ -333,6 +333,14 @@ After archiving, the specimen:
 The Audit Log records nearly every meaningful action and protects history with SHA-256 hashing. Each entry links to the previous one, forming a continuous, verifiable chain.
 
 You can filter, view hashes, and verify individual rows or entire lineages from the Audit Log view. Verification failures clearly indicate the first broken link.
+
+The Audit Log view also hosts the advanced Trust Layer panels: **Merkle checkpoints** and portable proofs, **On-Chain Anchoring** (Dogecoin), the **Signed Event Ledger** (per-user signatures), and **Specimen Passports** (see below).
+
+### Specimen Passports — inter-lab transfer (v1.45.0)
+
+When you send tissue-culture material to another lab, you can issue a **specimen passport**: a signed file that carries the specimen's identity and its full, tamper-evident provenance. Use the **Issue Passport** button on a specimen's detail page (or the Specimen Passports panel in the Audit Log) to download the passport as JSON, then send it to the receiving lab through your usual channel.
+
+The receiving lab opens the **Audit Log → Specimen Passports** panel, pastes or loads the file, and clicks **Verify** — they can confirm, using only your published public key and the data in the file, that the passport is genuine and its provenance is intact, *without any access to your database*. **Verify & Import** then folds the passport into the receiving lab's own audit chain, creating a permanent, hashed record that they received and accepted it. Each lab sets its own name and shares its public key under **This lab's issuer identity** in the same panel. See [`docs/specimen-passport.md`](docs/specimen-passport.md) for the full format and a standalone verifier.
 
 ---
 

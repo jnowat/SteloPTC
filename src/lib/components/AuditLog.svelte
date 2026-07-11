@@ -9,6 +9,7 @@
   import DataState from './DataState.svelte';
   import OnChainAnchorPanel from './OnChainAnchorPanel.svelte';
   import SignedLedgerPanel from './SignedLedgerPanel.svelte';
+  import SpecimenPassportPanel from './SpecimenPassportPanel.svelte';
 
   let entries = $state<any[]>([]);
   let total = $state(0);
@@ -586,6 +587,9 @@
 
   <!-- Signed event ledger — Trust Layer Phase 3 (WP-67) -->
   <SignedLedgerPanel />
+
+  <!-- Specimen passports — federated inter-lab transfer (WP-70) -->
+  <SpecimenPassportPanel />
 
   <div class="card" style="margin-bottom:16px;">
     <div class="form-row-3">

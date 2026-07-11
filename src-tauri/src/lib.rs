@@ -5,6 +5,7 @@ pub mod cloud;
 pub mod compliance_export;
 pub mod db;
 pub mod models;
+pub mod passport;
 pub mod plugins;
 pub mod reg_submission;
 pub mod signed_ledger;
@@ -329,6 +330,14 @@ pub fn run() {
             commands::reg_submission::mark_submission_submitted,
             commands::reg_submission::list_submissions,
             commands::reg_submission::run_submission_monitor,
+            // Specimen passports — federated inter-lab transfer (WP-70)
+            commands::passport::get_lab_identity,
+            commands::passport::set_lab_name,
+            commands::passport::issue_specimen_passport,
+            commands::passport::verify_specimen_passport,
+            commands::passport::import_specimen_passport,
+            commands::passport::list_specimen_passports,
+            commands::passport::get_specimen_passport_json,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
