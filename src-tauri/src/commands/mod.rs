@@ -37,3 +37,4 @@ pub mod anchoring;
 pub mod signed_events;
 pub mod reg_submission;
 pub mod passport;
+pub mod registry;

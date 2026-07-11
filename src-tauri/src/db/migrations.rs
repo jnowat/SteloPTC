@@ -258,6 +258,69 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (49)", [])?;
     }
 
+    if current < 50 {
+        migration_050_taxonomy_registries(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (50)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_050_taxonomy_registries(conn: &Connection) -> DbResult<()> {
+    // WP-71: Shared taxonomy registry — federated, signed reference-data exchange.
+    //
+    // `taxonomy_registries` registers both directions of a registry bundle's life:
+    //   - `issued`   : a signed registry this lab exported (kept so it can be
+    //                  re-exported and to record that we vouched for it).
+    //   - `imported` : a registry received from another lab, verified, and folded
+    //                  into this lab's own audit chain (`audit_entry` links the
+    //                  `registry_imported` audit row committing to `content_hash`).
+    // `registry_json` is the full signed document. `UNIQUE(direction, registry_id)`
+    // makes importing the same registry twice a no-op error rather than a silent
+    // duplicate.
+    //
+    // `registry_record_dispositions` records, per imported registry, the
+    // operator's per-record decision (`accept` / `override` / `fork`) and where a
+    // record was reconciled locally — the audit trail of a federated merge. Import
+    // is additive and non-destructive (see the registry module docs).
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS taxonomy_registries (
+            id                    TEXT PRIMARY KEY,
+            registry_id           TEXT NOT NULL,
+            direction             TEXT NOT NULL
+                                  CHECK (direction IN ('issued','imported')),
+            issuer_lab            TEXT NOT NULL,
+            issuer_public_key     TEXT NOT NULL,
+            content_hash          TEXT NOT NULL,
+            record_count          INTEGER NOT NULL DEFAULT 0,
+            taxon_count           INTEGER NOT NULL DEFAULT 0,
+            species_count         INTEGER NOT NULL DEFAULT 0,
+            strain_count          INTEGER NOT NULL DEFAULT 0,
+            verified              INTEGER NOT NULL DEFAULT 0,
+            audit_entry           TEXT,
+            registry_json         TEXT NOT NULL,
+            created_by            TEXT REFERENCES users(id),
+            created_at            TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE(direction, registry_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_taxonomy_registries_direction
+            ON taxonomy_registries(direction);
+
+        CREATE TABLE IF NOT EXISTS registry_record_dispositions (
+            id                    TEXT PRIMARY KEY,
+            registry_row_id       TEXT NOT NULL REFERENCES taxonomy_registries(id),
+            source_key            TEXT NOT NULL,
+            record_type           TEXT NOT NULL,
+            local_status          TEXT NOT NULL,
+            disposition           TEXT NOT NULL
+                                  CHECK (disposition IN ('accept','override','fork')),
+            action_taken          TEXT NOT NULL,
+            local_record_id       TEXT,
+            created_at            TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_registry_dispositions_registry
+            ON registry_record_dispositions(registry_row_id);",
+    )?;
     Ok(())
 }
 

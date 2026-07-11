@@ -5,6 +5,73 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.46.0] - 2026-07-11
+
+### Added — WP-71: Shared taxonomy registry (federated, signed reference-data exchange)
+
+The second packet of **Phase G** (multi-institutional & federated networks): a **signed,
+self-contained taxonomy registry** that a partner lab verifies **independently** — with only the
+issuer's public key and the embedded, recomputable per-record hashes — and then **reconciles into
+its own reference tables, record by record**. Where WP-70's specimen passport moves *one specimen's
+provenance*, the registry moves *shared reference data* (taxa, species, strains). Both are signed
+with the same lab Ed25519 key and verifiable with only that public key. All verification commands
+pass clean: `cargo test --lib --no-default-features` (**574 passing**, up from 549),
+`cargo clippy --no-default-features` (clean), `npm run check` (**0 errors, 0 warnings**, 411 files),
+`npm test` (**106 passing**).
+
+**What it does**
+
+- **Export a signed registry.** `export_taxonomy_registry` gathers this lab's genus-and-above
+  `taxa`, all `species`, and all non-archived `strains` into a signed, self-contained JSON
+  document. Records are keyed by a **name-based, cross-lab-stable natural key** (`taxon|genus|Citrus`,
+  `species|Citrus sinensis`, `strain|Citrus sinensis|VAL-EARLY`) — never a local UUID or
+  `taxon_path` — and sorted by that key, so a re-export of unchanged data is byte-identical.
+- **Verify independently.** `verify_registry` runs four checks — format/version, `content_hash`
+  recomputation, the issuer's Ed25519 signature over the content hash, and per-record `record_hash`
+  integrity plus source-key uniqueness — needing only the issuer's public key. A ~40-line standalone
+  Python verifier ships in `docs/taxonomy-registry.md`.
+- **Reconcile record by record.** `preview_taxonomy_registry_import` classifies each incoming record
+  against the local database (`new` / `identical` / `conflict`) and suggests a disposition;
+  `import_taxonomy_registry` applies the operator's per-record choice — **accept** (adopt into the
+  local reference tables), **override** (keep the local version), or **fork** (add a divergent local
+  copy). The whole merge is folded into this lab's own tamper-evident audit chain (a
+  `registry_imported` entry committing to the registry's content hash), and every decision is
+  recorded.
+
+**Guarantees held and disclosed honestly** (matching the WP-66/WP-70 precedent)
+
+- **Import is additive and non-destructive** — it never overwrites or deletes an existing local
+  record. It inserts records you don't yet have (accept), a divergent copy (fork), or nothing
+  (override), and logs every disposition.
+- **Strain confirmation is not transferable across labs** — an imported strain is always created
+  `unverified`; a foreign lab's `confirmed_genomic` claim is preserved as context in
+  `confirmation_basis` but never inherited. The genomic fingerprint is **never** exported.
+- **No subscription server / network transport** — exporting downloads a signed JSON file the
+  operator moves through their own channel; importing reads one. The cryptographic guarantee is
+  independent of who carries the bytes, so the verifiable core ships now (the same boundary as
+  WP-66's on-chain broadcast).
+
+**As built**
+
+- **Pure core** `src-tauri/src/registry/mod.rs`: the `TaxonomyRegistry` / `RegistryRecord` model,
+  deterministic control-char canonical serialization (`0x1f`/`0x1e` delimiters, matching the WP-70
+  passport), per-record + content hashing, Ed25519 assembly/signing (reusing the WP-60 lab key), and
+  independent verification. 10 unit tests.
+- **DB lifecycle** `src-tauri/src/registry/store.rs`: `export_registry`, `verify_registry_json`,
+  `preview_import`, `import_registry` (per-record accept/override/fork), `list_registries`,
+  `get_registry_json`, `list_dispositions`. Species code collisions are suffixed; a strain can only
+  be inserted when its species already exists locally (else it is skipped, with the reason recorded).
+  15 unit tests.
+- **Command gating** `src-tauri/src/commands/registry.rs`: seven session/role-gated commands
+  (export/import require a write-capable role; verify/preview/list are read-only).
+- **Migration 050** adds `taxonomy_registries` (issued/imported register, `UNIQUE(direction,
+  registry_id)`) and `registry_record_dispositions` (per-record merge decisions).
+- **UI**: a new **Shared Taxonomy Registry** panel in the Audit Log (beside Specimen Passports) —
+  export, load/preview with a per-record disposition picker, import, and a register of prior
+  exchanges.
+- **Docs**: `docs/taxonomy-registry.md` with the document shape, canonical forms, and the standalone
+  verifier.
+
 ## [1.45.0] - 2026-07-11
 
 ### Added — WP-70: Federated identity & inter-lab specimen transfer (the "specimen passport")
