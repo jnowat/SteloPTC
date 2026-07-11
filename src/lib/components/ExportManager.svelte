@@ -31,7 +31,9 @@
     a.href = url;
     a.download = filename;
     a.click();
-    URL.revokeObjectURL(url);
+    // Defer revocation to a later tick — revoking synchronously right after click()
+    // can cancel the download before the engine has read the blob.
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
   // ── CSV / JSON (specimens only) ────────────────────────────────────────────

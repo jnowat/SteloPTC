@@ -40,6 +40,20 @@ pub fn stage_is_selectable(conn: &Connection, profile: &str, code: &str) -> bool
     .unwrap_or(false)
 }
 
+/// Guard wrapper around [`stage_is_selectable`] returning a user-facing error string
+/// when the stage is not valid/selectable for `profile`. Shared by `create_specimen`
+/// and `bulk_update_stage` so both the New Specimen path and bulk updates enforce the
+/// exact same profile-scoped rule (previously only bulk-update validated, letting a
+/// stale cross-profile stage — e.g. an `explant` stage on a mycology specimen — be
+/// written straight to the DB on create).
+pub fn require_selectable_stage(conn: &Connection, profile: &str, code: &str) -> Result<(), String> {
+    if stage_is_selectable(conn, profile, code) {
+        Ok(())
+    } else {
+        Err(format!("'{}' is not a valid or selectable stage", code))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -147,6 +161,27 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         // No stages table — should not panic, just return false.
         assert!(!stage_is_selectable(&conn, "plant_tissue_culture", "explant"));
+    }
+
+    #[test]
+    fn require_selectable_stage_ok_for_valid_non_terminal() {
+        let conn = db_with_stages();
+        assert!(require_selectable_stage(&conn, "plant_tissue_culture", "explant").is_ok());
+    }
+
+    #[test]
+    fn require_selectable_stage_errors_for_cross_profile_code() {
+        let conn = db_with_stages();
+        // 'adherent' belongs to cell_culture; rejecting it under plant_tissue_culture is
+        // exactly the create-path hole this guard closes.
+        let err = require_selectable_stage(&conn, "plant_tissue_culture", "adherent").unwrap_err();
+        assert!(err.contains("adherent"), "error should name the rejected code: {err}");
+    }
+
+    #[test]
+    fn require_selectable_stage_errors_for_terminal_stage() {
+        let conn = db_with_stages();
+        assert!(require_selectable_stage(&conn, "plant_tissue_culture", "archived").is_err());
     }
 
     #[test]

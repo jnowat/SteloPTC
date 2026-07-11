@@ -1,6 +1,6 @@
 # SteloPTC User Manual
 
-**Current as of:** July 2026 · **v1.41.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 + WP-56b fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis (Ollama + LocalAI), interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, taxon chain re-anchoring, and local-AI runtime hardening)
+**Current as of:** July 2026 · **v1.44.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 + WP-56b fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis (Ollama + LocalAI), interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, taxon chain re-anchoring, and local-AI runtime hardening; **Trust Layer Phase 2 on-chain anchoring (WP-66, v1.42.0), Phase 3 signed-event ledger (WP-67, v1.43.0), and the automated regulatory submission pipeline (WP-68, v1.44.0)**)
 
 > **Scope note:** This manual documents both shipping features and planned functionality. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, basic Taxonomy Navigator) fully shipped as of v1.17.0. Phase TX-2 is fully shipped: WP-35 taxonomy backbone (v1.18.0), WP-36 NCBI import/sync (v1.19.0), WP-37 pedigree tools (v1.20.0), WP-38 advanced hybridization (v1.21.0), WP-39 advanced multi-column Taxonomy Navigator (v1.22.0). Cell Culture features (WP-30–34) shipped v1.23.0–v1.27.0. Mycology features (WP-40–44) fully shipped v1.28.0–v1.32.0: WP-40 vocabulary (v1.28.0), WP-41 colonization & contamination tracking (v1.29.0), WP-42 genetic lineage markers (v1.30.0), WP-43 fruiting conditions & yield tracking (v1.31.0), WP-44 mycology QC compliance rules (v1.32.0). **Phase E complete.** Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
 >
@@ -64,6 +64,31 @@ The application is designed to be practical for day-to-day lab use while providi
 
 ## 2. Core Concepts
 
+### Lab Profiles (Plant Tissue Culture · Cell Culture · Mycology)
+
+SteloPTC runs **one lab profile at a time**, chosen in **Settings → Lab Profile**. The
+profile is the single switch that adapts the whole app to your discipline: it selects the
+controlled vocabularies (stages, propagation/culture methods, contaminant types, inventory
+categories) and the biological **domain** (Plantae / Animalia / Fungi) the taxonomy tools
+use. The same engine — accessioning, hash chain, splits & passages, compliance, audit —
+serves all three; only the vocabulary and a few discipline-specific fields change.
+
+| Profile | Domain | A "specimen" is… | Example stages | Discipline-specific tracking |
+|---|---|---|---|---|
+| **Plant Tissue Culture** *(default)* | Plantae | an explant/culture on media | explant, callus, suspension, shoot, plantlet | MS/WPM media batches, auxin/cytokinin hormones, subculture passages |
+| **Cell Culture** | Animalia | a cell line / passage in flasks | adherent, suspension, characterization, cryopreserved | Population Doubling Level (PDL), doubling time, cryopreservation vials, mycoplasma & biosafety level |
+| **Mycology** | Fungi | a fungal culture / grow | liquid culture, bulk substrate, colonizing, fruiting | colonization %, contaminant typing, fruiting/flush yield records |
+
+> **Terminology note.** Some shared building blocks keep a plant-tissue-culture name even
+> in other profiles — most visibly, every growth event is stored as a **passage/subculture**
+> record (in cell culture it *is* a passage; in mycology it doubles as a colonization
+> reading). The UI relabels discipline-specific fields per profile, but the underlying record
+> type is shared by design.
+>
+> Switching profiles is **audit-logged** and does **not** rewrite existing specimens — a
+> record keeps the vocabulary values it was created with. Run one discipline per database, or
+> add further profiles with **plugin vocabulary packs** (see §24).
+
 ### Specimens
 
 A specimen is an individual culture in your lab. Each specimen has:
@@ -81,7 +106,7 @@ Species are the foundation of the system. When you create a new species, it star
 
 Because of this role, species become **very protected** once they have been used to create any specimens or strains.
 
-### Strains & Cultivars (Planned — Phase TX-1)
+### Strains & Cultivars (Shipped — Phase TX-1, v1.16.0–v1.17.0)
 
 A **strain** (cultivar, variety, clone, etc.) is a named genetic variant of a species. Strains provide a precise layer of identity between the species and individual specimens.
 
@@ -381,10 +406,12 @@ Everything below was still "planned" the last time this section was rewritten; n
 - Environmental sensor logging (manual entry; hardware transport still not wired — see below) — WP-54, v1.39.0
 - iOS build scaffold (still unverified end-to-end — see below) — WP-53, v1.39.0
 - Interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, installable PWA, taxon chain re-anchoring — Phase F WP-57–65, v1.40.0
+- **On-chain anchoring** (Dogecoin `OP_RETURN`) — Trust Layer Phase 2, WP-66, v1.42.0 (prepares and independently verifies a checkpoint's Merkle root on-chain; you broadcast with your own external wallet)
+- **Signed-event ledger** (specimen events as Ed25519-signed, hash-chained ledger transactions) — Trust Layer Phase 3, WP-67, v1.43.0
+- **Automated regulatory submission pipeline** (monitors compliance state and auto-generates signed, ready-to-submit packages) — WP-68, v1.44.0
 
 ### Genuinely still planned / incomplete
-- **On-chain anchoring (Dogecoin `OP_RETURN`)** — reserved as Trust Layer Phase 2 (WP-66), not started
-- **Specimen events as signed transactions** — reserved as Trust Layer Phase 3 (WP-67), not started
+- **Automatic on-chain broadcast** — the anchor payload is prepared and verified (WP-66), but sending the transaction still requires your own funded external wallet; no funded-wallet transport is bundled
 - **PostgreSQL as a live backend** — connector compiles and unit-tests but has never been run against a real PostgreSQL server; SQLite remains the only backend a lab can actually use
 - **LAN sync transport** — change-detection and conflict-recording exist, but there is no network transport or automatic merge yet
 - **iOS end-to-end verification** — the build workflow has never completed a real device/simulator build (no Apple Developer access in CI)
@@ -392,7 +419,6 @@ Everything below was still "planned" the last time this section was rewritten; n
 - **Cloud backup to S3/SFTP** — configurable today but not connected; only `local_nas`/`smb` targets work
 - **Plugin WASM rule execution** — plugin manifests are validated and recorded, but a plugin's compliance rules are not yet executed by a sandboxed runtime
 - **Multi-institutional/federated networks, shared taxonomy registry, cross-lab breeding coordination** — reserved as Phase G (WP-70–72), not started
-- **Automated regulatory submission pipeline** — reserved (WP-68+), not started
 
 For the latest status, refer to `ROADMAP.md` in the repository.
 

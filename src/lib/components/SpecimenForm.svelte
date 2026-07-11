@@ -54,7 +54,17 @@
   onMount(() => {
     listSpecies().then(s => species = s).catch(() => {});
     listMedia().then(m => mediaBatches = m).catch(() => {});
-    listStages().then(s => stages = s).catch((e: any) => addNotification(e.message, 'error'));
+    listStages().then(s => {
+      stages = s;
+      // If the persisted default (localStorage 'spec_lastStage') isn't a valid stage for
+      // the active profile — e.g. an 'explant' left over after switching PTC → mycology —
+      // fall back to the first selectable stage. The backend now rejects cross-profile
+      // stages on create; this keeps the form from submitting one in the first place.
+      const selectable = s.filter((st: any) => !st.is_terminal);
+      if (selectable.length && !selectable.some((st: any) => st.code === form.stage)) {
+        form.stage = selectable[0].code;
+      }
+    }).catch((e: any) => addNotification(e.message, 'error'));
     listPropagationMethods().then(m => propagationMethods = m).catch((e: any) => addNotification(e.message, 'error'));
   });
 

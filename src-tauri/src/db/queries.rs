@@ -900,12 +900,17 @@ pub struct PaginationParams {
 }
 
 impl PaginationParams {
-    pub fn offset(&self) -> u32 {
-        (self.page.saturating_sub(1)) * self.per_page
+    /// Effective rows-per-page, clamped to a sane range. A `per_page` of 0 (which
+    /// would otherwise emit `LIMIT 0` and return nothing) is floored to 1, and an
+    /// absurdly large value is capped so a crafted request can't force a huge scan.
+    pub fn limit(&self) -> u32 {
+        self.per_page.clamp(1, 1000)
     }
 
-    pub fn limit(&self) -> u32 {
-        self.per_page
+    /// Row offset for the current page. `saturating_mul` prevents the u32 overflow
+    /// (debug panic / release wraparound) a large `page * per_page` used to cause.
+    pub fn offset(&self) -> u32 {
+        self.page.saturating_sub(1).saturating_mul(self.limit())
     }
 }
 
@@ -3462,6 +3467,21 @@ mod tests {
     fn pagination_offset_does_not_underflow() {
         let pg = PaginationParams { page: 0, per_page: 10 };
         assert_eq!(pg.offset(), 0);
+    }
+
+    #[test]
+    fn pagination_zero_per_page_is_floored_to_one() {
+        // per_page = 0 previously produced LIMIT 0 (no rows) and Inf total_pages.
+        let pg = PaginationParams { page: 3, per_page: 0 };
+        assert_eq!(pg.limit(), 1);
+        assert_eq!(pg.offset(), 2);
+    }
+
+    #[test]
+    fn pagination_offset_saturates_instead_of_overflowing() {
+        // page * per_page well beyond u32::MAX must saturate, not panic/wrap.
+        let pg = PaginationParams { page: u32::MAX, per_page: 1000 };
+        assert_eq!(pg.offset(), u32::MAX);
     }
 
     #[test]

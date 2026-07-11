@@ -195,6 +195,13 @@ pub fn create_specimen(
         return Err("Insufficient permissions".to_string());
     }
 
+    // Validate the requested stage against the active profile's vocabulary, mirroring
+    // bulk_update_stage. Without this, a stale cross-profile stage left in the New
+    // Specimen form (e.g. an 'explant' default after switching to the mycology profile)
+    // would be written straight to the DB.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
+    crate::db::vocabulary::require_selectable_stage(&db.conn, &profile, &request.stage)?;
+
     let species_code: String = db.conn.query_row(
         "SELECT species_code FROM species WHERE id = ?1",
         params![request.species_id],
@@ -1040,9 +1047,7 @@ pub fn bulk_update_stage(
     }
     // Validate against the vocabulary table; is_terminal = 0 prevents setting 'archived' in bulk.
     let profile = crate::db::vocabulary::active_profile(&db.conn);
-    if !crate::db::vocabulary::stage_is_selectable(&db.conn, &profile, &stage) {
-        return Err(format!("'{}' is not a valid or selectable stage", stage));
-    }
+    crate::db::vocabulary::require_selectable_stage(&db.conn, &profile, &stage)?;
     let mut count = 0usize;
     for id in &ids {
         let n = db.conn.execute(

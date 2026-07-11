@@ -191,12 +191,18 @@ pub fn parse_host_port(base_url: &str) -> Result<(String, u16), String> {
 /// `net/http`, which Ollama is built on, uses chunked encoding whenever the
 /// handler doesn't set an explicit Content-Length up front).
 pub fn parse_http_response(raw: &[u8]) -> Result<(u16, String), String> {
-    let text = String::from_utf8_lossy(raw);
-    let (head, body_start) = text
-        .find("\r\n\r\n")
-        .map(|idx| (&text[..idx], idx + 4))
+    // Work on raw bytes, not a lossy &str. Chunk sizes are byte counts, and an
+    // HTTP chunk boundary (or a Content-Length cut) can fall inside a multi-byte
+    // UTF-8 character; decoding to a String up front and then slicing by those
+    // byte offsets would panic ("byte index N is not a char boundary") and, since
+    // the caller holds the global DB mutex across the call, poison it. So we
+    // dechunk over &[u8] and convert to String exactly once, at the very end.
+    let sep = find_subslice(raw, b"\r\n\r\n")
         .ok_or_else(|| "Malformed HTTP response: no header/body separator".to_string())?;
+    let body_start = sep + 4;
 
+    // The header block is ASCII per the HTTP grammar, so a lossy view is safe here.
+    let head = String::from_utf8_lossy(&raw[..sep]);
     let mut lines = head.lines();
     let status_line = lines.next().ok_or_else(|| "Malformed HTTP response: no status line".to_string())?;
     let status_code: u16 = status_line
@@ -206,25 +212,30 @@ pub fn parse_http_response(raw: &[u8]) -> Result<(u16, String), String> {
         .ok_or_else(|| format!("Malformed HTTP status line: '{}'", status_line))?;
 
     let is_chunked = lines.clone().any(|l| l.to_ascii_lowercase().starts_with("transfer-encoding: chunked"));
-    let body_raw = &text[body_start..];
+    let body_raw = &raw[body_start..];
 
-    let body = if is_chunked {
+    let body_bytes = if is_chunked {
         dechunk(body_raw)?
     } else {
-        body_raw.to_string()
+        body_raw.to_vec()
     };
 
-    Ok((status_code, body))
+    Ok((status_code, String::from_utf8_lossy(&body_bytes).into_owned()))
 }
 
-/// Decodes an HTTP chunked-transfer-encoded body (hex length lines separated
-/// by `\r\n`, terminated by a zero-length chunk).
-fn dechunk(chunked: &str) -> Result<String, String> {
-    let mut out = String::new();
+/// Decodes an HTTP chunked-transfer-encoded body over raw bytes (hex length
+/// lines separated by `\r\n`, terminated by a zero-length chunk). Operating on
+/// `&[u8]` rather than `&str` is essential: a chunk boundary may split a
+/// multi-byte UTF-8 character, so byte-offset slicing of a `&str` would panic.
+fn dechunk(chunked: &[u8]) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
     let mut rest = chunked;
-    while let Some(line_end) = rest.find("\r\n") {
-        let size_line = &rest[..line_end];
-        let size = usize::from_str_radix(size_line.trim(), 16)
+    while let Some(line_end) = find_subslice(rest, b"\r\n") {
+        let size_line = std::str::from_utf8(&rest[..line_end])
+            .map_err(|_| "Invalid chunk size line (non-UTF-8)".to_string())?;
+        // A chunk-size line may carry ";"-delimited chunk extensions — ignore them.
+        let size_tok = size_line.trim().split(';').next().unwrap_or("").trim();
+        let size = usize::from_str_radix(size_tok, 16)
             .map_err(|_| format!("Invalid chunk size line: '{}'", size_line))?;
         if size == 0 {
             break;
@@ -234,10 +245,18 @@ fn dechunk(chunked: &str) -> Result<String, String> {
         if chunk_end > rest.len() {
             return Err("Chunked body truncated".to_string());
         }
-        out.push_str(&rest[chunk_start..chunk_end]);
-        rest = rest.get(chunk_end + 2..).unwrap_or("");
+        out.extend_from_slice(&rest[chunk_start..chunk_end]);
+        rest = rest.get(chunk_end + 2..).unwrap_or(&[]);
     }
     Ok(out)
+}
+
+/// Index of the first occurrence of `needle` within `haystack` (byte search).
+fn find_subslice(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || haystack.len() < needle.len() {
+        return None;
+    }
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 /// Turns a low-level socket failure into a friendly, actionable message. This
@@ -419,6 +438,31 @@ mod tests {
     #[test]
     fn parse_http_response_rejects_malformed_input() {
         assert!(parse_http_response(b"garbage no separator").is_err());
+    }
+
+    #[test]
+    fn dechunk_handles_multibyte_char_split_across_chunk_boundary() {
+        // "µ" is 0xC2 0xB5. Put 0xC2 at the end of one chunk and 0xB5 at the
+        // start of the next — exactly the case that panicked when slicing a &str
+        // by raw chunk-byte offsets. Byte-based dechunking must stitch it back.
+        let mut raw = Vec::new();
+        raw.extend_from_slice(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n");
+        raw.extend_from_slice(b"2\r\n"); // chunk 1: "a" + first byte of µ
+        raw.extend_from_slice(&[b'a', 0xC2]);
+        raw.extend_from_slice(b"\r\n");
+        raw.extend_from_slice(b"2\r\n"); // chunk 2: second byte of µ + "b"
+        raw.extend_from_slice(&[0xB5, b'b']);
+        raw.extend_from_slice(b"\r\n0\r\n\r\n");
+        let (status, body) = parse_http_response(&raw).unwrap();
+        assert_eq!(status, 200);
+        assert_eq!(body, "aµb");
+    }
+
+    #[test]
+    fn dechunk_ignores_chunk_extensions() {
+        let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;foo=bar\r\nhello\r\n0\r\n\r\n";
+        let (_status, body) = parse_http_response(raw).unwrap();
+        assert_eq!(body, "hello");
     }
 
     // ── WP-56b: provider routing, OpenAI-compatible (LocalAI) support ────────
