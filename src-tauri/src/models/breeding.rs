@@ -35,6 +35,10 @@ pub struct BreedingRecord {
     pub selected_by: Option<String>,
     pub notes: Option<String>,
     pub created_at: String,
+    /// WP-72: the lab that authored this selection record. `None` for a locally
+    /// authored record; a partner lab's name for a record merged in from a
+    /// cross-lab coordination bundle.
+    pub origin_lab: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

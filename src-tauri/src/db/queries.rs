@@ -6320,7 +6320,7 @@ pub fn add_breeding_record(
 pub fn get_breeding_record(conn: &Connection, id: &str) -> DbResult<BreedingRecord> {
     conn.query_row(
         "SELECT id, program_id, strain_id, generation_number, selection_notes, \
-                fitness_score, selection_date, selected_by, notes, created_at \
+                fitness_score, selection_date, selected_by, notes, created_at, origin_lab \
          FROM breeding_records WHERE id = ?1",
         params![id],
         |r| Ok(BreedingRecord {
@@ -6331,9 +6331,10 @@ pub fn get_breeding_record(conn: &Connection, id: &str) -> DbResult<BreedingReco
             selection_notes: r.get(4)?,
             fitness_score: r.get(5)?,
             selection_date: r.get(6)?,
-            selected_by: r.get(7)?,
             notes: r.get(8)?,
+            selected_by: r.get(7)?,
             created_at: r.get(9)?,
+            origin_lab: r.get(10)?,
         }),
     )
     .map_err(|_| DbError::Constraint(format!("Breeding record not found: {}", id)))
@@ -6345,7 +6346,7 @@ pub fn list_breeding_records_for_program(
 ) -> DbResult<Vec<BreedingRecord>> {
     let mut stmt = conn.prepare(
         "SELECT id, program_id, strain_id, generation_number, selection_notes, \
-                fitness_score, selection_date, selected_by, notes, created_at \
+                fitness_score, selection_date, selected_by, notes, created_at, origin_lab \
          FROM breeding_records WHERE program_id = ?1 \
          ORDER BY generation_number, created_at",
     )?;
@@ -6360,6 +6361,7 @@ pub fn list_breeding_records_for_program(
         selected_by: r.get(7)?,
         notes: r.get(8)?,
         created_at: r.get(9)?,
+        origin_lab: r.get(10)?,
     }))?;
     let records: Vec<BreedingRecord> = rows.filter_map(|r| r.ok()).collect();
     Ok(records)
@@ -6371,7 +6373,7 @@ pub fn list_breeding_records_for_strain(
 ) -> DbResult<Vec<BreedingRecord>> {
     let mut stmt = conn.prepare(
         "SELECT id, program_id, strain_id, generation_number, selection_notes, \
-                fitness_score, selection_date, selected_by, notes, created_at \
+                fitness_score, selection_date, selected_by, notes, created_at, origin_lab \
          FROM breeding_records WHERE strain_id = ?1 \
          ORDER BY generation_number, created_at",
     )?;
@@ -6386,6 +6388,7 @@ pub fn list_breeding_records_for_strain(
         selected_by: r.get(7)?,
         notes: r.get(8)?,
         created_at: r.get(9)?,
+        origin_lab: r.get(10)?,
     }))?;
     let records: Vec<BreedingRecord> = rows.filter_map(|r| r.ok()).collect();
     Ok(records)

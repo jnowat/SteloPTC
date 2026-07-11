@@ -1010,6 +1010,9 @@ export interface BreedingRecord {
   selected_by: string | null;
   notes: string | null;
   created_at: string;
+  /** WP-72: authoring lab of a selection record — null when locally authored,
+   *  a partner lab's name when merged in from a coordination bundle. */
+  origin_lab: string | null;
 }
 
 export interface GenerationalSummary {
@@ -2133,4 +2136,145 @@ export async function getTaxonomyRegistryJson(rowId: string) {
 
 export async function listRegistryDispositions(registryRowId: string) {
   return call<AppliedRecord[]>('list_registry_dispositions', { registryRowId });
+}
+
+// ── WP-72: Cross-lab breeding program coordination ────────────────────────────
+
+export interface BundleProgram {
+  name: string;
+  goal: string | null;
+  target_traits: string | null;
+  start_date: string | null;
+  notes: string | null;
+  origin_lab: string;
+}
+
+export interface SelectionRecord {
+  source_key: string;
+  strain_scientific_name: string;
+  strain_code: string;
+  generation_number: number;
+  selection_notes: string | null;
+  fitness_score: number | null;
+  selection_date: string | null;
+  selected_by: string | null;
+  notes: string | null;
+  origin_lab: string;
+  record_hash: string;
+}
+
+export interface CoordinationBundle {
+  format: string;
+  version: string;
+  bundle_id: string;
+  issued_at: string;
+  issuer: IssuerIdentity;
+  program: BundleProgram;
+  records: SelectionRecord[];
+  content_hash: string;
+  signature: string;
+}
+
+export interface BundleCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface BundleVerification {
+  verified: boolean;
+  bundle_id: string;
+  issuer_lab: string;
+  issuer_public_key: string;
+  program_name: string;
+  record_count: number;
+  checks: BundleCheck[];
+  message: string;
+}
+
+export interface SelectionPlan {
+  source_key: string;
+  strain_scientific_name: string;
+  strain_code: string;
+  generation_number: number;
+  origin_lab: string;
+  local_status: 'new' | 'identical' | 'blocked';
+  detail: string;
+  suggested_disposition: 'accept' | 'skip';
+}
+
+export interface BundleImportPreview {
+  verification: BundleVerification;
+  program_exists_locally: boolean;
+  records: SelectionPlan[];
+}
+
+export type SelectionDisposition = 'accept' | 'skip';
+
+export interface SelectionDecision {
+  source_key: string;
+  disposition: SelectionDisposition;
+}
+
+export interface AppliedSelection {
+  source_key: string;
+  local_status: string;
+  disposition: string;
+  action_taken: string;
+  local_record_id: string | null;
+}
+
+export interface BundleImportResult {
+  imported: boolean;
+  bundle_id: string;
+  local_row_id: string;
+  program_id: string;
+  program_created: boolean;
+  audit_entry_id: string | null;
+  verification: BundleVerification;
+  applied: AppliedSelection[];
+  inserted: number;
+  kept_local: number;
+  skipped: number;
+}
+
+export interface BundleRow {
+  id: string;
+  bundle_id: string;
+  direction: 'issued' | 'imported';
+  issuer_lab: string;
+  issuer_public_key: string;
+  program_name: string;
+  content_hash: string;
+  record_count: number;
+  verified: boolean;
+  created_at: string;
+}
+
+export async function exportCoordinationBundle(programId: string) {
+  return call<CoordinationBundle>('export_coordination_bundle', { programId });
+}
+
+export async function verifyCoordinationBundle(bundleJson: string) {
+  return call<BundleVerification>('verify_coordination_bundle', { bundleJson });
+}
+
+export async function previewCoordinationImport(bundleJson: string) {
+  return call<BundleImportPreview>('preview_coordination_import', { bundleJson });
+}
+
+export async function importCoordinationBundle(bundleJson: string, decisions?: SelectionDecision[]) {
+  return call<BundleImportResult>('import_coordination_bundle', { bundleJson, decisions });
+}
+
+export async function listCoordinationBundles(direction?: 'issued' | 'imported') {
+  return call<BundleRow[]>('list_coordination_bundles', { direction });
+}
+
+export async function getCoordinationBundleJson(rowId: string) {
+  return call<string>('get_coordination_bundle_json', { rowId });
+}
+
+export async function listCoordinationDispositions(bundleRowId: string) {
+  return call<AppliedSelection[]>('list_coordination_dispositions', { bundleRowId });
 }

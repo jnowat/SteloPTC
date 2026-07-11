@@ -3,6 +3,7 @@ pub mod anchoring;
 pub mod auth;
 pub mod cloud;
 pub mod compliance_export;
+pub mod coordination;
 pub mod db;
 pub mod models;
 pub mod passport;
@@ -347,6 +348,14 @@ pub fn run() {
             commands::registry::list_taxonomy_registries,
             commands::registry::get_taxonomy_registry_json,
             commands::registry::list_registry_dispositions,
+            // Cross-lab breeding program coordination (WP-72)
+            commands::coordination::export_coordination_bundle,
+            commands::coordination::verify_coordination_bundle,
+            commands::coordination::preview_coordination_import,
+            commands::coordination::import_coordination_bundle,
+            commands::coordination::list_coordination_bundles,
+            commands::coordination::get_coordination_bundle_json,
+            commands::coordination::list_coordination_dispositions,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

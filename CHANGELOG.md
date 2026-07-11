@@ -5,6 +5,85 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.47.0] - 2026-07-11
+
+### Added — WP-72: Cross-lab breeding program coordination (federated, signed selection-log merge)
+
+The **final packet of Phase G** (multi-institutional & federated networks): a **signed,
+self-contained coordination bundle** that lets two labs running separate copies of the *same*
+breeding program (WP-47) merge their selection records periodically — each partner verifies the
+other's bundle **independently** (with only the issuer's public key and the embedded, recomputable
+per-record hashes) and merges it into its own copy of the program, record by record. Where WP-70's
+passport moves *one specimen's provenance* and WP-71's registry moves *shared reference data*, this
+bundle moves *a program's selection log*. All three are signed with the same lab Ed25519 key and
+verifiable with only that public key. All verification commands pass clean:
+`cargo test --lib --no-default-features` (**602 passing**, up from 574),
+`cargo clippy --no-default-features` (clean), `npm run check` (**0 errors, 0 warnings**, 412 files),
+`npm test` (**106 passing**).
+
+**What it does**
+
+- **Export a program's selection records.** `export_coordination_bundle` gathers one breeding
+  program's identity plus its selection records into a signed, self-contained JSON document. Each
+  record references its strain by **scientific name + code** (a cross-lab-stable identity, never a
+  local UUID) and is keyed by a name-based `source_key`
+  (`sel|<program>|<Genus species> <code>|g<gen>|<date>|<selector>|<content8>`) with a short content
+  digest so distinct same-day selections don't collide while byte-identical ones from two labs merge
+  to one. Records are sorted by key, so a re-export of unchanged data is byte-identical.
+- **Verify independently.** `verify_bundle` runs four checks — format/version, `content_hash`
+  recomputation, the issuer's Ed25519 signature over the content hash, and per-record `record_hash`
+  integrity plus source-key uniqueness — needing only the issuer's public key. A ~40-line standalone
+  Python verifier ships in `docs/breeding-coordination.md`.
+- **Merge record by record.** `preview_coordination_import` classifies each incoming record against
+  the local copy of the program (`new` / `identical` / `blocked`) and suggests a disposition;
+  `import_coordination_bundle` applies the operator's per-record choice — **accept** (merge it in) or
+  **skip**. The whole merge is folded into this lab's own tamper-evident audit chain (a
+  `breeding_merge_imported` entry committing to the bundle's content hash), and every decision is
+  recorded.
+
+**Guarantees held and disclosed honestly** (matching the WP-66/WP-70/WP-71 precedent)
+
+- **Merging is additive and non-destructive** — it never overwrites or deletes an existing local
+  selection record, and never changes a local program's metadata. A local program absent by name is
+  created as a *coordinated copy* (a shell) so records have somewhere to attach; an existing one is
+  matched by name and left untouched.
+- **Two dispositions, not three** — merging an append-only selection log is a set union, so there is
+  no local counterpart to WP-71's "override" and forking a log entry is meaningless. The bundle
+  exposes **accept / skip** only (documented divergence from the registry's accept/override/fork).
+- **Strains are a prerequisite** — a selection record's strain must already exist locally (share it
+  via the WP-71 taxonomy registry first); otherwise the record is `blocked`. This is the
+  `breeding_records.strain_id` foreign key made explicit, and mirrors WP-71's strain-needs-species
+  rule.
+- **Provenance is preserved across hops** — `breeding_records.origin_lab` records a merged record's
+  authoring lab (`NULL` when locally authored), so a re-export never reattributes a partner's
+  selections to this lab.
+- **No coordination server / network transport** — exporting downloads a signed JSON file the
+  operator moves through their own channel; importing reads one. The cryptographic guarantee is
+  independent of who carries the bytes, so the verifiable core ships now (the same boundary as
+  WP-66's on-chain broadcast).
+
+**As built**
+
+- **Pure core** `src-tauri/src/coordination/mod.rs`: the `CoordinationBundle` / `BundleProgram` /
+  `SelectionRecord` model, deterministic control-char canonical serialization (`0x1f`/`0x1e`
+  delimiters, matching WP-70/WP-71), a deterministic `f64` fitness-score encoding, per-record +
+  content hashing, the `source_key` / content-discriminator builders, Ed25519 assembly/signing
+  (reusing the WP-60 lab key), and independent verification. 12 unit tests.
+- **DB lifecycle** `src-tauri/src/coordination/store.rs`: `export_bundle`, `verify_bundle_json`,
+  `preview_import`, `import_bundle` (per-record accept/skip, program shell creation, strain
+  resolution by scientific name + code), `list_bundles`, `get_bundle_json`, `list_dispositions`. 16
+  unit tests, including a two-lab union scenario.
+- **Command gating** `src-tauri/src/commands/coordination.rs`: seven session/role-gated commands
+  (export/import require a write-capable role; verify/preview/list are read-only).
+- **Migration 051** adds `breeding_bundles` (issued/imported register, `UNIQUE(direction,
+  bundle_id)`), `breeding_bundle_dispositions` (per-record merge decisions), and an `origin_lab`
+  column on `breeding_records` (provenance of merged records; exposed on the `BreedingRecord` model).
+- **UI**: a new **Cross-Lab Breeding Coordination** panel in the Audit Log (beside the Shared
+  Taxonomy Registry) — pick a program to export, load/preview with a per-record accept/skip picker,
+  import, and a register of prior exchanges.
+- **Docs**: `docs/breeding-coordination.md` with the document shape, canonical forms, and the
+  standalone verifier.
+
 ## [1.46.0] - 2026-07-11
 
 ### Added — WP-71: Shared taxonomy registry (federated, signed reference-data exchange)
