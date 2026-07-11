@@ -2,7 +2,7 @@
   import { untrack } from 'svelte';
   import { get } from 'svelte/store';
   import { getSpecimen, listSubcultures, createSubculture, recordSpecimenDeath, splitSpecimen, previewSplitAccessions, createDraftMediaBatch, getSpecimenFamily, listMedia, listComplianceRecords, listAttachments, listStages, getStrain, getColonizationHistory, updateSpecimen, listFruitingRecords, createFruitingRecord, listEnvironmentalReadings, createEnvironmentalReading, summarizeNotes, suggestPassageComment, listAiSuggestions, approveAiSuggestion, rejectAiSuggestion, issueSpecimenPassport, type ColonizationEntry, type FruitingRecord, type EnvironmentalReading, type AiSuggestion } from '../api';
-  import { labProfile } from '../profile';
+  import { labProfile, ORIGIN_TYPE_META, CONTAMINANT_TYPE_LABELS } from '../profile';
   import { onMount } from 'svelte';
   import SpecimenPhotoGallery from './SpecimenPhotoGallery.svelte';
   import SpecimenComplianceTable from './SpecimenComplianceTable.svelte';
@@ -1101,7 +1101,7 @@ ${footnotesHtml}
             <span class="info-value">{specimen.subculture_count}</span>
           {/if}
         </div>
-        {#if specimen.cumulative_pdl != null}
+        {#if $labProfile === 'cell_culture' && specimen.cumulative_pdl != null}
           <div class="info-item">
             <span class="info-label" title="Cumulative population doubling level — total PDL accumulated across all passages in this lineage, including inherited PDL from ancestors">Cumulative PDL</span>
             <span class="info-value">{specimen.cumulative_pdl.toFixed(2)} <span style="color:#6b7280;font-size:12px;">doublings</span></span>
@@ -1116,18 +1116,11 @@ ${footnotesHtml}
           </div>
         {/if}
         {#if $labProfile === 'mycology' && specimen.origin_type}
+          {@const originMeta = ORIGIN_TYPE_META[specimen.origin_type]}
           <div class="info-item">
             <span class="info-label" title="How this culture was originally established from source material">Culture Origin</span>
             <span class="info-value">
-              {#if specimen.origin_type === 'multi_spore'}
-                <span class="badge badge-blue" title="Culture originated from a multi-spore print">Multi-Spore</span>
-              {:else if specimen.origin_type === 'isolated_dikaryon'}
-                <span class="badge badge-purple" title="Culture originated from an isolated dikaryon (single spore pair germination)">Isolated Dikaryon</span>
-              {:else if specimen.origin_type === 'tissue_clone'}
-                <span class="badge badge-green" title="Culture originated from fruit body tissue cloning">Tissue Clone</span>
-              {:else}
-                <span class="badge badge-gray">{specimen.origin_type}</span>
-              {/if}
+              <span class="badge {originMeta?.badge ?? 'badge-gray'}" title="Culture origin: {originMeta?.label ?? specimen.origin_type}">{originMeta?.label ?? specimen.origin_type}</span>
             </span>
           </div>
         {/if}
@@ -1302,27 +1295,31 @@ ${footnotesHtml}
                 </div>
               </div>
 
-              <!-- Cell Count & PDL (optional; used for doubling time and PDL calculations) -->
-              <div class="section-header">Cell Count & Doubling (Optional)</div>
-              <div class="form-row">
-                <div class="form-group">
-                  <label for="sc-seed-count" title="Number of cells seeded at the start of this passage — used to calculate population doubling level and doubling time">Seed Cell Count</label>
-                  <input id="sc-seed-count" type="number" min="0" step="any" title="Cells seeded at the start of this passage" bind:value={subcultureForm.seed_cell_count} placeholder="e.g. 250000" />
+              <!-- Cell Count & PDL: a cell-culture concept (population doubling
+                   level). Gate to the cell_culture profile so PTC/mycology
+                   passages don't surface animal-cell fields. -->
+              {#if $labProfile === 'cell_culture'}
+                <div class="section-header">Cell Count & Doubling (Optional)</div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="sc-seed-count" title="Number of cells seeded at the start of this passage — used to calculate population doubling level and doubling time">Seed Cell Count</label>
+                    <input id="sc-seed-count" type="number" min="0" step="any" title="Cells seeded at the start of this passage" bind:value={subcultureForm.seed_cell_count} placeholder="e.g. 250000" />
+                  </div>
+                  <div class="form-group">
+                    <label for="sc-harvest-count" title="Number of cells harvested at the end of this passage — used together with seed count to calculate PDL and doubling time">Harvest Cell Count</label>
+                    <input id="sc-harvest-count" type="number" min="0" step="any" title="Cells harvested at the end of this passage" bind:value={subcultureForm.harvest_cell_count} placeholder="e.g. 2000000" />
+                  </div>
+                  <div class="form-group">
+                    <label for="sc-split-ratio" title="Split ratio used for this passage (e.g. 4 for a 1:4 split) — used to estimate PDL when cell counts are not available">Split Ratio</label>
+                    <input id="sc-split-ratio" type="number" min="0" step="0.1" title="Split ratio if cell counts are unavailable (e.g. 4 for 1:4)" bind:value={subcultureForm.split_ratio} placeholder="e.g. 4" />
+                  </div>
                 </div>
-                <div class="form-group">
-                  <label for="sc-harvest-count" title="Number of cells harvested at the end of this passage — used together with seed count to calculate PDL and doubling time">Harvest Cell Count</label>
-                  <input id="sc-harvest-count" type="number" min="0" step="any" title="Cells harvested at the end of this passage" bind:value={subcultureForm.harvest_cell_count} placeholder="e.g. 2000000" />
-                </div>
-                <div class="form-group">
-                  <label for="sc-split-ratio" title="Split ratio used for this passage (e.g. 4 for a 1:4 split) — used to estimate PDL when cell counts are not available">Split Ratio</label>
-                  <input id="sc-split-ratio" type="number" min="0" step="0.1" title="Split ratio if cell counts are unavailable (e.g. 4 for 1:4)" bind:value={subcultureForm.split_ratio} placeholder="e.g. 4" />
-                </div>
-              </div>
-              {#if subcultureForm.seed_cell_count && subcultureForm.harvest_cell_count && parseFloat(subcultureForm.seed_cell_count) > 0 && parseFloat(subcultureForm.harvest_cell_count) > parseFloat(subcultureForm.seed_cell_count)}
-                {@const pdlPreview = Math.log2(parseFloat(subcultureForm.harvest_cell_count) / parseFloat(subcultureForm.seed_cell_count))}
-                <div style="font-size:12px;color:#0891b2;margin-top:-6px;margin-bottom:8px;">
-                  PDL this passage: ~{pdlPreview.toFixed(2)} doublings
-                </div>
+                {#if subcultureForm.seed_cell_count && subcultureForm.harvest_cell_count && parseFloat(subcultureForm.seed_cell_count) > 0 && parseFloat(subcultureForm.harvest_cell_count) > parseFloat(subcultureForm.seed_cell_count)}
+                  {@const pdlPreview = Math.log2(parseFloat(subcultureForm.harvest_cell_count) / parseFloat(subcultureForm.seed_cell_count))}
+                  <div style="font-size:12px;color:#0891b2;margin-top:-6px;margin-bottom:8px;">
+                    PDL this passage: ~{pdlPreview.toFixed(2)} doublings
+                  </div>
+                {/if}
               {/if}
 
               <!-- Transfer To Location -->
@@ -1445,12 +1442,9 @@ ${footnotesHtml}
                     <label for="sc-contaminant-type" title="Identify the contaminant type">Contaminant Type</label>
                     <select id="sc-contaminant-type" bind:value={subcultureForm.contaminant_type}>
                       <option value="">— select type —</option>
-                      <option value="trich">Trichoderma (Trich)</option>
-                      <option value="wet_rot">Wet Rot / Bacterial</option>
-                      <option value="cobweb">Cobweb Mold</option>
-                      <option value="pin_mold">Pin Mold (Mucor / Rhizopus)</option>
-                      <option value="mycelium_abort">Mycelium Abort</option>
-                      <option value="other">Other</option>
+                      {#each Object.entries(CONTAMINANT_TYPE_LABELS) as [value, label]}
+                        <option {value}>{label}</option>
+                      {/each}
                     </select>
                   </div>
                 {/if}

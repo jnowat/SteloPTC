@@ -321,16 +321,32 @@ pub fn verify_ledger(conn: &Connection) -> Result<LedgerVerification, String> {
             });
         }
         // Cross-check the signing key still matches the user's registered key
-        // (detects a swapped-key forgery attempt).
+        // (detects a swapped-key forgery attempt). A missing registered key is
+        // itself a verification failure: an entry is only appended after
+        // `load_or_create_user_signing_key` persists the user's key, so any
+        // user-attributed entry MUST have a registered key at verify time. If it
+        // is gone, a DB-writer deleted the `user_signing_keys` row and re-signed
+        // the entry with a fresh key — the cross-check must not be silently
+        // skipped, or that forgery would pass as "verified".
         if let Some(uid) = user_id {
-            if let Some(registered) = get_user_public_key(conn, uid) {
-                if &registered != public_key {
+            match get_user_public_key(conn, uid) {
+                Some(registered) if &registered == public_key => {}
+                Some(_) => {
                     return Ok(LedgerVerification {
                         verified: false,
                         total_events: total,
                         signatures_valid,
                         first_break_seq: Some(*seq),
                         message: format!("Signing key mismatch at seq {} — the entry's key differs from the user's registered key.", seq),
+                    });
+                }
+                None => {
+                    return Ok(LedgerVerification {
+                        verified: false,
+                        total_events: total,
+                        signatures_valid,
+                        first_break_seq: Some(*seq),
+                        message: format!("Missing registered key at seq {} — user '{}' has no registered signing key to verify against (the key row was removed).", seq, uid),
                     });
                 }
             }
@@ -470,6 +486,31 @@ mod tests {
         let v = verify_ledger(&conn).unwrap();
         assert!(!v.verified);
         assert_eq!(v.first_break_seq, Some(0));
+    }
+
+    #[test]
+    fn deleted_registered_key_forgery_is_detected() {
+        // Threat model: a DB-writer who does NOT hold user1's private key wants a
+        // forged event to pass verification. They delete user1's registered key
+        // row, mint a fresh keypair, and re-sign the entry with it (updating both
+        // the row's public_key and signature so it is internally self-consistent).
+        // Without treating a missing registered key as a failure, this would
+        // verify as genuine. It must not.
+        let conn = test_db();
+        let e = append_signed_event(&conn, "user1", "specimen_created", "specimen", Some("spec1"), "{}").unwrap();
+        let forged = signing::generate_keypair();
+        let forged_sig = signing::sign(&forged.private_key_b64, e.event_hash.as_bytes()).unwrap();
+        conn.execute(
+            "UPDATE signed_events SET public_key = ?1, signature = ?2 WHERE seq = 0",
+            params![forged.public_key_b64, forged_sig],
+        )
+        .unwrap();
+        // Remove the registered key so the naive cross-check would be skipped.
+        conn.execute("DELETE FROM user_signing_keys WHERE user_id = 'user1'", []).unwrap();
+        let v = verify_ledger(&conn).unwrap();
+        assert!(!v.verified, "forgery via deleted registered key must be rejected");
+        assert_eq!(v.first_break_seq, Some(0));
+        assert!(v.message.contains("Missing registered key"), "message was: {}", v.message);
     }
 
     #[test]

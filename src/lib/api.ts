@@ -985,6 +985,18 @@ export async function listFruitingRecords(specimenId: string) {
   return call<FruitingRecord[]>('list_fruiting_records', { specimenId });
 }
 
+/** A fruiting record joined with its parent specimen's identity, for the
+ *  cross-specimen Fruiting overview. */
+export interface FruitingRecordWithSpecimen extends FruitingRecord {
+  specimen_accession: string;
+  species_label: string;
+}
+
+/** All flushes across every specimen (mycology overview), newest harvest first. */
+export async function listAllFruitingRecords() {
+  return call<FruitingRecordWithSpecimen[]>('list_all_fruiting_records', {});
+}
+
 // ── Breeding programs (WP-47) ─────────────────────────────────────────────────
 
 export interface BreedingProgram {

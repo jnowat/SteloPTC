@@ -5,6 +5,70 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.48.0] - 2026-07-11
+
+### WP-73: Domain-congruence & security hardening pass
+
+A focused pass that discharges the audit-flagged backlog in `skills.md` §8 — two real
+security gaps in the trust layer and the auth layer, plus the domain-UI leaks where
+Plant-Tissue-Culture assumptions bled into the Cell-Culture and Mycology profiles — and
+adds the one missing top-level view the nav backlog called for. No schema change (migration
+count unchanged at 51). All gates green: `cargo test --lib --no-default-features`
+(**608 passing**, up from 602), `cargo clippy --no-default-features` (clean),
+`npm run check` (**0 errors, 0 warnings**, 413 files), `npm test` (**113 passing**, up from 106).
+
+**Security fixes**
+
+- **Signed-ledger key-substitution forgery closed** (`signed_ledger::verify_ledger`). The
+  registered-key cross-check was silently *skipped* whenever a user's `user_signing_keys` row
+  was absent, so a database-writer who deleted that row and re-signed an entry with a fresh
+  key could produce a ledger that verified as genuine. A missing registered key is now a
+  verification failure (`Missing registered key at seq N …`): since a key is persisted before
+  any user-attributed entry is ever appended, its absence at verify time can only mean tampering.
+  New regression test `deleted_registered_key_forgery_is_detected`.
+- **Forced password change is now enforced server-side.** `must_change_password` was only
+  honored by the UI; `validate_session` still issued a full 24-hour token that worked for every
+  command, so a user who bypassed the UI could act before completing the mandated change.
+  `validate_session` now rejects any session whose user still owes a change (default-deny across
+  all ~40 command modules with no per-command edit); a new
+  `validate_session_allow_password_change` carve-out is used only by `change_password` and
+  `get_current_user` so a locked-out user can still see who they are and clear the flag. Four new
+  auth tests cover the block, the carve-out, and the clean path.
+
+**Domain-congruence (the three profiles are kept apart by data, not hardcoded UI)**
+
+- **Strain types are now derived from the active domain manifest.** `StrainManager.svelte` had a
+  hardcoded plant/mixed list; it now reads `DOMAIN_MANIFESTS[…].strainTypeLabels`, so Cell Culture
+  sees `cell_line`/`primary`/`immortalized`/`transformed` and Mycology sees
+  `wild_type`/`cultivated`/`hybrid`/`mutant`. The edit modal keeps a legacy stored value selectable
+  so editing name/code never silently rewrites `strain_type`. This is the first real consumer of
+  the domain manifest.
+- **`origin_type` and `contaminant_type` are now single-sourced.** The mycology culture-origin and
+  contaminant vocabularies moved into `profile.ts` (`ORIGIN_TYPE_META`, `CONTAMINANT_TYPE_LABELS`)
+  and both the `SpecimenForm` input and the `SpecimenDetail` badge/select read from there — closing
+  the input-vs-display label drift risk (skills.md §7). `ORIGIN_TYPE_META` is documented to stay in
+  lock-step with the migration 029 CHECK constraint.
+- **Cell Count / PDL passage fields are gated to Cell Culture.** The population-doubling-level
+  section of the passage form and the cumulative-PDL readout are animal-cell concepts and no longer
+  render for PTC/mycology specimens.
+- **Navigation is now profile-aware.** `NavItem` gained an optional `profiles` filter: Media Logs
+  (MS/WPM/B5 plant media) shows only for Plant Tissue Culture, and a new **Fruiting** entry shows
+  only for Mycology.
+
+**New — Fruiting overview (Mycology)**
+
+- A top-level **Fruiting** view listing every flush across all specimens with its accession, species,
+  yield (fresh/dry g), and harvest conditions, newest first, with total-flush and total-fresh-weight
+  summary. Backed by a new `list_all_fruiting_records` command/query that joins the parent specimen
+  and species (read-only; click a row to open the specimen). One new backend test.
+
+**Docs**
+
+- Corrected drifted test counts across `README.md` (badge + prose), `skills.md` (baseline, current
+  version, migration count), and `ROADMAP.md` (status banner + footer): backend **608**, frontend **113**.
+- Synced the committed Android `build.gradle.kts` snapshot (`versionCode`/`versionName`) with
+  `tauri.conf.json` and bumped `versionCode` to 26 for the release.
+
 ## [1.47.0] - 2026-07-11
 
 ### Added — WP-72: Cross-lab breeding program coordination (federated, signed selection-log merge)

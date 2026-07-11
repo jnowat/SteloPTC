@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { listStrainsBySpecies, createStrain, updateStrain, archiveStrain, updateStrainStatus, RESTRICTED_MARKER } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
+  import { labProfile, PROFILE_DOMAIN, DOMAIN_MANIFESTS } from '../profile';
   import HybridWizard from './HybridWizard.svelte';
   import StrainDetail from './StrainDetail.svelte';
 
@@ -14,7 +15,7 @@
 
   // Create modal
   let showCreate = $state(false);
-  let createForm = $state({ name: '', code: '', strain_type: 'wildtype' });
+  let createForm = $state({ name: '', code: '', strain_type: '' });
   let createLoading = $state(false);
 
   // Edit modal
@@ -47,13 +48,24 @@
 
   const today = new Date().toISOString().split('T')[0];
 
-  const strainTypes = [
-    { value: 'wildtype', label: 'Wild Type' },
-    { value: 'cultivar', label: 'Cultivar' },
-    { value: 'hybrid', label: 'Hybrid' },
-    { value: 'mutant', label: 'Mutant' },
-    { value: 'selection', label: 'Selection' },
-  ];
+  // Strain types are domain data, not a hardcoded plant list: derive them from
+  // the active profile's domain manifest so Cell Culture (cell_line/primary/…)
+  // and Mycology (wild_type/cultivated/…) each see their own vocabulary rather
+  // than the old plant-centric set. Reactive to the labProfile store.
+  let strainTypes = $derived(
+    Object.entries(DOMAIN_MANIFESTS[PROFILE_DOMAIN[$labProfile]].strainTypeLabels)
+      .map(([value, label]) => ({ value, label }))
+  );
+  // For the edit modal, keep an existing strain's stored type selectable even if
+  // it predates this profile's manifest (e.g. a legacy 'wildtype'/'selection'
+  // value), so editing name/code never silently rewrites the strain_type.
+  let editStrainTypes = $derived.by(() => {
+    const opts = strainTypes.slice();
+    if (editForm.strain_type && !opts.some((o) => o.value === editForm.strain_type)) {
+      opts.unshift({ value: editForm.strain_type, label: editForm.strain_type });
+    }
+    return opts;
+  });
 
   function isOlderThan30Days(createdAt: string): boolean {
     try {
@@ -100,7 +112,7 @@
       await createStrain({ species_id: speciesId, name: createForm.name.trim(), code: createForm.code.trim(), strain_type: createForm.strain_type });
       addNotification('Strain created', 'success');
       showCreate = false;
-      createForm = { name: '', code: '', strain_type: 'wildtype' };
+      createForm = { name: '', code: '', strain_type: strainTypes[0]?.value ?? '' };
       await load();
     } catch (e: any) {
       addErrorWithContext('Failed to Create Strain', e.message, 'strains.create', { speciesId, ...createForm });
@@ -222,7 +234,7 @@
     </div>
     <div class="sm-actions">
       <button class="btn btn-sm" onclick={() => (showHybridWizard = true)}>+ New Hybrid Strain</button>
-      <button class="btn btn-sm btn-primary" onclick={() => (showCreate = true)}>+ New Strain</button>
+      <button class="btn btn-sm btn-primary" onclick={() => { createForm.strain_type = strainTypes[0]?.value ?? ''; showCreate = true; }}>+ New Strain</button>
     </div>
   </div>
 
@@ -387,7 +399,7 @@
           <div class="form-group">
             <label for="et">Strain Type</label>
             <select id="et" bind:value={editForm.strain_type}>
-              {#each strainTypes as t}
+              {#each editStrainTypes as t}
                 <option value={t.value}>{t.label}</option>
               {/each}
             </select>

@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.47.0-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.48.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-602%20Rust%20·%20106%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-608%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -271,12 +271,12 @@ SteloPTC ships with backend (Rust) and frontend (TypeScript) test suites, both r
 every push and required to pass before merge.
 
 ```bash
-npm test                                                 # frontend (Vitest) — 106 assertions
-cd src-tauri && cargo test --lib --no-default-features   # backend — 549 tests
+npm test                                                 # frontend (Vitest) — 113 assertions
+cd src-tauri && cargo test --lib --no-default-features   # backend — 608 tests
 npm run check                                            # svelte-check + TypeScript
 ```
 
-> `cargo test --lib --no-default-features` runs the 549 pure-logic tests without GTK/WebKit.
+> `cargo test --lib --no-default-features` runs the 608 pure-logic tests without GTK/WebKit.
 > The full `tauri-commands` feature build (used in CI) adds the command-layer tests on top.
 
 CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-android.yml`

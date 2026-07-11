@@ -1,6 +1,7 @@
 <script lang="ts">
   import { currentView, navigateTo, unreadErrorCount, workQueueCount, type View } from '../stores/app';
   import { currentUser } from '../stores/auth';
+  import { labProfile, type LabProfile } from '../profile';
   import { getVersion } from '@tauri-apps/api/app';
   import { isTauri } from '../isTauri';
 
@@ -23,6 +24,10 @@
     label: string;
     icon: string;
     roles?: string[];
+    /** If set, the entry is shown only for these lab profiles. Omit = all
+     *  profiles. Keeps profile-specific features (plant media, mycology
+     *  fruiting) out of the nav for the domains they don't apply to. */
+    profiles?: LabProfile[];
   }
 
   const navItems: NavItem[] = [
@@ -31,7 +36,8 @@
     { id: 'analytics', label: 'Analytics', icon: '&#128200;' },
     { id: 'lab-map', label: 'Lab Map', icon: '&#128506;' },
     { id: 'specimens', label: 'Specimens', icon: '&#127793;' },
-    { id: 'media', label: 'Media Logs', icon: '&#129514;' },
+    { id: 'media', label: 'Media Logs', icon: '&#129514;', profiles: ['plant_tissue_culture'] },
+    { id: 'fruiting', label: 'Fruiting', icon: '&#127812;', profiles: ['mycology'] },
     { id: 'reminders', label: 'Reminders', icon: '&#128276;' },
     { id: 'compliance', label: 'Compliance', icon: '&#128203;' },
     { id: 'species', label: 'Species', icon: '&#127807;' },
@@ -50,6 +56,7 @@
   ];
 
   function canSee(item: NavItem): boolean {
+    if (item.profiles && !item.profiles.includes($labProfile)) return false;
     if (!item.roles) return true;
     const role = $currentUser?.role || 'guest';
     return item.roles.includes(role);
@@ -103,6 +110,7 @@
             item.id === 'work-queue' ? 'Work Queue — specimens needing attention today' :
             item.id === 'specimens' ? 'Specimens — manage and view all tissue culture specimens (Ctrl+2)' :
             item.id === 'media' ? 'Media Logs — track media preparation and usage records (Ctrl+3)' :
+            item.id === 'fruiting' ? 'Fruiting — flush yields and harvest conditions across all mycology specimens' :
             item.id === 'reminders' ? 'Reminders — view and manage scheduled tasks and alerts (Ctrl+4)' :
             item.id === 'compliance' ? 'Compliance — review compliance flags and regulatory records' :
             item.id === 'species' ? 'Species — manage species definitions and subculture intervals' :
@@ -125,6 +133,7 @@
             item.id === 'work-queue' ? 'Go to Work Queue — specimens needing attention today' :
             item.id === 'specimens' ? 'Go to Specimens — manage and view all tissue culture specimens' :
             item.id === 'media' ? 'Go to Media Logs — track media preparation and usage records' :
+            item.id === 'fruiting' ? 'Go to Fruiting — flush yields and harvest conditions across all mycology specimens' :
             item.id === 'reminders' ? 'Go to Reminders — view and manage scheduled tasks and alerts' :
             item.id === 'compliance' ? 'Go to Compliance — review compliance flags and regulatory records' :
             item.id === 'species' ? 'Go to Species — manage species definitions and subculture intervals' :

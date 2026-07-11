@@ -31,6 +31,7 @@
   import ProvisionalTaxaManager from './lib/components/ProvisionalTaxaManager.svelte';
   import AnalyticsDashboard from './lib/components/AnalyticsDashboard.svelte';
   import LabMap from './lib/components/LabMap.svelte';
+  import FruitingOverview from './lib/components/FruitingOverview.svelte';
   import PwaInstallPrompt from './lib/components/PwaInstallPrompt.svelte';
 
   let startupError = '';
@@ -197,6 +198,8 @@
           <AnalyticsDashboard />
         {:else if $currentView === 'lab-map'}
           <LabMap />
+        {:else if $currentView === 'fruiting'}
+          <FruitingOverview />
         {:else}
           <Dashboard />
         {/if}
