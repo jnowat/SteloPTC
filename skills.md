@@ -4,7 +4,7 @@ A single-page operating guide for anyone editing this repository — human or AI
 Grok, etc.). Read this before touching code. It captures the architecture, the golden
 rules, the exact verification gates, and the known traps that have bitten this codebase.
 
-> **North star:** SteloPTC is a released, local-first lab-provenance app (v1.44.0) with a
+> **North star:** SteloPTC is a released, local-first lab-provenance app (v1.48.0) with a
 > fully green test suite. It is **mature, not greenfield.** Prefer surgical, verified changes
 > over sweeping refactors. Every change must keep the audit hash chain, the test suite, and
 > clippy green.
@@ -30,7 +30,7 @@ Plant Tissue Culture (Plantae), Cell Culture (Animalia), and Mycology (Fungi).
 | Tauri command registry | `src-tauri/src/lib.rs` | Every `#[tauri::command]` is registered here in `invoke_handler![]`. Add new commands here. |
 | Commands (API layer) | `src-tauri/src/commands/*.rs` | One file per domain area. Pattern: lock DB → `validate_session` → permission check → do work → `log_audit`. |
 | Queries (SQL) | `src-tauri/src/db/queries.rs` | Large shared query module (~6.8k lines). Most raw SQL lives here. |
-| Migrations | `src-tauri/src/db/migrations.rs` | Append-only, numbered. **48 migrations today; next is 049.** Never edit a shipped migration — add a new one. |
+| Migrations | `src-tauri/src/db/migrations.rs` | Append-only, numbered. **51 migrations today; next is 052.** Never edit a shipped migration — add a new one. |
 | Models | `src-tauri/src/models/*.rs` | serde structs. **Field names here are the API contract** the frontend receives (no `#[serde(rename)]` in use). |
 | Profiles / vocabulary | `src-tauri/src/db/vocabulary.rs` + `src/lib/profile.ts` | The domain-separation machinery. See §4. |
 | Frontend API bridge | `src/lib/api.ts` | Single `call()` wrapper around Tauri `invoke` — catches/normalizes/rethrows as `Error`. All UI calls go through it. |
@@ -55,7 +55,7 @@ cargo clippy --lib --no-default-features -- -D warnings   # warnings are HARD er
   `webkit2gtk`/GTK and usually **can't run in a headless sandbox** — so verify locally with
   `--no-default-features` + clippy, and lean on unit tests for command logic you can't
   exercise here.
-- Current baseline: **528 Rust tests, 106 TS tests, clippy clean, svelte-check clean.**
+- Current baseline: **608 Rust tests, 113 TS tests, clippy clean, svelte-check clean.**
 - `cargo test`/`clippy` compile from scratch is slow (~40–60s). Compile once, batch your edits.
 
 ## 4. THE GOLDEN RULE: domain separation
@@ -136,29 +136,37 @@ vocabulary pack (see `docs/plugin-authoring.md`) when you don't need new columns
 - **`$lib/` alias exists only for type-checking**, not for the Vite build — importing from it
   in a real component breaks the build. Use relative imports.
 
-## 8. Open follow-ups (audit-flagged, not yet fixed — verify with the full command suite before shipping)
+## 8. Open follow-ups (audit-flagged — verify with the full command suite before shipping)
 
-- **Signed-ledger key substitution (MEDIUM, security).** `signed_ledger::verify_ledger`
-  silently skips the registered-key cross-check when a user's `user_signing_keys` row is
-  absent, so a DB-writer who deletes those rows and re-signs with their own key can forge an
-  "verified" ledger. Anchor the registered key outside the mutable DB (checkpoint / on-chain)
-  or treat a missing registered key as a verification failure.
-- **Server-side forced-password-change (MEDIUM, security).** `must_change_password` is
-  enforced only in the UI; `validate_session` issues a full 24h token that works for every
-  command. Reject sessions with `must_change_password = 1` for everything except
-  `change_password`/`logout`.
-- **Domain UI wiring gaps (MEDIUM/LOW).** `StrainManager.svelte` hardcodes plant strain
-  types instead of using `activeDomainManifest()`; the media form and a couple of passage
-  fields (Cell Count/PDL) aren't profile-gated; nav has no profile filter and no Fruiting
-  entry; `origin_type`/`contaminant_type` are hardcoded rather than vocabulary-driven. The
-  data layer is clean; these are UI-only leaks of PTC assumptions into other profiles.
+**Fixed in v1.48.0 (WP-73)** — kept here as a record so the fixes aren't undone:
+
+- ~~**Signed-ledger key substitution (MEDIUM, security).**~~ Fixed: `signed_ledger::verify_ledger`
+  now treats a missing registered `user_signing_keys` row as a verification *failure* rather than
+  silently skipping the cross-check (test `deleted_registered_key_forgery_is_detected`).
+- ~~**Server-side forced-password-change (MEDIUM, security).**~~ Fixed: `validate_session` now
+  rejects any session whose user has `must_change_password = 1`; `change_password` and
+  `get_current_user` use the `validate_session_allow_password_change` carve-out. Default-deny across
+  all command modules — don't route a normal command through the allow-variant.
+- ~~**Domain UI wiring gaps (MEDIUM/LOW).**~~ Fixed: `StrainManager.svelte` derives strain types from
+  the domain manifest; `origin_type`/`contaminant_type` are single-sourced in `profile.ts`
+  (`ORIGIN_TYPE_META`/`CONTAMINANT_TYPE_LABELS`); Cell Count/PDL fields are cell-culture-gated; nav
+  has a `profiles` filter (Media → PTC, new Fruiting view → Mycology).
+
+**Still open:**
+
+- **Compliance rule engine is still PTC-only.** The four auto-flag rules in
+  `commands/compliance.rs` (HLB, permits, quarantine, mycoplasma) are not profile-gated — the
+  long-deferred "profile-pluggable rule set" (see ROADMAP WP-25 deviation). Cross-profile compliance
+  rules remain hardcoded PTC/citrus assumptions.
+- **Foundation-only features remain foundation-only** (PostgreSQL connector, LAN sync transport,
+  S3/SFTP targets, plugin WASM execution, iOS) — disclosed in ROADMAP; keep the disclosure honest.
 
 ## 9. Quick recipe: adding a command
 
 1. Add the `#[tauri::command] pub fn …` in `src-tauri/src/commands/<area>.rs`
    (lock DB → `validate_session` → permission check → work → `log_audit`).
 2. Put SQL in `db/queries.rs` (parameterized — never string-format runtime values).
-3. If it needs schema, add migration `049…` in `migrations.rs` (+ a `migration_049_*` test).
+3. If it needs schema, add migration `052…` in `migrations.rs` (+ a `migration_052_*` test).
 4. Register it in `lib.rs` `invoke_handler![]`.
 5. Add a wrapper in `src/lib/api.ts`; call it from the component through that wrapper.
 6. Add tests. Run the four §3 gates. Update CHANGELOG/version/ROADMAP.

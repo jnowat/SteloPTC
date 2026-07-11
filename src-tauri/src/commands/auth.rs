@@ -32,7 +32,9 @@ pub fn login(state: State<AppState>, username: String, password: String) -> Resu
 #[tauri::command]
 pub fn get_current_user(state: State<AppState>, token: String) -> Result<UserPublic, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let user = auth_service::validate_session(&db, &token)?;
+    // Allow-password-change variant: a user who still owes a forced change must
+    // be able to fetch their own identity so the forced-change screen can render.
+    let user = auth_service::validate_session_allow_password_change(&db, &token)?;
     Ok(UserPublic {
         id: user.id,
         username: user.username,
@@ -117,7 +119,9 @@ pub fn change_password(state: State<AppState>, token: String, new_password: Stri
     }
 
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let user = auth_service::validate_session(&db, &token)?;
+    // Allow-password-change variant: this is the one endpoint a user under a
+    // forced change must reach in order to clear the flag.
+    let user = auth_service::validate_session_allow_password_change(&db, &token)?;
 
     let hash = bcrypt::hash(&new_password, bcrypt::DEFAULT_COST)
         .map_err(|e| format!("Password hashing failed: {}", e))?;

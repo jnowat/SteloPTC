@@ -227,6 +227,7 @@ pub fn run() {
             // Fruiting records (WP-43)
             commands::fruiting::create_fruiting_record,
             commands::fruiting::list_fruiting_records,
+            commands::fruiting::list_all_fruiting_records,
             // Breeding programs (WP-47)
             commands::breeding::create_breeding_program,
             commands::breeding::list_breeding_programs,

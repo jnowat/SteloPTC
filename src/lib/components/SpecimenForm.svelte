@@ -4,7 +4,7 @@
   import { addNotification, addErrorWithContext } from '../stores/app';
   import { effectiveHealth } from '../utils';
   import Tooltip from './Tooltip.svelte';
-  import { labProfile } from '../profile';
+  import { labProfile, ORIGIN_TYPE_META } from '../profile';
 
   let { onclose, onsave }: { onclose: () => void; onsave: () => void } = $props();
 
@@ -220,9 +220,9 @@
       <label for="origin_type">Culture Origin Type <Tooltip text="How this culture was established: multi-spore (from spore print), isolated dikaryon (single germinated spore pair), or tissue clone (from fruit body tissue)." /></label>
       <select id="origin_type" bind:value={form.origin_type} title="Select the culture origin type for strain tracking">
         <option value="">Not specified</option>
-        <option value="multi_spore">Multi-Spore</option>
-        <option value="isolated_dikaryon">Isolated Dikaryon</option>
-        <option value="tissue_clone">Tissue Clone</option>
+        {#each Object.entries(ORIGIN_TYPE_META) as [value, meta]}
+          <option {value}>{meta.label}</option>
+        {/each}
       </select>
     </div>
   {/if}

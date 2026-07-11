@@ -7,6 +7,8 @@ import {
   PROFILE_DOMAIN,
   DOMAIN_MANIFESTS,
   activeDomainManifest,
+  ORIGIN_TYPE_META,
+  CONTAMINANT_TYPE_LABELS,
   type LabProfile,
   type LabDomain,
 } from './profile';
@@ -117,6 +119,62 @@ describe('DOMAIN_MANIFESTS', () => {
 
   it('Fungi manifest has wild_type strain type', () => {
     expect(DOMAIN_MANIFESTS['Fungi'].strainTypeLabels['wild_type']).toBe('Wild Type');
+  });
+});
+
+describe('ORIGIN_TYPE_META (mycology culture origin)', () => {
+  it('covers exactly the three DB-CHECK-constrained origin codes', () => {
+    // Must stay in lock-step with the migration 029 CHECK constraint.
+    expect(Object.keys(ORIGIN_TYPE_META).sort()).toEqual(
+      ['isolated_dikaryon', 'multi_spore', 'tissue_clone']
+    );
+  });
+
+  it('every entry has a label and a badge class', () => {
+    for (const meta of Object.values(ORIGIN_TYPE_META)) {
+      expect(meta.label).toBeTruthy();
+      expect(meta.badge).toMatch(/^badge-/);
+    }
+  });
+
+  it('multi_spore renders as Multi-Spore', () => {
+    expect(ORIGIN_TYPE_META['multi_spore'].label).toBe('Multi-Spore');
+  });
+});
+
+describe('CONTAMINANT_TYPE_LABELS (mycology)', () => {
+  it('is non-empty and includes the common contaminants', () => {
+    expect(Object.keys(CONTAMINANT_TYPE_LABELS).length).toBeGreaterThan(0);
+    expect(CONTAMINANT_TYPE_LABELS['trich']).toBe('Trichoderma (Trich)');
+    expect(CONTAMINANT_TYPE_LABELS['other']).toBe('Other');
+  });
+});
+
+describe('strain-type options are derived from the active domain manifest', () => {
+  // Mirrors StrainManager's derivation: Object.entries(...strainTypeLabels).
+  function optionsFor(profile: LabProfile): { value: string; label: string }[] {
+    labProfile.set(profile);
+    return Object.entries(activeDomainManifest().strainTypeLabels).map(
+      ([value, label]) => ({ value, label })
+    );
+  }
+
+  it('cell_culture yields animal cell-line types, not plant types', () => {
+    const opts = optionsFor('cell_culture');
+    const values = opts.map((o) => o.value);
+    expect(values).toContain('cell_line');
+    expect(values).not.toContain('cultivar');
+  });
+
+  it('mycology yields fungal types', () => {
+    const values = optionsFor('mycology').map((o) => o.value);
+    expect(values).toContain('wild_type');
+    expect(values).toContain('cultivated');
+  });
+
+  it('plant_tissue_culture yields plant types', () => {
+    const values = optionsFor('plant_tissue_culture').map((o) => o.value);
+    expect(values).toContain('cultivar');
   });
 });
 

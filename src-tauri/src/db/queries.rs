@@ -2711,6 +2711,54 @@ pub fn list_fruiting_records(conn: &Connection, specimen_id: &str) -> DbResult<V
     Ok(records)
 }
 
+/// All fruiting records across every specimen, joined with the parent
+/// specimen's accession and species label, for the top-level Fruiting overview.
+/// Newest harvest first. A LEFT JOIN keeps a record even if its species row is
+/// somehow absent (label falls back to empty).
+pub fn list_all_fruiting_records(conn: &Connection) -> DbResult<Vec<crate::models::fruiting::FruitingRecordWithSpecimen>> {
+    let mut stmt = conn.prepare(
+        "SELECT fr.id, fr.specimen_id, sp.accession_number,
+                COALESCE(s.genus || ' ' || s.species_name, '') AS binomial,
+                s.common_name,
+                fr.flush_number, fr.harvest_date,
+                fr.fresh_weight_g, fr.dry_weight_g, fr.fruiting_temp_c, fr.fruiting_rh_percent,
+                fr.fae_rate, fr.light_hours_per_day, fr.notes, fr.created_by,
+                fr.created_at, fr.updated_at
+         FROM fruiting_records fr
+         JOIN specimens sp ON sp.id = fr.specimen_id
+         LEFT JOIN species s ON s.id = sp.species_id
+         ORDER BY fr.harvest_date DESC, sp.accession_number ASC, fr.flush_number ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        let binomial: String = row.get(3)?;
+        let common: Option<String> = row.get(4)?;
+        let species_label = match (binomial.trim().is_empty(), common) {
+            (true, _) => String::new(),
+            (false, Some(c)) if !c.trim().is_empty() => format!("{} ({})", binomial, c),
+            (false, _) => binomial,
+        };
+        Ok(crate::models::fruiting::FruitingRecordWithSpecimen {
+            id: row.get(0)?,
+            specimen_id: row.get(1)?,
+            specimen_accession: row.get(2)?,
+            species_label,
+            flush_number: row.get(5)?,
+            harvest_date: row.get(6)?,
+            fresh_weight_g: row.get(7)?,
+            dry_weight_g: row.get(8)?,
+            fruiting_temp_c: row.get(9)?,
+            fruiting_rh_percent: row.get(10)?,
+            fae_rate: row.get(11)?,
+            light_hours_per_day: row.get(12)?,
+            notes: row.get(13)?,
+            created_by: row.get(14)?,
+            created_at: row.get(15)?,
+            updated_at: row.get(16)?,
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
+}
+
 // ── WP-44: Mycology compliance / QC rules ────────────────────────────────────
 
 /// Returns all active QC flags for mycology cultures.
@@ -6080,6 +6128,50 @@ mod tests {
         assert_eq!(records.len(), 2);
         assert_eq!(records[0].flush_number, 1);
         assert_eq!(records[1].flush_number, 2);
+    }
+
+    #[test]
+    fn list_all_fruiting_records_joins_specimen_and_orders_newest_first() {
+        let conn = fruiting_test_db();
+        // A second specimen (same species) so the overview spans specimens.
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, initiation_date) \
+             VALUES ('spec2','ACC-M-002','sp1','2026-02-01')",
+            [],
+        )
+        .unwrap();
+        let base = CreateFruitingRecordRequest {
+            specimen_id: "spec1".to_string(),
+            flush_number: 1,
+            harvest_date: "2026-06-01".to_string(),
+            fresh_weight_g: Some(30.0),
+            dry_weight_g: None,
+            fruiting_temp_c: None,
+            fruiting_rh_percent: None,
+            fae_rate: None,
+            light_hours_per_day: None,
+            notes: None,
+        };
+        // spec1 older harvest, spec2 newer harvest.
+        create_fruiting_record(&conn, &base, None).unwrap();
+        create_fruiting_record(
+            &conn,
+            &CreateFruitingRecordRequest {
+                specimen_id: "spec2".to_string(),
+                harvest_date: "2026-08-15".to_string(),
+                ..base.clone()
+            },
+            None,
+        )
+        .unwrap();
+
+        let all = list_all_fruiting_records(&conn).expect("list all");
+        assert_eq!(all.len(), 2, "should span both specimens");
+        // Newest harvest first.
+        assert_eq!(all[0].specimen_accession, "ACC-M-002");
+        assert_eq!(all[1].specimen_accession, "ACC-M-001");
+        // Species label is joined (no common_name → bare binomial).
+        assert_eq!(all[0].species_label, "Pleurotus ostreatus");
     }
 
     #[test]

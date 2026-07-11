@@ -1,6 +1,6 @@
 use crate::auth as auth_service;
 use crate::db::queries;
-use crate::models::fruiting::{CreateFruitingRecordRequest, FruitingRecord};
+use crate::models::fruiting::{CreateFruitingRecordRequest, FruitingRecord, FruitingRecordWithSpecimen};
 use crate::AppState;
 use tauri::State;
 
@@ -36,5 +36,18 @@ pub fn list_fruiting_records(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
     queries::list_fruiting_records(&db.conn, &specimen_id)
+        .map_err(|e| format!("Failed to list fruiting records: {}", e))
+}
+
+/// Cross-specimen fruiting overview (mycology): every flush across all
+/// specimens with its specimen accession + species label, newest first.
+#[tauri::command]
+pub fn list_all_fruiting_records(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<FruitingRecordWithSpecimen>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::list_all_fruiting_records(&db.conn)
         .map_err(|e| format!("Failed to list fruiting records: {}", e))
 }

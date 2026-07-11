@@ -82,6 +82,42 @@ export const DOMAIN_MANIFESTS: Record<LabDomain, DomainManifest> = {
   },
 };
 
+/**
+ * Mycology culture-origin vocabulary. Single source of truth for BOTH the
+ * SpecimenForm input `<select>` and the SpecimenDetail badge, so the two can
+ * never drift apart (the exact class of input-vs-display label mismatch called
+ * out in skills.md §7). `badge` is the CSS class for the detail-view chip.
+ *
+ * The keys MUST stay in lock-step with the `origin_type` CHECK constraint in
+ * migration 029 (`multi_spore`/`isolated_dikaryon`/`tissue_clone`) — adding a
+ * value here without the matching migration would let the UI submit a value the
+ * database rejects.
+ */
+export interface OriginTypeMeta {
+  label: string;
+  badge: string;
+}
+export const ORIGIN_TYPE_META: Record<string, OriginTypeMeta> = {
+  multi_spore: { label: 'Multi-Spore', badge: 'badge-blue' },
+  isolated_dikaryon: { label: 'Isolated Dikaryon', badge: 'badge-purple' },
+  tissue_clone: { label: 'Tissue Clone', badge: 'badge-green' },
+};
+
+/**
+ * Mycology contamination categories for a passage/subculture. Single source of
+ * truth for the contaminant `<select>` (and any future display of it). The
+ * `contaminant_type` column has no DB CHECK constraint, so this list is the de
+ * facto vocabulary — keep it here, not inline in a component.
+ */
+export const CONTAMINANT_TYPE_LABELS: Record<string, string> = {
+  trich: 'Trichoderma (Trich)',
+  wet_rot: 'Wet Rot / Bacterial',
+  cobweb: 'Cobweb Mold',
+  pin_mold: 'Pin Mold (Mucor / Rhizopus)',
+  mycelium_abort: 'Mycelium Abort',
+  other: 'Other',
+};
+
 /** Fetch the lab profile from the backend and update the store. */
 export async function loadLabProfile(): Promise<void> {
   try {
