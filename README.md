@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.45.0-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.46.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-549%20Rust%20·%20106%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-574%20Rust%20·%20106%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -56,12 +56,15 @@ verification, **Merkle checkpoints**, portable offline-verifiable proofs, on-cha
 anchoring, and a per-user signed-event ledger. See
 [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md).
 
-**🛂 Federated specimen passports** *(inter-lab transfer)*
+**🛂 Federated specimen passports & taxonomy registry** *(inter-lab exchange)*
 Issue a **signed, self-contained specimen passport** — the specimen's identity and full
 provenance — that a partner lab verifies **independently** (with only your public key and the
-embedded, recomputable audit chain) and **imports into its own audit chain**. No central
-authority; a ~40-line standalone verifier ships in the docs. See
-[`docs/specimen-passport.md`](docs/specimen-passport.md).
+embedded, recomputable audit chain) and **imports into its own audit chain**. Or export a
+**signed taxonomy registry** of your taxa, species, and strains that another lab verifies the same
+way and reconciles record-by-record (**accept / override / fork**). No central authority; a
+~40-line standalone verifier ships for each. See
+[`docs/specimen-passport.md`](docs/specimen-passport.md) and
+[`docs/taxonomy-registry.md`](docs/taxonomy-registry.md).
 
 **🧬 Strains, taxonomy & pedigree**
 First-class strain/cultivar registry with a four-value verification model, a hybridization

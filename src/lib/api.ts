@@ -2000,3 +2000,137 @@ export async function listSpecimenPassports(direction?: 'issued' | 'imported') {
 export async function getSpecimenPassportJson(rowId: string) {
   return call<string>('get_specimen_passport_json', { rowId });
 }
+
+// ── WP-71: Shared taxonomy registry — federated reference-data exchange ────────
+
+export interface RegistryRecord {
+  record_type: 'taxon' | 'species' | 'strain';
+  source_key: string;
+  name: string;
+  rank: string | null;
+  parent_name: string | null;
+  scientific_name: string | null;
+  code: string | null;
+  strain_type: string | null;
+  status: string | null;
+  note: string | null;
+  origin_lab: string;
+  record_hash: string;
+}
+
+export interface TaxonomyRegistry {
+  format: string;
+  version: string;
+  registry_id: string;
+  issued_at: string;
+  issuer: IssuerIdentity;
+  records: RegistryRecord[];
+  content_hash: string;
+  signature: string;
+}
+
+export interface RegistryCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface RegistryVerification {
+  verified: boolean;
+  registry_id: string;
+  issuer_lab: string;
+  issuer_public_key: string;
+  record_count: number;
+  taxon_count: number;
+  species_count: number;
+  strain_count: number;
+  checks: RegistryCheck[];
+  message: string;
+}
+
+export interface RecordPlan {
+  source_key: string;
+  record_type: string;
+  name: string;
+  origin_lab: string;
+  local_status: 'new' | 'identical' | 'conflict';
+  detail: string;
+  suggested_disposition: 'accept' | 'override' | 'fork';
+}
+
+export interface RegistryImportPreview {
+  verification: RegistryVerification;
+  records: RecordPlan[];
+}
+
+export type RecordDisposition = 'accept' | 'override' | 'fork';
+
+export interface RecordDecision {
+  source_key: string;
+  disposition: RecordDisposition;
+}
+
+export interface AppliedRecord {
+  source_key: string;
+  record_type: string;
+  local_status: string;
+  disposition: string;
+  action_taken: string;
+  local_record_id: string | null;
+}
+
+export interface RegistryImportResult {
+  imported: boolean;
+  registry_id: string;
+  local_row_id: string;
+  audit_entry_id: string | null;
+  verification: RegistryVerification;
+  applied: AppliedRecord[];
+  inserted: number;
+  forked: number;
+  kept_local: number;
+  skipped: number;
+}
+
+export interface RegistryRecordRow {
+  id: string;
+  registry_id: string;
+  direction: 'issued' | 'imported';
+  issuer_lab: string;
+  issuer_public_key: string;
+  content_hash: string;
+  record_count: number;
+  taxon_count: number;
+  species_count: number;
+  strain_count: number;
+  verified: boolean;
+  created_at: string;
+}
+
+export async function exportTaxonomyRegistry() {
+  return call<TaxonomyRegistry>('export_taxonomy_registry');
+}
+
+export async function verifyTaxonomyRegistry(registryJson: string) {
+  return call<RegistryVerification>('verify_taxonomy_registry', { registryJson });
+}
+
+export async function previewTaxonomyRegistryImport(registryJson: string) {
+  return call<RegistryImportPreview>('preview_taxonomy_registry_import', { registryJson });
+}
+
+export async function importTaxonomyRegistry(registryJson: string, decisions?: RecordDecision[]) {
+  return call<RegistryImportResult>('import_taxonomy_registry', { registryJson, decisions });
+}
+
+export async function listTaxonomyRegistries(direction?: 'issued' | 'imported') {
+  return call<RegistryRecordRow[]>('list_taxonomy_registries', { direction });
+}
+
+export async function getTaxonomyRegistryJson(rowId: string) {
+  return call<string>('get_taxonomy_registry_json', { rowId });
+}
+
+export async function listRegistryDispositions(registryRowId: string) {
+  return call<AppliedRecord[]>('list_registry_dispositions', { registryRowId });
+}

@@ -10,6 +10,7 @@
   import OnChainAnchorPanel from './OnChainAnchorPanel.svelte';
   import SignedLedgerPanel from './SignedLedgerPanel.svelte';
   import SpecimenPassportPanel from './SpecimenPassportPanel.svelte';
+  import TaxonomyRegistryPanel from './TaxonomyRegistryPanel.svelte';
 
   let entries = $state<any[]>([]);
   let total = $state(0);
@@ -590,6 +591,9 @@
 
   <!-- Specimen passports — federated inter-lab transfer (WP-70) -->
   <SpecimenPassportPanel />
+
+  <!-- Shared taxonomy registry — federated reference-data exchange (WP-71) -->
+  <TaxonomyRegistryPanel />
 
   <div class="card" style="margin-bottom:16px;">
     <div class="form-row-3">

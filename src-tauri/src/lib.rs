@@ -8,6 +8,7 @@ pub mod models;
 pub mod passport;
 pub mod plugins;
 pub mod reg_submission;
+pub mod registry;
 pub mod signed_ledger;
 
 #[cfg(feature = "tauri-commands")]
@@ -338,6 +339,14 @@ pub fn run() {
             commands::passport::import_specimen_passport,
             commands::passport::list_specimen_passports,
             commands::passport::get_specimen_passport_json,
+            // Shared taxonomy registry — federated reference-data exchange (WP-71)
+            commands::registry::export_taxonomy_registry,
+            commands::registry::verify_taxonomy_registry,
+            commands::registry::preview_taxonomy_registry_import,
+            commands::registry::import_taxonomy_registry,
+            commands::registry::list_taxonomy_registries,
+            commands::registry::get_taxonomy_registry_json,
+            commands::registry::list_registry_dispositions,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
