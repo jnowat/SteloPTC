@@ -59,7 +59,10 @@
       try {
         const b64 = await getAttachmentData(id);
         src = `data:${mime || 'image/jpeg'};base64,${b64}`;
-        photoCache.set(id, src);
+        // Reassign (not mutate) so Svelte 5 re-renders the grid thumbnail — a
+        // plain Map's .set() is not reactive, which left thumbnails as
+        // placeholder icons even after the photo was fetched and viewed.
+        photoCache = new Map(photoCache).set(id, src);
       } catch (err: any) {
         addNotification(err.message, 'error');
         return;
@@ -117,7 +120,9 @@
     if (!confirm('Delete this photo? This cannot be undone.')) return;
     try {
       await deleteAttachment(id);
-      photoCache.delete(id);
+      const nextCache = new Map(photoCache);
+      nextCache.delete(id);
+      photoCache = nextCache;
       addNotification('Photo deleted', 'success');
       onphotoschanged();
     } catch (err: any) {

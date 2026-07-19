@@ -4,7 +4,7 @@ A single-page operating guide for anyone editing this repository — human or AI
 Grok, etc.). Read this before touching code. It captures the architecture, the golden
 rules, the exact verification gates, and the known traps that have bitten this codebase.
 
-> **North star:** SteloPTC is a released, local-first lab-provenance app (v1.48.0) with a
+> **North star:** SteloPTC is a released, local-first lab-provenance app (v1.53.1) with a
 > fully green test suite. It is **mature, not greenfield.** Prefer surgical, verified changes
 > over sweeping refactors. Every change must keep the audit hash chain, the test suite, and
 > clippy green.
@@ -30,7 +30,7 @@ Plant Tissue Culture (Plantae), Cell Culture (Animalia), and Mycology (Fungi).
 | Tauri command registry | `src-tauri/src/lib.rs` | Every `#[tauri::command]` is registered here in `invoke_handler![]`. Add new commands here. |
 | Commands (API layer) | `src-tauri/src/commands/*.rs` | One file per domain area. Pattern: lock DB → `validate_session` → permission check → do work → `log_audit`. |
 | Queries (SQL) | `src-tauri/src/db/queries.rs` | Large shared query module (~6.8k lines). Most raw SQL lives here. |
-| Migrations | `src-tauri/src/db/migrations.rs` | Append-only, numbered. **51 migrations today; next is 052.** Never edit a shipped migration — add a new one. |
+| Migrations | `src-tauri/src/db/migrations.rs` | Append-only, numbered. **52 migrations today; next is 053.** Never edit a shipped migration — add a new one. |
 | Models | `src-tauri/src/models/*.rs` | serde structs. **Field names here are the API contract** the frontend receives (no `#[serde(rename)]` in use). |
 | Profiles / vocabulary | `src-tauri/src/db/vocabulary.rs` + `src/lib/profile.ts` | The domain-separation machinery. See §4. |
 | Frontend API bridge | `src/lib/api.ts` | Single `call()` wrapper around Tauri `invoke` — catches/normalizes/rethrows as `Error`. All UI calls go through it. |
@@ -55,7 +55,7 @@ cargo clippy --lib --no-default-features -- -D warnings   # warnings are HARD er
   `webkit2gtk`/GTK and usually **can't run in a headless sandbox** — so verify locally with
   `--no-default-features` + clippy, and lean on unit tests for command logic you can't
   exercise here.
-- Current baseline: **608 Rust tests, 113 TS tests, clippy clean, svelte-check clean.**
+- Current baseline: **640 Rust tests, 113 TS tests, clippy clean, svelte-check clean.**
 - `cargo test`/`clippy` compile from scratch is slow (~40–60s). Compile once, batch your edits.
 
 ## 4. THE GOLDEN RULE: domain separation
@@ -152,12 +152,22 @@ vocabulary pack (see `docs/plugin-authoring.md`) when you don't need new columns
   (`ORIGIN_TYPE_META`/`CONTAMINANT_TYPE_LABELS`); Cell Count/PDL fields are cell-culture-gated; nav
   has a `profiles` filter (Media → PTC, new Fruiting view → Mycology).
 
+**Fixed in v1.49.0 (WP-74)** — kept here as a record so the fix isn't undone:
+
+- ~~**Compliance rule engine is still PTC-only.**~~ Fixed: the auto-flag rules in
+  `commands/compliance.rs` are now gated through the pure `compliance_rules` catalogue
+  (`is_rule_active(flag_type, &profile)`), so the citrus HLB rule (`CIT-%`) no longer fires in
+  mycology/cell-culture labs. Adding a rule = one `RuleDef` entry + its SQL block gated by
+  `is_rule_active`. Per-specimen exceptions are handled by WP-77 flag waivers, not by editing rules.
+
 **Still open:**
 
-- **Compliance rule engine is still PTC-only.** The four auto-flag rules in
-  `commands/compliance.rs` (HLB, permits, quarantine, mycoplasma) are not profile-gated — the
-  long-deferred "profile-pluggable rule set" (see ROADMAP WP-25 deviation). Cross-profile compliance
-  rules remain hardcoded PTC/citrus assumptions.
+- **Compliance-rule thresholds are hardcoded defaults.** The WP-78 environmental ranges (and the
+  WP-33/WP-44 interval settings) are sensible defaults, not per-lab-configurable in the UI. A
+  user-facing threshold editor is a disclosed follow-up.
+- **Signed lifecycle events cover creation, passage, and split only** (WP-75). Extending
+  `try_append_signed_event` to the remaining ~25 mutation commands is the same incremental
+  one-line-per-site work disclosed in WP-67.
 - **Foundation-only features remain foundation-only** (PostgreSQL connector, LAN sync transport,
   S3/SFTP targets, plugin WASM execution, iOS) — disclosed in ROADMAP; keep the disclosure honest.
 

@@ -99,7 +99,11 @@
           listAllSubcultures().catch(() => []),
           listMedia().catch(() => []),
           listInventory().catch(() => []),
-          listComplianceRecords().catch(() => []),
+          // listComplianceRecords returns a PaginatedResponse {items,…}, not an
+          // array — pass its items (up to a large page size so the export is not
+          // silently capped at one page). Previously the raw object was handed to
+          // complianceRows().map(), which threw and aborted the entire workbook.
+          listComplianceRecords(undefined, 1, 100000).then(r => r.items).catch(() => []),
           listPreparedSolutions().catch(() => []),
         ]);
 

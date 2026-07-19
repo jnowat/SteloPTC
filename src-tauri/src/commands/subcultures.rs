@@ -304,6 +304,15 @@ pub fn create_subculture(
     tx.commit().map_err(|e| format!("Failed to commit subculture transaction: {}", e))?;
     crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
+    // WP-75: record a signed passage event attributed to the acting user's key
+    // (the WP-67 "sign every mutation" follow-up). Best-effort — a ledger hiccup
+    // never fails the passage.
+    let (sev_type, sev_payload) =
+        crate::signed_ledger::lifecycle::passage(&request.specimen_id, passage_number, "passage");
+    crate::signed_ledger::try_append_signed_event(
+        &db.conn, &user.id, sev_type, "specimen", Some(&request.specimen_id), &sev_payload,
+    );
+
     db.conn.query_row(
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
          FROM subcultures sc

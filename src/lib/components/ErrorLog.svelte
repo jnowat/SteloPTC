@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { open as shellOpen } from '@tauri-apps/plugin-shell';
   import { listErrorLogs, markErrorsRead, clearErrorLogs } from '../api';
   import { unreadErrorCount, navigateTo } from '../stores/app';
@@ -138,9 +138,17 @@
   });
 
   $effect(() => {
-    // Re-load when filters change
-    currentPage = 1;
-    load();
+    // Reset to page 1 and reload whenever a FILTER changes. Reference the filters
+    // so they are tracked as dependencies, but `untrack` the load(): otherwise its
+    // synchronous read of `currentPage` would make this effect depend on the page
+    // too, so Prev/Next (which set currentPage then call load) would re-fire it and
+    // snap the view straight back to page 1 — leaving the list stuck on page 1.
+    const _filters = [filterSeverity, filterModule, filterUnreadOnly];
+    void _filters;
+    untrack(() => {
+      currentPage = 1;
+      load();
+    });
   });
 </script>
 

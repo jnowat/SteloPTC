@@ -345,6 +345,14 @@
   function printSummaryReport() {
     showPrintOptions = false;
 
+    // Base the report on every specimen loaded so far (what the operator has
+    // scrolled through), NOT the most recently fetched page. Under virtual
+    // scrolling `specimens` holds only the last page (e.g. rows 201–400 after a
+    // prefetch), so the report used to cover an arbitrary slice rather than the
+    // visible list. Shadowing the outer state here redirects every reference
+    // below to the accumulated set.
+    const specimens = loadedSpecimens;
+
     const user = get(currentUser);
     const username = (user as any)?.display_name || (user as any)?.username || 'Unknown';
     const now = new Date();
@@ -419,8 +427,8 @@
     }
     const isFiltered = filterParts.length > 0;
     const filterBar = isFiltered
-      ? `<div class="filter-bar"><b>Active filters:</b> ${filterParts.join(' &nbsp;·&nbsp; ')} &nbsp;·&nbsp; Showing ${totalShown} of ${total} total records (page&nbsp;${page}/${totalPages || 1})</div>`
-      : `<div class="filter-bar">All active specimens &mdash; showing ${totalShown} of ${total} total records (page&nbsp;${page}/${totalPages || 1})</div>`;
+      ? `<div class="filter-bar"><b>Active filters:</b> ${filterParts.join(' &nbsp;·&nbsp; ')} &nbsp;·&nbsp; Reporting on ${totalShown} loaded of ${total} total matching records</div>`
+      : `<div class="filter-bar">All active specimens &mdash; reporting on ${totalShown} loaded of ${total} total records</div>`;
 
     // ── Grouping ───────────────────────────────────────────────────────────────
     type Group = { key: string; label: string; items: any[]; colorClass: string; };

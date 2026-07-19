@@ -5,6 +5,126 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.53.1] - 2026-07-19
+
+### Critical fix pass — round-trip data loss, an app-wide freeze, and non-atomic imports
+
+A review pass alongside the Phase H work (WP-74–78) that fixes a set of real defects across the
+backend and frontend. All verifiable gates green: `cargo test --lib --no-default-features`
+(**640 passing**), `cargo clippy --no-default-features` (clean), `npm run check` (**0/0**, 414 files),
+`npm test` (**113 passing**). The `tauri-commands` command-layer changes were reviewed against the
+schema and models (that build needs GTK/WebKit and is exercised by CI).
+
+**Backend**
+
+- **Excel round-trip no longer drops regulatory & formulation data.** The XLSX importer's column
+  maps disagreed with the exporter's headers on two columns: compliance **Permit #** (col 4, read as
+  a non-existent "Issue Date" and discarded) and media **Base**/`basal_salts` (col 2, mislabelled
+  "Type" and never read). Exporting then re-importing a workbook silently nulled every permit number
+  and every basal-salts formulation. Both columns are now read and persisted; the column-map comments
+  were corrected to match `exportUtils.ts`.
+- **AI commands no longer freeze the whole app.** `get_ai_status`, `summarize_notes`,
+  `suggest_passage_comment`, and `analyze_photo_for_contamination` held the global DB mutex across a
+  blocking Ollama network call (120 s timeout), so any AI call — including a background status probe —
+  could block *every* other DB-touching command for up to two minutes. Each now gathers what it needs
+  under the lock, **releases the lock before the network call**, and re-locks only to persist the
+  suggestion (skills.md §5).
+- **Federated imports are now atomic.** `import_registry` (WP-71), `import_bundle` (WP-72), and
+  `import_passport` (WP-70) performed many independent writes with no transaction. A caller-supplied
+  decision with an invalid `disposition` string made a record fail mid-batch, leaving the audit entry
+  and the register row committed — which then made the duplicate-import guard reject *every* retry as
+  "already imported", a permanently partial, unrecoverable import. Each import now runs in a single
+  transaction that rolls back cleanly on any error. New regression test
+  `invalid_disposition_rolls_back_and_allows_retry`.
+
+**Frontend**
+
+- **Excel export works again.** `ExportManager` passed the paginated `{items,…}` response from
+  `listComplianceRecords()` straight to `complianceRows().map()`, throwing and aborting the *entire*
+  workbook write. It now unwraps `.items` (with a large page size so the export isn't capped at one page).
+- **Error-log pagination unstuck.** A reactive `$effect` tracked `currentPage` (read synchronously
+  inside `load()`) and reset it to 1, so Prev/Next could never leave page 1. The effect now tracks only
+  the filters and `untrack`s the load.
+- **Zero-valued measurements are saved.** Passage fields (temperature, pH, colonization %, cell counts,
+  split ratio) and environmental readings used a `value ? … : undefined` guard that dropped a legitimate
+  `0` (Svelte binds a numeric input as `0`, which is falsy). A `numOrUndef` helper now treats only an
+  empty field as absent, so `0 %` colonization and `0 °C` readings persist.
+- **Media auto-concentration fixed.** The "solid reagent" path compared `physical_state === 'SOLID'`
+  but the value is stored lowercase `'solid'`, so the branch was dead; and the exposed formula produced
+  g/L while labelling it mg/L. Both the casing and the unit label are corrected.
+- **Strain quick-panel & pedigree fixed.** The taxonomy navigator sent a `strain_id` filter the backend
+  never accepted (now a real `SpecimenSearchParams` field + query condition), so the panel showed
+  arbitrary lab-wide specimens; and the strain pedigree tab read a `.nodes` shape `getStrainAncestry`
+  never returns, so it was always empty — it now flattens the real `PedigreeNode` tree.
+- **HybridWizard honours the chosen strain type.** The F1/F2 selection was shown in the review step but
+  never sent; `create_hybridization_event` hardcoded `'hybrid'`. The request now carries `strain_type`.
+- **Other fixes:** the printed culture certificate no longer counts the terminal death event as a
+  passage; the specimen-list "Print Summary" now reports the loaded/visible set rather than the last
+  fetched page; and the photo-gallery thumbnail cache reassigns (Svelte-reactive) instead of mutating a
+  plain `Map`.
+
+## [1.53.0] - 2026-07-19
+
+### Added — WP-78: Environmental out-of-range monitoring
+
+Closes the evaluation gap left by the WP-54 sensor foundation, which stored and displayed
+environmental readings but never checked them. A new pure `monitoring` module evaluates the latest
+reading of each type per specimen against a per-type acceptable range (temperature 18–28 °C, humidity
+40–95 %, CO₂ 300–5000 ppm, light 500–15000 lux, pH 5.4–6.2; `custom`/unknown types never flag).
+Delivered as a new **`environmental_out_of_range`** rule in the WP-74 rule engine, so it inherits the
+compliance-flag UI, the active-rules chip, and the WP-77 waiver workflow with no new command, table,
+or migration. 5 new backend tests.
+
+## [1.52.0] - 2026-07-19
+
+### Added — WP-77: Compliance flag waivers
+
+Compliance flags are computed, so a known-and-accepted flag (a permit renewal in progress, a
+documented deviation) reappears on every evaluation. A waiver now suppresses one specific
+`(flag_type, specimen)` pair — optionally until an expiry date — with a **mandatory reason recorded
+in the audit log**. Migration **052** adds `compliance_flag_waivers` (`revoked` keeps the row for the
+trail). `get_compliance_flags` filters out actively-waived flags via the pure
+`compliance_rules::is_waived`. New commands `waive_compliance_flag` / `list_compliance_waivers` /
+`revoke_compliance_waiver`; the Compliance view gains a per-flag **Waive** action and an active-waivers
+list with revoke. 5 new backend tests (waiver logic + migration).
+
+## [1.51.0] - 2026-07-19
+
+### Added — WP-76: Lab data-integrity self-check
+
+A new admin-only **Data Integrity Self-Check** (Audit Log → panel) that scans the database for
+referential problems SQLite can't retroactively catch — specimens referencing a missing
+species/strain/parent, subcultures pointing at a deleted specimen or media batch, strains without a
+species, duplicate accession numbers — plus **audit-lineage sequence gaps** (a removed history row,
+detected as `COUNT(*) ≠ MAX(chain_seq) + 1`). The pure `integrity` module returns a structured report
+(issue, severity, count, up-to-5 example ids), sorted most-severe first; the command
+`run_data_integrity_check` is admin-gated. 7 new backend tests.
+
+## [1.50.0] - 2026-07-19
+
+### Added — WP-75: Signed lifecycle events across specimen mutations
+
+The WP-67 follow-up that extends automatic signed-event recording (previously wired only on specimen
+creation) to the core lifecycle: **passages** (`create_subculture`) and **splits** (`split_specimen`)
+now each append a signed, hash-chained ledger entry attributed to the acting user's Ed25519 key
+(best-effort — a ledger hiccup never fails the mutation). A new pure `signed_ledger::lifecycle`
+submodule centralizes the event-type vocabulary and payload construction so every call site is
+consistent and the payload shape is unit-tested once. 6 new backend tests.
+
+## [1.49.0] - 2026-07-19
+
+### Added — WP-74: Profile-pluggable compliance rule engine
+
+Discharges the long-open "compliance rule engine is PTC-only / not profile-gated" item (skills.md §8,
+the ROADMAP WP-25 deviation). The auto-flag rules in `get_compliance_flags` were a flat list of SQL
+blocks, several encoding PTC/citrus assumptions — most notably the **citrus HLB** rule
+(`species_code LIKE 'CIT-%'`), which ran for *every* profile, so a mycology or cell-culture lab with a
+`CIT-*` species code got a spurious plant-quarantine flag it could never clear. A new pure
+`compliance_rules` module makes the rule catalogue first-class and **profile-scoped**: each rule
+declares which profiles it applies to, and the command layer evaluates a rule only when active
+(`is_rule_active`). A new `list_compliance_rules` command drives an "Active checks for this profile"
+chip row in the Compliance view. 9 new backend tests.
+
 ## [1.48.0] - 2026-07-11
 
 ### WP-73: Domain-congruence & security hardening pass

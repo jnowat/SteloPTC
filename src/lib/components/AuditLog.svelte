@@ -12,6 +12,7 @@
   import SpecimenPassportPanel from './SpecimenPassportPanel.svelte';
   import TaxonomyRegistryPanel from './TaxonomyRegistryPanel.svelte';
   import BreedingCoordinationPanel from './BreedingCoordinationPanel.svelte';
+  import DataIntegrityPanel from './DataIntegrityPanel.svelte';
 
   let entries = $state<any[]>([]);
   let total = $state(0);
@@ -598,6 +599,9 @@
 
   <!-- Cross-lab breeding program coordination — federated selection-log merge (WP-72) -->
   <BreedingCoordinationPanel />
+
+  <!-- Lab data-integrity self-check (WP-76) -->
+  <DataIntegrityPanel />
 
   <div class="card" style="margin-bottom:16px;">
     <div class="form-row-3">

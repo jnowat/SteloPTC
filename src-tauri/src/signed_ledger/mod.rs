@@ -28,6 +28,8 @@ use serde::Serialize;
 use crate::compliance_export::signing;
 use crate::db::queries::{compute_entry_hash, ZERO_HASH};
 
+pub mod lifecycle;
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SignedEvent {
     pub id: String,

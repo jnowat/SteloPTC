@@ -11,6 +11,24 @@
   let loading = $state(true);
   let activeTab = $state<'overview' | 'generations' | 'pedigree'>('overview');
 
+  // getStrainAncestry returns a single root PedigreeNode
+  // ({ strain, depth, edge, parents, children }), NOT a flat { nodes: [...] }.
+  // Flatten the root plus its ancestors (parents, recursively) into a display
+  // list. The prior code read `ancestry.nodes`, which never existed, so the
+  // pedigree tab always showed "No ancestry data available".
+  function flattenAncestry(root: any): any[] {
+    const out: any[] = [];
+    const walk = (n: any) => {
+      if (!n || !n.strain) return;
+      out.push(n);
+      (n.parents ?? []).forEach(walk);
+    };
+    walk(root);
+    return out;
+  }
+  let pedigreeNodes = $derived(flattenAncestry(ancestry));
+  let hasAncestors = $derived(!!ancestry && Array.isArray(ancestry.parents) && ancestry.parents.length > 0);
+
   onMount(async () => {
     await load();
   });
@@ -215,17 +233,17 @@
 
           <!-- Pedigree tab -->
           {:else if activeTab === 'pedigree'}
-            {#if !ancestry || !ancestry.nodes || ancestry.nodes.length === 0}
+            {#if !hasAncestors}
               <div class="empty-tab">No ancestry data available for this strain.</div>
             {:else}
               <div class="pedigree-list">
-                {#each ancestry.nodes as node}
+                {#each pedigreeNodes as node}
                   <div class="pedigree-entry">
                     <div class="pe-depth">Depth {node.depth ?? 0}</div>
                     <div class="pe-info">
-                      <div class="pe-code">{node.code}</div>
-                      <div class="pe-name">{node.name}</div>
-                      {#if node.is_hybrid}
+                      <div class="pe-code">{node.strain.code}</div>
+                      <div class="pe-name">{node.strain.name}</div>
+                      {#if node.strain.is_hybrid}
                         <span class="pe-chip">Hybrid</span>
                       {/if}
                     </div>

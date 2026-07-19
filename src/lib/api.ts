@@ -244,6 +244,22 @@ export async function getComplianceFlags() {
   return call<any[]>('get_compliance_flags');
 }
 
+// WP-74: which auto-flag rules are active for the current lab profile.
+export async function listComplianceRules() {
+  return call<{ flag_type: string; title: string; severity: string; scope: string }[]>('list_compliance_rules');
+}
+
+// WP-77: compliance flag waivers.
+export async function waiveComplianceFlag(flagType: string, specimenId: string, reason: string, expiresAt?: string) {
+  return call<void>('waive_compliance_flag', { flagType, specimenId, reason, expiresAt: expiresAt ?? null });
+}
+export async function listComplianceWaivers() {
+  return call<any[]>('list_compliance_waivers');
+}
+export async function revokeComplianceWaiver(waiverId: string) {
+  return call<void>('revoke_compliance_waiver', { waiverId });
+}
+
 export async function getMycoplasmaStatus() {
   return call<any[]>('get_mycoplasma_status');
 }
@@ -284,6 +300,13 @@ export async function createAuditCheckpoint(lineageId: string, startSeq?: number
 
 export async function verifyAgainstCheckpoint(checkpointId: string) {
   return call<any>('verify_against_checkpoint', { checkpointId });
+}
+
+// WP-76: lab data-integrity self-check (admin only).
+export interface IntegrityIssue { check: string; title: string; severity: string; count: number; examples: string[]; }
+export interface IntegrityReport { ok: boolean; checks_run: number; issues: IntegrityIssue[]; }
+export async function runDataIntegrityCheck() {
+  return call<IntegrityReport>('run_data_integrity_check');
 }
 
 export async function listAuditCheckpoints(lineageId?: string) {
@@ -543,6 +566,7 @@ export async function createHybridizationEvent(request: {
   parent_b_id: string;
   name: string;
   code: string;
+  strain_type?: string;
   notes?: string;
   generation_label?: string;
   admin_override_cross_species?: boolean;

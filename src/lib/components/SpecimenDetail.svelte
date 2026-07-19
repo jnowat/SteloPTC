@@ -214,6 +214,16 @@
     colonization_pct: '',
   });
 
+  // Coerce an optional numeric form field to a number for the backend, treating
+  // only a truly empty field (empty string / null / NaN) as "not provided".
+  // A plain `value ? parseFloat(value) : undefined` guard drops a legitimate 0
+  // (e.g. 0% colonization on an early passage, or a 0 °C reading), because
+  // Svelte binds `<input type="number">` as the numeric 0, which is falsy.
+  function numOrUndef(value: unknown): number | undefined {
+    const n = parseFloat(value as string);
+    return Number.isNaN(n) ? undefined : n;
+  }
+
   // Media date warning: show if selected media batch was prepared after the passage date
   let mediaDateWarning = $state(false);
 
@@ -540,8 +550,8 @@
         employee_id: subcultureForm.employee_id || undefined,
         contamination_flag: subcultureForm.contamination_flag || undefined,
         contamination_notes: subcultureForm.contamination_notes || undefined,
-        temperature_c: subcultureForm.temperature_c ? parseFloat(subcultureForm.temperature_c) : undefined,
-        ph: subcultureForm.ph ? parseFloat(subcultureForm.ph) : undefined,
+        temperature_c: numOrUndef(subcultureForm.temperature_c),
+        ph: numOrUndef(subcultureForm.ph),
         light_cycle: subcultureForm.light_cycle || undefined,
       });
       addNotification(
@@ -582,8 +592,8 @@
         date: subcultureForm.date,
         media_batch_id: subcultureForm.media_batch_id || undefined,
         vessel_type: subcultureForm.vessel_type || undefined,
-        temperature_c: subcultureForm.temperature_c ? parseFloat(subcultureForm.temperature_c) : undefined,
-        ph: subcultureForm.ph ? parseFloat(subcultureForm.ph) : undefined,
+        temperature_c: numOrUndef(subcultureForm.temperature_c),
+        ph: numOrUndef(subcultureForm.ph),
         light_cycle: subcultureForm.light_cycle || undefined,
         location_from: specimen.location || undefined,
         location_to: locationTo || undefined,
@@ -594,10 +604,10 @@
         contamination_flag: subcultureForm.contamination_flag || undefined,
         contamination_notes: subcultureForm.contamination_notes || undefined,
         contaminant_type: subcultureForm.contaminant_type || undefined,
-        seed_cell_count: subcultureForm.seed_cell_count ? parseFloat(subcultureForm.seed_cell_count) : undefined,
-        harvest_cell_count: subcultureForm.harvest_cell_count ? parseFloat(subcultureForm.harvest_cell_count) : undefined,
-        split_ratio: subcultureForm.split_ratio ? parseFloat(subcultureForm.split_ratio) : undefined,
-        colonization_pct: subcultureForm.colonization_pct ? parseFloat(subcultureForm.colonization_pct) : undefined,
+        seed_cell_count: numOrUndef(subcultureForm.seed_cell_count),
+        harvest_cell_count: numOrUndef(subcultureForm.harvest_cell_count),
+        split_ratio: numOrUndef(subcultureForm.split_ratio),
+        colonization_pct: numOrUndef(subcultureForm.colonization_pct),
       });
       localStorage.setItem('sc_lastRoom', locToRoom);
       localStorage.setItem('sc_lastRack', locToRack);
@@ -701,7 +711,8 @@
   }
 
   async function submitReading() {
-    if (!specimen || !readingForm.value) return;
+    // A reading of exactly 0 (e.g. 0 °C) is valid; guard on "empty", not "falsy".
+    if (!specimen || numOrUndef(readingForm.value) === undefined) return;
     readingSubmitting = true;
     try {
       await createEnvironmentalReading({
@@ -767,8 +778,10 @@
     // Shorter aliases for use inside the HTML template string.
     const esc = escHtml;
 
-    // Passages oldest→newest for the report (real passages only, not synthetic split events)
-    const passageRows = [...subcultures].reverse().filter((sc: any) => !sc.isSplitEvent).map((sc: any) => {
+    // Passages oldest→newest for the report (real passages only — exclude synthetic
+    // split events AND the terminal death event, matching the on-screen
+    // `realPassageCount`, so the printed count isn't inflated by a phantom "Dead" row)
+    const passageRows = [...subcultures].reverse().filter((sc: any) => !sc.isSplitEvent && sc.event_type !== 'death').map((sc: any) => {
       const batch = mediaBatches.find((m: any) => m.id === sc.media_batch_id);
       const batchName = batch ? esc(batch.batch_name || batch.id) : '—';
       const contam = sc.contamination_flag
@@ -825,7 +838,7 @@
       `<span class="il">${label}</span><span class="iv">${value}</span>`
     ).join('');
 
-    const realPassages = subcultures.filter((sc: any) => !sc.isSplitEvent);
+    const realPassages = subcultures.filter((sc: any) => !sc.isSplitEvent && sc.event_type !== 'death');
     const passageTable = realPassages.length === 0
       ? '<p style="color:#64748b;font-size:9.5px;margin-top:4px;">No passages recorded yet.</p>'
       : `<table><thead><tr>
@@ -1885,7 +1898,7 @@ ${footnotesHtml}
                 </div>
                 <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
                   <button class="btn" onclick={() => showReadingForm = false} disabled={readingSubmitting}>Cancel</button>
-                  <button class="btn btn-primary" onclick={submitReading} disabled={readingSubmitting || !readingForm.value}>
+                  <button class="btn btn-primary" onclick={submitReading} disabled={readingSubmitting || numOrUndef(readingForm.value) === undefined}>
                     {readingSubmitting ? 'Saving…' : 'Save Reading'}
                   </button>
                 </div>
