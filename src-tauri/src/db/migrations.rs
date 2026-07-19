@@ -268,6 +268,41 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (51)", [])?;
     }
 
+    if current < 52 {
+        migration_052_compliance_flag_waivers(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (52)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_052_compliance_flag_waivers(conn: &Connection) -> DbResult<()> {
+    // WP-77: compliance flag waivers.
+    //
+    // Compliance flags are computed (see commands/compliance.rs), so a
+    // known-and-accepted flag reappears on every evaluation. A waiver suppresses
+    // one specific `(flag_type, specimen_id)` pair — optionally until `expires_at`
+    // — with a mandatory `reason`, so an accepted exception (a permit renewal in
+    // progress, a documented deviation) stops nagging without hiding the
+    // underlying condition or requiring a data edit. `revoked` lets an operator
+    // reinstate the flag; the row is kept for the audit trail either way. The
+    // waive/revoke actions are themselves written to the audit log by the command
+    // layer.
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS compliance_flag_waivers (
+            id            TEXT PRIMARY KEY,
+            flag_type     TEXT NOT NULL,
+            specimen_id   TEXT NOT NULL REFERENCES specimens(id) ON DELETE CASCADE,
+            reason        TEXT NOT NULL,
+            waived_by     TEXT REFERENCES users(id),
+            waived_at     TEXT NOT NULL DEFAULT (datetime('now')),
+            expires_at    TEXT,
+            revoked       INTEGER NOT NULL DEFAULT 0,
+            revoked_at    TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_flag_waivers_lookup
+            ON compliance_flag_waivers(specimen_id, flag_type, revoked);",
+    )?;
     Ok(())
 }
 
@@ -4772,5 +4807,29 @@ mod tests {
             [],
         );
         assert!(dup.is_err(), "UNIQUE(user_id, channel) must reject a second row for the same channel");
+    }
+
+    #[test]
+    fn migration_052_creates_flag_waivers_table() {
+        let conn = migrated_db();
+        // Seed the FK targets and insert a waiver.
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) VALUES ('sp1','G','sp','AAA')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date) \
+             VALUES ('s1','ACC-1','sp1','explant','2026-01-01')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO compliance_flag_waivers (id, flag_type, specimen_id, reason) \
+             VALUES ('w1','missing_hlb_test','s1','Permit renewal in progress')",
+            [],
+        ).unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM compliance_flag_waivers WHERE revoked = 0", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }

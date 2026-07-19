@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listComplianceRecords, getComplianceFlags, createComplianceRecord, listComplianceRecordTypes, listComplianceAgencies } from '../api';
+  import { listComplianceRecords, getComplianceFlags, createComplianceRecord, listComplianceRecordTypes, listComplianceAgencies, listComplianceRules, waiveComplianceFlag, listComplianceWaivers, revokeComplianceWaiver } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
@@ -9,6 +9,13 @@
 
   let records = $state<any[]>([]);
   let flags = $state<any[]>([]);
+  let activeRules = $state<{ flag_type: string; title: string; severity: string; scope: string }[]>([]);
+  // WP-77: flag waivers
+  let waivers = $state<any[]>([]);
+  let showWaivers = $state(false);
+  let waiveTarget = $state<any | null>(null);
+  let waiveReason = $state('');
+  let waiveExpiry = $state('');
   let loading = $state(true);
   let error = $state<string | null>(null);
   let showForm = $state(false);
@@ -37,11 +44,13 @@
     loading = true;
     error = null;
     try {
-      const [r, f] = await Promise.all([listComplianceRecords(undefined, page), getComplianceFlags()]);
+      const [r, f, rules, w] = await Promise.all([listComplianceRecords(undefined, page), getComplianceFlags(), listComplianceRules().catch(() => []), listComplianceWaivers().catch(() => [])]);
       records = r.items;
       total = r.total;
       totalPages = r.total_pages;
       flags = f;
+      activeRules = rules;
+      waivers = w;
     } catch (e: any) { error = e.message; addNotification(e.message, 'error'); }
     finally { loading = false; }
   }
@@ -70,6 +79,32 @@
 
   function getSeverityClass(s: string) {
     return s === 'critical' ? 'badge-red' : s === 'high' ? 'badge-yellow' : 'badge-blue';
+  }
+
+  // WP-77: waive / revoke a compliance flag.
+  function openWaive(flag: any) {
+    waiveTarget = flag;
+    waiveReason = '';
+    waiveExpiry = '';
+  }
+
+  async function submitWaive(e: Event) {
+    e.preventDefault();
+    if (!waiveTarget || !waiveReason.trim()) return;
+    try {
+      await waiveComplianceFlag(waiveTarget.flag_type, waiveTarget.specimen_id, waiveReason.trim(), waiveExpiry || undefined);
+      addNotification('Flag waived.', 'success');
+      waiveTarget = null;
+      await load();
+    } catch (e: any) { addNotification(e.message, 'error'); }
+  }
+
+  async function revokeWaiver(id: string) {
+    try {
+      await revokeComplianceWaiver(id);
+      addNotification('Waiver revoked — the flag will reappear if still applicable.', 'success');
+      await load();
+    } catch (e: any) { addNotification(e.message, 'error'); }
   }
 
   function toggleExportWizard() {
@@ -113,6 +148,33 @@
 
   {#if showPipeline && canExport}
     <SubmissionPipelinePanel onclose={() => showPipeline = false} />
+  {/if}
+
+  {#if waiveTarget}
+    <div class="card" style="margin-bottom:16px;">
+      <form onsubmit={submitWaive}>
+        <h3 style="margin-bottom:8px;">Waive compliance flag</h3>
+        <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">
+          Suppress <strong>{waiveTarget.flag_type.replace(/_/g, ' ')}</strong> for
+          <strong>{waiveTarget.accession_number}</strong>. The flag stops appearing until the
+          waiver expires or is revoked; the underlying condition is unchanged.
+        </p>
+        <div class="form-row">
+          <div class="form-group" style="flex:2;">
+            <label for="waive-reason">Reason *</label>
+            <input id="waive-reason" type="text" bind:value={waiveReason} required placeholder="e.g. Permit renewal filed 2026-07-10" />
+          </div>
+          <div class="form-group">
+            <label for="waive-expiry" title="Leave blank for a permanent waiver">Expires (optional)</label>
+            <input id="waive-expiry" type="date" bind:value={waiveExpiry} />
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" class="btn" onclick={() => waiveTarget = null}>Cancel</button>
+          <button type="submit" class="btn btn-primary" disabled={!waiveReason.trim()}>Waive Flag</button>
+        </div>
+      </form>
+    </div>
   {/if}
 
   {#if showForm}
@@ -201,6 +263,40 @@
     onretry={load}
   >
     {#if activeTab === 'flags'}
+      {#if activeRules.length > 0}
+        <div class="active-rules" title="Auto-flag rules currently evaluated for this lab profile (WP-74). Rules for other profiles stay silent.">
+          <span class="active-rules-label">Active checks for this profile:</span>
+          {#each activeRules as rule}
+            <span class="rule-chip {getSeverityClass(rule.severity)}" title="{rule.title} — severity {rule.severity}{rule.scope !== 'all' ? ` · ${rule.scope}` : ''}">{rule.title}</span>
+          {/each}
+        </div>
+      {/if}
+
+      {#if waivers.length > 0}
+        <div class="waivers-bar">
+          <button class="waivers-toggle" onclick={() => showWaivers = !showWaivers} title="Compliance flags currently suppressed by an active waiver">
+            {showWaivers ? '▾' : '▸'} {waivers.length} active waiver{waivers.length !== 1 ? 's' : ''}
+          </button>
+          {#if showWaivers}
+            <div class="card" style="overflow-x:auto;margin-top:8px;">
+              <table>
+                <thead><tr><th>Specimen</th><th>Flag</th><th>Reason</th><th>Expires</th><th></th></tr></thead>
+                <tbody>
+                  {#each waivers as w}
+                    <tr>
+                      <td>{w.specimen_accession ?? w.specimen_id}</td>
+                      <td>{w.flag_type.replace(/_/g, ' ')}</td>
+                      <td>{w.reason}</td>
+                      <td>{w.expires_at ?? 'never'}</td>
+                      <td><button class="btn btn-sm" onclick={() => revokeWaiver(w.id)} title="Reinstate this flag">Revoke</button></td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          {/if}
+        </div>
+      {/if}
       <DataState
         empty={flags.length === 0}
         emptyIcon="✅"
@@ -217,6 +313,7 @@
                 <th title="Type of compliance issue detected">Flag</th>
                 <th title="Details about the compliance issue">Message</th>
                 <th title="Date of the most recent relevant test, if any">Last Test</th>
+                <th title="Waive this flag with a documented reason">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -228,6 +325,7 @@
                   <td>{f.flag_type.replace(/_/g, ' ')}</td>
                   <td>{f.message}</td>
                   <td>{f.last_test_date ?? '—'}</td>
+                  <td><button class="btn btn-sm" onclick={() => openWaive(f)} title="Suppress this flag with a documented reason">Waive</button></td>
                 </tr>
               {/each}
             </tbody>
@@ -299,4 +397,11 @@
   .tab { padding: 10px 20px; background: none; border: none; border-bottom: 2px solid transparent; margin-bottom: -2px; cursor: pointer; font-size: 13px; font-weight: 600; color: #6b7280; }
   .tab.active { color: #2563eb; border-bottom-color: #2563eb; }
   .pagination { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; justify-content: center; font-size: 13px; }
+  .active-rules { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 12px; }
+  .active-rules-label { font-size: 12px; font-weight: 600; color: #6b7280; margin-right: 2px; }
+  :global(.dark) .active-rules-label { color: #94a3b8; }
+  .rule-chip { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .waivers-bar { margin: 0 0 12px; }
+  .waivers-toggle { background: none; border: none; cursor: pointer; font-size: 13px; font-weight: 600; color: #6b7280; padding: 2px 0; }
+  :global(.dark) .waivers-toggle { color: #94a3b8; }
 </style>

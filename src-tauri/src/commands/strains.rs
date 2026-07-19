@@ -484,18 +484,28 @@ pub fn create_hybridization_event(
         .unchecked_transaction()
         .map_err(|e| format!("Failed to start transaction: {}", e))?;
 
-    // 1. Create hybrid strain record.
+    // 1. Create hybrid strain record. The strain type comes from the wizard's
+    // Strain Type step (hybrid / f1_hybrid / f2_hybrid); default to "hybrid" when
+    // absent or blank. Previously this was hardcoded to 'hybrid', silently
+    // discarding the operator's F1/F2 choice.
+    let strain_type = request
+        .strain_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("hybrid");
     tx.execute(
         "INSERT INTO strains \
          (id, species_id, name, code, strain_type, is_hybrid, is_cross_species, created_by) \
-         VALUES (?1, ?2, ?3, ?4, 'hybrid', 1, ?5, ?6)",
+         VALUES (?1, ?2, ?3, ?4, ?7, 1, ?5, ?6)",
         params![
             hybrid_id,
             species_id,
             request.name,
             request.code,
             if is_cross_species { 1i32 } else { 0i32 },
-            user.id
+            user.id,
+            strain_type
         ],
     )
     .map_err(|e| format!("Failed to create hybrid strain: {}", e))?;

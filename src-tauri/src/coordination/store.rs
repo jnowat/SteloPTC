@@ -497,10 +497,18 @@ pub fn import_bundle(
         return Err(format!("Bundle '{}' has already been imported.", bundle.bundle_id));
     }
 
+    // All writes below run inside a single transaction so a mid-batch failure
+    // (e.g. a caller-supplied `decisions` entry with an invalid disposition
+    // string, which makes the record loop return Err) rolls the whole merge back
+    // — including the program shell and the `breeding_bundles` register row.
+    // Without it a partial merge would be committed and the duplicate-import
+    // guard above would then reject every retry.
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
     // Ensure the local copy of the program (additive — create only if absent).
-    let (program_id, program_created) = match local_program_id(conn, &bundle.program.name) {
+    let (program_id, program_created) = match local_program_id(&tx, &bundle.program.name) {
         Some(pid) => (pid, false),
-        None => (create_program_shell(conn, &bundle.program, imported_by)?, true),
+        None => (create_program_shell(&tx, &bundle.program, imported_by)?, true),
     };
 
     // Fold the merge into this lab's own tamper-evident audit chain.
@@ -512,7 +520,7 @@ pub fn import_bundle(
         &bundle.content_hash[..bundle.content_hash.len().min(16)]
     );
     log_audit(
-        conn,
+        &tx,
         imported_by,
         "import",
         "breeding_coordination",
@@ -523,7 +531,7 @@ pub fn import_bundle(
     )
     .map_err(|e| e.to_string())?;
 
-    let audit_entry_id: Option<String> = conn
+    let audit_entry_id: Option<String> = tx
         .query_row(
             "SELECT id FROM audit_log WHERE entity_type = 'breeding_coordination' AND entity_id = ?1 AND action = 'import' \
              ORDER BY created_at DESC LIMIT 1",
@@ -533,7 +541,7 @@ pub fn import_bundle(
         .ok();
 
     let local_row_id = uuid::Uuid::new_v4().to_string();
-    conn.execute(
+    tx.execute(
         "INSERT INTO breeding_bundles \
          (id, bundle_id, direction, issuer_lab, issuer_public_key, program_name, content_hash, \
           record_count, verified, audit_entry, bundle_json, created_by, created_at) \
@@ -555,11 +563,11 @@ pub fn import_bundle(
     .map_err(|e| e.to_string())?;
 
     // Apply each record.
-    let local_keys = local_source_keys(conn, &program_id, &bundle.program.name)?;
+    let local_keys = local_source_keys(&tx, &program_id, &bundle.program.name)?;
     let mut applied: Vec<AppliedSelection> = Vec::new();
     let (mut inserted, mut kept_local, mut skipped) = (0i64, 0i64, 0i64);
     for r in &bundle.records {
-        let plan = plan_for(conn, r, Some(program_id.as_str()), &local_keys);
+        let plan = plan_for(&tx, r, Some(program_id.as_str()), &local_keys);
         let disposition = decisions
             .iter()
             .find(|d| d.source_key == r.source_key)
@@ -571,9 +579,9 @@ pub fn import_bundle(
         match disposition.as_str() {
             "accept" => {
                 if plan.local_status == "new" {
-                    match strain_local_id(conn, &r.strain_scientific_name, &r.strain_code) {
+                    match strain_local_id(&tx, &r.strain_scientific_name, &r.strain_code) {
                         Some(sid) => {
-                            let id = insert_selection(conn, &program_id, &sid, r)?;
+                            let id = insert_selection(&tx, &program_id, &sid, r)?;
                             local_record_id = Some(id);
                             action_taken = "Merged in a new selection record.".to_string();
                             inserted += 1;
@@ -606,7 +614,7 @@ pub fn import_bundle(
             }
         }
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO breeding_bundle_dispositions \
              (id, bundle_row_id, source_key, local_status, disposition, action_taken, local_record_id) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
@@ -630,6 +638,8 @@ pub fn import_bundle(
             local_record_id,
         });
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(BundleImportResult {
         imported: true,

@@ -129,6 +129,10 @@ pub struct SpecimenSearchParams {
     pub per_page: Option<u32>,
     /// When true, restrict results to specimens with is_best_performer = 1.
     pub best_performer_only: Option<bool>,
+    /// When set, restrict results to specimens bound to this strain. The
+    /// taxonomy navigator's strain quick-panel relies on this; without the
+    /// filter the search silently returned every specimen in the lab.
+    pub strain_id: Option<String>,
 }
 
 // WP-63: Clone is needed so a computed snapshot can be stored in the

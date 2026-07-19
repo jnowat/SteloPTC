@@ -39,3 +39,4 @@ pub mod reg_submission;
 pub mod passport;
 pub mod registry;
 pub mod coordination;
+pub mod integrity;

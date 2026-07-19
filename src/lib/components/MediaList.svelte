@@ -174,7 +174,7 @@
     reagentRows = reagentRows.map((r, idx) => {
       if (idx !== i) return r;
       const inv = getInventoryItem(r.item_id);
-      const isSOLID = inv?.physical_state === 'SOLID';
+      const isSOLID = inv?.physical_state === 'solid';
       let final_concentration = r.final_concentration;
       let final_conc_unit = r.final_conc_unit;
 
@@ -183,16 +183,18 @@
         const volumeMl = parseFloat(batchForm.volume_prepared_ml);
         if (!isNaN(amountNum) && volumeMl > 0) {
           const unit = inv?.unit || '';
+          // Concentration of a solid reagent dissolved in `volumeMl` mL of medium,
+          // expressed in g/L. amount(g) / (volumeMl/1000) L = amount*1000/volumeMl g/L;
+          // amount(mg) is first converted to grams. (The previous label "mg/L" was
+          // wrong by 1000× for this arithmetic — g/L is what these formulas produce.)
           if (unit === 'g') {
-            // (g * 1000) / mL = mg/L
             final_concentration = ((amountNum * 1000) / volumeMl).toFixed(4);
           } else if (unit === 'mg') {
-            // mg / mL = mg/L
             final_concentration = (amountNum / volumeMl).toFixed(4);
           } else {
             final_concentration = '';
           }
-          final_conc_unit = 'mg/L';
+          final_conc_unit = 'g/L';
         } else {
           final_concentration = '';
         }
@@ -204,7 +206,7 @@
 
   function isRowSolid(row: ReagentRow): boolean {
     const inv = getInventoryItem(row.item_id);
-    return inv?.physical_state === 'SOLID';
+    return inv?.physical_state === 'solid';
   }
 
   function rowStockWarning(row: ReagentRow): string {
@@ -715,7 +717,7 @@
                 </div>
                 {#each reagentRows as row, i}
                   {@const inv = getInventoryItem(row.item_id)}
-                  {@const solid = inv?.physical_state === 'SOLID'}
+                  {@const solid = inv?.physical_state === 'solid'}
                   {@const warning = rowStockWarning(row)}
                   <div class="reagent-row-wrap">
                     <div class="reagent-row">

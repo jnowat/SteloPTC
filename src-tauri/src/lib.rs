@@ -3,9 +3,12 @@ pub mod anchoring;
 pub mod auth;
 pub mod cloud;
 pub mod compliance_export;
+pub mod compliance_rules;
 pub mod coordination;
 pub mod db;
+pub mod integrity;
 pub mod models;
+pub mod monitoring;
 pub mod passport;
 pub mod plugins;
 pub mod reg_submission;
@@ -101,6 +104,10 @@ pub fn run() {
             commands::compliance::create_compliance_record,
             commands::compliance::update_compliance_record,
             commands::compliance::get_compliance_flags,
+            commands::compliance::list_compliance_rules,
+            commands::compliance::waive_compliance_flag,
+            commands::compliance::list_compliance_waivers,
+            commands::compliance::revoke_compliance_waiver,
             commands::compliance::get_mycoplasma_status,
             // Species
             commands::species::list_species,
@@ -357,6 +364,8 @@ pub fn run() {
             commands::coordination::list_coordination_bundles,
             commands::coordination::get_coordination_bundle_json,
             commands::coordination::list_coordination_dispositions,
+            // WP-76: lab data-integrity self-check.
+            commands::integrity::run_data_integrity_check,
         ])
         .setup(|app| {
             let state = app.state::<AppState>();

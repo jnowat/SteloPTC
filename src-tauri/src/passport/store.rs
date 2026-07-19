@@ -287,6 +287,11 @@ pub fn import_passport(conn: &Connection, json: &str, imported_by: Option<&str>)
         ));
     }
 
+    // Both writes below run inside a single transaction: without it, a failure of
+    // the register INSERT would leave a committed `passport_imported` audit-chain
+    // entry attesting an import that never landed in the register.
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
     // Fold the import into this lab's own tamper-evident audit chain. The entry's
     // entity_id is the passport id (so it starts its own single-entry lineage);
     // new_value is the content hash it commits to.
@@ -297,7 +302,7 @@ pub fn import_passport(conn: &Connection, json: &str, imported_by: Option<&str>)
         &passport.content_hash[..passport.content_hash.len().min(16)]
     );
     log_audit(
-        conn,
+        &tx,
         imported_by,
         "import",
         "specimen_passport",
@@ -309,7 +314,7 @@ pub fn import_passport(conn: &Connection, json: &str, imported_by: Option<&str>)
     .map_err(|e| e.to_string())?;
 
     // Recover the id of the audit row we just wrote for the durable link.
-    let audit_entry_id: Option<String> = conn
+    let audit_entry_id: Option<String> = tx
         .query_row(
             "SELECT id FROM audit_log WHERE entity_type = 'specimen_passport' AND entity_id = ?1 AND action = 'import' \
              ORDER BY created_at DESC LIMIT 1",
@@ -319,7 +324,7 @@ pub fn import_passport(conn: &Connection, json: &str, imported_by: Option<&str>)
         .ok();
 
     let local_row_id = uuid::Uuid::new_v4().to_string();
-    conn.execute(
+    tx.execute(
         "INSERT INTO specimen_passports \
          (id, passport_id, direction, specimen_id, issuer_lab, issuer_public_key, subject_accession, \
           subject_scientific_name, content_hash, entry_count, verified, audit_entry, passport_json, created_by, created_at) \
@@ -340,6 +345,8 @@ pub fn import_passport(conn: &Connection, json: &str, imported_by: Option<&str>)
         ],
     )
     .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(ImportPassportResult {
         imported: true,

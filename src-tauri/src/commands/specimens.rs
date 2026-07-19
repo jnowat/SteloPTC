@@ -469,6 +469,12 @@ pub fn search_specimens(
         conditions.push("s.is_best_performer = 1".to_string());
     }
 
+    if let Some(ref stid) = params_input.strain_id {
+        let param_idx = bind_values.len() + 1;
+        conditions.push(format!("s.strain_id = ?{}", param_idx));
+        bind_values.push(Box::new(stid.clone()));
+    }
+
     let where_clause = if conditions.is_empty() {
         String::new()
     } else {
@@ -939,6 +945,22 @@ pub fn split_specimen(
 
     tx.commit().map_err(|e| format!("Failed to commit split: {}", e))?;
     crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
+
+    // WP-75: record a signed split event attributed to the acting user's key
+    // (the WP-67 "sign every mutation" follow-up). Best-effort — never fails the
+    // split, which is already committed above.
+    let child_accessions: Vec<String> =
+        child_results.iter().map(|c| c.accession_number.clone()).collect();
+    let split_payload =
+        crate::signed_ledger::lifecycle::split(&request.parent_specimen_id, &child_accessions);
+    crate::signed_ledger::try_append_signed_event(
+        &db.conn,
+        &user.id,
+        crate::signed_ledger::lifecycle::SPECIMEN_SPLIT,
+        "specimen",
+        Some(&request.parent_specimen_id),
+        &split_payload,
+    );
 
     Ok(SplitResult {
         archived_parent_id: request.parent_specimen_id,

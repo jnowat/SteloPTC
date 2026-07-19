@@ -692,6 +692,14 @@ pub fn import_registry(
         return Err(format!("Registry '{}' has already been imported.", registry.registry_id));
     }
 
+    // All writes below run inside a single transaction so a mid-batch failure
+    // (e.g. a caller-supplied `decisions` entry with an invalid disposition
+    // string, which makes `apply_record` return Err) rolls the whole import back.
+    // Without it, the audit entry + `taxonomy_registries` register row would be
+    // committed before the failing record, and the duplicate-import guard above
+    // would then reject every retry — a permanently partial, unrecoverable import.
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
     // Fold the import into this lab's own tamper-evident audit chain.
     let details = format!(
         "Imported taxonomy registry from {} ({} records; content {}).",
@@ -700,7 +708,7 @@ pub fn import_registry(
         &registry.content_hash[..registry.content_hash.len().min(16)]
     );
     log_audit(
-        conn,
+        &tx,
         imported_by,
         "import",
         "taxonomy_registry",
@@ -711,7 +719,7 @@ pub fn import_registry(
     )
     .map_err(|e| e.to_string())?;
 
-    let audit_entry_id: Option<String> = conn
+    let audit_entry_id: Option<String> = tx
         .query_row(
             "SELECT id FROM audit_log WHERE entity_type = 'taxonomy_registry' AND entity_id = ?1 AND action = 'import' \
              ORDER BY created_at DESC LIMIT 1",
@@ -722,7 +730,7 @@ pub fn import_registry(
 
     let (taxa, species, strains) = kind_counts(&registry);
     let local_row_id = uuid::Uuid::new_v4().to_string();
-    conn.execute(
+    tx.execute(
         "INSERT INTO taxonomy_registries \
          (id, registry_id, direction, issuer_lab, issuer_public_key, content_hash, record_count, \
           taxon_count, species_count, strain_count, verified, audit_entry, registry_json, created_by, created_at) \
@@ -751,14 +759,14 @@ pub fn import_registry(
     let mut applied: Vec<AppliedRecord> = Vec::new();
     let (mut inserted, mut forked, mut kept_local, mut skipped) = (0i64, 0i64, 0i64, 0i64);
     for r in &registry.records {
-        let plan = plan_for(conn, r);
+        let plan = plan_for(&tx, r);
         let disposition = decisions
             .iter()
             .find(|d| d.source_key == r.source_key)
             .map(|d| d.disposition.clone())
             .unwrap_or_else(|| plan.suggested_disposition.clone());
 
-        let outcome = apply_record(conn, r, &plan, &disposition)?;
+        let outcome = apply_record(&tx, r, &plan, &disposition)?;
         match (outcome.disposition.as_str(), outcome.local_record_id.is_some()) {
             ("fork", true) => forked += 1,
             (_, true) => inserted += 1,
@@ -767,7 +775,7 @@ pub fn import_registry(
             _ => kept_local += 1,
         }
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO registry_record_dispositions \
              (id, registry_row_id, source_key, record_type, local_status, disposition, action_taken, local_record_id) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -785,6 +793,8 @@ pub fn import_registry(
         .map_err(|e| e.to_string())?;
         applied.push(outcome);
     }
+
+    tx.commit().map_err(|e| e.to_string())?;
 
     Ok(RegistryImportResult {
         imported: true,
@@ -1022,6 +1032,51 @@ mod tests {
         let receiver = test_db();
         assert!(import_registry(&receiver, &json, &[], Some("u1")).is_ok());
         assert!(import_registry(&receiver, &json, &[], Some("u1")).is_err());
+    }
+
+    #[test]
+    fn invalid_disposition_rolls_back_and_allows_retry() {
+        // A caller-supplied decision with a bogus disposition makes apply_record
+        // fail partway through the batch. The whole import must roll back: no
+        // records, no audit entry, no register row — and crucially a corrected
+        // retry must succeed (previously the committed register row permanently
+        // blocked every retry as "already imported").
+        let origin = test_db();
+        seed_taxonomy(&origin, "Citrus", "sinensis", "CIT-SIN", "VAL", "unverified");
+        let reg = export_registry(&origin, Some("u1")).unwrap();
+        let json = serde_json::to_string(&reg).unwrap();
+
+        let receiver = test_db();
+        // Point one record at a nonsense disposition (records sort species<strain,
+        // so at least one valid record is applied before the failure).
+        let bad: Vec<RecordDecision> = reg
+            .records
+            .iter()
+            .map(|r| RecordDecision {
+                source_key: r.source_key.clone(),
+                disposition: if r.record_type == RECORD_STRAIN { "not_a_disposition".into() } else { "accept".into() },
+            })
+            .collect();
+        assert!(import_registry(&receiver, &json, &bad, Some("u1")).is_err());
+
+        // Nothing was committed by the failed attempt.
+        let regs: i64 = receiver
+            .query_row("SELECT COUNT(*) FROM taxonomy_registries", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(regs, 0, "the register row must have rolled back");
+        let audit: i64 = receiver
+            .query_row("SELECT COUNT(*) FROM audit_log WHERE entity_type = 'taxonomy_registry'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(audit, 0, "the audit entry must have rolled back");
+        let species: i64 = receiver
+            .query_row("SELECT COUNT(*) FROM species WHERE genus = 'Citrus'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(species, 0, "the already-applied species must have rolled back too");
+
+        // A corrected retry now succeeds — the failed attempt left no blocking row.
+        let ok = import_registry(&receiver, &json, &[], Some("u1")).unwrap();
+        assert!(ok.imported);
+        assert_eq!(ok.inserted, 3);
     }
 
     #[test]

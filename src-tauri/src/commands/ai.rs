@@ -133,9 +133,15 @@ fn model_present(installed: &[String], wanted: &str) -> bool {
 
 #[tauri::command]
 pub fn get_ai_status(state: State<AppState>, token: String) -> Result<AiStatusResponse, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let _user = auth_service::validate_session(&db, &token)?;
-    let cfg = load_config(&db.conn);
+    // Read config under the lock, then RELEASE it before the network probe.
+    // `ollama::list_models` is a blocking TcpStream call with a 120s timeout;
+    // holding the app-wide DB mutex across it would freeze every other command
+    // until it returns (skills.md §5 — never hold the mutex across a network call).
+    let cfg = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        auth_service::validate_session(&db, &token)?;
+        load_config(&db.conn)
+    };
 
     match ollama::list_models(&cfg) {
         Ok(models) => Ok(AiStatusResponse {
@@ -202,16 +208,21 @@ pub fn summarize_notes(
     token: String,
     request: SummarizeNotesRequest,
 ) -> Result<AiSuggestion, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let user = auth_service::validate_session(&db, &token)?;
-    if !user.role.can_write() {
-        return Err("Insufficient permissions".to_string());
-    }
-    let notes = fetch_notes(&db.conn, &request.entity_type, &request.entity_id)?
-        .filter(|n| !n.trim().is_empty())
-        .ok_or_else(|| "There are no notes to summarize yet".to_string())?;
+    // Gather everything the network call needs under the lock, then drop it
+    // before calling Ollama (blocking, 120s timeout) so no other command blocks
+    // on the app-wide DB mutex. Re-lock only to persist the suggestion.
+    let (user_id, cfg, notes) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let user = auth_service::validate_session(&db, &token)?;
+        if !user.role.can_write() {
+            return Err("Insufficient permissions".to_string());
+        }
+        let notes = fetch_notes(&db.conn, &request.entity_type, &request.entity_id)?
+            .filter(|n| !n.trim().is_empty())
+            .ok_or_else(|| "There are no notes to summarize yet".to_string())?;
+        (user.id, load_config(&db.conn), notes)
+    };
 
-    let cfg = load_config(&db.conn);
     let prompt = format!(
         "Summarize the following plant/cell/fungal culture lab notes in 2-3 concise sentences, \
          preserving any specific measurements, dates, or contamination observations verbatim:\n\n{}",
@@ -219,7 +230,8 @@ pub fn summarize_notes(
     );
     let suggestion = ollama::generate(&cfg, &cfg.text_model, &prompt, &[])?;
 
-    insert_suggestion(&db.conn, &request.entity_type, &request.entity_id, "summarize_notes", &cfg.text_model, &prompt, &suggestion, &user.id)
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    insert_suggestion(&db.conn, &request.entity_type, &request.entity_id, "summarize_notes", &cfg.text_model, &prompt, &suggestion, &user_id)
 }
 
 /// "Suggest Passage Comments" — feeds recent passage history for a specimen
@@ -228,41 +240,45 @@ pub fn summarize_notes(
 /// next subculture's notes field manually).
 #[tauri::command]
 pub fn suggest_passage_comment(state: State<AppState>, token: String, specimen_id: String) -> Result<AiSuggestion, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let user = auth_service::validate_session(&db, &token)?;
-    if !user.role.can_write() {
-        return Err("Insufficient permissions".to_string());
-    }
+    // Collect the passage history + config under the lock, drop it before the
+    // Ollama call (blocking, 120s), then re-lock to persist. See get_ai_status.
+    let (user_id, cfg, history) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let user = auth_service::validate_session(&db, &token)?;
+        if !user.role.can_write() {
+            return Err("Insufficient permissions".to_string());
+        }
 
-    let mut stmt = db.conn.prepare(
-        "SELECT passage_number, date, health_status, contamination_flag, notes, observations \
-         FROM subcultures WHERE specimen_id = ?1 ORDER BY passage_number DESC LIMIT 5",
-    ).map_err(|e| e.to_string())?;
-    let history: Vec<String> = stmt
-        .query_map([&specimen_id], |r| {
-            let passage: i64 = r.get(0)?;
-            let date: String = r.get(1)?;
-            let health: Option<String> = r.get(2)?;
-            let contaminated: i64 = r.get(3)?;
-            let notes: Option<String> = r.get(4)?;
-            let observations: Option<String> = r.get(5)?;
-            Ok(format!(
-                "Passage #{passage} on {date}: health={}, contaminated={}, notes={}, observations={}",
-                health.unwrap_or_else(|| "unknown".into()),
-                contaminated == 1,
-                notes.unwrap_or_default(),
-                observations.unwrap_or_default(),
-            ))
-        })
-        .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+        let mut stmt = db.conn.prepare(
+            "SELECT passage_number, date, health_status, contamination_flag, notes, observations \
+             FROM subcultures WHERE specimen_id = ?1 ORDER BY passage_number DESC LIMIT 5",
+        ).map_err(|e| e.to_string())?;
+        let history: Vec<String> = stmt
+            .query_map([&specimen_id], |r| {
+                let passage: i64 = r.get(0)?;
+                let date: String = r.get(1)?;
+                let health: Option<String> = r.get(2)?;
+                let contaminated: i64 = r.get(3)?;
+                let notes: Option<String> = r.get(4)?;
+                let observations: Option<String> = r.get(5)?;
+                Ok(format!(
+                    "Passage #{passage} on {date}: health={}, contaminated={}, notes={}, observations={}",
+                    health.unwrap_or_else(|| "unknown".into()),
+                    contaminated == 1,
+                    notes.unwrap_or_default(),
+                    observations.unwrap_or_default(),
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
 
-    if history.is_empty() {
-        return Err("This specimen has no passage history to base a suggestion on".to_string());
-    }
+        if history.is_empty() {
+            return Err("This specimen has no passage history to base a suggestion on".to_string());
+        }
+        (user.id, load_config(&db.conn), history)
+    };
 
-    let cfg = load_config(&db.conn);
     let prompt = format!(
         "You are assisting a plant/cell tissue culture technician. Based on this specimen's recent \
          passage history (most recent first), draft one concise, factual observation comment for the \
@@ -271,7 +287,8 @@ pub fn suggest_passage_comment(state: State<AppState>, token: String, specimen_i
     );
     let suggestion = ollama::generate(&cfg, &cfg.text_model, &prompt, &[])?;
 
-    insert_suggestion(&db.conn, "specimen", &specimen_id, "suggest_passage_comment", &cfg.text_model, &prompt, &suggestion, &user.id)
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    insert_suggestion(&db.conn, "specimen", &specimen_id, "suggest_passage_comment", &cfg.text_model, &prompt, &suggestion, &user_id)
 }
 
 /// "Analyze Photo for Contamination" — sends an existing attachment's image
@@ -285,22 +302,26 @@ pub fn analyze_photo_for_contamination(
     token: String,
     request: AnalyzePhotoRequest,
 ) -> Result<AiSuggestion, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let user = auth_service::validate_session(&db, &token)?;
-    if !user.role.can_write() {
-        return Err("Insufficient permissions".to_string());
-    }
+    // Resolve the attachment + config under the lock, drop it before the Ollama
+    // vision call (blocking, 120s), then re-lock to persist. See get_ai_status.
+    let (user_id, cfg, file_path, entity_type, entity_id) = {
+        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let user = auth_service::validate_session(&db, &token)?;
+        if !user.role.can_write() {
+            return Err("Insufficient permissions".to_string());
+        }
 
-    let (file_path, entity_type, entity_id): (String, String, String) = db.conn.query_row(
-        "SELECT file_path, entity_type, entity_id FROM attachments WHERE id = ?1",
-        [&request.attachment_id],
-        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
-    ).map_err(|_| "Attachment not found".to_string())?;
+        let (file_path, entity_type, entity_id): (String, String, String) = db.conn.query_row(
+            "SELECT file_path, entity_type, entity_id FROM attachments WHERE id = ?1",
+            [&request.attachment_id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        ).map_err(|_| "Attachment not found".to_string())?;
+        (user.id, load_config(&db.conn), file_path, entity_type, entity_id)
+    };
 
     let bytes = std::fs::read(&file_path).map_err(|e| format!("Failed to read attachment file: {}", e))?;
     let image_b64 = B64.encode(&bytes);
 
-    let cfg = load_config(&db.conn);
     let prompt = "Examine this plant/cell/fungal tissue culture photo for visible signs of \
                   microbial contamination (bacterial or fungal growth, unusual discoloration, \
                   turbidity in liquid media, mold). Describe what you observe factually and note \
@@ -308,7 +329,8 @@ pub fn analyze_photo_for_contamination(
         .to_string();
     let suggestion = ollama::generate(&cfg, &cfg.vision_model, &prompt, &[image_b64])?;
 
-    insert_suggestion(&db.conn, &entity_type, &entity_id, "analyze_photo", &cfg.vision_model, &prompt, &suggestion, &user.id)
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    insert_suggestion(&db.conn, &entity_type, &entity_id, "analyze_photo", &cfg.vision_model, &prompt, &suggestion, &user_id)
 }
 
 #[tauri::command]

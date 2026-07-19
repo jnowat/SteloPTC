@@ -58,6 +58,10 @@ pub struct CreateHybridizationEventRequest {
     pub name: String,
     pub code: String,
     pub notes: Option<String>,
+    /// Strain type for the created hybrid (e.g. "hybrid", "f1_hybrid",
+    /// "f2_hybrid"). Chosen in the wizard's Strain Type step; when absent or
+    /// blank the backend defaults to "hybrid".
+    pub strain_type: Option<String>,
     /// Generation label (e.g. "F1", "F2", "BC1F1").  When absent, the backend
     /// auto-suggests one based on parent labels and backcross detection.
     pub generation_label: Option<String>,

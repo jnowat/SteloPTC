@@ -201,8 +201,13 @@ pub fn import_xlsx(
     }
 
     // ── Media Batches ─────────────────────────────────────────────────────────
-    // Columns: Name(0) Batch Code(1) Type(2) Prepared By(3) Date Prepared(4)
-    //          Expiry Date(5) pH(6) Volume mL(7) Sterilization Method(8) Notes(9)
+    // Columns match the exporter's `mediaRows` header (src/lib/exportUtils.ts):
+    //   Name(0) Batch Code(1) Base(2) Prepared By(3) Date Prepared(4)
+    //   Expiry Date(5) pH(6) Volume mL(7) Sterilization Method(8) Notes(9)
+    // Column 2 is the basal-salts formulation ("Base"); it was previously
+    // mislabelled "Type" and never read, so `basal_salts` was silently dropped on
+    // every round-trip import. Prepared By(3) is display attribution — the
+    // importing user is stamped as `created_by`, so it is intentionally not read.
     for (i, row) in payload.media.iter().enumerate() {
         let row_num = i + 2;
         let name = col(row, 0).trim();
@@ -212,6 +217,7 @@ pub fn import_xlsx(
             continue;
         }
         let batch_code = opt(col(row, 1));
+        let basal_salts = opt(col(row, 2));
         let ph: Option<f64> = col(row, 6).trim().parse().ok();
         let volume: Option<f64> = col(row, 7).trim().parse().ok();
         let prep_date = opt(col(row, 4));
@@ -241,8 +247,8 @@ pub fn import_xlsx(
                 if let Err(e) = conn.execute(
                     "UPDATE media_batches SET name=?2, ph_before_autoclave=?3, volume_prepared_ml=?4,
                      preparation_date=?5, expiration_date=?6, sterilization_method=?7,
-                     notes=?8, updated_at=?9 WHERE id=?1",
-                    params![id, name, ph, volume, prep_date, exp_date, steril, notes, ts],
+                     notes=?8, basal_salts=?10, updated_at=?9 WHERE id=?1",
+                    params![id, name, ph, volume, prep_date, exp_date, steril, notes, ts, basal_salts],
                 ) {
                     errors.push(RowError { sheet: "Media Batches".into(), row: row_num, message: e.to_string() });
                 } else {
@@ -254,10 +260,10 @@ pub fn import_xlsx(
                 let bc = batch_code.unwrap_or_else(|| format!("IMP-{}", id[..8].to_uppercase()));
                 if let Err(e) = conn.execute(
                     "INSERT INTO media_batches (id, batch_id, name, ph_before_autoclave, volume_prepared_ml,
-                     preparation_date, expiration_date, sterilization_method, notes,
+                     preparation_date, expiration_date, sterilization_method, notes, basal_salts,
                      created_by, created_at, updated_at)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?11)",
-                    params![id, bc, name, ph, volume, prep_date, exp_date, steril, notes, user.id, ts],
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?12,?10,?11,?11)",
+                    params![id, bc, name, ph, volume, prep_date, exp_date, steril, notes, user.id, ts, basal_salts],
                 ) {
                     errors.push(RowError { sheet: "Media Batches".into(), row: row_num, message: e.to_string() });
                 } else {
@@ -383,8 +389,12 @@ pub fn import_xlsx(
     }
 
     // ── Compliance ────────────────────────────────────────────────────────────
-    // Columns: Specimen ID(0) Record Type(1) Status(2) Authority(3)
-    //          Issue Date(4) Expiry Date(5) Notes(6)
+    // Columns match the exporter's `complianceRows` header (src/lib/exportUtils.ts):
+    //   Specimen ID(0) Record Type(1) Status(2) Agency(3)
+    //   Permit #(4) Permit Expiry(5) Notes(6)
+    // Column 4 is the permit number; it was previously mislabelled "Issue Date"
+    // and never read, so `permit_number` (regulatory data) was silently dropped
+    // on every round-trip import.
     // Specimen ID is matched against specimens.id (UUID) then specimens.accession_number.
     for (i, row) in payload.compliance.iter().enumerate() {
         let row_num = i + 2;
@@ -417,6 +427,7 @@ pub fn import_xlsx(
         let record_type = opt(col(row, 1)).unwrap_or_else(|| "other".to_string());
         let status = opt(col(row, 2)).unwrap_or_else(|| "pending".to_string());
         let agency = opt(col(row, 3));
+        let permit_number = opt(col(row, 4));
         let expiry_date = opt(col(row, 5));
         let notes = opt(col(row, 6));
         let ts = now();
@@ -424,10 +435,10 @@ pub fn import_xlsx(
 
         if let Err(e) = conn.execute(
             "INSERT INTO compliance_records
-             (id, specimen_id, record_type, status, agency, permit_expiry, notes,
+             (id, specimen_id, record_type, status, agency, permit_number, permit_expiry, notes,
               created_by, created_at, updated_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)",
-            params![id, specimen_id, record_type, status, agency, expiry_date, notes, user.id, ts],
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?10)",
+            params![id, specimen_id, record_type, status, agency, permit_number, expiry_date, notes, user.id, ts],
         ) {
             errors.push(RowError { sheet: "Compliance".into(), row: row_num, message: e.to_string() });
         } else {

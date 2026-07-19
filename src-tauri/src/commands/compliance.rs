@@ -227,10 +227,18 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
 
+    // WP-74: the active lab profile decides which rules run. General regulatory
+    // rules (permits, quarantine) apply everywhere; domain rules (citrus HLB,
+    // mycology QC, cell-culture mycoplasma) are gated to their profile via the
+    // `compliance_rules` catalog, so e.g. the citrus HLB rule no longer fires in
+    // a mycology or cell-culture lab that happens to code a species "CIT-*".
+    let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
+    let active = |flag_type: &str| crate::compliance_rules::is_rule_active(flag_type, &profile);
+
     let mut flags = Vec::new();
 
     // Flag: Expired permits
-    {
+    if active("expired_permit") {
         let mut stmt = db.conn.prepare(
             "SELECT s.id, s.accession_number, sp.species_code
              FROM specimens s
@@ -253,8 +261,8 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
         flags.extend(expired);
     }
 
-    // Flag: Citrus missing HLB test in last 12 months
-    {
+    // Flag: Citrus missing HLB test in last 12 months (PTC-only — WP-74)
+    if active("missing_hlb_test") {
         let mut stmt = db.conn.prepare(
             "SELECT s.id, s.accession_number, sp.species_code
              FROM specimens s
@@ -283,7 +291,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
     }
 
     // Flag: Quarantined without release date
-    {
+    if active("quarantine_no_release") {
         let mut stmt = db.conn.prepare(
             "SELECT s.id, s.accession_number, sp.species_code
              FROM specimens s
@@ -307,7 +315,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
     }
 
     // Flag: Missing disease tests for specimens with positive results
-    {
+    if active("positive_not_quarantined") {
         let mut stmt = db.conn.prepare(
             "SELECT DISTINCT s.id, s.accession_number, sp.species_code
              FROM specimens s
@@ -331,10 +339,9 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
         flags.extend(positive_no_quarantine);
     }
 
-    // Flag: Mycology-specific QC rules (WP-44)
+    // Flag: Mycology-specific QC rules (WP-44) — gated via the WP-74 catalog.
     {
-        let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
-        if profile == "mycology" {
+        if active("myco_open_contamination") {
             let transfer_days: i64 = queries::read_setting(&db.conn, "myco_transfer_interval_days", "21")
                 .parse().unwrap_or(21);
             let slow_pct: f64 = queries::read_setting(&db.conn, "myco_slow_colonization_pct", "30")
@@ -349,8 +356,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
 
     // Flag: Cell culture lines with no recent mycoplasma test (configurable interval)
     {
-        let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
-        if profile == "cell_culture" {
+        if active("missing_mycoplasma_test") {
             let interval_str = queries::read_setting(&db.conn, "mycoplasma_test_interval_days", "90");
             let interval_days: i64 = interval_str.parse().unwrap_or(90);
             let sql = format!(
@@ -398,7 +404,252 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
         }
     }
 
+    // Flag: latest environmental reading out of its acceptable range (WP-78).
+    // Evaluates the most recent reading of each type per specimen against the
+    // `monitoring` module's default ranges; the pure decision lives there.
+    if active("environmental_out_of_range") {
+        let mut stmt = db.conn.prepare(
+            "SELECT er.specimen_id, s.accession_number, sp.species_code, er.reading_type, er.value, er.recorded_at
+             FROM environmental_readings er
+             JOIN specimens s ON er.specimen_id = s.id
+             JOIN species sp ON s.species_id = sp.id
+             WHERE s.is_archived = 0
+               AND er.specimen_id IS NOT NULL
+               AND er.recorded_at = (
+                   SELECT MAX(er2.recorded_at) FROM environmental_readings er2
+                   WHERE er2.specimen_id = er.specimen_id AND er2.reading_type = er.reading_type
+               )",
+        ).map_err(|e| e.to_string())?;
+
+        #[allow(clippy::type_complexity)]
+        let rows: Vec<(String, String, String, String, f64, Option<String>)> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (specimen_id, accession, species_code, reading_type, value, recorded_at) in rows {
+            if let Some(threshold) = crate::monitoring::default_threshold(&reading_type) {
+                if let Some(status) = crate::monitoring::evaluate(value, &threshold) {
+                    flags.push(ComplianceFlag {
+                        specimen_id,
+                        accession_number: accession,
+                        species_code,
+                        flag_type: "environmental_out_of_range".to_string(),
+                        message: crate::monitoring::range_message(&reading_type, value, status, &threshold),
+                        severity: "high".to_string(),
+                        last_test_date: recorded_at,
+                    });
+                }
+            }
+        }
+    }
+
+    // WP-77: drop any flag the operator has actively waived for its specimen.
+    let waivers = load_active_waivers(&db.conn)?;
+    if !waivers.is_empty() {
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        flags.retain(|f| {
+            !crate::compliance_rules::is_waived(&waivers, &f.flag_type, &f.specimen_id, &today)
+        });
+    }
+
     Ok(flags)
+}
+
+/// Load all non-revoked waivers as the pure `compliance_rules::Waiver` shape used
+/// by the suppression decision (WP-77).
+fn load_active_waivers(
+    conn: &rusqlite::Connection,
+) -> Result<Vec<crate::compliance_rules::Waiver>, String> {
+    let mut stmt = conn
+        .prepare("SELECT flag_type, specimen_id, expires_at FROM compliance_flag_waivers WHERE revoked = 0")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(crate::compliance_rules::Waiver {
+                flag_type: r.get(0)?,
+                specimen_id: r.get(1)?,
+                expires_at: r.get(2)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// A stored compliance flag waiver, for the management UI (WP-77).
+#[derive(serde::Serialize)]
+pub struct ComplianceWaiver {
+    pub id: String,
+    pub flag_type: String,
+    pub specimen_id: String,
+    pub specimen_accession: Option<String>,
+    pub reason: String,
+    pub waived_by: Option<String>,
+    pub waived_at: String,
+    pub expires_at: Option<String>,
+}
+
+/// Waive a compliance flag for a specimen with a mandatory reason, optionally
+/// until `expires_at` (ISO `YYYY-MM-DD`). Suppresses that one `(flag_type,
+/// specimen)` pair from `get_compliance_flags`. Audit-logged. WP-77.
+#[tauri::command]
+pub fn waive_compliance_flag(
+    state: State<AppState>,
+    token: String,
+    flag_type: String,
+    specimen_id: String,
+    reason: String,
+    expires_at: Option<String>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+    if reason.trim().is_empty() {
+        return Err("A reason is required to waive a compliance flag".to_string());
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    db.conn
+        .execute(
+            "INSERT INTO compliance_flag_waivers (id, flag_type, specimen_id, reason, waived_by, expires_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, flag_type, specimen_id, reason.trim(), user.id, expires_at],
+        )
+        .map_err(|e| format!("Failed to record waiver: {}", e))?;
+
+    queries::log_audit(
+        &db.conn,
+        Some(&user.id),
+        "waive",
+        "compliance_flag",
+        Some(&specimen_id),
+        None,
+        None,
+        Some(&format!("Waived '{}': {}", flag_type, reason.trim())),
+    )
+    .ok();
+    Ok(())
+}
+
+/// List all active (non-revoked, unexpired) waivers, newest first. WP-77.
+#[tauri::command]
+pub fn list_compliance_waivers(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<ComplianceWaiver>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    let mut stmt = db
+        .conn
+        .prepare(
+            "SELECT w.id, w.flag_type, w.specimen_id, s.accession_number, w.reason, w.waived_by, w.waived_at, w.expires_at \
+             FROM compliance_flag_waivers w \
+             LEFT JOIN specimens s ON w.specimen_id = s.id \
+             WHERE w.revoked = 0 AND (w.expires_at IS NULL OR w.expires_at >= ?1) \
+             ORDER BY w.waived_at DESC",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map(params![today], |r| {
+            Ok(ComplianceWaiver {
+                id: r.get(0)?,
+                flag_type: r.get(1)?,
+                specimen_id: r.get(2)?,
+                specimen_accession: r.get(3)?,
+                reason: r.get(4)?,
+                waived_by: r.get(5)?,
+                waived_at: r.get(6)?,
+                expires_at: r.get(7)?,
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
+/// Revoke a waiver by id, reinstating its flag. The row is kept (revoked = 1) for
+/// the audit trail. Audit-logged. WP-77.
+#[tauri::command]
+pub fn revoke_compliance_waiver(
+    state: State<AppState>,
+    token: String,
+    waiver_id: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+    let affected = db
+        .conn
+        .execute(
+            "UPDATE compliance_flag_waivers SET revoked = 1, revoked_at = datetime('now') WHERE id = ?1 AND revoked = 0",
+            params![waiver_id],
+        )
+        .map_err(|e| format!("Failed to revoke waiver: {}", e))?;
+    if affected == 0 {
+        return Err("Waiver not found or already revoked".to_string());
+    }
+    queries::log_audit(
+        &db.conn,
+        Some(&user.id),
+        "revoke",
+        "compliance_flag",
+        Some(&waiver_id),
+        None,
+        None,
+        Some("Revoked compliance flag waiver"),
+    )
+    .ok();
+    Ok(())
+}
+
+/// One active compliance rule, for the rule-catalog UI (WP-74).
+#[derive(serde::Serialize)]
+pub struct ActiveComplianceRule {
+    pub flag_type: String,
+    pub title: String,
+    pub severity: String,
+    /// `"all"` for universal rules, or the profile this domain rule belongs to.
+    pub scope: String,
+}
+
+/// List the compliance auto-flag rules active for the current lab profile, so the
+/// UI can show operators exactly which checks run in their lab (and, implicitly,
+/// which are silent because they belong to another domain). WP-74.
+#[tauri::command]
+pub fn list_compliance_rules(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<ActiveComplianceRule>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let _user = auth_service::validate_session(&db, &token)?;
+    let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
+
+    Ok(crate::compliance_rules::rules_for_profile(&profile)
+        .into_iter()
+        .map(|r| ActiveComplianceRule {
+            flag_type: r.flag_type.to_string(),
+            title: r.title.to_string(),
+            severity: r.severity.to_string(),
+            scope: match r.scope {
+                crate::compliance_rules::RuleScope::AllProfiles => "all".to_string(),
+                crate::compliance_rules::RuleScope::Profiles(_) => profile.clone(),
+            },
+        })
+        .collect())
 }
 
 #[tauri::command]

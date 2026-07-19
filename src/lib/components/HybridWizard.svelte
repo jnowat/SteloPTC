@@ -182,6 +182,7 @@
         parent_b_id: parentBId,
         name: hybridName.trim(),
         code: hybridCode.trim(),
+        strain_type: hybridType,
         notes: buildNotes() || undefined,
         generation_label: generationLabel.trim() || undefined,
         admin_override_cross_species: isCrossSpecies ? true : undefined,
