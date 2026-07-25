@@ -12,7 +12,7 @@ If you're looking for something else:
 | How to *use* the app | [`../UserManual.md`](../UserManual.md) |
 | Per-work-packet engineering status | [`../ROADMAP.md`](../ROADMAP.md) |
 | Release-by-release history | [`../CHANGELOG.md`](../CHANGELOG.md) |
-| How to contribute code | [`../skills.md`](../skills.md) |
+| How to contribute code | [`../SKILLS.md`](../SKILLS.md) |
 
 ---
 

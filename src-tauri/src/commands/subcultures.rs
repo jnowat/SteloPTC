@@ -82,6 +82,27 @@ pub fn record_specimen_death(
     tx.commit().map_err(|e| format!("Failed to commit death transaction: {}", e))?;
     crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
+    // WP-75: record signed lifecycle events attributed to the acting user's key.
+    // A death is two distinct facts — the specimen died, and it was archived as a
+    // consequence — so both are appended. Best-effort: a ledger hiccup never fails
+    // the death event, which has already committed.
+    let (sev_type, sev_payload) = crate::signed_ledger::lifecycle::passage(
+        &request.specimen_id,
+        i64::from(event_passage_number),
+        "death",
+    );
+    crate::signed_ledger::try_append_signed_event(
+        &db.conn, &user.id, sev_type, "specimen", Some(&request.specimen_id), &sev_payload,
+    );
+    crate::signed_ledger::try_append_signed_event(
+        &db.conn,
+        &user.id,
+        crate::signed_ledger::lifecycle::SPECIMEN_ARCHIVED,
+        "specimen",
+        Some(&request.specimen_id),
+        &crate::signed_ledger::lifecycle::archived(&request.specimen_id),
+    );
+
     db.conn.query_row(
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
          FROM subcultures sc

@@ -21,11 +21,11 @@
 | Area | Status | Notes |
 |---|---|---|
 | **CI on `master`** | 🔴 **Broken — found and fixed this session** | `Tests`, `Build Windows`, `Build Android` all failing on `cae38c1` since 2026-07-19. Root cause: `commands/subcultures.rs:311` passed an `i32` where `signed_ledger::lifecycle::passage` takes an `i64`. Fixed and verified with a real full-feature build (§2). |
-| **Why it went undetected** | 🔴 **Process gap — now documented** | The broken code lives behind the `tauri-commands` feature. `cargo test --lib --no-default-features` (the command every prior checkup used) never compiles it, so all four "local gates" were green on a tree CI could not build. Written up in `skills.md` §3 and §7 so it can't recur silently. |
+| **Why it went undetected** | 🔴 **Process gap — now documented** | The broken code lives behind the `tauri-commands` feature. `cargo test --lib --no-default-features` (the command every prior checkup used) never compiles it, so all four "local gates" were green on a tree CI could not build. Written up in `SKILLS.md` §3 and §7 so it can't recur silently. |
 | Version alignment | ✅ All four manifests aligned | Reviewed at 1.53.1 (`versionCode = 27`); released here as 1.53.2 (`versionCode = 28`), all four bumped together |
 | `package-lock.json` version drift | ⚠️ **Found and fixed** | Its `version` field still read `1.48.0` — five releases stale. It only refreshes on `npm install`, so version bumps since v1.48.0 never touched it. Corrected, and now regenerated as part of the 1.53.2 bump. |
-| Test suite (fast) | ✅ 640/640 | `cargo test --lib --no-default-features`, fresh run, 44s |
-| Test suite (**full CI gate**) | ✅ **677/677 — verified locally for the first time** | `cargo test --lib` with the `tauri-commands` feature, 51s. Previous checkups all recorded this as unverifiable; the GTK/WebKit libraries install fine on this image (§6). |
+| Test suite (fast) | ✅ 642/642 | `cargo test --lib --no-default-features`, fresh run, 44s |
+| Test suite (**full CI gate**) | ✅ **679/679 — verified locally for the first time** | `cargo test --lib` with the `tauri-commands` feature, 51s. Previous checkups all recorded this as unverifiable; the GTK/WebKit libraries install fine on this image (§6). |
 | Clippy | ✅ Clean, both feature sets | `--no-default-features` and full, `-D warnings` |
 | Frontend tests | ✅ 113/113 | Vitest, 5 files |
 | `svelte-check` | ✅ 0 errors / 0 warnings | 418 files |
@@ -37,14 +37,14 @@
 | ROADMAP freshness | ⚠️ **Accurate but unreadable — rewritten** | Content was correct; the header was a ~7,000-word unbroken paragraph. Restructured (§3). |
 | UserManual freshness | 🔴 **Stale by 8 releases — fixed** | Header claimed **v1.45.0**; nothing from Phase G (WP-71/72) or Phase H (WP-74–78) was documented for end users at all. Six new sections written (§3). |
 | SteloPTC.md freshness | ⚠️ **Stale by 5 releases — fixed** | Frontmatter read `version: 1.48.0`, `tests_rust: 608`, `migrations: 51` |
-| skills.md accuracy | ⚠️ **One real error — fixed** | §9 told contributors to write "migration `052`" — 052 is already shipped; next is 053 |
+| `SKILLS.md` accuracy | ⚠️ **One real error — fixed** | §9 told contributors to write "migration `052`" — 052 is already shipped; next is 053 |
 | Large-component debt | ⚠️ Unchanged, marginally worse | `SpecimenDetail.svelte` now 2,703 lines / 128.5 KB (was 2,667 / 126.7 KB at the last checkup) |
 | Bundle size | ⚠️ Unchanged in kind, larger | One 1.55 MB (476 KB gzip) chunk, up from 1.48 MB / 454 KB. Still no code-splitting. |
 | Dead code | ✅ None found | All 55 Svelte components are referenced; zero `TODO`/`FIXME`/`HACK` markers in `src` or `src-tauri/src` |
 | Doc link integrity | ✅ Verified | Every relative link and every in-document anchor across all 20 Markdown files resolves |
 
 **Overall health: GOOD, with one serious process finding.** The engineering fundamentals are strong
-— 677 tests, clean clippy, no dead code, no `TODO` debt, honest disclosure of every foundation-only
+— 679 tests, clean clippy, no dead code, no `TODO` debt, honest disclosure of every foundation-only
 capability. But the project shipped a release that does not compile, merged it, and left `master`
 red for six days, because the routinely-run local verification could not see the broken code. The
 fix is one line; the *lesson* is the valuable part, and it is now written into the contributor
@@ -73,7 +73,7 @@ error[E0308]: mismatched types
 `signed_ledger::lifecycle::passage` — added by WP-75 in the same release — declares `i64`.
 
 **Why every local gate passed.** `commands/` is compiled only under the default `tauri-commands`
-feature. The four gates in `skills.md` §3 that a sandboxed session can normally run
+feature. The four gates in `SKILLS.md` §3 that a sandboxed session can normally run
 (`--no-default-features` test + clippy, `npm test`, `npm run check`) all skip it entirely. The
 release was verified honestly and thoroughly against gates that structurally could not catch this.
 
@@ -90,18 +90,32 @@ libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev`). With the fix applied:
 | Gate | Result |
 |---|---|
 | `cargo clippy --lib -- -D warnings` (full features) | ✅ clean |
-| `cargo test --lib` (full features) | ✅ **677 passed, 0 failed** |
-| `cargo test --lib --no-default-features` | ✅ 640 passed, 0 failed |
+| `cargo test --lib` (full features) | ✅ **679 passed, 0 failed** (677 before this session's two new tests) |
+| `cargo test --lib --no-default-features` | ✅ 642 passed, 0 failed |
 | `npm test` · `npm run check` · `npm run build` | ✅ 113 passed · 0/0 (418 files) · builds |
 
-**Prevention.** `skills.md` §3 now carries the exact `apt-get` line and the standing rule: *run the
+**Prevention.** `SKILLS.md` §3 now carries the exact `apt-get` line and the standing rule: *run the
 full-feature build before pushing anything that touches `src-tauri/src/commands/`*. §7 records the
 integer-width trap that produced this specific error.
 
-**Not fixed (deliberately, out of scope).** `record_specimen_death` still doesn't emit a
-`SPECIMEN_DIED` signed event, even though `lifecycle::passage` accepts a `"death"` event type. That
-matches the disclosed WP-75 scope ("creation, passage, and split only") rather than being a
-regression, so it stays a documented follow-up rather than an unannounced feature addition.
+**A second, quieter defect found alongside it — signed lifecycle coverage.** Reviewing the same
+module surfaced two gaps the WP-75 disclosure had papered over. Both were flagged for the user's
+call and then fixed on their instruction:
+
+- **`record_specimen_death` never signed anything.** `lifecycle::passage` already accepted a
+  `"death"` event type and mapped it to `SPECIMEN_DIED`, but no call site ever passed it. A
+  specimen's terminal event — the one an auditor is most likely to want attributed to a person —
+  produced an audit-chain entry and no signed record. It now appends **two** events: the death and
+  the archival it causes, since a verifier may need to check those independently.
+- **`SPECIMEN_ARCHIVED` was declared but unreachable.** The constant sat in `lifecycle::ALL` with
+  no call site anywhere. `delete_specimen` (which archives rather than hard-deletes) and
+  `bulk_archive_specimens` now emit it. `split_specimen` deliberately does not — `SPECIMEN_SPLIT`
+  already records the parent forking, and a second event would be noise.
+
+This is the more interesting of the two classes of bug in this session. A missing event type is
+invisible to every test and every gate: the ledger *looks* complete, verifies cleanly, and is
+simply missing facts. A new tripwire test, `every_declared_event_type_has_a_payload_builder`, now
+fails if a type is added to `ALL` without a way to emit it.
 
 ---
 
@@ -113,17 +127,19 @@ The user-visible docs were accurate in substance but had drifted badly in curren
 |---|---|---|
 | `ROADMAP.md` | The header was seven unbroken paragraphs — a single one of them ~7,000 words — duplicating the *Status at a glance* table directly beneath it. Genuinely unreadable. | Replaced with a scannable fact table, a goal statement, and a security baseline. The per-migration history became a **52-row table** in a collapsible section (nothing dropped); the release narrative became a second collapsible bullet list. Added the missing v1.48 (WP-73) and v1.53.1 rows to *Status at a glance*. |
 | `UserManual.md` | Header said **v1.45.0**. Phase G (taxonomy registry, breeding coordination) and *all* of Phase H were undocumented for end users. §18 still listed Phase G as "reserved, not started". | New header + linked TOC. Six new sections (**27–32**): on-chain anchoring & the signed ledger, working with partner labs, compliance flags/rules/waivers, the submission pipeline, the data-integrity self-check, and the mycology Fruiting overview. §18 corrected — shipped items moved out of "planned", real remaining gaps listed honestly. |
-| `SteloPTC.md` | Frontmatter `version: 1.48.0`, `tests_rust: 608`, `migrations: 51`, `updated: 2026-07-11`. | Refreshed to 1.53.1 / 640 (+677 full) / 52 / 2026-07-25. Phase H added to the feature catalog, release timeline, and foundation-only checklist. Fixed a wrong cross-reference (cryo pointed at *UserManual §22*, which is cloud backup). |
-| `README.md` | Doc index omitted `specimen-passport`, `taxonomy-registry`, `breeding-coordination` and `skills.md`. | Added, plus a link to the new spec index and the 677 full-feature test figure. |
+| `SteloPTC.md` | Frontmatter `version: 1.48.0`, `tests_rust: 608`, `migrations: 51`, `updated: 2026-07-11`. | Refreshed to 1.53.2 / 642 (+679 full) / 52 / 2026-07-25. Phase H added to the feature catalog, release timeline, and foundation-only checklist. Fixed a wrong cross-reference (cryo pointed at *UserManual §22*, which is cloud backup). |
+| `README.md` | Doc index omitted `specimen-passport`, `taxonomy-registry`, `breeding-coordination` and `SKILLS.md`. | Added, plus a link to the new spec index and the full-feature test figure. |
 | `docs/*.md` (11 files) | Three different header conventions; three files had no metadata at all. | Uniform header on every spec: subtitle, a *Work packet · Shipped in · Status · Depends on* table, and a nav line. Body content untouched (verified by diff: 121 insertions, 7 deletions, all in headers). |
 | `docs/README.md` | Didn't exist — `docs/` had no index. | New specification index grouping all 11 specs by purpose. |
 | `CHANGELOG.md` | No orientation for a 2,400-line append-only file. | Short reading guide at the top. History itself untouched. |
-| `skills.md` | §9 said to write migration `052` — already shipped. Test baseline lacked the full-feature figure. | Corrected. Added the full-feature verification procedure (§3), the integer-width trap (§7), and a new **§10 "Docs that drift"** — a table of every file carrying a number that goes stale, with a copy-pasteable check. |
+| `SKILLS.md` | §9 said to write migration `052` — already shipped. Test baseline lacked the full-feature figure. | Corrected. Added the full-feature verification procedure (§3), the integer-width trap (§7), and a new **§10 "Docs that drift"** — a table of every file carrying a number that goes stale, with a copy-pasteable check. |
 
-**On the user's `SKILLS.md` request:** the file exists as **`skills.md`** and already serves exactly
-that purpose. It is referenced by `README.md`, `ROADMAP.md`, `SteloPTC.md`, `docs/README.md`, and by
-name throughout `CHANGELOG.md`'s append-only history, so it was strengthened in place rather than
-renamed or duplicated.
+**On the `SKILLS.md` request:** the file already existed as `skills.md` and already served exactly
+that purpose, so it was strengthened rather than duplicated — then **renamed to `SKILLS.md`** on the
+user's instruction. Every live reference was updated (`README.md`, `ROADMAP.md`, `SteloPTC.md`
+wikilinks, `docs/README.md`, and three source comments). CHANGELOG entries at v1.53.1 and earlier
+still say `skills.md`: that file is append-only and shipped history is not rewritten, so the rename
+is recorded in a note at the top of `SKILLS.md` instead.
 
 ---
 
@@ -139,7 +155,7 @@ renamed or duplicated.
 
 The `package-lock.json` drift is worth remembering: its `version` field is rewritten only by
 `npm install`, so a release that bumps the three manifests and doesn't reinstall leaves it behind
-silently. It has now been added to the `skills.md` §10 drift checklist.
+silently. It has now been added to the `SKILLS.md` §10 drift checklist.
 
 ---
 
@@ -166,8 +182,8 @@ Every figure below is from a fresh run in this session.
 
 | Command | Result |
 |---|---|
-| `cargo test --lib --no-default-features` | **640 passed**, 0 failed (44.4s) |
-| `cargo test --lib` *(full `tauri-commands` — the CI gate)* | **677 passed**, 0 failed (50.7s) |
+| `cargo test --lib --no-default-features` | **642 passed**, 0 failed |
+| `cargo test --lib` *(full `tauri-commands` — the CI gate)* | **679 passed**, 0 failed |
 | `cargo clippy --lib --no-default-features -- -D warnings` | clean |
 | `cargo clippy --lib -- -D warnings` | clean |
 | `npm test` (Vitest) | **113 passed**, 0 failed, 5 files |
@@ -293,7 +309,7 @@ pinned CLI. `rusqlite` 0.32.1, `bcrypt` 0.17.1, `argon2` 0.5.3, `aes-gcm` 0.10.3
 
 ### 1. Make the full-feature build a hard part of the workflow *(highest priority — new)*
 The one-line break in §2 is not really a code problem; it is a verification-coverage problem, and it
-cost six days of red `master`. `skills.md` §3 now documents the `apt-get` line and the rule. The
+cost six days of red `master`. `SKILLS.md` §3 now documents the `apt-get` line and the rule. The
 durable fix is to stop treating `--no-default-features` as "the" local gate. If any single follow-up
 lands from this checkup, make it this one.
 
@@ -328,6 +344,11 @@ unrelated content (fixed to point at the roadmap instead). A short section would
 
 - ✅ Fixed the type error that had `master`'s CI red for six days — verified with the real
   full-feature build and clippy, both of which no prior checkup had ever been able to run
+- ✅ Closed the signed-lifecycle-event gaps: a recorded death now signs `SPECIMEN_DIED` +
+  `SPECIMEN_ARCHIVED`; explicit and bulk archives now sign `SPECIMEN_ARCHIVED` (previously a
+  declared-but-unreachable event type). Two new tests, including a tripwire against the same class
+  of gap recurring
+- ✅ Renamed `skills.md` → `SKILLS.md` and updated every live reference
 - ✅ Fixed `package-lock.json`'s five-release-stale version field
 - ✅ Fixed 2 of 4 high-severity npm advisories; documented the other 2 honestly, including why the
   post-fix count *rose* to 9 and why `--force` was refused
@@ -335,17 +356,16 @@ unrelated content (fixed to point at the roadmap instead). A short section would
 - ✅ Restructured the unreadable ROADMAP header without losing a single fact
 - ✅ Brought `UserManual.md` from v1.45.0 to v1.53.1 with six new end-user sections
 - ✅ Refreshed `SteloPTC.md`, `README.md`, `CHANGELOG.md` intro, and all 11 `docs/*.md` headers
-- ✅ Added `docs/README.md` (spec index) and `skills.md` §10 (docs-drift checklist)
+- ✅ Added `docs/README.md` (spec index) and `SKILLS.md` §10 (docs-drift checklist)
 - ✅ Verified every relative link and in-document anchor across all 20 Markdown files
 
 **Investigated, no action taken**
 
-- `record_specimen_death` not emitting a signed `SPECIMEN_DIED` event — matches the disclosed WP-75
-  scope, so it stays a documented follow-up rather than an unannounced change (§2)
 - `npm audit fix --force` — would downgrade `vite-plugin-pwa` 1.3.0 → 1.2.0 to fix a dev-only
   build-time advisory (§7)
-- Renaming `skills.md` → `SKILLS.md` — referenced by five docs and by name throughout the
-  append-only CHANGELOG history; strengthened in place instead (§3)
+- Signing `SPECIMEN_ARCHIVED` on the split path — `SPECIMEN_SPLIT` already records that the parent
+  forked; a second event would be redundant, not more complete (§2)
+- Rewriting historical `skills.md` references in `CHANGELOG.md` — that file is append-only (§3)
 
 ---
 
@@ -357,7 +377,7 @@ unrelated content (fixed to point at the roadmap instead). A short section would
 | CI/CD | 🔴 4/10 | ↓↓ | Every merge gate red for six days on `master`, undetected. Fixed here; the score reflects that it happened and wasn't caught. |
 | Code organization | ⚠️ 6/10 | → | `SpecimenDetail.svelte` growing again; no dead code, no marker debt |
 | Security posture | ✅ 9/10 | → | Strong; `xlsx` remains the one reachable open item |
-| Test coverage | ✅ 9/10 | → | 677 + 113, all green and now verified against the *real* gate; zero component tests remains the gap |
+| Test coverage | ✅ 9/10 | → | 679 + 113, all green and now verified against the *real* gate; zero component tests remains the gap |
 | Performance | ✅ 8/10 | ↓ | Indexes and caching intact; bundle grew ~5% with still no code-splitting |
 | Documentation | ✅ 9/10 | ↑↑ | Was accurate-but-stale (UserManual 8 releases behind) and partly unreadable; now current, consistent, and link-verified |
 | Dependency health | ✅ 8/10 | → | 2 advisories closed, 2 disclosed with reasoning; 4 drift packages current |

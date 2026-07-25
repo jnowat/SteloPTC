@@ -29,7 +29,7 @@ lab_profiles:
   - plant_tissue_culture
   - cell_culture
   - mycology
-tests_rust: 640
+tests_rust: 642
 tests_ts: 113
 migrations: 52
 created: 2026-07-11
@@ -46,7 +46,7 @@ cssclasses:
 > One engine serves three lab disciplines out of the box — **Plant Tissue Culture**, **Cell Culture**, and **Mycology** — and extends via plugin vocabulary packs. Built with **Rust + Tauri 2 + Svelte 5**, it runs **fully offline**: your data lives on your machine, never in someone else's cloud.
 
 > [!info]- Vault note — how to use this page
-> This is the **Map of Content (MOC)** / home note for the SteloPTC vault. It links out to the canonical repo docs with `[[wikilinks]]`, uses `> [!callouts]` for the things worth remembering, and embeds `mermaid` diagrams for the architecture and provenance model. The frontmatter above is Dataview-ready (`version`, `status`, `tests_rust`, …). Open any linked note — [[README]], [[ROADMAP]], [[UserManual]], [[CHANGELOG]], [[skills]] — to go deeper.
+> This is the **Map of Content (MOC)** / home note for the SteloPTC vault. It links out to the canonical repo docs with `[[wikilinks]]`, uses `> [!callouts]` for the things worth remembering, and embeds `mermaid` diagrams for the architecture and provenance model. The frontmatter above is Dataview-ready (`version`, `status`, `tests_rust`, …). Open any linked note — [[README]], [[ROADMAP]], [[UserManual]], [[CHANGELOG]], [[SKILLS]] — to go deeper.
 
 ---
 
@@ -57,7 +57,7 @@ cssclasses:
 | Overview & philosophy | [[#🔎 What is SteloPTC]] | [[README]] |
 | Core concepts | [[#🧩 Core concepts]] | [[UserManual]] |
 | Lab profiles & domains | [[#🧬 Lab profiles & domain separation]] | [[vocabulary-system]] |
-| Architecture | [[#🏗️ Architecture]] | [[skills]] |
+| Architecture | [[#🏗️ Architecture]] | [[SKILLS]] |
 | Data model | [[#🗃️ Data model]] | — |
 | Trust Layer (crypto) | [[#🔐 The Trust Layer]] | [[merkle-checkpoints]] · [[signed-event-ledger]] |
 | Federated exchange | [[#🛂 Federated inter-lab exchange (Phase G)]] | [[specimen-passport]] |
@@ -66,12 +66,12 @@ cssclasses:
 | Platform maturity | [[#💻 Platform support & maturity]] | [[ROADMAP]] |
 | Build / run / test | [[#⚙️ Build, run & test]] | [[README]] |
 | Release timeline | [[#📅 Release timeline]] | [[CHANGELOG]] |
-| Repository map | [[#🗂️ Repository map]] | [[skills]] |
+| Repository map | [[#🗂️ Repository map]] | [[SKILLS]] |
 | Glossary | [[#📖 Glossary]] | — |
 
 > [!tip] Reading order
 > - **Lab staff →** [[UserManual]] then [[#🧩 Core concepts]] and [[#✨ Feature catalog]].
-> - **Developers →** [[skills]] (the contributor playbook) then [[#🏗️ Architecture]] and [[#🗃️ Data model]].
+> - **Developers →** [[SKILLS]] (the contributor playbook) then [[#🏗️ Architecture]] and [[#🗃️ Data model]].
 > - **Auditors / partner labs →** [[#🔐 The Trust Layer]], [[merkle-proofs]], and [[#🛂 Federated inter-lab exchange (Phase G)]].
 
 ---
@@ -97,7 +97,7 @@ SteloPTC manages the full lifecycle of tissue-culture specimens for commercial a
 | **Disciplines** | Plant Tissue Culture · Cell Culture · Mycology (+ plugin packs) |
 | **Integrity** | Per-lineage SHA-256 hash chain · Merkle checkpoints & proofs · Dogecoin `OP_RETURN` anchoring · Ed25519 signed ledger |
 | **Backend surface** | ~230 `#[tauri::command]` handlers · 52 DB migrations |
-| **Tests** | 640 Rust (`--no-default-features`) · 677 with the full `tauri-commands` feature · 113 TypeScript |
+| **Tests** | 642 Rust (`--no-default-features`) · 679 with the full `tauri-commands` feature · 113 TypeScript |
 | **License** | Proprietary — `licensing@stelolab.local` |
 
 ---
@@ -142,7 +142,7 @@ SteloPTC runs **one lab profile at a time** (Settings → Lab Profile). The prof
 | **Mycology** | Fungi | a fungal culture / grow | liquid culture, bulk substrate, colonizing, fruiting | colonization %, contaminant typing, fruiting/flush yield |
 
 > [!important] THE GOLDEN RULE — domain separation is by *data*, not code branches
-> The three domains are kept apart by **profile-scoped lookup tables** (`UNIQUE(profile, code)`), not `if profile == X` branches. **Never hardcode a domain term** (`explant`, `callus`, `grain spawn`, `passage`, `cell_line`, …) in Rust or Svelte where it should come from the vocabulary. Adding a vocabulary value is a **data insert**, not a schema migration or recompile. Always validate user-supplied vocabulary against the active profile before writing it (`require_selectable_stage`). See [[vocabulary-system]] and [[skills]] §4.
+> The three domains are kept apart by **profile-scoped lookup tables** (`UNIQUE(profile, code)`), not `if profile == X` branches. **Never hardcode a domain term** (`explant`, `callus`, `grain spawn`, `passage`, `cell_line`, …) in Rust or Svelte where it should come from the vocabulary. Adding a vocabulary value is a **data insert**, not a schema migration or recompile. Always validate user-supplied vocabulary against the active profile before writing it (`require_selectable_stage`). See [[vocabulary-system]] and [[SKILLS]] §4.
 
 **The six profile-scoped vocabulary tables** — shape `(id, profile, code, label, sort_order, UNIQUE(profile, code))`:
 
@@ -231,7 +231,7 @@ erDiagram
 - **`audit_log`** — the hash chain (`lineage_id`, `chain_seq`, `prev_hash`, `entry_hash`). See [[#🔐 The Trust Layer]].
 
 > [!tip] The shared-table pattern is intentional
-> A `subculture` / `passage` / `colonization` record is **one shared type** with nullable domain-specific columns. Don't "fix" this by forking tables — relabel in the UI instead ([[skills]] §4).
+> A `subculture` / `passage` / `colonization` record is **one shared type** with nullable domain-specific columns. Don't "fix" this by forking tables — relabel in the UI instead ([[SKILLS]] §4).
 
 ---
 
@@ -375,7 +375,7 @@ sequenceDiagram
 > - [x] On-chain anchoring — prepares & verifies `OP_RETURN` … [ ] no automatic broadcast (external wallet) · WP-66
 > - [x] Federated exchange — signed passport / registry / coordination documents … [ ] no lab-to-lab network transport (files move out-of-band) · WP-70–72
 > - [x] Compliance rule engine — profile-gated rules + waivers … [ ] thresholds are built-in defaults, not yet UI-configurable · WP-74/77/78
-> - [x] Signed lifecycle events — creation, passages, splits … [ ] the remaining ~25 mutation commands · WP-75
+> - [x] Signed lifecycle events — creation, passages, splits, death, archive … [ ] non-lifecycle mutations (media, inventory, compliance, …) · WP-75
 > - [ ] iOS end-to-end verification · WP-53
 
 ---
@@ -403,10 +403,10 @@ npm run android:build            # release APK (needs signing env vars)
 > ```bash
 > npm test            # Vitest — 113 assertions
 > npm run check       # svelte-check + TypeScript — 0 errors / 0 warnings
-> cd src-tauri && cargo test --lib --no-default-features      # 640 pure-logic tests
+> cd src-tauri && cargo test --lib --no-default-features      # 642 pure-logic tests
 > cargo clippy --lib --no-default-features -- -D warnings     # warnings are HARD errors in CI
 > ```
-> `--no-default-features` runs the pure-logic tests without GTK/WebKit; the full `tauri-commands` build (CI) adds the command-layer tests. See [[skills]] §3.
+> `--no-default-features` runs the pure-logic tests without GTK/WebKit; the full `tauri-commands` build (CI) adds the command-layer tests. See [[SKILLS]] §3.
 
 ---
 
@@ -447,7 +447,7 @@ npm run android:build            # release APK (needs signing env vars)
 | `src-tauri/src/` | Rust backend — `lib.rs`, `commands/`, `db/`, `models/`, `anchoring/`, `signed_ledger/`, `passport/`, `registry/`, `coordination/`, `compliance_export/`, `ai/`, `plugins/` |
 | `src/` | Svelte 5 frontend — `App.svelte`, `lib/api.ts`, `lib/components/*.svelte` (55), `lib/stores/`, `lib/profile.ts` |
 | `docs/` | Specifications — see [[#🔗 Doc index]] |
-| Root `.md` | [[README]] · [[ROADMAP]] · [[UserManual]] · [[CHANGELOG]] · [[skills]] · `DailyClaudeRoutineCheckup` |
+| Root `.md` | [[README]] · [[ROADMAP]] · [[UserManual]] · [[CHANGELOG]] · [[SKILLS]] · `DailyClaudeRoutineCheckup` |
 | `.github/workflows/` | `test.yml` · `build-windows.yml` · `build-android.yml` + Criterion benches |
 
 ---
@@ -475,7 +475,7 @@ npm run android:build            # release APK (needs signing env vars)
 ## 🔗 Doc index
 
 > [!info] Repository documentation (each is a note in this vault)
-> - **Overview & guides:** [[README]] · [[UserManual]] · [[ROADMAP]] · [[CHANGELOG]] · [[skills]] · `DailyClaudeRoutineCheckup`
+> - **Overview & guides:** [[README]] · [[UserManual]] · [[ROADMAP]] · [[CHANGELOG]] · [[SKILLS]] · `DailyClaudeRoutineCheckup`
 > - **Trust Layer:** [[merkle-checkpoints]] · [[merkle-proofs]] · [[on-chain-anchoring]] · [[signed-event-ledger]]
 > - **Federated exchange:** [[specimen-passport]] · [[taxonomy-registry]] · [[breeding-coordination]]
 > - **Extensibility & profiles:** [[vocabulary-system]] · [[plugin-authoring]]

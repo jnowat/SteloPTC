@@ -7,7 +7,7 @@
 // mycology or cell-culture lab that happened to code a species `CIT-*` (e.g. a
 // *Citrobacter* isolate, or any lab-local code starting with those letters) got
 // a spurious plant-quarantine flag it could never clear. That is the long-open
-// "compliance rule engine is PTC-only / not profile-gated" item in `skills.md`
+// "compliance rule engine is PTC-only / not profile-gated" item in `SKILLS.md`
 // §8 and the ROADMAP's WP-25 deviation.
 //
 // This module makes the catalog of auto-flag rules first-class and profile

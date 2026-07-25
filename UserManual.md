@@ -437,7 +437,7 @@ Everything below was still "planned" the last time this section was rewritten; n
 - iOS build scaffold (still unverified end-to-end — see below) — WP-53, v1.39.0
 - Interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, installable PWA, taxon chain re-anchoring — Phase F WP-57–65, v1.40.0
 - **On-chain anchoring** (Dogecoin `OP_RETURN`) — Trust Layer Phase 2, WP-66, v1.42.0 (prepares and independently verifies a checkpoint's Merkle root on-chain; you broadcast with your own external wallet) — see [§27](#27-on-chain-anchoring--the-signed-event-ledger)
-- **Signed-event ledger** (specimen events as Ed25519-signed, hash-chained ledger transactions) — Trust Layer Phase 3, WP-67, v1.43.0, extended across passages and splits by WP-75 (v1.50.0) — see [§27](#27-on-chain-anchoring--the-signed-event-ledger)
+- **Signed-event ledger** (specimen events as Ed25519-signed, hash-chained ledger transactions) — Trust Layer Phase 3, WP-67, v1.43.0, extended across passages, splits, death and archival by WP-75 (v1.50.0, completed in v1.53.2) — see [§27](#27-on-chain-anchoring--the-signed-event-ledger)
 - **Automated regulatory submission pipeline** (monitors compliance state and auto-generates signed, ready-to-submit packages) — WP-68, v1.44.0 — see [§30](#30-the-regulatory-submission-pipeline)
 - **Federated inter-lab exchange** — specimen passports (WP-70, v1.45.0), the shared taxonomy registry (WP-71, v1.46.0), and cross-lab breeding coordination (WP-72, v1.47.0). **Phase G complete** — see [§28](#28-working-with-partner-labs--passports-taxonomy-registry--breeding-coordination)
 - **Profile-aware compliance rules and flag waivers** — WP-74 (v1.49.0) and WP-77 (v1.52.0). A rule now declares which lab profiles it applies to, so the citrus HLB rule no longer fires in a mycology or cell-culture lab — see [§29](#29-compliance-flags-rules--waivers)
@@ -455,7 +455,7 @@ Everything below was still "planned" the last time this section was rewritten; n
 - **Plugin WASM rule execution** — plugin manifests are validated and recorded, but a plugin's compliance rules are not yet executed by a sandboxed runtime
 - **A network transport for the federated exchanges** — passports, registries, and coordination bundles are files you send through your own channel; there is no built-in lab-to-lab connection
 - **Per-lab configurable compliance thresholds** — the environmental ranges and re-test intervals are sensible defaults, not yet editable in the UI
-- **Signed lifecycle events on every mutation** — creation, passages, and splits are signed today; the remaining mutation commands are incremental follow-up
+- **Signed events on every mutation** — the whole specimen lifecycle is signed today (creation, passages, splits, death, archival); mutations outside it (media, inventory, compliance records) are incremental follow-up
 
 For the latest status, refer to `ROADMAP.md` in the repository.
 
@@ -613,9 +613,13 @@ key.
 - Open **Audit Log → Signed Event Ledger** to browse events with their event type, entity, signer,
   and event hash.
 - **Show My Signing Key** displays your own public key so a partner can verify events you signed.
-- Events are signed automatically for **specimen creation, passages, and splits**. *Current
-  limitation:* the remaining mutation commands are not yet signed — the ledger is a strict addition
-  to the audit chain, never a replacement for it.
+- Events are signed automatically across the specimen lifecycle: **creation, passages, splits,
+  recording a death, and archiving** (individually or in bulk). A death appends two events — the
+  specimen died, and it was archived as a consequence — because those are two separate facts a
+  partner or auditor may need to verify independently.
+- *Current limitation:* mutations outside the specimen lifecycle (media batches, inventory,
+  compliance records) are not yet signed. The ledger is a strict addition to the audit chain,
+  which covers **every** mutation, and never a replacement for it.
 
 See [`docs/signed-event-ledger.md`](docs/signed-event-ledger.md) for the exact format.
 

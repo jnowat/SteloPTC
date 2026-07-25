@@ -32,11 +32,11 @@ back into line with what actually ships.
 - **Why every local gate missed it.** `commands/` compiles only under the default `tauri-commands`
   feature, so `cargo test --lib --no-default-features` and `cargo clippy --no-default-features` —
   the gates a headless sandbox can normally run — never see it. The full-feature build has now been
-  verified locally (the GTK/WebKit packages install fine on Ubuntu), and `skills.md` §3 carries the
+  verified locally (the GTK/WebKit packages install fine on Ubuntu), and `SKILLS.md` §3 carries the
   exact command plus the standing rule to run it before pushing anything under
   `src-tauri/src/commands/`. §7 records the integer-width trap.
-- **Verified:** `cargo test --lib` (**677 passing**, full `tauri-commands` feature) ·
-  `cargo test --lib --no-default-features` (**640 passing**) · `cargo clippy --lib -- -D warnings`
+- **Verified:** `cargo test --lib` (**679 passing**, full `tauri-commands` feature) ·
+  `cargo test --lib --no-default-features` (**642 passing**) · `cargo clippy --lib -- -D warnings`
   and `--no-default-features` (both clean) · `npm test` (**113 passing**) · `npm run check`
   (**0 errors / 0 warnings**, 418 files) · `npm run build` (succeeds).
 
@@ -53,7 +53,34 @@ back into line with what actually ships.
   `vite-plugin-pwa` to 1.2.0, so it was not applied. `npm audit` now reports 9 high rather than 4 —
   that is npm enumerating one dependency chain it previously collapsed, not new vulnerabilities.
 - **`package-lock.json`'s `version` field** still read `1.48.0`, five releases stale — it refreshes
-  only on `npm install`. Now tracked in the new `skills.md` §10 drift checklist.
+  only on `npm install`. Now tracked in the new `SKILLS.md` §10 drift checklist.
+
+**Fixed — signed lifecycle event coverage (WP-75 completion)**
+
+- **A recorded death is now signed.** `record_specimen_death` never called
+  `signed_ledger::lifecycle`, so a specimen's terminal event — arguably the one an auditor most
+  wants attributed — left no signed record, even though `lifecycle::passage` already accepted a
+  `"death"` event type and mapped it to `SPECIMEN_DIED`. It now appends **two** events: the death
+  and the archival it causes, because those are two separate facts a verifier may need to check
+  independently.
+- **Explicit archives are now signed.** `delete_specimen` (which archives rather than hard-deletes)
+  and `bulk_archive_specimens` now append `SPECIMEN_ARCHIVED`. Before this, the constant was
+  declared in `lifecycle::ALL` and never emitted by any call site — the ledger advertised a
+  vocabulary it could not produce. The split path is deliberately excluded: `SPECIMEN_SPLIT`
+  already records that the parent forked, and a second event would be redundant.
+- Two new tests pin the behaviour: `a_death_produces_both_a_died_and_an_archived_event` and
+  `every_declared_event_type_has_a_payload_builder`, the latter a tripwire so a future event type
+  can't be declared without a way to emit it.
+- **Still disclosed:** mutations *outside* the specimen lifecycle (media batches, inventory,
+  compliance records) remain unsigned. The audit hash chain covers every mutation; the signed
+  ledger is an addition to it, never a replacement.
+
+**Changed — `skills.md` is now `SKILLS.md`**
+
+Renamed to match the conventional uppercase entry-point filename. All live references were updated
+(`README.md`, `ROADMAP.md`, `SteloPTC.md`, `docs/README.md`, and three source comments).
+**CHANGELOG entries at v1.53.1 and earlier still say `skills.md`** — this file is append-only and
+shipped history is not rewritten; the note at the top of `SKILLS.md` records the rename.
 
 **Documentation**
 
@@ -70,10 +97,10 @@ back into line with what actually ships.
 - **`docs/*.md`** — uniform header on every spec (*Work packet · Shipped in · Status · Depends on*
   plus a nav line). Body content untouched.
 - **`SteloPTC.md`** — frontmatter and quick facts refreshed from v1.48.0/608 tests/51 migrations to
-  v1.53.2/640/52; Phase H added; a cross-reference that pointed at the wrong manual section fixed.
-- **`README.md`** — doc index gained the three federated-exchange specs, `skills.md`, and the new
+  v1.53.2/642/52; Phase H added; a cross-reference that pointed at the wrong manual section fixed.
+- **`README.md`** — doc index gained the three federated-exchange specs, `SKILLS.md`, and the new
   spec index.
-- **`skills.md`** — corrected §9 (it told contributors to write migration `052`, already shipped —
+- **`SKILLS.md`** — corrected §9 (it told contributors to write migration `052`, already shipped —
   next is `053`); added the full-feature verification procedure, the integer-width trap, and a new
   **§10 "Docs that drift"** listing every file that carries a number which goes stale.
 - **`CHANGELOG.md`** — a short reading guide at the top. History untouched.

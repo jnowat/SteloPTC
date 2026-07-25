@@ -141,4 +141,54 @@ mod tests {
         assert_eq!(v["event"], SPECIMEN_ARCHIVED);
         assert_eq!(v["specimen_id"], "s9");
     }
+
+    /// `record_specimen_death` appends two events — the death and the archival it
+    /// causes — because they are two separate facts a verifier may need to check.
+    /// This pins the pair a call site must emit so the two can't drift apart.
+    #[test]
+    fn a_death_produces_both_a_died_and_an_archived_event() {
+        let (died_type, died_payload) = passage("spec1", 7, "death");
+        let archived_payload = archived("spec1");
+
+        assert_eq!(died_type, SPECIMEN_DIED);
+        let d: serde_json::Value = serde_json::from_str(&died_payload).unwrap();
+        assert_eq!(d["event"], SPECIMEN_DIED);
+        assert_eq!(d["specimen_id"], "spec1");
+        assert_eq!(d["passage_number"], 7);
+        assert_eq!(d["subculture_event_type"], "death");
+
+        let a: serde_json::Value = serde_json::from_str(&archived_payload).unwrap();
+        assert_eq!(a["event"], SPECIMEN_ARCHIVED);
+        assert_eq!(a["specimen_id"], d["specimen_id"]);
+    }
+
+    /// Every event type declared in `ALL` must have a payload builder, otherwise the
+    /// ledger advertises a vocabulary it can't actually emit. `SPECIMEN_STATUS_CHANGED`
+    /// is the one type with no wired call site today — that is disclosed in SKILLS.md §8,
+    /// so this test asserts the *builders* exist, which is what a call site needs.
+    #[test]
+    fn every_declared_event_type_has_a_payload_builder() {
+        fn event_of(payload: &str) -> String {
+            serde_json::from_str::<serde_json::Value>(payload).unwrap()["event"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }
+
+        let built: Vec<String> = vec![
+            // `specimen_created` is built inline at its call site, not here.
+            SPECIMEN_CREATED.to_string(),
+            event_of(&passage("s", 1, "passage").1),
+            event_of(&passage("s", 1, "death").1),
+            event_of(&split("s", &["001A".to_string()])),
+            event_of(&status_change("s", "f", None, "t")),
+            event_of(&archived("s")),
+        ];
+        for t in ALL {
+            assert!(
+                built.iter().any(|b| b == t),
+                "no payload builder covers event type {t}",
+            );
+        }
+    }
 }

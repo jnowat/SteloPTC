@@ -1,7 +1,8 @@
-# skills.md — Contributor Playbook for SteloPTC
+# SKILLS.md — Contributor Playbook for SteloPTC
 
 *This is the repository's agent/contributor guide — the file to read first. There is no separate
-`AGENTS.md` or `SKILLS.md`; this is it.*
+`AGENTS.md` or `CONTRIBUTING.md`; this is it. (Renamed from `skills.md` in v1.53.2 — CHANGELOG
+entries at v1.53.1 and earlier refer to it under the old name.)*
 
 A single-page operating guide for anyone editing this repository — human or AI (Claude,
 Grok, etc.). Read this before touching code. It captures the architecture, the golden
@@ -73,7 +74,7 @@ cargo clippy --lib --no-default-features -- -D warnings   # warnings are HARD er
   **Do this before pushing anything that touches `src-tauri/src/commands/`.** Code behind
   `tauri-commands` is invisible to `--no-default-features`, so a type error there passes every
   local gate and only fails in CI — exactly how v1.53.1 shipped with a broken `master`.
-- Current baseline: **640 Rust tests** (`--no-default-features`) / **677** with the full
+- Current baseline: **642 Rust tests** (`--no-default-features`) / **679** with the full
   `tauri-commands` feature, **113 TS tests**, clippy clean, svelte-check clean (418 files).
 - `cargo test`/`clippy` compile from scratch is slow (~40–60s). Compile once, batch your edits.
 
@@ -186,14 +187,28 @@ vocabulary pack (see `docs/plugin-authoring.md`) when you don't need new columns
   mycology/cell-culture labs. Adding a rule = one `RuleDef` entry + its SQL block gated by
   `is_rule_active`. Per-specimen exceptions are handled by WP-77 flag waivers, not by editing rules.
 
+**Fixed in v1.53.2** — kept here as a record so the fixes aren't undone:
+
+- ~~**A specimen's death was never signed.**~~ Fixed: `record_specimen_death` appends
+  `SPECIMEN_DIED` *and* `SPECIMEN_ARCHIVED` (two facts, two events).
+- ~~**`SPECIMEN_ARCHIVED` was declared but never emitted.**~~ Fixed: `delete_specimen` and
+  `bulk_archive_specimens` now append it. `split_specimen` deliberately does **not** — the
+  `SPECIMEN_SPLIT` event already records that the parent forked.
+- Tripwire test `every_declared_event_type_has_a_payload_builder` now fails if a type is added to
+  `lifecycle::ALL` without a way to build its payload.
+
 **Still open:**
 
 - **Compliance-rule thresholds are hardcoded defaults.** The WP-78 environmental ranges (and the
   WP-33/WP-44 interval settings) are sensible defaults, not per-lab-configurable in the UI. A
   user-facing threshold editor is a disclosed follow-up.
-- **Signed lifecycle events cover creation, passage, and split only** (WP-75). Extending
-  `try_append_signed_event` to the remaining ~25 mutation commands is the same incremental
-  one-line-per-site work disclosed in WP-67.
+- **Signed lifecycle events cover the specimen lifecycle, not every mutation** (WP-75). Signed
+  today: creation, passage, **death**, **archive** (single + bulk), and split — i.e. every
+  `lifecycle` event type except `SPECIMEN_STATUS_CHANGED`. Extending `try_append_signed_event` to
+  the remaining non-lifecycle mutation commands (media, inventory, compliance, …) is the same
+  incremental one-line-per-site work disclosed in WP-67. **When you add a new lifecycle event
+  type, wire every command that produces it** — a constant defined in `lifecycle` but never
+  appended is worse than no constant, because the ledger then looks complete and isn't.
 - **Foundation-only features remain foundation-only** (PostgreSQL connector, LAN sync transport,
   S3/SFTP targets, plugin WASM execution, iOS) — disclosed in ROADMAP; keep the disclosure honest.
 
@@ -222,7 +237,7 @@ carry a number forward from a previous doc.**
 | `ROADMAP.md` | Header table (version, schema, tests, phases), *Status at a glance*, *Foundation-only*, and §10 *Versioning plan*. |
 | `UserManual.md` | The "Applies to" version, the TOC, and §18 — features move from "planned" to "shipped" and the list is easy to forget. |
 | `SteloPTC.md` | Frontmatter (`version`, `tests_rust`, `tests_ts`, `migrations`, `updated`), *Quick facts*, and the release timeline. |
-| `skills.md` | §2 migration count + "next is NNN", §3 test baseline, §8 open follow-ups. |
+| `SKILLS.md` | §2 migration count + "next is NNN", §3 test baseline, §8 open follow-ups. |
 | `docs/README.md` | The spec index — add a row when you add a spec. |
 | `docs/*.md` | Each spec's header table (*Work packet · Shipped in · Status · Depends on*). |
 
@@ -232,7 +247,13 @@ release and is never corrected in place — record the correction in the new ent
 Quick self-check before pushing:
 
 ```bash
+# 1. All four manifests carry the same version
 grep -rn "$(node -p "require('./package.json').version")" package.json src-tauri/Cargo.toml \
-  src-tauri/tauri.conf.json src-tauri/gen/android/app/build.gradle.kts   # 4+ hits expected
-grep -rnE "[0-9]{3} (Rust|pure-logic) tests?" README.md skills.md SteloPTC.md ROADMAP.md
+  src-tauri/tauri.conf.json src-tauri/gen/android/app/build.gradle.kts
+
+# 2. No stale test counts anywhere
+grep -rnE "[0-9]{3} (Rust|pure-logic) tests?" README.md SKILLS.md SteloPTC.md ROADMAP.md
+
+# 3. Every relative doc link still resolves
+grep -rhoE "\]\([^)h#][^)]*\.md[^)]*\)" *.md docs/*.md | tr -d '])(' | cut -d'#' -f1 | sort -u
 ```
