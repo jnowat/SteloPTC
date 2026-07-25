@@ -86,7 +86,7 @@ export const DOMAIN_MANIFESTS: Record<LabDomain, DomainManifest> = {
  * Mycology culture-origin vocabulary. Single source of truth for BOTH the
  * SpecimenForm input `<select>` and the SpecimenDetail badge, so the two can
  * never drift apart (the exact class of input-vs-display label mismatch called
- * out in skills.md §7). `badge` is the CSS class for the detail-view chip.
+ * out in SKILLS.md §7). `badge` is the CSS class for the detail-view chip.
  *
  * The keys MUST stay in lock-step with the `origin_type` CHECK constraint in
  * migration 029 (`multi_spore`/`isolated_dikaryon`/`tissue_clone`) — adding a

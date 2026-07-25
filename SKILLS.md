@@ -1,13 +1,23 @@
-# skills.md — Contributor Playbook for SteloPTC
+# SKILLS.md — Contributor Playbook for SteloPTC
+
+*This is the repository's agent/contributor guide — the file to read first. There is no separate
+`AGENTS.md` or `CONTRIBUTING.md`; this is it. (Renamed from `skills.md` in v1.53.2 — CHANGELOG
+entries at v1.53.1 and earlier refer to it under the old name.)*
 
 A single-page operating guide for anyone editing this repository — human or AI (Claude,
 Grok, etc.). Read this before touching code. It captures the architecture, the golden
 rules, the exact verification gates, and the known traps that have bitten this codebase.
 
-> **North star:** SteloPTC is a released, local-first lab-provenance app (v1.53.1) with a
+> **North star:** SteloPTC is a released, local-first lab-provenance app (v1.53.2) with a
 > fully green test suite. It is **mature, not greenfield.** Prefer surgical, verified changes
 > over sweeping refactors. Every change must keep the audit hash chain, the test suite, and
 > clippy green.
+
+**The 60-second version.** Backend is Rust in `src-tauri/src`, frontend is Svelte 5 in `src`, DB is
+SQLite behind one mutex. Vocabulary is *data*, not code (§4) — never hardcode a biology term. Every
+write goes through `queries::log_audit` (§5). Before you push, run all four gates in §3 — including
+the **full-feature** Rust build, because code behind `tauri-commands` is invisible to the fast one.
+When you ship, update the drift-prone docs in §10.
 
 ---
 
@@ -21,7 +31,7 @@ Plant Tissue Culture (Plantae), Cell Culture (Animalia), and Mycology (Fungi).
 - **Frontend:** Svelte 5 + TypeScript — `src`
 - **DB:** SQLite (bundled, WAL), single `Connection` behind a `Mutex` in `AppState`
 - **Docs:** `README.md` (overview), `ROADMAP.md` (per-work-packet status), `UserManual.md`,
-  `CHANGELOG.md`, `docs/*.md`
+  `CHANGELOG.md`, `docs/README.md` (spec index) + `docs/*.md`
 
 ## 2. Architecture map (where things live)
 
@@ -52,10 +62,20 @@ cargo clippy --lib --no-default-features -- -D warnings   # warnings are HARD er
 
 - CI (`.github/workflows/test.yml`) runs `cargo test --lib` **with** default features
   (the `tauri-commands` feature adds the command-layer tests on top). That full build needs
-  `webkit2gtk`/GTK and usually **can't run in a headless sandbox** — so verify locally with
-  `--no-default-features` + clippy, and lean on unit tests for command logic you can't
-  exercise here.
-- Current baseline: **640 Rust tests, 113 TS tests, clippy clean, svelte-check clean.**
+  `webkit2gtk`/GTK, which a headless sandbox usually lacks — but on Ubuntu you can install them and
+  run the real CI gate locally:
+
+  ```bash
+  sudo apt-get update && sudo apt-get install -y --no-install-recommends \
+    libgtk-3-dev libwebkit2gtk-4.1-dev librsvg2-dev libssl-dev
+  cd src-tauri && cargo test --lib && cargo clippy --lib -- -D warnings
+  ```
+
+  **Do this before pushing anything that touches `src-tauri/src/commands/`.** Code behind
+  `tauri-commands` is invisible to `--no-default-features`, so a type error there passes every
+  local gate and only fails in CI — exactly how v1.53.1 shipped with a broken `master`.
+- Current baseline: **642 Rust tests** (`--no-default-features`) / **679** with the full
+  `tauri-commands` feature, **113 TS tests**, clippy clean, svelte-check clean (418 files).
 - `cargo test`/`clippy` compile from scratch is slow (~40–60s). Compile once, batch your edits.
 
 ## 4. THE GOLDEN RULE: domain separation
@@ -135,6 +155,13 @@ vocabulary pack (see `docs/plugin-authoring.md`) when you don't need new columns
   `saturating_mul` for the offset (`PaginationParams` in `queries.rs`).
 - **`$lib/` alias exists only for type-checking**, not for the Vite build — importing from it
   in a real component breaks the build. Use relative imports.
+- **Command-layer code compiles only under `tauri-commands`.** A call in `commands/*.rs` that
+  doesn't type-check is completely invisible to `cargo test --lib --no-default-features` *and* to
+  `cargo clippy --no-default-features` — every fast gate stays green while CI goes red. This shipped
+  a broken `master` at v1.53.1 (an `i32` passed where `signed_ledger::lifecycle::passage` wanted an
+  `i64`). Integer widths in particular: SQLite counts come back as `i32` in some queries and `i64`
+  in others, so widen explicitly with `i64::from(x)` at the call site. Run the full-feature build
+  (§3) whenever you touch `commands/`.
 
 ## 8. Open follow-ups (audit-flagged — verify with the full command suite before shipping)
 
@@ -160,14 +187,28 @@ vocabulary pack (see `docs/plugin-authoring.md`) when you don't need new columns
   mycology/cell-culture labs. Adding a rule = one `RuleDef` entry + its SQL block gated by
   `is_rule_active`. Per-specimen exceptions are handled by WP-77 flag waivers, not by editing rules.
 
+**Fixed in v1.53.2** — kept here as a record so the fixes aren't undone:
+
+- ~~**A specimen's death was never signed.**~~ Fixed: `record_specimen_death` appends
+  `SPECIMEN_DIED` *and* `SPECIMEN_ARCHIVED` (two facts, two events).
+- ~~**`SPECIMEN_ARCHIVED` was declared but never emitted.**~~ Fixed: `delete_specimen` and
+  `bulk_archive_specimens` now append it. `split_specimen` deliberately does **not** — the
+  `SPECIMEN_SPLIT` event already records that the parent forked.
+- Tripwire test `every_declared_event_type_has_a_payload_builder` now fails if a type is added to
+  `lifecycle::ALL` without a way to build its payload.
+
 **Still open:**
 
 - **Compliance-rule thresholds are hardcoded defaults.** The WP-78 environmental ranges (and the
   WP-33/WP-44 interval settings) are sensible defaults, not per-lab-configurable in the UI. A
   user-facing threshold editor is a disclosed follow-up.
-- **Signed lifecycle events cover creation, passage, and split only** (WP-75). Extending
-  `try_append_signed_event` to the remaining ~25 mutation commands is the same incremental
-  one-line-per-site work disclosed in WP-67.
+- **Signed lifecycle events cover the specimen lifecycle, not every mutation** (WP-75). Signed
+  today: creation, passage, **death**, **archive** (single + bulk), and split — i.e. every
+  `lifecycle` event type except `SPECIMEN_STATUS_CHANGED`. Extending `try_append_signed_event` to
+  the remaining non-lifecycle mutation commands (media, inventory, compliance, …) is the same
+  incremental one-line-per-site work disclosed in WP-67. **When you add a new lifecycle event
+  type, wire every command that produces it** — a constant defined in `lifecycle` but never
+  appended is worse than no constant, because the ledger then looks complete and isn't.
 - **Foundation-only features remain foundation-only** (PostgreSQL connector, LAN sync transport,
   S3/SFTP targets, plugin WASM execution, iOS) — disclosed in ROADMAP; keep the disclosure honest.
 
@@ -176,7 +217,43 @@ vocabulary pack (see `docs/plugin-authoring.md`) when you don't need new columns
 1. Add the `#[tauri::command] pub fn …` in `src-tauri/src/commands/<area>.rs`
    (lock DB → `validate_session` → permission check → work → `log_audit`).
 2. Put SQL in `db/queries.rs` (parameterized — never string-format runtime values).
-3. If it needs schema, add migration `052…` in `migrations.rs` (+ a `migration_052_*` test).
+3. If it needs schema, add migration `053…` in `migrations.rs` (+ a `migration_053_*` test).
 4. Register it in `lib.rs` `invoke_handler![]`.
 5. Add a wrapper in `src/lib/api.ts`; call it from the component through that wrapper.
 6. Add tests. Run the four §3 gates. Update CHANGELOG/version/ROADMAP.
+
+## 10. Docs that drift (check these when you ship)
+
+These files carry hard numbers and status claims that go stale silently. Nothing enforces them —
+they are the most common source of a "documentation is wrong" finding. **Measure, then write; never
+carry a number forward from a previous doc.**
+
+| File | What drifts in it |
+|---|---|
+| `package.json` · `src-tauri/Cargo.toml` · `src-tauri/tauri.conf.json` | The version. All three must match. |
+| `src-tauri/gen/android/app/build.gradle.kts` | `versionName` + `versionCode`, which must match `tauri.conf.json`. |
+| `package-lock.json` | Its `version` field only refreshes on an `npm install` — bump the version and it silently lags. |
+| `README.md` | The version badge, the **test-count badge**, and the same counts repeated in prose under *Testing & quality*. |
+| `ROADMAP.md` | Header table (version, schema, tests, phases), *Status at a glance*, *Foundation-only*, and §10 *Versioning plan*. |
+| `UserManual.md` | The "Applies to" version, the TOC, and §18 — features move from "planned" to "shipped" and the list is easy to forget. |
+| `SteloPTC.md` | Frontmatter (`version`, `tests_rust`, `tests_ts`, `migrations`, `updated`), *Quick facts*, and the release timeline. |
+| `SKILLS.md` | §2 migration count + "next is NNN", §3 test baseline, §8 open follow-ups. |
+| `docs/README.md` | The spec index — add a row when you add a spec. |
+| `docs/*.md` | Each spec's header table (*Work packet · Shipped in · Status · Depends on*). |
+
+`CHANGELOG.md` is the exception: it is **append-only**. A number in a shipped entry describes that
+release and is never corrected in place — record the correction in the new entry instead.
+
+Quick self-check before pushing:
+
+```bash
+# 1. All four manifests carry the same version
+grep -rn "$(node -p "require('./package.json').version")" package.json src-tauri/Cargo.toml \
+  src-tauri/tauri.conf.json src-tauri/gen/android/app/build.gradle.kts
+
+# 2. No stale test counts anywhere
+grep -rnE "[0-9]{3} (Rust|pure-logic) tests?" README.md SKILLS.md SteloPTC.md ROADMAP.md
+
+# 3. Every relative doc link still resolves
+grep -rhoE "\]\([^)h#][^)]*\.md[^)]*\)" *.md docs/*.md | tr -d '])(' | cut -d'#' -f1 | sort -u
+```

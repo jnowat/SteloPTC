@@ -1,6 +1,17 @@
 # SteloPTC Portable Merkle Proofs
 
-_Specification for the proof format introduced in WP-21 (v1.10.0)._
+*The portable proof JSON format, and the standalone verifier that checks it offline.*
+
+| | |
+|---|---|
+| **Work packet** | WP-21 |
+| **Shipped in** | v1.10.0 |
+| **Status** | Stable |
+| **Depends on** | WP-20 ([Merkle checkpoints](merkle-checkpoints.md)) |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
 
 This document describes the JSON proof format exported by **Export Proof** in the Audit Log
 UI, and the three-stage algorithm used to verify it — both inside SteloPTC and with the

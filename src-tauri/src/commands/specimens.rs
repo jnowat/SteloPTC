@@ -405,6 +405,17 @@ pub fn delete_specimen(state: State<AppState>, token: String, id: String) -> Res
         &db.conn, Some(&user.id), "archive", "specimen", Some(&id),
         None, None, Some("Specimen archived"),
     ).ok();
+
+    // WP-75: signed archive event attributed to the acting user's key. Best-effort.
+    crate::signed_ledger::try_append_signed_event(
+        &db.conn,
+        &user.id,
+        crate::signed_ledger::lifecycle::SPECIMEN_ARCHIVED,
+        "specimen",
+        Some(&id),
+        &crate::signed_ledger::lifecycle::archived(&id),
+    );
+
     crate::db::dashboard::invalidate_dashboard_cache(&state.dashboard_cache);
 
     Ok(())
@@ -621,6 +632,15 @@ pub fn bulk_archive_specimens(
                 &db.conn, Some(&user.id), "archive", "specimen", Some(id),
                 None, None, Some("Bulk archived"),
             ).ok();
+            // WP-75: one signed archive event per specimen actually archived.
+            crate::signed_ledger::try_append_signed_event(
+                &db.conn,
+                &user.id,
+                crate::signed_ledger::lifecycle::SPECIMEN_ARCHIVED,
+                "specimen",
+                Some(id),
+                &crate::signed_ledger::lifecycle::archived(id),
+            );
         }
     }
     if count > 0 {

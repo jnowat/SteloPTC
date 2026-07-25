@@ -2,6 +2,17 @@
 
 *Federated, signed exchange of taxonomy reference data between independent labs.*
 
+| | |
+|---|---|
+| **Work packet** | WP-71 |
+| **Shipped in** | v1.46.0 |
+| **Status** | Stable |
+| **Depends on** | WP-18 (audit hash chain), WP-28/WP-35 (strains & taxa) |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
+
 A **taxonomy registry** is a signed, self-contained JSON document carrying a lab's shared
 taxonomy — its genus-and-above `taxa`, its `species`, and its `strains`. Any other lab can
 **verify it independently** (with no access to the issuing lab's database) and then reconcile it

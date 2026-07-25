@@ -1,5 +1,17 @@
 # Local AI Assistant — Setup & Usage
 
+*Setup and usage for the optional, fully on-device AI assistant (Ollama / LocalAI).*
+
+| | |
+|---|---|
+| **Work packet** | WP-56 / WP-56b |
+| **Shipped in** | v1.40.0 · v1.41.0 |
+| **Status** | Stable · optional |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
+
 SteloPTC includes an **optional, fully local** AI assistant that helps with three
 day-to-day tasks:
 

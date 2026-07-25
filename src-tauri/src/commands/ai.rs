@@ -136,7 +136,7 @@ pub fn get_ai_status(state: State<AppState>, token: String) -> Result<AiStatusRe
     // Read config under the lock, then RELEASE it before the network probe.
     // `ollama::list_models` is a blocking TcpStream call with a 120s timeout;
     // holding the app-wide DB mutex across it would freeze every other command
-    // until it returns (skills.md §5 — never hold the mutex across a network call).
+    // until it returns (SKILLS.md §5 — never hold the mutex across a network call).
     let cfg = {
         let db = state.db.lock().map_err(|e| e.to_string())?;
         auth_service::validate_session(&db, &token)?;

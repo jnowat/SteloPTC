@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.53.1-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.53.2-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-640%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-679%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -53,8 +53,8 @@ timeline — all recorded on each specimen's own cryptographic chain.
 **🔐 Cryptographic audit chain**
 Per-lineage SHA-256 hash chain from species → strain → specimen, with in-app Row/Chain
 verification, **Merkle checkpoints**, portable offline-verifiable proofs, on-chain (Dogecoin)
-anchoring, and a per-user **signed-event ledger** — specimen creation, passages, and splits each
-append an Ed25519-signed, hash-chained transaction attributed to the acting user. An admin
+anchoring, and a per-user **signed-event ledger** — specimen creation, passages, splits, death and
+archival each append an Ed25519-signed, hash-chained transaction attributed to the acting user. An admin
 **data-integrity self-check** scans for orphaned rows, broken lineage links, and audit-chain gaps. See
 [`docs/merkle-checkpoints.md`](docs/merkle-checkpoints.md).
 
@@ -276,12 +276,15 @@ every push and required to pass before merge.
 
 ```bash
 npm test                                                 # frontend (Vitest) — 113 assertions
-cd src-tauri && cargo test --lib --no-default-features   # backend — 640 tests
-npm run check                                            # svelte-check + TypeScript
+npm run check                                            # svelte-check + TypeScript — 0/0
+cd src-tauri && cargo test --lib --no-default-features   # backend, fast — 642 tests
+cd src-tauri && cargo test --lib                         # backend, full — 679 tests (CI gate)
 ```
 
-> `cargo test --lib --no-default-features` runs the 640 pure-logic tests without GTK/WebKit.
-> The full `tauri-commands` feature build (used in CI) adds the command-layer tests on top.
+> `--no-default-features` runs the 642 pure-logic tests without GTK/WebKit — convenient, but it
+> **skips the entire Tauri command layer**. The full build (what CI runs) adds those tests for
+> **679** in total. On Ubuntu, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` are all it needs; see
+> [`SKILLS.md` §3](SKILLS.md) before pushing changes under `src-tauri/src/commands/`.
 
 CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-android.yml`
 (release APK), plus non-blocking Criterion benchmarks.
@@ -295,8 +298,11 @@ CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-androi
 | [User Manual](UserManual.md) | End-to-end guide for lab staff — every workflow, step by step |
 | [Roadmap](ROADMAP.md) | The plan, the current state, and per-work-packet status |
 | [Changelog](CHANGELOG.md) | Release-by-release history |
+| [Contributor playbook](SKILLS.md) | Architecture map, golden rules, verification gates, known traps |
+| **[Specification index](docs/README.md)** | **Every technical spec in `docs/`, with what each one covers** |
 | [Local AI setup](docs/local-ai.md) | Ollama / LocalAI configuration & troubleshooting |
 | [Merkle checkpoints](docs/merkle-checkpoints.md) · [proofs](docs/merkle-proofs.md) · [on-chain anchoring](docs/on-chain-anchoring.md) · [signed event ledger](docs/signed-event-ledger.md) | Hash-chain, tamper-evidence, anchoring & signed-ledger specifications |
+| [Specimen passport](docs/specimen-passport.md) · [taxonomy registry](docs/taxonomy-registry.md) · [breeding coordination](docs/breeding-coordination.md) | Federated, signed inter-lab exchange formats and verification |
 | [Regulatory exports](docs/regulatory-exports.md) | FDA / USDA / CITES export bundles |
 | [Plugin authoring](docs/plugin-authoring.md) | `.steloplugin` vocabulary-pack format |
 | [Vocabulary system](docs/vocabulary-system.md) | How lab-profile vocabularies work |

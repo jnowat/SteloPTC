@@ -1,8 +1,15 @@
 # Merkle Checkpoints — SteloPTC Audit Trust Layer
 
-**Work Packet:** WP-20  
-**Shipped:** v1.9.0  
-**Depends on:** WP-18 (hash-chain columns), WP-19 (verification commands)
+*Sealing a range of audit history to a single Merkle root, and verifying it in three stages.*
+
+| | |
+|---|---|
+| **Work packet** | WP-20 |
+| **Shipped in** | v1.9.0 |
+| **Status** | Stable |
+| **Depends on** | WP-18 (hash-chain columns), WP-19 (verification commands) |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
 
 ---
 

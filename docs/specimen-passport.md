@@ -1,6 +1,17 @@
 # SteloPTC Specimen Passport
 
-_Specification for the federated specimen passport introduced in WP-70 (Phase G — multi-institutional & federated networks, v1.45.0)._
+*A signed, self-contained document carrying one specimen's identity and full provenance.*
+
+| | |
+|---|---|
+| **Work packet** | WP-70 |
+| **Shipped in** | v1.45.0 |
+| **Status** | Stable |
+| **Depends on** | WP-18 (audit hash chain) |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
 
 A **specimen passport** is a signed, self-contained JSON document describing a specimen's
 identity and full provenance, which a **receiving lab can verify independently** — without any
