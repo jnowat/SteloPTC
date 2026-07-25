@@ -5,6 +5,81 @@ All notable changes to SteloPTC will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+> **Reading this file.** History is organised as **work packets** (`WP-xx`), generally one per
+> release — see [`ROADMAP.md`](ROADMAP.md) for what each packet set out to do and
+> [`README.md`](README.md) for the product overview. Entries are append-only: a shipped entry is
+> never rewritten, so a stated figure reflects what was true *at that release*, not today.
+>
+> **Current release: [v1.53.2](#1532---2026-07-25).** Phases A–H complete.
+
+---
+
+## [1.53.2] - 2026-07-25
+
+### Build fix, dependency maintenance & documentation pass
+
+**`master` had been red since v1.53.1 merged on 2026-07-19.** Every merge-gating workflow
+(`Tests`, `Build Windows`, `Build Android`, and the scheduled `Build iOS`) failed to compile. This
+release fixes it, closes two high-severity dependency advisories, and brings the documentation set
+back into line with what actually ships.
+
+**Fixed — the build**
+
+- **`create_subculture` no longer fails to compile.** `commands/subcultures.rs:311` passed
+  `passage_number` (an `i32`, derived from the `subculture_count` column) to
+  `signed_ledger::lifecycle::passage`, which takes an `i64` — introduced when WP-75 wired signed
+  lifecycle events into the passage path. Widened with `i64::from(...)`.
+- **Why every local gate missed it.** `commands/` compiles only under the default `tauri-commands`
+  feature, so `cargo test --lib --no-default-features` and `cargo clippy --no-default-features` —
+  the gates a headless sandbox can normally run — never see it. The full-feature build has now been
+  verified locally (the GTK/WebKit packages install fine on Ubuntu), and `skills.md` §3 carries the
+  exact command plus the standing rule to run it before pushing anything under
+  `src-tauri/src/commands/`. §7 records the integer-width trap.
+- **Verified:** `cargo test --lib` (**677 passing**, full `tauri-commands` feature) ·
+  `cargo test --lib --no-default-features` (**640 passing**) · `cargo clippy --lib -- -D warnings`
+  and `--no-default-features` (both clean) · `npm test` (**113 passing**) · `npm run check`
+  (**0 errors / 0 warnings**, 418 files) · `npm run build` (succeeds).
+
+**Fixed — dependencies** *(lockfile only; `package.json` is untouched)*
+
+- Closed two high-severity advisories via `npm audit fix`: **`fast-uri`** host confusion
+  (GHSA-v2hh-gcrm-f6hx) and **`postcss`** path traversal (GHSA-r28c-9q8g-f849). The top-level
+  `brace-expansion` DoS (GHSA-mh99-v99m-4gvg) is also resolved.
+- Brought four in-range-drifted packages current: `@tauri-apps/plugin-dialog` 2.7.1→2.7.2,
+  `svelte` 5.56.4→5.56.8, `svelte-check` 4.7.1→4.7.3, `vitest` 3.2.6→3.2.7.
+- **Still open, disclosed:** `xlsx` prototype pollution + ReDoS — no upstream fix, reachable from
+  the user-facing Excel import; and a **dev-only** `brace-expansion` copy nested under
+  `vite-plugin-pwa → workbox-build → … → filelist`, whose only offered remedy is downgrading
+  `vite-plugin-pwa` to 1.2.0, so it was not applied. `npm audit` now reports 9 high rather than 4 —
+  that is npm enumerating one dependency chain it previously collapsed, not new vulnerabilities.
+- **`package-lock.json`'s `version` field** still read `1.48.0`, five releases stale — it refreshes
+  only on `npm install`. Now tracked in the new `skills.md` §10 drift checklist.
+
+**Documentation**
+
+- **`ROADMAP.md`** — the header (seven paragraphs, one of them ~7,000 words, duplicating the table
+  directly beneath it) is now a scannable fact table plus two collapsible sections. The
+  per-migration history became a 52-row table; no fact was dropped. Added the missing v1.48 (WP-73)
+  and v1.53.1 rows to *Status at a glance*.
+- **`UserManual.md`** — was stale at **v1.45.0**, with none of Phase G's taxonomy registry or
+  breeding coordination and none of Phase H documented for end users. New header and linked TOC,
+  plus six new sections: on-chain anchoring & the signed event ledger, working with partner labs,
+  compliance flags/rules/waivers, the regulatory submission pipeline, the data-integrity
+  self-check, and the mycology Fruiting overview. §18 corrected.
+- **`docs/README.md`** — new specification index for all 11 specs.
+- **`docs/*.md`** — uniform header on every spec (*Work packet · Shipped in · Status · Depends on*
+  plus a nav line). Body content untouched.
+- **`SteloPTC.md`** — frontmatter and quick facts refreshed from v1.48.0/608 tests/51 migrations to
+  v1.53.2/640/52; Phase H added; a cross-reference that pointed at the wrong manual section fixed.
+- **`README.md`** — doc index gained the three federated-exchange specs, `skills.md`, and the new
+  spec index.
+- **`skills.md`** — corrected §9 (it told contributors to write migration `052`, already shipped —
+  next is `053`); added the full-feature verification procedure, the integer-width trap, and a new
+  **§10 "Docs that drift"** listing every file that carries a number which goes stale.
+- **`CHANGELOG.md`** — a short reading guide at the top. History untouched.
+
+No schema change (still 52 migrations, next is 053). No behaviour change beyond the compile fix.
+
 ## [1.53.1] - 2026-07-19
 
 ### Critical fix pass — round-trip data loss, an app-wide freeze, and non-atomic imports

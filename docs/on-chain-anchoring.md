@@ -1,6 +1,17 @@
 # SteloPTC On-Chain Anchoring (Dogecoin `OP_RETURN`)
 
-_Specification for the anchoring feature introduced in WP-66 (Trust Layer Phase 2, v1.42.0)._
+*Committing a checkpoint root to the Dogecoin chain, and verifying it back independently.*
+
+| | |
+|---|---|
+| **Work packet** | WP-66 |
+| **Shipped in** | v1.42.0 |
+| **Status** | Stable · broadcast deferred |
+| **Depends on** | WP-20 ([Merkle checkpoints](merkle-checkpoints.md)) |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
 
 This document describes how SteloPTC publishes an audit **Merkle checkpoint root**
 (see `docs/merkle-checkpoints.md`) to a public blockchain so that a checkpoint's

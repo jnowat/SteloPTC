@@ -1,6 +1,17 @@
 # SteloPTC Signed Event Ledger
 
-_Specification for the signed-transaction ledger introduced in WP-67 (Trust Layer Phase 3, v1.43.0)._
+*Specimen lifecycle events as per-user Ed25519-signed, hash-chained transactions.*
+
+| | |
+|---|---|
+| **Work packet** | WP-67 (extended by WP-75) |
+| **Shipped in** | v1.43.0 · v1.50.0 |
+| **Status** | Stable · signing coverage expanding |
+| **Depends on** | WP-18 (audit hash chain) |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
 
 This document describes the ledger of **specimen lifecycle events as signed transactions** —
 a stronger, opt-in trust layer built on top of the WP-18 hash-chained audit log.

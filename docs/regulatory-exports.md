@@ -1,5 +1,17 @@
 # Regulatory Compliance Exports (WP-60)
 
+*FDA 21 CFR Part 11, USDA APHIS PPQ 526, and CITES export bundles.*
+
+| | |
+|---|---|
+| **Work packet** | WP-60 |
+| **Shipped in** | v1.40.0 |
+| **Status** | Stable |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
+
 SteloPTC can package its existing cryptographic guarantees (the hash-chained audit log from the Trust Layer, WP-18–21) into three regulator-recognizable formats. All three are **read-only** exports — nothing in the live database is modified by generating one, and none of them submit anything to any external authority. Available from **Compliance → Regulatory Export**, supervisor/admin only.
 
 ## 1. FDA 21 CFR Part 11 attestation bundle

@@ -308,7 +308,7 @@ pub fn create_subculture(
     // (the WP-67 "sign every mutation" follow-up). Best-effort — a ledger hiccup
     // never fails the passage.
     let (sev_type, sev_payload) =
-        crate::signed_ledger::lifecycle::passage(&request.specimen_id, passage_number, "passage");
+        crate::signed_ledger::lifecycle::passage(&request.specimen_id, i64::from(passage_number), "passage");
     crate::signed_ledger::try_append_signed_event(
         &db.conn, &user.id, sev_type, "specimen", Some(&request.specimen_id), &sev_payload,
     );

@@ -2,6 +2,17 @@
 
 *Federated, signed merging of breeding-program selection records between independent labs.*
 
+| | |
+|---|---|
+| **Work packet** | WP-72 |
+| **Shipped in** | v1.47.0 |
+| **Status** | Stable |
+| **Depends on** | WP-47 (breeding programs), WP-71 ([taxonomy registry](taxonomy-registry.md)) |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
+
 Two labs that collaborate on the **same breeding program** each run their own SteloPTC
 installation and accumulate their own selection records (WP-47 `breeding_records`). A
 **coordination bundle** is a signed, self-contained JSON document carrying one program's identity

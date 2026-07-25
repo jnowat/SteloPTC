@@ -1,5 +1,17 @@
 # Plugin Authoring Guide (WP-61)
 
+*The `.steloplugin` manifest format for additive vocabulary packs.*
+
+| | |
+|---|---|
+| **Work packet** | WP-61 |
+| **Shipped in** | v1.40.0 |
+| **Status** | Vocabulary live · WASM rules deferred |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
+
 SteloPTC plugins are validated JSON manifests that extend the app **additively**: they can introduce a new lab profile, seed profile-scoped vocabulary, register dashboard panel metadata, and (in a future release) execute compliance rules. Installing a plugin never modifies or removes anything from an existing profile.
 
 ## Manifest format

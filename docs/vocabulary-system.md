@@ -1,5 +1,17 @@
 # Vocabulary System (WP-23 / WP-24)
 
+*Profile-scoped lookup tables — why controlled vocabulary is data, not schema.*
+
+| | |
+|---|---|
+| **Work packet** | WP-23 / WP-24 |
+| **Shipped in** | v1.12.0 |
+| **Status** | Stable |
+
+> Part of the SteloPTC [specification index](README.md) · [README](../README.md) · [User Manual](../UserManual.md) · [Roadmap](../ROADMAP.md)
+
+---
+
 Starting with schema version 16–17, all controlled vocabularies that were
 previously enforced as `CHECK` constraints are stored in lookup tables.
 Adding or renaming a vocabulary value now requires only a data insert — no

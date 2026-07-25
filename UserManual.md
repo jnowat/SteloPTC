@@ -1,48 +1,70 @@
 # SteloPTC User Manual
 
-**Current as of:** July 2026 · **v1.45.0** (Trust Layer Phase 1 complete; Phase C fully shipped; Phase TX-1/TX-2/TX-3 complete; Phase D Cell Culture WP-30–34 fully shipped; Phase E Mycology WP-40–44 fully shipped; **Phase F WP-50–65 + WP-56b fully shipped** — multi-user/LAN sync foundation, notifications, iOS scaffold, environmental sensors, field-level permissions, local AI analysis (Ollama + LocalAI), interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, PWA/offline queue, performance hardening, taxon chain re-anchoring, and local-AI runtime hardening; **Trust Layer Phase 2 on-chain anchoring (WP-66, v1.42.0), Phase 3 signed-event ledger (WP-67, v1.43.0), the automated regulatory submission pipeline (WP-68, v1.44.0), and — Phase G begun — federated specimen passports for inter-lab transfer (WP-70, v1.45.0)**)
+> **The end-to-end guide for lab staff.** Every workflow, step by step.
+> For release history see [`CHANGELOG.md`](CHANGELOG.md); for per-feature engineering status see
+> [`ROADMAP.md`](ROADMAP.md); for a one-page product overview see [`README.md`](README.md).
 
-> **Scope note:** This manual documents both shipping features and planned functionality. Phase TX-1 (Strain/Cultivar registry, Hybrid Wizard, basic Taxonomy Navigator) fully shipped as of v1.17.0. Phase TX-2 is fully shipped: WP-35 taxonomy backbone (v1.18.0), WP-36 NCBI import/sync (v1.19.0), WP-37 pedigree tools (v1.20.0), WP-38 advanced hybridization (v1.21.0), WP-39 advanced multi-column Taxonomy Navigator (v1.22.0). Cell Culture features (WP-30–34) shipped v1.23.0–v1.27.0. Mycology features (WP-40–44) fully shipped v1.28.0–v1.32.0: WP-40 vocabulary (v1.28.0), WP-41 colonization & contamination tracking (v1.29.0), WP-42 genetic lineage markers (v1.30.0), WP-43 fruiting conditions & yield tracking (v1.31.0), WP-44 mycology QC compliance rules (v1.32.0). **Phase E complete.** Core features such as the split/passage workflow, hash chain, dead specimen archiving, provenance tracking, and reminders are fully implemented and stable.
->
-> **Phase F is now documented here.** Sections 1–17 cover the core app through Phase E (v1.32.0). **Sections 19–26 (new in v1.41.0) cover Phase F for end users**: the local AI assistant (Ollama + LocalAI), the interactive lab map, the analytics dashboard, encrypted cloud backup & sync, regulatory compliance exports, the plugin manager, desktop/email notifications and environmental monitoring, and the installable web app (PWA). Foundation-only capabilities (the PostgreSQL backend, LAN sync transport, S3/SFTP cloud targets, and plugin WASM rule execution) are called out where they appear. See `CHANGELOG.md` and `ROADMAP.md` for release-by-release detail and per-work-packet limitations.
+| | |
+|---|---|
+| **Applies to** | **v1.53.2** (July 2026) |
+| **Covers** | The complete shipped product — core workflows, the Trust Layer, Phase F cross-cutting features, Phase G federated exchange, and Phase H compliance & integrity |
+| **Audience** | Lab technicians, supervisors, and lab admins |
 
-SteloPTC is a desktop application for managing plant tissue culture laboratories with a strong focus on **provenance, traceability, and cryptographic data integrity**.
+SteloPTC is a desktop and Android application for managing plant tissue culture, cell culture, and
+mycology laboratories, with a strong focus on **provenance, traceability, and cryptographic data
+integrity**. It combines traditional lab record-keeping with an immutable, hash-chained audit trail,
+so you can trace — and *prove* — the complete history of any culture, even many generations and
+splits later.
 
-It combines traditional lab record-keeping with an immutable, hash-chained audit trail so you can confidently trace the complete history of any culture — even many generations and splits later.
+> **A note on honesty.** A handful of capabilities ship deliberately incomplete and are labelled
+> **Current limitation** wherever they appear in this manual: the PostgreSQL backend, LAN sync
+> transport, S3/SFTP cloud-backup targets, plugin WASM rule execution, iOS, and automatic on-chain
+> broadcast. Everything else described here is live and usable today.
 
 ---
 
 ## Table of Contents
 
-1. Introduction & Overview
-2. Core Concepts
-3. Getting Started
-4. Managing Species
-5. Managing Strains & Cultivars (Phase TX-1)
-6. Taxonomy Navigator (Phase TX-1 / TX-2)
-7. Working with Specimens
-8. Splitting Cultures (Detailed)
-9. Recording Passages / Subcultures (incl. Dead Specimen / Archive Workflow)
-10. The Audit Log & Cryptographic Hash Chain
-11. Provenance & Genealogy Tracking
-12. Reminders & Follow-ups
-13. Importing & Exporting Data
-14. Printing Reports
-15. Understanding the Hash Chain & Data Integrity (Advanced)
-16. Troubleshooting & Common Issues
-17. Best Practices for Tissue Culture Tracking
-18. Future Features & Roadmap
+**Core workflows**
 
-**Phase F features (v1.38.0–v1.41.0):**
+1. [Introduction & Overview](#1-introduction--overview)
+2. [Core Concepts](#2-core-concepts)
+3. [Getting Started](#3-getting-started)
+4. [Managing Species](#4-managing-species)
+5. [Managing Strains & Cultivars](#5-managing-strains--cultivars-phase-tx-1--shipped-v1160v1170)
+6. [Taxonomy Navigator](#6-taxonomy-navigator-phase-tx-fully-shipped--v1170v1220)
+7. [Working with Specimens](#7-working-with-specimens)
+8. [Splitting Cultures (Detailed)](#8-splitting-cultures-detailed)
+9. [Recording Passages / Subcultures](#9-recording-passages--subcultures) *(incl. dead specimen / archive workflow)*
+10. [The Audit Log & Cryptographic Hash Chain](#10-the-audit-log--cryptographic-hash-chain)
+11. [Provenance & Genealogy Tracking](#11-provenance--genealogy-tracking)
+12. [Reminders & Follow-ups](#12-reminders--follow-ups)
+13. [Importing & Exporting Data](#13-importing--exporting-data)
+14. [Printing Reports](#14-printing-reports)
+15. [Understanding the Hash Chain & Data Integrity (Advanced)](#15-understanding-the-hash-chain--data-integrity-advanced)
+16. [Troubleshooting & Common Issues](#16-troubleshooting--common-issues)
+17. [Best Practices for Tissue Culture Tracking](#17-best-practices-for-tissue-culture-tracking)
+18. [Future Features & Roadmap](#18-future-features--roadmap)
 
-19. Local AI Assistant (Ollama & LocalAI)
-20. Interactive Lab Map
-21. Analytics Dashboard
-22. Encrypted Cloud Backup & Multi-Device Sync
-23. Regulatory Compliance Exports (FDA / USDA / CITES)
-24. Plugin Manager
-25. Notifications & Environmental Monitoring
-26. Installable Web App (PWA)
+**Cross-cutting features** *(Phase F — v1.38.0–v1.41.0)*
+
+19. [Local AI Assistant (Ollama & LocalAI)](#19-local-ai-assistant-ollama--localai)
+20. [Interactive Lab Map](#20-interactive-lab-map)
+21. [Analytics Dashboard](#21-analytics-dashboard)
+22. [Encrypted Cloud Backup & Multi-Device Sync](#22-encrypted-cloud-backup--multi-device-sync)
+23. [Regulatory Compliance Exports (FDA / USDA / CITES)](#23-regulatory-compliance-exports-fda--usda--cites)
+24. [Plugin Manager](#24-plugin-manager)
+25. [Notifications & Environmental Monitoring](#25-notifications--environmental-monitoring)
+26. [Installable Web App (PWA)](#26-installable-web-app-pwa)
+
+**Trust Layer, federated exchange & compliance** *(v1.42.0–v1.53.2)*
+
+27. [On-Chain Anchoring & the Signed Event Ledger](#27-on-chain-anchoring--the-signed-event-ledger)
+28. [Working with Partner Labs — Passports, Taxonomy Registry & Breeding Coordination](#28-working-with-partner-labs--passports-taxonomy-registry--breeding-coordination)
+29. [Compliance Flags, Rules & Waivers](#29-compliance-flags-rules--waivers)
+30. [The Regulatory Submission Pipeline](#30-the-regulatory-submission-pipeline)
+31. [Data Integrity Self-Check](#31-data-integrity-self-check)
+32. [Mycology: The Fruiting Overview](#32-mycology-the-fruiting-overview)
 
 ---
 
@@ -414,9 +436,14 @@ Everything below was still "planned" the last time this section was rewritten; n
 - Environmental sensor logging (manual entry; hardware transport still not wired — see below) — WP-54, v1.39.0
 - iOS build scaffold (still unverified end-to-end — see below) — WP-53, v1.39.0
 - Interactive lab map, analytics dashboards, encrypted cloud backup, regulatory compliance exports, plugin system, installable PWA, taxon chain re-anchoring — Phase F WP-57–65, v1.40.0
-- **On-chain anchoring** (Dogecoin `OP_RETURN`) — Trust Layer Phase 2, WP-66, v1.42.0 (prepares and independently verifies a checkpoint's Merkle root on-chain; you broadcast with your own external wallet)
-- **Signed-event ledger** (specimen events as Ed25519-signed, hash-chained ledger transactions) — Trust Layer Phase 3, WP-67, v1.43.0
-- **Automated regulatory submission pipeline** (monitors compliance state and auto-generates signed, ready-to-submit packages) — WP-68, v1.44.0
+- **On-chain anchoring** (Dogecoin `OP_RETURN`) — Trust Layer Phase 2, WP-66, v1.42.0 (prepares and independently verifies a checkpoint's Merkle root on-chain; you broadcast with your own external wallet) — see [§27](#27-on-chain-anchoring--the-signed-event-ledger)
+- **Signed-event ledger** (specimen events as Ed25519-signed, hash-chained ledger transactions) — Trust Layer Phase 3, WP-67, v1.43.0, extended across passages and splits by WP-75 (v1.50.0) — see [§27](#27-on-chain-anchoring--the-signed-event-ledger)
+- **Automated regulatory submission pipeline** (monitors compliance state and auto-generates signed, ready-to-submit packages) — WP-68, v1.44.0 — see [§30](#30-the-regulatory-submission-pipeline)
+- **Federated inter-lab exchange** — specimen passports (WP-70, v1.45.0), the shared taxonomy registry (WP-71, v1.46.0), and cross-lab breeding coordination (WP-72, v1.47.0). **Phase G complete** — see [§28](#28-working-with-partner-labs--passports-taxonomy-registry--breeding-coordination)
+- **Profile-aware compliance rules and flag waivers** — WP-74 (v1.49.0) and WP-77 (v1.52.0). A rule now declares which lab profiles it applies to, so the citrus HLB rule no longer fires in a mycology or cell-culture lab — see [§29](#29-compliance-flags-rules--waivers)
+- **Data-integrity self-check** — WP-76, v1.51.0 — see [§31](#31-data-integrity-self-check)
+- **Environmental out-of-range monitoring** — WP-78, v1.53.0, delivered as a rule inside the WP-74 engine — see [§29](#29-compliance-flags-rules--waivers)
+- **Fruiting overview (Mycology)** — WP-73, v1.48.0 — see [§32](#32-mycology-the-fruiting-overview)
 
 ### Genuinely still planned / incomplete
 - **Automatic on-chain broadcast** — the anchor payload is prepared and verified (WP-66), but sending the transaction still requires your own funded external wallet; no funded-wallet transport is bundled
@@ -426,7 +453,9 @@ Everything below was still "planned" the last time this section was rewritten; n
 - **Sensor hardware transport** (USB/BLE/MQTT) — only manual entry is wired up today
 - **Cloud backup to S3/SFTP** — configurable today but not connected; only `local_nas`/`smb` targets work
 - **Plugin WASM rule execution** — plugin manifests are validated and recorded, but a plugin's compliance rules are not yet executed by a sandboxed runtime
-- **Multi-institutional/federated networks, shared taxonomy registry, cross-lab breeding coordination** — reserved as Phase G (WP-70–72), not started
+- **A network transport for the federated exchanges** — passports, registries, and coordination bundles are files you send through your own channel; there is no built-in lab-to-lab connection
+- **Per-lab configurable compliance thresholds** — the environmental ranges and re-test intervals are sensible defaults, not yet editable in the UI
+- **Signed lifecycle events on every mutation** — creation, passages, and splits are signed today; the remaining mutation commands are incremental follow-up
 
 For the latest status, refer to `ROADMAP.md` in the repository.
 
@@ -549,6 +578,187 @@ The web build of SteloPTC is **installable** as a Progressive Web App (via your 
 **What still requires the desktop app:** any **data mutation**, QR camera scanning, native file access (attachments, local backup/restore), OS print, and desktop notifications. SteloPTC's command layer is desktop-native (Tauri IPC); a browser-only install is a **read-only shell** until a remote API server exists.
 
 The service worker is deliberately gated so it **never** activates inside the desktop app — installing or using the PWA cannot affect the desktop experience.
+
+---
+
+## 27. On-Chain Anchoring & the Signed Event Ledger
+
+Sections 10 and 15 cover the hash chain that makes your history tamper-**evident**. Two further
+panels, both in the **Audit Log** view, strengthen that guarantee in different directions.
+
+### On-chain anchoring — proving *when* (Trust Layer Phase 2)
+
+A Merkle checkpoint summarises a whole range of audit history in a single 32-byte root. **On-Chain
+Anchoring** publishes that root to the public Dogecoin blockchain in an `OP_RETURN` output, so
+anyone — including a regulator or a party who has never seen your database — can confirm the
+checkpoint existed at a particular point in time.
+
+1. In **Audit Log → On-Chain Anchoring**, pick a checkpoint and click **Prepare**. SteloPTC builds
+   the exact bytes to broadcast and shows you the payload and script.
+2. **Broadcast the transaction yourself**, using your own external wallet. *Current limitation:* no
+   funded wallet is bundled, so SteloPTC never spends anything on your behalf.
+3. Paste the resulting **txid** back into the panel and click **Verify**. SteloPTC fetches the
+   on-chain data and checks it against the checkpoint root independently — it trusts the block
+   explorer for the raw bytes and nothing else.
+
+The full byte format is documented in [`docs/on-chain-anchoring.md`](docs/on-chain-anchoring.md).
+
+### The signed event ledger — proving *who* (Trust Layer Phase 3)
+
+The hash chain proves history wasn't altered. The **signed event ledger** additionally proves *who
+performed* each lifecycle event: every entry is signed with the acting user's own Ed25519 key, so an
+entry's authorship cannot be forged by someone who can write to the database but doesn't hold that
+key.
+
+- Open **Audit Log → Signed Event Ledger** to browse events with their event type, entity, signer,
+  and event hash.
+- **Show My Signing Key** displays your own public key so a partner can verify events you signed.
+- Events are signed automatically for **specimen creation, passages, and splits**. *Current
+  limitation:* the remaining mutation commands are not yet signed — the ledger is a strict addition
+  to the audit chain, never a replacement for it.
+
+See [`docs/signed-event-ledger.md`](docs/signed-event-ledger.md) for the exact format.
+
+---
+
+## 28. Working with Partner Labs — Passports, Taxonomy Registry & Breeding Coordination
+
+SteloPTC extends its Trust Layer **across labs**, with no central authority and no account to sign
+up for. Three exchanges are supported. All three share the same shape:
+
+- What you send is a **signed, self-contained JSON file**. You send it however you already send
+  files — email, shared drive, a USB stick. *Current limitation:* there is no built-in lab-to-lab
+  network connection.
+- The receiving lab **verifies it independently**, using only your published public key and the data
+  inside the file. They need no access to your database.
+- On import, the receiving lab folds the content into **its own audit chain**, so their records show
+  permanently and verifiably what they accepted, from whom, and when.
+- Imports are **additive and non-destructive**, and each runs as a single transaction — a rejected
+  record can never leave a half-finished import behind.
+
+Set your lab's name and view your public key under **This lab's issuer identity**, present at the
+top of each panel.
+
+| Exchange | Panel | What travels | Receiver's choice per record |
+|---|---|---|---|
+| **Specimen passport** (v1.45.0) | Audit Log → Specimen Passports | One specimen's identity + full provenance | Verify, then **Verify & Import** |
+| **Taxonomy registry** (v1.46.0) | Audit Log → Taxonomy Registry | Your taxa, species and strains | **Accept / Override / Fork** |
+| **Breeding coordination** (v1.47.0) | Audit Log → Breeding Coordination | One breeding program's selection records | **Accept / Skip** |
+
+### Specimen passports
+
+Covered in [§10](#10-the-audit-log--cryptographic-hash-chain) — issue one from a specimen's detail
+page when you ship material to a partner.
+
+### Shared taxonomy registry
+
+**Export this lab's registry** produces a signed snapshot of your reference taxonomy. A partner
+loads it under **Preview or import a received registry**, sees every record next to its **local
+status**, and chooses a **disposition** for each: *accept* a record they don't have, *override*
+their own version with yours, or *fork* it to keep both. Imported strains always arrive as
+`unverified` — a partner's verification claim never silently becomes yours. Details in
+[`docs/taxonomy-registry.md`](docs/taxonomy-registry.md).
+
+### Cross-lab breeding coordination
+
+When two labs run the same breeding program, **Export a breeding program's selection records**
+produces a signed coordination bundle. The receiving lab previews it and accepts or skips each
+record; the merge is a **set union**, so neither lab loses work.
+
+- If the partner doesn't have the program yet, it is created as a **coordinated-copy shell**.
+- A record whose strain isn't present locally is marked **blocked** until that strain is shared via
+  the taxonomy registry.
+- Merged records keep their **`origin_lab`**, so you can always tell which lab contributed what.
+
+Details in [`docs/breeding-coordination.md`](docs/breeding-coordination.md).
+
+---
+
+## 29. Compliance Flags, Rules & Waivers
+
+The **Compliance** view auto-flags specimens that need attention — expired permits, quarantine
+status, overdue mycoplasma or mycology QC testing, citrus HLB screening, and environmental readings
+that fall outside their acceptable range.
+
+### Rules only fire in the labs they belong to
+
+Each rule declares which **lab profiles** it applies to. A citrus HLB rule is a plant-tissue-culture
+concern, so it no longer raises flags in a mycology or cell-culture lab; a mycoplasma rule is a
+cell-culture concern. You don't configure this — switching your lab profile changes which rules are
+live.
+
+*Current limitation:* rule thresholds and re-test intervals are sensible built-in defaults and are
+not yet editable in the UI.
+
+### Environmental out-of-range monitoring
+
+Readings logged under environmental monitoring ([§25](#25-notifications--environmental-monitoring))
+are evaluated against per-type acceptable ranges and surface as ordinary compliance flags, so an
+out-of-range incubator shows up in the same place as an expired permit.
+
+### Waiving a flag
+
+Some flags are legitimately not applicable to a particular specimen. Rather than editing a rule,
+click **Waive** on the flag and record:
+
+- a **reason** (required — this is the documented justification an auditor will read), and
+- an optional **expiry date**, after which the flag reappears on its own.
+
+Waived flags drop out of the active flag list. Existing waivers are listed with their specimen,
+reason and expiry, and can be **revoked** at any time. Creating and revoking a waiver are both
+written to the audit log and attributed to you — a waiver is a documented decision, never a way to
+make a problem disappear quietly.
+
+---
+
+## 30. The Regulatory Submission Pipeline
+
+Section 23 covers exports you generate on demand. The **submission pipeline** (Compliance →
+Submission Pipeline, supervisor/admin) goes a step further: a background monitor re-evaluates your
+compliance state on every scheduler tick and, once all preconditions for a submission type are met,
+generates a **signed, ready-to-submit package** automatically.
+
+- **Check Readiness** shows, for a chosen submission type, exactly which preconditions pass and
+  which are still outstanding — so you can see what's blocking a submission before you attempt it.
+- **Create Submission** builds the package now, using fields such as date range, lab name, specimen
+  IDs, authorized scientist, root specimen ID and — for CITES — the relevant appendix.
+- **Run Monitor** triggers the readiness sweep immediately instead of waiting for the next tick.
+- The register lists every submission with its **status**, title and package reference; **Re-check**
+  re-evaluates one.
+
+*Current limitation:* SteloPTC prepares and signs the package. **Submitting it to the agency's
+electronic portal is still a manual step** — nothing is transmitted to any authority on your behalf.
+
+---
+
+## 31. Data Integrity Self-Check
+
+**Audit Log → 🩺 Data Integrity Self-Check** (administrator only) runs a read-only battery of checks
+for corruption that a database can't retroactively catch on its own:
+
+- **orphaned rows** — specimens, passages or strains whose parent record no longer exists,
+- **broken lineage links** — a passage pointing at a deleted parent, a strain without a species,
+- **duplicate accession numbers**, and
+- **audit-lineage sequence gaps** — a missing history row.
+
+Click **Run Integrity Check**. A pass reports `✓ All N checks passed`. A failure lists each issue
+with its **severity**, a **count**, and **example** records so you know exactly where to look.
+
+The check never modifies anything — it is a diagnostic, and repairs remain a deliberate,
+audit-logged action you take yourself. Run it after a restore, after an import, or any time the
+database has been handled outside SteloPTC.
+
+---
+
+## 32. Mycology: The Fruiting Overview
+
+In a mycology lab, the sidebar gains a top-level **Fruiting** view (it is hidden in the plant
+tissue-culture and cell-culture profiles — see [§2, Lab Profiles](#lab-profiles-plant-tissue-culture--cell-culture--mycology)).
+
+It collects every fruiting record across the whole lab into one sortable table — **harvest date**,
+**accession**, **species**, **flush** number and **notes** — so you can review yield across all
+active cultures without opening them one at a time. Individual records are still created and edited
+from each specimen's detail page.
 
 ---
 

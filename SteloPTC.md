@@ -16,7 +16,7 @@ tags:
   - topic/provenance
   - topic/cryptography
   - topic/compliance
-version: 1.48.0
+version: 1.53.2
 status: released
 license: proprietary
 platforms:
@@ -29,11 +29,11 @@ lab_profiles:
   - plant_tissue_culture
   - cell_culture
   - mycology
-tests_rust: 608
+tests_rust: 640
 tests_ts: 113
-migrations: 51
+migrations: 52
 created: 2026-07-11
-updated: 2026-07-11
+updated: 2026-07-25
 cssclasses:
   - wide-page
 ---
@@ -92,12 +92,12 @@ SteloPTC manages the full lifecycle of tissue-culture specimens for commercial a
 
 | | |
 |---|---|
-| **Current version** | `v1.48.0` (WP-73 — domain-congruence & security hardening) |
+| **Current version** | `v1.53.2` (Phase H complete — operational integrity & compliance hardening, plus a critical fix pass and a build fix) |
 | **Stack** | Rust 1.75+ · Tauri 2 · Svelte 5 · TypeScript · Vite 6 · SQLite (WAL) |
 | **Disciplines** | Plant Tissue Culture · Cell Culture · Mycology (+ plugin packs) |
 | **Integrity** | Per-lineage SHA-256 hash chain · Merkle checkpoints & proofs · Dogecoin `OP_RETURN` anchoring · Ed25519 signed ledger |
-| **Backend surface** | ~230 `#[tauri::command]` handlers · 51 DB migrations |
-| **Tests** | 608 Rust · 113 TypeScript (green, CI-gated) |
+| **Backend surface** | ~230 `#[tauri::command]` handlers · 52 DB migrations |
+| **Tests** | 640 Rust (`--no-default-features`) · 677 with the full `tauri-commands` feature · 113 TypeScript |
 | **License** | Proprietary — `licensing@stelolab.local` |
 
 ---
@@ -285,7 +285,7 @@ Publish a checkpoint's Merkle root to Dogecoin in a 39-byte `OP_RETURN` script: 
 A second, opt-in ledger (`signed_events`) where lifecycle events are **Ed25519-signed by the acting user's own key** (`user_signing_keys`, one lazily-generated keypair per user). This adds **non-repudiation** on top of tamper-evidence — an entry's authorship can't be forged by someone who can write to the DB but doesn't hold the signer's key. `verify_ledger` checks four invariants: gapless `seq` · chain linkage · content hash · valid signature cross-checked against the user's *registered* key.
 
 > [!bug] Closed in v1.48.0 (WP-73)
-> A missing registered key is now a **verification failure** (not a silent skip) — defeating a delete-key-then-re-sign forgery (`deleted_registered_key_forgery_is_detected`). Scope note: only specimen *creation* auto-signs today; wiring the other ~30 mutation commands is disclosed follow-up.
+> A missing registered key is now a **verification failure** (not a silent skip) — defeating a delete-key-then-re-sign forgery (`deleted_registered_key_forgery_is_detected`). Scope note: as of **WP-75 (v1.50.0)** specimen *creation*, *passages* and *splits* auto-sign via `signed_ledger::lifecycle`; wiring the remaining ~25 mutation commands is disclosed follow-up.
 
 ---
 
@@ -324,7 +324,7 @@ sequenceDiagram
 | 🔬 **Specimen tracking** | Accessions, provenance & lineage trees, health/disease status, stages, quarantine & IP flags, generation depth, passage count, PDL | [[UserManual]] §7 |
 | 🌿 **Splitting & passages** | Atomic split into letter-suffixed children, per-child config, draft media, safety dialog, vertical passage timeline | [[UserManual]] §8–9 |
 | 🧬 **Strains, taxonomy & pedigree** | Strain registry, four-value status model, hybridization wizard (F1–F4 / backcross), Kingdom→Species→Strain navigator, breeding programs, Darwin Core export | [[UserManual]] §5–6 |
-| 🧪 **Media, inventory & cryo** | MS/WPM/B5 media batches with auto-calculated salts & hormones, supply inventory with reorder alerts, stock solutions, LN₂ cryostorage with atomic freeze/thaw | [[UserManual]] §22 |
+| 🧪 **Media, inventory & cryo** | MS/WPM/B5 media batches with auto-calculated salts & hormones, supply inventory with reorder alerts, stock solutions, LN₂ cryostorage with atomic freeze/thaw | [[ROADMAP]] WP-30–32 |
 | 📋 **Compliance & reporting** | Auto-flag rules (permits, HLB, quarantine, mycoplasma), agency tracking (USDA APHIS, TX Ag, FL FDACS), print/PDF reports, analytics dashboard | [[regulatory-exports]] |
 | 🗺️ **Regulatory exports & pipeline** | FDA 21 CFR Part 11, USDA PPQ 526, CITES bundles (Ed25519-signed); WP-68 submission pipeline auto-generates signed, ready-to-submit packages | [[regulatory-exports]] |
 | 🤖 **Local AI assistant** *(optional, on-device)* | Note summaries, passage-comment drafts, photo contamination checks via **Ollama / LocalAI** — every suggestion a human must approve; nothing leaves the device | [[local-ai]] |
@@ -332,6 +332,7 @@ sequenceDiagram
 | 🗺️ **Lab map & analytics** | Interactive floor-plan with density/risk/age heat maps; KPI strip + trend charts + strain/technician reports (inline, no external charting) | [[UserManual]] §20–21 |
 | 🔌 **Plugins** | `.steloplugin` vocabulary packs add a lab profile + seed vocabulary (idempotent, profile-isolated) | [[plugin-authoring]] |
 | ♿ **Built for real labs** | Mobile-first responsive UI, dark mode, WCAG 2.1 AA pass, keyboard shortcuts, contextual tooltips, role-based access | — |
+| 🩺 **Operational integrity** *(Phase H)* | Profile-pluggable compliance rule engine (a rule declares which profiles it applies to), documented + audit-logged **flag waivers**, and an admin **data-integrity self-check** (orphaned rows, broken lineage links, audit-chain gaps) | [[UserManual]] §29, §31 |
 
 **Roles (RBAC):** `Admin` · `Supervisor` · `Tech` · `Guest` — bcrypt password hashing, session tokens, forced first-login password change (enforced server-side in `validate_session` since v1.48.0).
 
@@ -372,6 +373,9 @@ sequenceDiagram
 > - [x] Cloud backup — `local_nas` / `smb` live … [ ] S3 / SFTP config-only, no network client · WP-59
 > - [x] Plugins — vocabulary seeding live & tested … [ ] WASM compliance-rule execution not run · WP-61
 > - [x] On-chain anchoring — prepares & verifies `OP_RETURN` … [ ] no automatic broadcast (external wallet) · WP-66
+> - [x] Federated exchange — signed passport / registry / coordination documents … [ ] no lab-to-lab network transport (files move out-of-band) · WP-70–72
+> - [x] Compliance rule engine — profile-gated rules + waivers … [ ] thresholds are built-in defaults, not yet UI-configurable · WP-74/77/78
+> - [x] Signed lifecycle events — creation, passages, splits … [ ] the remaining ~25 mutation commands · WP-75
 > - [ ] iOS end-to-end verification · WP-53
 
 ---
@@ -399,7 +403,7 @@ npm run android:build            # release APK (needs signing env vars)
 > ```bash
 > npm test            # Vitest — 113 assertions
 > npm run check       # svelte-check + TypeScript — 0 errors / 0 warnings
-> cd src-tauri && cargo test --lib --no-default-features      # 608 pure-logic tests
+> cd src-tauri && cargo test --lib --no-default-features      # 640 pure-logic tests
 > cargo clippy --lib --no-default-features -- -D warnings     # warnings are HARD errors in CI
 > ```
 > `--no-default-features` runs the pure-logic tests without GTK/WebKit; the full `tauri-commands` build (CI) adds the command-layer tests. See [[skills]] §3.
@@ -408,7 +412,7 @@ npm run android:build            # release APK (needs signing env vars)
 
 ## 📅 Release timeline
 
-> [!abstract] Full detail in [[CHANGELOG]] (65 releases, 2026-06-11 → 2026-07-11). History is organized as one-per-release **work packets** (WP-xx) across Phases A–G.
+> [!abstract] Full detail in [[CHANGELOG]] (71 releases, 2026-06-11 → 2026-07-19). History is organized as one-per-release **work packets** (WP-xx) across Phases A–H.
 
 | Version | Milestone |
 |---|---|
@@ -429,7 +433,10 @@ npm run android:build            # release APK (needs signing env vars)
 | `1.43.0` | **WP-67** — Trust Layer Phase 3: Ed25519 signed event ledger |
 | `1.44.0` | **WP-68** — automated regulatory submission pipeline |
 | `1.45–1.47` | **Phase G** — federated specimen passport → taxonomy registry → breeding coordination |
-| `1.48.0` | **WP-73** *(current)* — domain-congruence & security hardening (no schema change) |
+| `1.48.0` | **WP-73** — domain-congruence & security hardening (no schema change) |
+| `1.49–1.53` | **Phase H** — profile-pluggable compliance rule engine (WP-74), signed lifecycle events across passages & splits (WP-75), data-integrity self-check (WP-76), compliance flag waivers (WP-77, migration 052), environmental out-of-range monitoring (WP-78) |
+| `1.53.1` | Critical fix pass — Excel round-trip data loss, AI-command app-wide freeze, non-atomic federated imports, ~10 frontend correctness bugs |
+| `1.53.2` | *(current)* Build fix (`i32`/`i64` in the `tauri-commands`-only path had `master` red), 2 high-severity npm advisories closed, full documentation pass |
 
 ---
 
@@ -458,7 +465,7 @@ npm run android:build            # release APK (needs signing env vars)
 | **`OP_RETURN` anchor** | 39-byte Dogecoin script committing a Merkle root (`STEL` + `0x01` + 32-byte root) as a public timestamp. |
 | **Signed event** | A `signed_events` row Ed25519-signed by the acting user's own key — adds non-repudiation. |
 | **Lab profile** | The active discipline (`plant_tissue_culture` / `cell_culture` / `mycology`) that scopes all vocabulary and the biological domain. |
-| **Work packet (WP-xx)** | The roadmap's unit of work — a scoped, dependency-ordered task generally shipped as its own release (WP-01 … WP-73). |
+| **Work packet (WP-xx)** | The roadmap's unit of work — a scoped, dependency-ordered task generally shipped as its own release (WP-01 … WP-78). |
 | **Foundation-only** | A capability whose verifiable/computable core ships and is tested, but whose credential-bearing network transport is deliberately deferred and disclosed. |
 | **Passage / Split** | Passage continues the same specimen (`chain_seq++`); split archives the parent and forks new child lineages. |
 | **PDL** | Population Doubling Level — cell-culture growth metric tracked on subcultures. |
@@ -468,7 +475,7 @@ npm run android:build            # release APK (needs signing env vars)
 ## 🔗 Doc index
 
 > [!info] Repository documentation (each is a note in this vault)
-> - **Overview & guides:** [[README]] · [[UserManual]] · [[ROADMAP]] · [[CHANGELOG]] · [[skills]]
+> - **Overview & guides:** [[README]] · [[UserManual]] · [[ROADMAP]] · [[CHANGELOG]] · [[skills]] · `DailyClaudeRoutineCheckup`
 > - **Trust Layer:** [[merkle-checkpoints]] · [[merkle-proofs]] · [[on-chain-anchoring]] · [[signed-event-ledger]]
 > - **Federated exchange:** [[specimen-passport]] · [[taxonomy-registry]] · [[breeding-coordination]]
 > - **Extensibility & profiles:** [[vocabulary-system]] · [[plugin-authoring]]

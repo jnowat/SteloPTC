@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.53.1-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.53.2-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-640%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-677%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -276,12 +276,15 @@ every push and required to pass before merge.
 
 ```bash
 npm test                                                 # frontend (Vitest) — 113 assertions
-cd src-tauri && cargo test --lib --no-default-features   # backend — 640 tests
-npm run check                                            # svelte-check + TypeScript
+npm run check                                            # svelte-check + TypeScript — 0/0
+cd src-tauri && cargo test --lib --no-default-features   # backend, fast — 640 tests
+cd src-tauri && cargo test --lib                         # backend, full — 677 tests (CI gate)
 ```
 
-> `cargo test --lib --no-default-features` runs the 640 pure-logic tests without GTK/WebKit.
-> The full `tauri-commands` feature build (used in CI) adds the command-layer tests on top.
+> `--no-default-features` runs the 640 pure-logic tests without GTK/WebKit — convenient, but it
+> **skips the entire Tauri command layer**. The full build (what CI runs) adds those tests for
+> **677** in total. On Ubuntu, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` are all it needs; see
+> [`skills.md` §3](skills.md) before pushing changes under `src-tauri/src/commands/`.
 
 CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-android.yml`
 (release APK), plus non-blocking Criterion benchmarks.
@@ -295,8 +298,11 @@ CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-androi
 | [User Manual](UserManual.md) | End-to-end guide for lab staff — every workflow, step by step |
 | [Roadmap](ROADMAP.md) | The plan, the current state, and per-work-packet status |
 | [Changelog](CHANGELOG.md) | Release-by-release history |
+| [Contributor playbook](skills.md) | Architecture map, golden rules, verification gates, known traps |
+| **[Specification index](docs/README.md)** | **Every technical spec in `docs/`, with what each one covers** |
 | [Local AI setup](docs/local-ai.md) | Ollama / LocalAI configuration & troubleshooting |
 | [Merkle checkpoints](docs/merkle-checkpoints.md) · [proofs](docs/merkle-proofs.md) · [on-chain anchoring](docs/on-chain-anchoring.md) · [signed event ledger](docs/signed-event-ledger.md) | Hash-chain, tamper-evidence, anchoring & signed-ledger specifications |
+| [Specimen passport](docs/specimen-passport.md) · [taxonomy registry](docs/taxonomy-registry.md) · [breeding coordination](docs/breeding-coordination.md) | Federated, signed inter-lab exchange formats and verification |
 | [Regulatory exports](docs/regulatory-exports.md) | FDA / USDA / CITES export bundles |
 | [Plugin authoring](docs/plugin-authoring.md) | `.steloplugin` vocabulary-pack format |
 | [Vocabulary system](docs/vocabulary-system.md) | How lab-profile vocabularies work |
