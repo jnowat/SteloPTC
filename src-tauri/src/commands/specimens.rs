@@ -15,6 +15,67 @@ use tauri::State;
 //          contamination_flag, contamination_notes, origin_type)
 type ParentInfo = (String, String, String, Option<String>, Option<String>, Option<String>, i32, i32, i32, Option<String>, String, i32, Option<String>, Option<String>);
 
+/// Maps one row of the standard specimen SELECT into a `Specimen`.
+///
+/// All three read paths (`list_specimens`, `get_specimen`, `search_specimens`)
+/// select `s.*` plus the same four derived columns, so one mapper serves them
+/// all. It was previously written out three times, ~50 fields each: adding
+/// `lab_profile` meant editing three identical blocks, and missing one would
+/// have compiled cleanly while returning a wrong default on that path. A new
+/// column is now added in exactly one place.
+fn row_to_specimen(row: &rusqlite::Row) -> rusqlite::Result<Specimen> {
+    Ok(Specimen {
+        id: row.get("id")?,
+        accession_number: row.get("accession_number")?,
+        species_id: row.get("species_id")?,
+        species_code: row.get("species_code")?,
+        species_name: row.get("species_name")?,
+        project_id: row.get("project_id")?,
+        project_name: row.get("project_name")?,
+        stage: row.get("stage")?,
+        custom_stage: row.get("custom_stage")?,
+        provenance: row.get("provenance")?,
+        source_plant: row.get("source_plant")?,
+        initiation_date: row.get("initiation_date")?,
+        location: row.get("location")?,
+        location_details: row.get("location_details")?,
+        propagation_method: row.get("propagation_method")?,
+        acclimatization_status: row.get("acclimatization_status")?,
+        health_status: row.get("health_status")?,
+        disease_status: row.get("disease_status")?,
+        quarantine_flag: row.get::<_, i32>("quarantine_flag")? != 0,
+        quarantine_release_date: row.get("quarantine_release_date")?,
+        permit_number: row.get("permit_number")?,
+        permit_expiry: row.get("permit_expiry")?,
+        ip_flag: row.get::<_, i32>("ip_flag")? != 0,
+        ip_notes: row.get("ip_notes")?,
+        environmental_notes: row.get("environmental_notes")?,
+        subculture_count: row.get("subculture_count")?,
+        generation: row.get("generation")?,
+        lineage_passage_offset: row.get("lineage_passage_offset")?,
+        root_specimen_id: row.get("root_specimen_id")?,
+        parent_specimen_id: row.get("parent_specimen_id")?,
+        qr_code_data: row.get("qr_code_data")?,
+        notes: row.get("notes")?,
+        employee_id: row.get("employee_id")?,
+        is_archived: row.get::<_, i32>("is_archived")? != 0,
+        archived_at: row.get("archived_at")?,
+        contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
+        contamination_notes: row.get("contamination_notes")?,
+        created_by: row.get("created_by")?,
+        created_at: row.get("created_at")?,
+        updated_at: row.get("updated_at")?,
+        has_contamination: row.get::<_, i32>("has_contamination")? != 0,
+        strain_id: row.get("strain_id")?,
+        strain_chain_seq: row.get("strain_chain_seq")?,
+        cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
+        biosafety_level: row.get("biosafety_level").unwrap_or(None),
+        origin_type: row.get("origin_type").unwrap_or(None),
+        is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
+        lab_profile: row.get("lab_profile")?,
+    })
+}
+
 #[tauri::command]
 pub fn list_specimens(
     state: State<AppState>,
@@ -54,60 +115,15 @@ pub fn list_specimens(
          LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
 
-    let specimens = stmt.query_map(params![profile, pg.limit(), pg.offset()], |row| {
-        Ok(Specimen {
-            id: row.get("id")?,
-            accession_number: row.get("accession_number")?,
-            species_id: row.get("species_id")?,
-            species_code: row.get("species_code")?,
-            species_name: row.get("species_name")?,
-            project_id: row.get("project_id")?,
-            project_name: row.get("project_name")?,
-            stage: row.get("stage")?,
-            custom_stage: row.get("custom_stage")?,
-            provenance: row.get("provenance")?,
-            source_plant: row.get("source_plant")?,
-            initiation_date: row.get("initiation_date")?,
-            location: row.get("location")?,
-            location_details: row.get("location_details")?,
-            propagation_method: row.get("propagation_method")?,
-            acclimatization_status: row.get("acclimatization_status")?,
-            health_status: row.get("health_status")?,
-            disease_status: row.get("disease_status")?,
-            quarantine_flag: row.get::<_, i32>("quarantine_flag")? != 0,
-            quarantine_release_date: row.get("quarantine_release_date")?,
-            permit_number: row.get("permit_number")?,
-            permit_expiry: row.get("permit_expiry")?,
-            ip_flag: row.get::<_, i32>("ip_flag")? != 0,
-            ip_notes: row.get("ip_notes")?,
-            environmental_notes: row.get("environmental_notes")?,
-            subculture_count: row.get("subculture_count")?,
-            generation: row.get("generation")?,
-            lineage_passage_offset: row.get("lineage_passage_offset")?,
-            root_specimen_id: row.get("root_specimen_id")?,
-            parent_specimen_id: row.get("parent_specimen_id")?,
-            qr_code_data: row.get("qr_code_data")?,
-            notes: row.get("notes")?,
-            employee_id: row.get("employee_id")?,
-            is_archived: row.get::<_, i32>("is_archived")? != 0,
-            archived_at: row.get("archived_at")?,
-            contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
-            contamination_notes: row.get("contamination_notes")?,
-            created_by: row.get("created_by")?,
-            created_at: row.get("created_at")?,
-            updated_at: row.get("updated_at")?,
-            has_contamination: row.get::<_, i32>("has_contamination")? != 0,
-            strain_id: row.get("strain_id")?,
-            strain_chain_seq: row.get("strain_chain_seq")?,
-            cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
-            biosafety_level: row.get("biosafety_level").unwrap_or(None),
-            origin_type: row.get("origin_type").unwrap_or(None),
-            is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
-            lab_profile: row.get("lab_profile").unwrap_or_else(|_| "plant_tissue_culture".to_string()),
-        })
-    }).map_err(|e| e.to_string())?
-      .filter_map(|r| r.ok())
-      .collect::<Vec<_>>();
+    // Collected strictly: a row that fails to map is a schema drift or a type
+    // bug, and silently dropping it makes specimens disappear from the list with
+    // no error anywhere. In a lab whose records are subject to audit, showing 19
+    // of 20 cultures and calling it 20 is worse than showing an error.
+    let specimens = stmt
+        .query_map(params![profile, pg.limit(), pg.offset()], row_to_specimen)
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Failed to read specimen rows: {}", e))?;
 
     let total_pages = ((total as f64) / (pg.per_page as f64)).ceil() as u32;
 
@@ -139,58 +155,7 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                     FROM subcultures WHERE specimen_id = ?1 GROUP BY specimen_id) cf ON cf.specimen_id = s.id
          WHERE s.id = ?1",
         params![id],
-        |row| {
-            Ok(Specimen {
-                id: row.get("id")?,
-                accession_number: row.get("accession_number")?,
-                species_id: row.get("species_id")?,
-                species_code: row.get("species_code")?,
-                species_name: row.get("species_name")?,
-                project_id: row.get("project_id")?,
-                project_name: row.get("project_name")?,
-                stage: row.get("stage")?,
-                custom_stage: row.get("custom_stage")?,
-                provenance: row.get("provenance")?,
-                source_plant: row.get("source_plant")?,
-                initiation_date: row.get("initiation_date")?,
-                location: row.get("location")?,
-                location_details: row.get("location_details")?,
-                propagation_method: row.get("propagation_method")?,
-                acclimatization_status: row.get("acclimatization_status")?,
-                health_status: row.get("health_status")?,
-                disease_status: row.get("disease_status")?,
-                quarantine_flag: row.get::<_, i32>("quarantine_flag")? != 0,
-                quarantine_release_date: row.get("quarantine_release_date")?,
-                permit_number: row.get("permit_number")?,
-                permit_expiry: row.get("permit_expiry")?,
-                ip_flag: row.get::<_, i32>("ip_flag")? != 0,
-                ip_notes: row.get("ip_notes")?,
-                environmental_notes: row.get("environmental_notes")?,
-                subculture_count: row.get("subculture_count")?,
-                generation: row.get("generation")?,
-                lineage_passage_offset: row.get("lineage_passage_offset")?,
-                root_specimen_id: row.get("root_specimen_id")?,
-                parent_specimen_id: row.get("parent_specimen_id")?,
-                qr_code_data: row.get("qr_code_data")?,
-                notes: row.get("notes")?,
-                employee_id: row.get("employee_id")?,
-                is_archived: row.get::<_, i32>("is_archived")? != 0,
-                archived_at: row.get("archived_at")?,
-                contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
-                contamination_notes: row.get("contamination_notes")?,
-                created_by: row.get("created_by")?,
-                created_at: row.get("created_at")?,
-                updated_at: row.get("updated_at")?,
-                has_contamination: row.get::<_, i32>("has_contamination")? != 0,
-                strain_id: row.get("strain_id")?,
-                strain_chain_seq: row.get("strain_chain_seq")?,
-                cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
-                biosafety_level: row.get("biosafety_level").unwrap_or(None),
-                origin_type: row.get("origin_type").unwrap_or(None),
-                is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
-                lab_profile: row.get("lab_profile").unwrap_or_else(|_| "plant_tissue_culture".to_string()),
-            })
-        },
+        row_to_specimen,
     ).map_err(|e| format!("Specimen not found: {}", e))
 }
 
@@ -605,60 +570,13 @@ pub fn search_specimens(
     let bind_refs2: Vec<&dyn rusqlite::types::ToSql> = bind_values.iter().map(|v| v.as_ref()).collect();
     let mut stmt = db.conn.prepare(&query_sql).map_err(|e| e.to_string())?;
 
-    let specimens = stmt.query_map(bind_refs2.as_slice(), |row| {
-        Ok(Specimen {
-            id: row.get("id")?,
-            accession_number: row.get("accession_number")?,
-            species_id: row.get("species_id")?,
-            species_code: row.get("species_code")?,
-            species_name: row.get("species_name")?,
-            project_id: row.get("project_id")?,
-            project_name: row.get("project_name")?,
-            stage: row.get("stage")?,
-            custom_stage: row.get("custom_stage")?,
-            provenance: row.get("provenance")?,
-            source_plant: row.get("source_plant")?,
-            initiation_date: row.get("initiation_date")?,
-            location: row.get("location")?,
-            location_details: row.get("location_details")?,
-            propagation_method: row.get("propagation_method")?,
-            acclimatization_status: row.get("acclimatization_status")?,
-            health_status: row.get("health_status")?,
-            disease_status: row.get("disease_status")?,
-            quarantine_flag: row.get::<_, i32>("quarantine_flag")? != 0,
-            quarantine_release_date: row.get("quarantine_release_date")?,
-            permit_number: row.get("permit_number")?,
-            permit_expiry: row.get("permit_expiry")?,
-            ip_flag: row.get::<_, i32>("ip_flag")? != 0,
-            ip_notes: row.get("ip_notes")?,
-            environmental_notes: row.get("environmental_notes")?,
-            subculture_count: row.get("subculture_count")?,
-            generation: row.get("generation")?,
-            lineage_passage_offset: row.get("lineage_passage_offset")?,
-            root_specimen_id: row.get("root_specimen_id")?,
-            parent_specimen_id: row.get("parent_specimen_id")?,
-            qr_code_data: row.get("qr_code_data")?,
-            notes: row.get("notes")?,
-            employee_id: row.get("employee_id")?,
-            is_archived: row.get::<_, i32>("is_archived")? != 0,
-            archived_at: row.get("archived_at")?,
-            contamination_flag: row.get::<_, i32>("contamination_flag")? != 0,
-            contamination_notes: row.get("contamination_notes")?,
-            created_by: row.get("created_by")?,
-            created_at: row.get("created_at")?,
-            updated_at: row.get("updated_at")?,
-            has_contamination: row.get::<_, i32>("has_contamination")? != 0,
-            strain_id: row.get("strain_id")?,
-            strain_chain_seq: row.get("strain_chain_seq")?,
-            cumulative_pdl: row.get("cumulative_pdl").unwrap_or(None),
-            biosafety_level: row.get("biosafety_level").unwrap_or(None),
-            origin_type: row.get("origin_type").unwrap_or(None),
-            is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
-            lab_profile: row.get("lab_profile").unwrap_or_else(|_| "plant_tissue_culture".to_string()),
-        })
-    }).map_err(|e| e.to_string())?
-      .filter_map(|r| r.ok())
-      .collect::<Vec<_>>();
+    // Strict for the same reason as list_specimens: a partially-populated search
+    // result is indistinguishable from a genuinely small one.
+    let specimens = stmt
+        .query_map(bind_refs2.as_slice(), row_to_specimen)
+        .map_err(|e| e.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Failed to read specimen rows: {}", e))?;
 
     let total_pages = ((total as f64) / (pg.per_page as f64)).ceil() as u32;
 
