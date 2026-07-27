@@ -2240,13 +2240,15 @@ pub fn export_strain_pedigree(
 
     let mut seen_event_ids = std::collections::HashSet::new();
     let mut events: Vec<HybridizationEventRecord> = Vec::new();
+    // Prepared once, outside the loop: the SQL is identical every iteration, so
+    // re-preparing it per strain re-parses and re-plans the same statement.
+    let mut stmt = conn.prepare(
+        "SELECT id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
+                parent_a_chain_seq, parent_b_chain_seq, notes, \
+                generation_label, backcross_depth, created_at \
+         FROM hybridization_events WHERE hybrid_strain_id = ?1",
+    )?;
     for sid in &strain_ids {
-        let mut stmt = conn.prepare(
-            "SELECT id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
-                    parent_a_chain_seq, parent_b_chain_seq, notes, \
-                    generation_label, backcross_depth, created_at \
-             FROM hybridization_events WHERE hybrid_strain_id = ?1",
-        )?;
         let rows = stmt.query_map(params![sid], |row| {
             Ok(HybridizationEventRecord {
                 id: row.get("id")?,
@@ -3064,8 +3066,9 @@ fn compute_reanchor_scope(conn: &Connection, taxon_id: &str) -> DbResult<Reancho
 
     let mut strain_ids = Vec::new();
     let mut specimen_count_by_species = Vec::new();
+    // Prepared once, outside the loop — see export_strain_pedigree.
+    let mut stmt = conn.prepare("SELECT id FROM strains WHERE species_id = ?1 AND is_archived = 0")?;
     for species_id in &species_ids {
-        let mut stmt = conn.prepare("SELECT id FROM strains WHERE species_id = ?1 AND is_archived = 0")?;
         let ids: Vec<String> = stmt
             .query_map([species_id], |r| r.get(0))?
             .filter_map(|r| r.ok())

@@ -296,6 +296,28 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         apply(conn, 56, migration_056_dashboard_aggregate_indexes)?;
     }
 
+    if current < 57 {
+        apply(conn, 57, migration_057_media_hormones_batch_index)?;
+    }
+
+    Ok(())
+}
+
+/// Index `media_hormones.media_batch_id`.
+///
+/// The column is a foreign key that every hormone lookup filters on, and it had
+/// no index — so `list_media`'s per-batch hormone query was a full scan of the
+/// table, once per batch. Combined with the N+1 loop (now a single grouped
+/// query) that made the media list quadratic in batch count: 160ms at 1,000
+/// batches, versus 1.2ms with both fixed.
+///
+/// The index also covers the `ON DELETE CASCADE` on this foreign key, which
+/// SQLite otherwise has to resolve with a scan on every media-batch delete.
+fn migration_057_media_hormones_batch_index(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_media_hormones_batch
+             ON media_hormones(media_batch_id);",
+    )?;
     Ok(())
 }
 
