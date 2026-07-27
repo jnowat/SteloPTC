@@ -26,6 +26,10 @@ pub struct AppState {
     // WP-63: in-memory materialized dashboard cache (never persisted — see
     // db::dashboard for the TTL/invalidation logic).
     pub dashboard_cache: Mutex<Option<db::dashboard::DashboardCacheEntry>>,
+    /// Failed-login counters backing the brute-force lockout. In-memory and
+    /// per-process by design (see `auth::LoginThrottle`) — deliberately not
+    /// persisted, so a failed guess never causes a database write.
+    pub login_throttle: auth::LoginThrottle,
 }
 
 #[cfg(feature = "tauri-commands")]
@@ -47,6 +51,7 @@ pub fn run() {
     let state = AppState {
         db: Mutex::new(db),
         dashboard_cache: Mutex::new(None),
+        login_throttle: auth::LoginThrottle::default(),
     };
 
     tauri::Builder::default()
