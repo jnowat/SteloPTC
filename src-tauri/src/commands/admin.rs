@@ -158,6 +158,10 @@ pub fn load_demo_data(
         );
     }
 
+    // Demo cultures are filed under the lab that is active when they are loaded,
+    // so they appear in that lab and nowhere else.
+    let demo_lab_profile = crate::db::vocabulary::active_profile(&db.conn);
+
     // Resolve seeded species — gracefully skip any that are missing.
     // Vec entries: (species_id, code, stage, location)
     let mut roots: Vec<(String, &str, &str, &str)> = Vec::new();
@@ -222,10 +226,10 @@ pub fn load_demo_data(
         tx.execute(
             "INSERT INTO specimens \
              (id, accession_number, species_id, stage, initiation_date, location, \
-              health_status, qr_code_data, notes, created_by) \
+              health_status, qr_code_data, notes, created_by, lab_profile) \
              VALUES (?1, ?2, ?3, ?4, '2026-01-10', ?5, 3, ?6, \
-                     'Demo specimen — remove via Admin → Reset Database', ?7)",
-            params![sp_id, acc, species_id, stage, location, qr, user.id],
+                     'Demo specimen — remove via Admin → Reset Database', ?7, ?8)",
+            params![sp_id, acc, species_id, stage, location, qr, user.id, demo_lab_profile],
         ).map_err(|e| format!("Failed to create demo specimen {}: {}", code, e))?;
         // Seed specimen's chain from the species lineage (falls back to ZERO_HASH
         // for the default seeded species which predate the hash chain)
@@ -292,10 +296,12 @@ pub fn load_demo_data(
             tx.execute(
                 "INSERT INTO specimens \
                  (id, accession_number, species_id, stage, initiation_date, location, \
-                  health_status, qr_code_data, parent_specimen_id, notes, created_by) \
+                  health_status, qr_code_data, parent_specimen_id, notes, created_by, \
+                  lab_profile) \
                  VALUES (?1, ?2, ?3, 'shoot', '2026-03-20', ?4, 3, ?5, ?6, \
-                         'Demo split specimen — remove via Admin → Reset Database', ?7)",
-                params![child_id, child_acc, first_species_id, location, child_qr, parent_id, user.id],
+                         'Demo split specimen — remove via Admin → Reset Database', ?7, ?8)",
+                params![child_id, child_acc, first_species_id, location, child_qr, parent_id, user.id,
+                        demo_lab_profile],
             ).map_err(|e| format!("Failed to create demo split specimen {}: {}", child_acc, e))?;
             queries::log_audit_for_child(
                 conn, Some(&user.id), "create", "specimen", Some(&child_id),

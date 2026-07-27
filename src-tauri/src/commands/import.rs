@@ -86,6 +86,9 @@ pub fn import_xlsx(
     }
 
     let conn = &db.conn;
+    // Imported rows land in the lab that is active at import time, and only
+    // match existing rows in that lab (see the accession lookup below).
+    let active_lab_profile = crate::db::vocabulary::active_profile(conn);
     let mut errors: Vec<RowError> = Vec::new();
     let mut spec_stats = SheetStats::default();
     let mut sub_stats = SheetStats::default();
@@ -162,9 +165,15 @@ pub fn import_xlsx(
         let notes = opt(col(row, 10));
         let ts = now();
 
+        // Accession numbers are globally unique, but a lab must not be able to
+        // silently overwrite another lab's culture by importing a sheet that
+        // happens to reuse its accession. Matching only within the active lab
+        // means a cross-lab accession collision falls through to the insert
+        // branch, where the UNIQUE constraint rejects it as a visible row error
+        // rather than mutating a culture the importer cannot even see.
         match conn.query_row(
-            "SELECT id FROM specimens WHERE accession_number = ?1",
-            params![accession],
+            "SELECT id FROM specimens WHERE accession_number = ?1 AND lab_profile = ?2",
+            params![accession, active_lab_profile],
             |r| r.get::<_, String>(0),
         ) {
             Ok(id) => {
@@ -186,11 +195,12 @@ pub fn import_xlsx(
                 if let Err(e) = conn.execute(
                     "INSERT INTO specimens (id, accession_number, species_id, stage, custom_stage,
                      provenance, initiation_date, location, health_status, quarantine_flag,
-                     subculture_count, notes, is_archived, created_by, created_at, updated_at)
-                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,0,?13,?14,?14)",
+                     subculture_count, notes, is_archived, created_by, created_at, updated_at,
+                     lab_profile)
+                     VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,0,?13,?14,?14,?15)",
                     params![id, accession, species_id, stage, custom_stage, provenance,
                              initiation_date, location, health_status, quarantine,
-                             subculture_count, notes, user.id, ts],
+                             subculture_count, notes, user.id, ts, active_lab_profile],
                 ) {
                     errors.push(RowError { sheet: "Specimens".into(), row: row_num, message: e.to_string() });
                 } else {

@@ -884,9 +884,10 @@ pub fn check_profile_change_allowed(
     match confirmation.map(str::trim) {
         Some("CHANGE PROFILE") => Ok(()),
         _ => Err(format!(
-            "This lab has {} specimen{}. \
-             Changing the active lab profile may affect vocabulary lookups and stage \
-             validation for existing data. To confirm the change, type exactly: CHANGE PROFILE",
+            "This lab has {} specimen{}. Switching the active lab profile changes which \
+             lab you are viewing — existing cultures keep the lab they were created in \
+             and will be hidden until you switch back. Nothing is deleted or relabelled. \
+             To confirm the change, type exactly: CHANGE PROFILE",
             specimen_count,
             if specimen_count == 1 { "" } else { "s" }
         )),
@@ -2517,6 +2518,23 @@ pub fn thaw_frozen_vial(
     let child_generation = if vial.specimen_id.is_some() { parent_gen + 1 } else { 0 };
     let child_root = parent_root.or_else(|| vial.specimen_id.clone());
 
+    // A thawed vial re-enters the lab its source specimen came from, so the
+    // recovered culture inherits that lab rather than whichever profile happens
+    // to be active at thaw time. Vials with no source specimen (banked stock
+    // imported without lineage) fall back to the active lab.
+    let child_lab_profile: String = vial
+        .specimen_id
+        .as_ref()
+        .and_then(|src_id| {
+            conn.query_row(
+                "SELECT lab_profile FROM specimens WHERE id = ?1",
+                params![src_id],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+        })
+        .unwrap_or_else(|| crate::db::vocabulary::active_profile(conn));
+
     let tx = conn.unchecked_transaction()
         .map_err(|e| DbError::Constraint(format!("Transaction start failed: {}", e)))?;
 
@@ -2534,8 +2552,8 @@ pub fn thaw_frozen_vial(
          (id, accession_number, species_id, stage, initiation_date,
           location, parent_specimen_id, root_specimen_id, generation,
           lineage_passage_offset, cumulative_pdl, qr_code_data,
-          notes, employee_id, created_by)
-         VALUES (?1,?2,?3,'thaw_recovery',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+          notes, employee_id, created_by, lab_profile)
+         VALUES (?1,?2,?3,'thaw_recovery',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
         params![
             specimen_id,
             accession,
@@ -2551,6 +2569,7 @@ pub fn thaw_frozen_vial(
             notes,
             employee_id,
             created_by,
+            child_lab_profile,
         ],
     )?;
 
@@ -5657,6 +5676,7 @@ mod tests {
                 accession_number TEXT NOT NULL UNIQUE,
                 species_id TEXT NOT NULL,
                 stage TEXT NOT NULL DEFAULT 'explant',
+                lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture',
                 initiation_date TEXT NOT NULL,
                 location TEXT,
                 parent_specimen_id TEXT,

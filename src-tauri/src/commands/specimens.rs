@@ -30,8 +30,14 @@ pub fn list_specimens(
         per_page: per_page.unwrap_or(50),
     };
 
+    // Scoped to the active lab: a mycology lab must never see plant tissue
+    // culture or cell culture cultures in its specimen list, and vice versa.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
+
     let total: i64 = db.conn.query_row(
-        "SELECT COUNT(*) FROM specimens WHERE is_archived = 0", [], |r| r.get(0)
+        "SELECT COUNT(*) FROM specimens WHERE is_archived = 0 AND lab_profile = ?1",
+        params![profile],
+        |r| r.get(0),
     ).map_err(|e| e.to_string())?;
 
     let mut stmt = db.conn.prepare(
@@ -43,12 +49,12 @@ pub fn list_specimens(
          LEFT JOIN projects p ON s.project_id = p.id
          LEFT JOIN (SELECT specimen_id, MAX(contamination_flag) AS has_contamination
                     FROM subcultures GROUP BY specimen_id) cf ON cf.specimen_id = s.id
-         WHERE s.is_archived = 0
+         WHERE s.is_archived = 0 AND s.lab_profile = ?1
          ORDER BY s.created_at DESC
-         LIMIT ?1 OFFSET ?2"
+         LIMIT ?2 OFFSET ?3"
     ).map_err(|e| e.to_string())?;
 
-    let specimens = stmt.query_map(params![pg.limit(), pg.offset()], |row| {
+    let specimens = stmt.query_map(params![profile, pg.limit(), pg.offset()], |row| {
         Ok(Specimen {
             id: row.get("id")?,
             accession_number: row.get("accession_number")?,
@@ -97,6 +103,7 @@ pub fn list_specimens(
             biosafety_level: row.get("biosafety_level").unwrap_or(None),
             origin_type: row.get("origin_type").unwrap_or(None),
             is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
+            lab_profile: row.get("lab_profile").unwrap_or_else(|_| "plant_tissue_culture".to_string()),
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -117,6 +124,9 @@ pub fn list_specimens(
 pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result<Specimen, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
+    // A specimen ID that leaked across a profile switch (QR code, bookmark,
+    // stale UI state) must not resolve under the wrong lab.
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &id)?;
 
     db.conn.query_row(
         "SELECT s.*, sp.species_code, sp.genus || ' ' || sp.species_name as species_name,
@@ -178,6 +188,7 @@ pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result
                 biosafety_level: row.get("biosafety_level").unwrap_or(None),
                 origin_type: row.get("origin_type").unwrap_or(None),
                 is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
+                lab_profile: row.get("lab_profile").unwrap_or_else(|_| "plant_tissue_culture".to_string()),
             })
         },
     ).map_err(|e| format!("Specimen not found: {}", e))
@@ -245,9 +256,9 @@ pub fn create_specimen(
          propagation_method, acclimatization_status, health_status, disease_status,
          quarantine_flag, permit_number, permit_expiry, ip_flag, ip_notes,
          environmental_notes, parent_specimen_id, qr_code_data, notes, employee_id, created_by,
-         strain_id, strain_chain_seq, origin_type)
+         strain_id, strain_chain_seq, origin_type, lab_profile)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29)",
+                 ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30)",
         params![
             id, accession, request.species_id, request.project_id, request.stage, request.custom_stage,
             request.provenance, request.source_plant, request.initiation_date, request.location,
@@ -257,6 +268,11 @@ pub fn create_specimen(
             request.ip_notes, request.environmental_notes, request.parent_specimen_id, qr_data,
             request.notes, request.employee_id, user.id,
             request.strain_id, strain_chain_seq, request.origin_type,
+            // Stamp lab membership from the profile active right now. `profile`
+            // was already resolved above for the stage check, so the stage the
+            // specimen is created in and the lab it is filed under can never
+            // disagree.
+            profile,
         ],
     ).map_err(|e| format!("Failed to create specimen: {}", e))?;
 
@@ -315,6 +331,7 @@ pub fn update_specimen(
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &request.id)?;
 
     let mut updates = Vec::new();
     let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -394,6 +411,7 @@ pub fn delete_specimen(state: State<AppState>, token: String, id: String) -> Res
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can delete specimens".to_string());
     }
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &id)?;
 
     // Archive instead of hard delete
     db.conn.execute(
@@ -437,6 +455,12 @@ pub fn search_specimens(
 
     let mut conditions = Vec::new();
     let mut bind_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    // Lab isolation is unconditional and is deliberately the first predicate —
+    // it is not a user-supplied filter and there is no search parameter that can
+    // widen it to another lab's cultures.
+    conditions.push("s.lab_profile = ?1".to_string());
+    bind_values.push(Box::new(crate::db::vocabulary::active_profile(&db.conn)));
 
     let show_archived = params_input.archived.unwrap_or(false);
     if !show_archived {
@@ -572,6 +596,7 @@ pub fn search_specimens(
             biosafety_level: row.get("biosafety_level").unwrap_or(None),
             origin_type: row.get("origin_type").unwrap_or(None),
             is_best_performer: row.get::<_, i32>("is_best_performer").unwrap_or(0) != 0,
+            lab_profile: row.get("lab_profile").unwrap_or_else(|_| "plant_tissue_culture".to_string()),
         })
     }).map_err(|e| e.to_string())?
       .filter_map(|r| r.ok())
@@ -619,12 +644,17 @@ pub fn bulk_archive_specimens(
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can archive specimens".to_string());
     }
+    // Bulk operations take a caller-supplied ID list, so the lab predicate goes
+    // into the UPDATE itself: an ID belonging to another lab matches no row,
+    // contributes nothing to `count`, and produces no audit or signed event.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     let mut count = 0usize;
     for id in &ids {
         let n = db.conn.execute(
             "UPDATE specimens SET is_archived = 1, archived_at = datetime('now'),
-             updated_at = datetime('now') WHERE id = ?1 AND is_archived = 0",
-            params![id],
+             updated_at = datetime('now')
+             WHERE id = ?1 AND is_archived = 0 AND lab_profile = ?2",
+            params![id, profile],
         ).map_err(|e| e.to_string())?;
         count += n;
         if n > 0 {
@@ -664,12 +694,13 @@ pub fn bulk_update_location(
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     let mut count = 0usize;
     for id in &ids {
         let n = db.conn.execute(
             "UPDATE specimens SET location = ?1, updated_at = datetime('now')
-             WHERE id = ?2 AND is_archived = 0",
-            params![location, id],
+             WHERE id = ?2 AND is_archived = 0 AND lab_profile = ?3",
+            params![location, id, profile],
         ).map_err(|e| e.to_string())?;
         count += n;
         if n > 0 {
@@ -707,6 +738,13 @@ pub fn split_specimen(
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &request.parent_specimen_id)?;
+    // Children inherit the parent's lab rather than re-reading the active
+    // profile. The guard above already proves the two agree, but reading it from
+    // the parent keeps the invariant "a lineage never spans two labs" true by
+    // construction rather than by coincidence of ordering.
+    let parent_lab_profile =
+        crate::db::vocabulary::specimen_lab_profile(&db.conn, &request.parent_specimen_id)?;
 
     // Fetch parent info — fail if archived
     let (parent_species_id, _parent_species_code, parent_stage,
@@ -900,8 +938,9 @@ pub fn split_specimen(
               location, health_status, qr_code_data, parent_specimen_id, \
               provenance, source_plant, notes, created_by, \
               generation, lineage_passage_offset, root_specimen_id, \
-              contamination_flag, contamination_notes, cumulative_pdl, origin_type) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+              contamination_flag, contamination_notes, cumulative_pdl, origin_type, \
+              lab_profile) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
             params![
                 child_id, accession, parent_species_id, child_stage, request.date,
                 child_location, child_health, qr_data, request.parent_specimen_id,
@@ -909,6 +948,7 @@ pub fn split_specimen(
                 child_generation, child_passage_offset, child_root_id,
                 child_contamination_flag_i32, child_contamination_notes,
                 parent_cumulative_pdl, parent_origin_type,
+                parent_lab_profile,
             ],
         ).map_err(|e| format!("Failed to create child specimen {}: {}", i + 1, e))?;
 
@@ -1025,6 +1065,7 @@ pub fn get_specimen_family(
 ) -> Result<Vec<FamilyMember>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let _user = auth_service::validate_session(&db, &token)?;
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &id)?;
 
     // Determine the root: if this specimen has a root_specimen_id it IS the root,
     // otherwise the specimen itself is the root.
@@ -1094,8 +1135,8 @@ pub fn bulk_update_stage(
     for id in &ids {
         let n = db.conn.execute(
             "UPDATE specimens SET stage = ?1, updated_at = datetime('now')
-             WHERE id = ?2 AND is_archived = 0",
-            params![stage, id],
+             WHERE id = ?2 AND is_archived = 0 AND lab_profile = ?3",
+            params![stage, id, profile],
         ).map_err(|e| e.to_string())?;
         count += n;
         if n > 0 {

@@ -61,6 +61,12 @@ pub struct Specimen {
     /// Lightweight best-performer selection flag. True when this culture has been
     /// marked as the top performer in its generation for strain improvement purposes.
     pub is_best_performer: bool,
+    /// Which lab this culture belongs to: 'plant_tissue_culture', 'cell_culture'
+    /// or 'mycology'. Stamped from the active profile at creation and never
+    /// rewritten — a mycology culture stays a mycology culture even after an
+    /// admin switches the active profile. Reads are scoped to the active
+    /// profile, so this is what keeps the three lab types from commingling.
+    pub lab_profile: String,
 }
 
 #[derive(Debug, Deserialize)]

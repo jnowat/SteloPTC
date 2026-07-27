@@ -273,6 +273,80 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         conn.execute("INSERT INTO schema_version (version) VALUES (52)", [])?;
     }
 
+    if current < 53 {
+        migration_053_specimen_lab_profile(conn)?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (53)", [])?;
+    }
+
+    Ok(())
+}
+
+fn migration_053_specimen_lab_profile(conn: &Connection) -> DbResult<()> {
+    // Hard isolation between lab types (mycology / plant tissue culture / cell
+    // culture).
+    //
+    // Before this migration the active lab type lived in exactly one place —
+    // `app_config.lab_profile` — and no specimen recorded which lab it belonged
+    // to. Profile "scoping" was inferred at read time by joining
+    // `specimens.stage` against `stages.profile`. That proxy is wrong in both
+    // directions:
+    //
+    //   * Stage codes are NOT unique across profiles. `archived`, `custom`,
+    //     `suspension`, `contaminated`, `discarded` and `other` are each defined
+    //     for two or three profiles, so a mycology culture sitting in
+    //     `contaminated` was counted by the cell-culture dashboard, and an
+    //     archived plant explant was counted by the cell-culture dashboard too.
+    //   * `list_specimens` / `search_specimens` never applied the join at all,
+    //     so every specimen from every lab type was returned regardless of the
+    //     active profile — the dashboard and the specimen list disagreed about
+    //     what was in the lab.
+    //
+    // The fix is to make lab membership an explicit, immutable property of the
+    // row, stamped at creation from the profile active at the time. Switching
+    // `app_config.lab_profile` then changes which lab you are *looking at*; it
+    // never re-labels, hides, or merges data that already exists.
+    //
+    // NOTE for future schema work: any migration that rebuilds `specimens`
+    // (the `specimens_v16` pattern used by migration 016) MUST carry
+    // `lab_profile` across, or every existing culture silently collapses back
+    // into the default profile.
+    conn.execute_batch(
+        "ALTER TABLE specimens
+             ADD COLUMN lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture';",
+    )?;
+
+    // Backfill pass 1 — unambiguous stage codes. When a specimen's stage code is
+    // defined for exactly one profile, that profile is a reliable answer and is
+    // strictly better than assuming the currently-active one (a lab that has
+    // switched profiles at some point holds a genuine mix).
+    conn.execute(
+        "UPDATE specimens
+            SET lab_profile = (SELECT st.profile FROM stages st WHERE st.code = specimens.stage)
+          WHERE (SELECT COUNT(DISTINCT st.profile) FROM stages st WHERE st.code = specimens.stage) = 1",
+        [],
+    )?;
+
+    // Backfill pass 2 — ambiguous (shared) or unknown stage codes. There is no
+    // information left to recover, so these fall back to the profile the lab is
+    // currently configured for, which is the best available guess and matches
+    // what the pre-migration dashboard would have shown them under.
+    conn.execute(
+        "UPDATE specimens
+            SET lab_profile = COALESCE(
+                    (SELECT lab_profile FROM app_config WHERE id = 1),
+                    'plant_tissue_culture')
+          WHERE (SELECT COUNT(DISTINCT st.profile) FROM stages st WHERE st.code = specimens.stage) <> 1",
+        [],
+    )?;
+
+    // Every profile-scoped read filters on lab_profile first, so it leads the
+    // index; is_archived/created_at match the ORDER BY of the list and search
+    // queries.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_specimens_lab_profile
+             ON specimens(lab_profile, is_archived, created_at);",
+    )?;
+
     Ok(())
 }
 
@@ -4831,5 +4905,116 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM compliance_flag_waivers WHERE revoked = 0", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    // ── Migration 053: lab-type isolation ─────────────────────────────────────
+
+    /// Inserts a specimen without naming `lab_profile`, the way every
+    /// pre-migration-053 row was written.
+    fn insert_legacy_specimen(conn: &Connection, id: &str, acc: &str, stage: &str) {
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp_iso','G','sp','ISO') ON CONFLICT(id) DO NOTHING",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date) \
+             VALUES (?1, ?2, 'sp_iso', ?3, '2026-01-01')",
+            rusqlite::params![id, acc, stage],
+        )
+        .unwrap();
+    }
+
+    fn lab_of(conn: &Connection, id: &str) -> String {
+        conn.query_row(
+            "SELECT lab_profile FROM specimens WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn migration_053_adds_lab_profile_defaulting_to_ptc() {
+        let conn = migrated_db();
+        insert_legacy_specimen(&conn, "s1", "ACC-ISO-1", "explant");
+        assert_eq!(lab_of(&conn, "s1"), "plant_tissue_culture");
+    }
+
+    #[test]
+    fn migration_053_backfills_unambiguous_stage_codes_to_their_own_lab() {
+        // The whole point of the backfill: a culture sitting in a stage that only
+        // one lab defines is filed under that lab, NOT under whatever profile the
+        // app happens to be set to. 'grain_spawn' is mycology-only and
+        // 'trypsinization' is cell-culture-only.
+        let conn = Connection::open_in_memory().unwrap();
+        // Run every migration except the one under test, so we can seed
+        // pre-migration rows and then apply 053 to them.
+        run_all(&conn).unwrap();
+        seed_defaults(&conn).unwrap();
+        conn.execute("DELETE FROM specimens", []).unwrap();
+        // Drop the index first — it references the column.
+        conn.execute("DROP INDEX IF EXISTS idx_specimens_lab_profile", []).unwrap();
+        conn.execute("ALTER TABLE specimens DROP COLUMN lab_profile", []).unwrap();
+
+        insert_legacy_specimen(&conn, "myco1", "ACC-M-1", "grain_spawn");
+        insert_legacy_specimen(&conn, "cc1", "ACC-C-1", "adherent");
+        insert_legacy_specimen(&conn, "ptc1", "ACC-P-1", "explant");
+
+        migration_053_specimen_lab_profile(&conn).unwrap();
+
+        assert_eq!(lab_of(&conn, "myco1"), "mycology");
+        assert_eq!(lab_of(&conn, "cc1"), "cell_culture");
+        assert_eq!(lab_of(&conn, "ptc1"), "plant_tissue_culture");
+    }
+
+    #[test]
+    fn migration_053_falls_back_to_active_profile_for_shared_stage_codes() {
+        // 'archived' is defined for BOTH plant_tissue_culture and cell_culture —
+        // exactly the ambiguity that made the old stage-code join leak between
+        // labs. There is no recoverable answer, so such rows go to the lab the
+        // app is currently configured for.
+        let conn = Connection::open_in_memory().unwrap();
+        run_all(&conn).unwrap();
+        seed_defaults(&conn).unwrap();
+        conn.execute("DELETE FROM specimens", []).unwrap();
+        // Drop the index first — it references the column.
+        conn.execute("DROP INDEX IF EXISTS idx_specimens_lab_profile", []).unwrap();
+        conn.execute("ALTER TABLE specimens DROP COLUMN lab_profile", []).unwrap();
+        conn.execute("UPDATE app_config SET lab_profile = 'mycology' WHERE id = 1", [])
+            .unwrap();
+
+        insert_legacy_specimen(&conn, "amb1", "ACC-A-1", "archived");
+
+        migration_053_specimen_lab_profile(&conn).unwrap();
+
+        assert_eq!(
+            lab_of(&conn, "amb1"),
+            "mycology",
+            "an ambiguous stage code must fall back to the active lab"
+        );
+    }
+
+    #[test]
+    fn shared_stage_codes_really_do_exist_across_profiles() {
+        // Guards the premise of migration 053. If a future vocabulary change made
+        // stage codes unique per profile, this test failing would be the signal
+        // that the ambiguity argument no longer holds — not a reason to drop the
+        // column, but a reason to revisit the backfill comment.
+        let conn = migrated_db();
+        seed_defaults(&conn).unwrap();
+        let shared: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM (SELECT code FROM stages GROUP BY code HAVING COUNT(DISTINCT profile) > 1)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            shared > 0,
+            "stage codes are expected to be shared across profiles; that is why lab membership \
+             cannot be inferred from the stage"
+        );
     }
 }
