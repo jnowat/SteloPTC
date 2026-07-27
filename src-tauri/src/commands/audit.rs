@@ -284,8 +284,11 @@ pub fn verify_audit_lineage(
             entry_hash: r.get(8)?,
         })
     }).map_err(|e| e.to_string())?
-      .filter_map(|r| r.ok())
-      .collect();
+      // Strict: dropping a row here would shorten the chain, and the
+      // gap/hash checks would then report it as TAMPERING. A mapping
+      // failure must not masquerade as tamper evidence.
+      .collect::<rusqlite::Result<Vec<_>>>()
+      .map_err(|e| format!("Failed to read audit rows to verify the audit lineage: {}", e))?;
 
     if rows.is_empty() {
         return Ok(VerifyChainResult {
@@ -422,8 +425,11 @@ pub fn create_audit_checkpoint(
     let hashes: Vec<String> = stmt
         .query_map(rusqlite::params![&lineage_id, actual_start, actual_end], |r| r.get::<_, String>(0))
         .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+        // Strict: dropping a row here would shorten the chain, and the
+        // gap/hash checks would then report it as TAMPERING. A mapping
+        // failure must not masquerade as tamper evidence.
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Failed to read audit rows to build the checkpoint: {}", e))?;
 
     if hashes.is_empty() {
         return Err(format!(
@@ -529,8 +535,11 @@ pub fn verify_against_checkpoint(
                 entry_hash: r.get(8)?,
             }),
         ).map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+        // Strict: dropping a row here would shorten the chain, and the
+        // gap/hash checks would then report it as TAMPERING. A mapping
+        // failure must not masquerade as tamper evidence.
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|e| format!("Failed to read audit rows to verify against the checkpoint: {}", e))?;
 
     let actual_count = entries.len() as i64;
 
@@ -751,8 +760,11 @@ pub fn export_audit_proof(
             entry_hash: r.get(8)?,
         }),
     ).map_err(|e| e.to_string())?
-    .filter_map(|r| r.ok())
-    .collect();
+    // Strict: dropping a row here would shorten the chain, and the
+    // gap/hash checks would then report it as TAMPERING. A mapping
+    // failure must not masquerade as tamper evidence.
+    .collect::<rusqlite::Result<Vec<_>>>()
+    .map_err(|e| format!("Failed to read audit rows to export the audit proof: {}", e))?;
 
     if rows.is_empty() {
         return Err(format!(
