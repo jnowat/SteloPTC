@@ -147,6 +147,15 @@ pub fn build_part11_documents(conn: &Connection, from: &str, to: &str, lab_name:
 /// auto-populates from live specimen/species records. SteloPTC does not
 /// submit to APHIS; this produces a ready-to-review, ready-to-submit package.
 pub fn build_usda_permit_prefill(conn: &Connection, specimen_ids: &[String], authorized_scientist: &str) -> Result<serde_json::Value, String> {
+    // Refuse rather than filter. These ids are caller-supplied, and this
+    // document becomes a signed permit application: silently dropping a
+    // requested specimen because it belongs to another lab would produce an
+    // application that is quietly incomplete, which is worse than one that
+    // fails to generate.
+    for id in specimen_ids {
+        crate::db::vocabulary::require_active_lab_profile(conn, id)?;
+    }
+
     let mut specimens = Vec::new();
     for id in specimen_ids {
         let row = conn
@@ -211,6 +220,11 @@ pub fn build_usda_permit_prefill(conn: &Connection, specimen_ids: &[String], aut
 /// `parent_specimen_id`, every propagation (subculture) record in
 /// chronological order, and an audit-chain verification summary.
 pub fn build_cites_dossier(conn: &Connection, root_specimen_id: &str, cites_appendix: &str) -> Result<serde_json::Value, String> {
+    // Same reasoning as build_usda_permit_prefill: a CITES dossier is an
+    // outward-facing attestation about a specific lineage, so a root specimen
+    // from another lab is an error, not something to quietly work around.
+    crate::db::vocabulary::require_active_lab_profile(conn, root_specimen_id)?;
+
     let (accession, species_id): (String, String) = conn
         .query_row(
             "SELECT accession_number, species_id FROM specimens WHERE id = ?1",

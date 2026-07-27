@@ -165,10 +165,17 @@ pub fn get_analytics_kpi_summary(state: State<AppState>, token: String) -> Resul
         0.0
     };
 
+    // These two KPI tiles sit beside lab-scoped figures, so counting every
+    // lab's accessions here would make the month-over-month comparison
+    // disagree with everything around it.
+    let lab = crate::db::vocabulary::active_lab_sql("specimens");
     let new_specimens_this_month: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM specimens WHERE created_at >= date('now', 'start of month')",
+            &format!(
+                "SELECT COUNT(*) FROM specimens \
+                 WHERE {lab} AND created_at >= date('now', 'start of month')"
+            ),
             [],
             |r| r.get(0),
         )
@@ -176,9 +183,12 @@ pub fn get_analytics_kpi_summary(state: State<AppState>, token: String) -> Resul
     let new_specimens_last_month: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM specimens \
-             WHERE created_at >= date('now', 'start of month', '-1 months') \
-               AND created_at < date('now', 'start of month')",
+            &format!(
+                "SELECT COUNT(*) FROM specimens \
+                 WHERE {lab} \
+                   AND created_at >= date('now', 'start of month', '-1 months') \
+                   AND created_at < date('now', 'start of month')"
+            ),
             [],
             |r| r.get(0),
         )
