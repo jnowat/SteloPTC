@@ -15,7 +15,8 @@ use tauri::State;
 fn load_strain(conn: &rusqlite::Connection, id: &str) -> Result<Strain, String> {
     conn.query_row(
         "SELECT s.*, \
-                (SELECT COUNT(*) FROM specimens sp WHERE sp.strain_id = s.id AND sp.is_archived = 0) \
+                (SELECT COUNT(*) FROM specimens sp WHERE sp.strain_id = s.id AND sp.is_archived = 0 \
+                 AND sp.lab_profile = COALESCE((SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')) \
                 AS specimen_count \
          FROM strains s WHERE s.id = ?1",
         params![id],
@@ -204,7 +205,8 @@ pub fn list_strains_by_species(
         .prepare(
             "SELECT s.*, \
                     (SELECT COUNT(*) FROM specimens sp \
-                     WHERE sp.strain_id = s.id AND sp.is_archived = 0) AS specimen_count \
+                     WHERE sp.strain_id = s.id AND sp.is_archived = 0 \
+                     AND sp.lab_profile = COALESCE((SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')) AS specimen_count \
              FROM strains s \
              WHERE s.species_id = ?1 AND s.is_archived = 0 \
              ORDER BY s.name ASC",

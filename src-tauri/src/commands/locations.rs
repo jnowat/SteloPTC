@@ -174,6 +174,7 @@ pub fn set_specimen_location_pin(
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &specimen_id)?;
     db.conn
         .execute(
             "UPDATE specimens SET location_id = ?1, updated_at = datetime('now') WHERE id = ?2",

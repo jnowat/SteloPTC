@@ -244,7 +244,8 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
              FROM specimens s
              JOIN species sp ON s.species_id = sp.id
              WHERE s.permit_expiry IS NOT NULL AND s.permit_expiry < date('now')
-             AND s.is_archived = 0"
+             AND s.is_archived = 0
+             AND s.lab_profile = COALESCE((SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')"
         ).map_err(|e| e.to_string())?;
 
         let expired: Vec<ComplianceFlag> = stmt.query_map([], |row| {
@@ -269,6 +270,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
              JOIN species sp ON s.species_id = sp.id
              WHERE sp.species_code LIKE 'CIT-%'
              AND s.is_archived = 0
+             AND s.lab_profile = COALESCE((SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')
              AND s.id NOT IN (
                  SELECT specimen_id FROM compliance_records
                  WHERE test_type = 'HLB' AND test_date >= date('now', '-12 months')
@@ -297,7 +299,8 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
              FROM specimens s
              JOIN species sp ON s.species_id = sp.id
              WHERE s.quarantine_flag = 1 AND s.quarantine_release_date IS NULL
-             AND s.is_archived = 0"
+             AND s.is_archived = 0
+             AND s.lab_profile = COALESCE((SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')"
         ).map_err(|e| e.to_string())?;
 
         let quarantine: Vec<ComplianceFlag> = stmt.query_map([], |row| {
@@ -322,7 +325,8 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
              JOIN species sp ON s.species_id = sp.id
              JOIN compliance_records cr ON cr.specimen_id = s.id
              WHERE cr.test_result = 'positive' AND s.quarantine_flag = 0
-             AND s.is_archived = 0"
+             AND s.is_archived = 0
+             AND s.lab_profile = COALESCE((SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')"
         ).map_err(|e| e.to_string())?;
 
         let positive_no_quarantine: Vec<ComplianceFlag> = stmt.query_map([], |row| {
@@ -367,6 +371,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
                  FROM specimens s \
                  JOIN species sp ON s.species_id = sp.id \
                  WHERE s.is_archived = 0 \
+                 AND s.lab_profile = COALESCE((SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture') \
                  AND ( \
                      (SELECT MAX(cr.test_date) FROM compliance_records cr \
                       WHERE cr.specimen_id = s.id AND cr.test_type = 'mycoplasma' \

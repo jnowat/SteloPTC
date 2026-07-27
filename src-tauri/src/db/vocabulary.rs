@@ -26,6 +26,32 @@ pub fn active_domain(conn: &Connection) -> String {
     .unwrap_or_else(|_| "Plantae".to_string())
 }
 
+/// SQL predicate restricting a `specimens` query to the currently active lab.
+///
+/// `alias` is the table alias used in the query (`"s"`, `"sp"`, or the bare
+/// table name). The returned fragment is a bare condition — the caller supplies
+/// its own `AND`/`WHERE`.
+///
+/// Written as a correlated lookup rather than a bind parameter deliberately.
+/// The queries that need it carry wildly different numbers of positional
+/// parameters, and threading a new `?N` through each is exactly the kind of
+/// index-arithmetic edit that silently binds the wrong value — the failure
+/// would be a lab quietly seeing another lab's data, which is the thing this is
+/// supposed to prevent. The COALESCE mirrors [`active_profile`], so a missing
+/// `app_config` row degrades to the default lab here too, rather than comparing
+/// against NULL and matching nothing.
+///
+/// This is defence in depth, not the primary mechanism: the specimen commands
+/// scope their own reads and guard by-ID access through
+/// [`require_active_lab_profile`]. This exists for the aggregate/report queries
+/// that read `specimens` directly without going through those paths.
+pub fn active_lab_sql(alias: &str) -> String {
+    format!(
+        "{alias}.lab_profile = COALESCE(\
+             (SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')"
+    )
+}
+
 /// Returns the lab profile a specimen belongs to, or `Err` if it does not exist.
 ///
 /// Reads the stamped `specimens.lab_profile` column — never re-derives it from

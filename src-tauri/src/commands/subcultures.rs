@@ -21,6 +21,10 @@ pub fn record_specimen_death(
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    // A passage is a physical act on a specific culture. Recording one against
+    // a specimen belonging to another lab would write real bench history onto a
+    // culture this operator cannot even see.
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &request.specimen_id)?;
 
     let (current_count, is_archived): (i32, i32) = db.conn.query_row(
         "SELECT subculture_count, is_archived FROM specimens WHERE id = ?1",
@@ -222,6 +226,10 @@ pub fn create_subculture(
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    // A passage is a physical act on a specific culture. Recording one against
+    // a specimen belonging to another lab would write real bench history onto a
+    // culture this operator cannot even see.
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &request.specimen_id)?;
 
     let (current_count, is_archived): (i32, i32) = db.conn.query_row(
         "SELECT subculture_count, is_archived FROM specimens WHERE id = ?1",
@@ -429,8 +437,14 @@ pub fn list_all_subcultures(
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
+        // Passages belong to the lab their specimen belongs to. The JOIN (not a
+        // LEFT JOIN) is what scopes this: a subculture whose specimen is in
+        // another lab has no business appearing in this lab's passage list.
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
          FROM subcultures sc
+         JOIN specimens sp ON sp.id = sc.specimen_id
+             AND sp.lab_profile = COALESCE(
+                 (SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')
          LEFT JOIN users u ON sc.performed_by = u.id
          LEFT JOIN media_batches mb ON sc.media_batch_id = mb.id
          ORDER BY sc.date DESC, sc.passage_number DESC"

@@ -49,7 +49,7 @@ const EXPORT_SQL: &str =
             s.notes, s.employee_id, s.created_by, s.created_at, s.updated_at
      FROM specimens s
      LEFT JOIN species sp ON s.species_id = sp.id
-     WHERE s.is_archived = 0
+     WHERE s.is_archived = 0 AND s.lab_profile = ?1
      ORDER BY s.accession_number";
 
 fn map_export_row(row: &rusqlite::Row) -> rusqlite::Result<ExportSpecimen> {
@@ -90,6 +90,11 @@ pub fn export_specimens_csv(state: State<AppState>, token: String) -> Result<Str
     let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
+    // Exports carry the active lab only. Without this a mycology lab's CSV
+    // included every plant tissue culture and cell culture specimen in the
+    // database — data its operators cannot see anywhere else in the UI, being
+    // handed to whoever the file is sent to.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     let mut stmt = db.conn.prepare(EXPORT_SQL).map_err(|e| e.to_string())?;
 
     let header = "Accession,Species Code,Species,Stage,Custom Stage,Provenance,Source Plant,\
@@ -100,7 +105,7 @@ Notes,Employee ID,Created By,Created At,Updated At\n";
 
     let mut csv = String::from(header);
 
-    let rows = stmt.query_map([], map_export_row).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([&profile], map_export_row).map_err(|e| e.to_string())?;
 
     for s in rows.flatten() {
         csv.push_str(&format!(
@@ -144,10 +149,15 @@ pub fn export_specimens_json(state: State<AppState>, token: String) -> Result<St
     let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
+    // Exports carry the active lab only. Without this a mycology lab's CSV
+    // included every plant tissue culture and cell culture specimen in the
+    // database — data its operators cannot see anywhere else in the UI, being
+    // handed to whoever the file is sent to.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     let mut stmt = db.conn.prepare(EXPORT_SQL).map_err(|e| e.to_string())?;
 
     let specimens: Vec<ExportSpecimen> = stmt
-        .query_map([], map_export_row)
+        .query_map([&profile], map_export_row)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();

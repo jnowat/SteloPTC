@@ -36,22 +36,27 @@ fn days_ago(date_str: &str, today_str: &str) -> Option<i64> {
     Some((today - date).num_days())
 }
 
+
 pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>, String> {
+    // Every query below is scoped to the active lab: the work queue tells an
+    // operator what to physically go and do, so listing another lab's cultures
+    // sends them to a bench they do not work at.
+    let lab = format!("AND {}", crate::db::vocabulary::active_lab_sql("s"));
     let today = chrono::Local::now().date_naive().to_string(); // "YYYY-MM-DD"
 
     let mut items: Vec<WorkQueueItem> = Vec::new();
 
     // ── 1. Unresolved quarantine ──────────────────────────────────────────────
     {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT s.id, s.accession_number, s.location, s.quarantine_release_date,
                     sp.genus || ' ' || sp.species_name AS species_name
              FROM specimens s
              LEFT JOIN species sp ON s.species_id = sp.id
-             WHERE s.is_archived = 0
+             WHERE s.is_archived = 0 {lab}
                AND s.quarantine_flag = 1
                AND (s.quarantine_release_date IS NULL OR s.quarantine_release_date <= ?1)",
-        )
+        ))
         .map_err(|e| e.to_string())?;
 
         let rows = stmt
@@ -88,7 +93,7 @@ pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>,
 
     // ── 2. Contamination flag on most recent subculture ───────────────────────
     {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT s.id, s.accession_number, s.location,
                     sp.genus || ' ' || sp.species_name AS species_name,
                     sc.date AS last_date
@@ -98,9 +103,9 @@ pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>,
                AND sc.passage_number = (
                      SELECT MAX(passage_number) FROM subcultures WHERE specimen_id = s.id
                    )
-             WHERE s.is_archived = 0
+             WHERE s.is_archived = 0 {lab}
                AND sc.contamination_flag = 1",
-        )
+        ))
         .map_err(|e| e.to_string())?;
 
         let rows = stmt
@@ -137,14 +142,14 @@ pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>,
 
     // ── 3. No recorded passages ───────────────────────────────────────────────
     {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT s.id, s.accession_number, s.location,
                     sp.genus || ' ' || sp.species_name AS species_name
              FROM specimens s
              LEFT JOIN species sp ON s.species_id = sp.id
-             WHERE s.is_archived = 0
+             WHERE s.is_archived = 0 {lab}
                AND s.subculture_count = 0",
-        )
+        ))
         .map_err(|e| e.to_string())?;
 
         let rows = stmt
@@ -175,7 +180,7 @@ pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>,
 
     // ── 4. Subculture due / overdue ───────────────────────────────────────────
     {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT s.id, s.accession_number, s.location,
                     sp.genus || ' ' || sp.species_name AS species_name,
                     sp.default_subculture_interval_days,
@@ -183,13 +188,13 @@ pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>,
              FROM specimens s
              LEFT JOIN species sp ON s.species_id = sp.id
              LEFT JOIN subcultures sc ON sc.specimen_id = s.id
-             WHERE s.is_archived = 0
+             WHERE s.is_archived = 0 {lab}
                AND s.subculture_count > 0
                AND sp.default_subculture_interval_days IS NOT NULL
                AND sp.default_subculture_interval_days > 0
              GROUP BY s.id
              HAVING last_subculture_date IS NOT NULL",
-        )
+        ))
         .map_err(|e| e.to_string())?;
 
         let rows = stmt
@@ -247,7 +252,7 @@ pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>,
 
     // ── 5. Media change overdue (media batch expired) ─────────────────────────
     {
-        let mut stmt = conn.prepare(
+        let mut stmt = conn.prepare(&format!(
             "SELECT s.id, s.accession_number, s.location,
                     sp.genus || ' ' || sp.species_name AS species_name,
                     mb.expiration_date, mb.name AS media_name
@@ -258,10 +263,10 @@ pub fn compute_work_queue_items(conn: &Connection) -> Result<Vec<WorkQueueItem>,
                      SELECT MAX(passage_number) FROM subcultures WHERE specimen_id = s.id
                    )
              JOIN media_batches mb ON sc.media_batch_id = mb.id
-             WHERE s.is_archived = 0
+             WHERE s.is_archived = 0 {lab}
                AND mb.expiration_date IS NOT NULL
                AND mb.expiration_date < ?1",
-        )
+        ))
         .map_err(|e| e.to_string())?;
 
         let rows = stmt
@@ -331,5 +336,73 @@ mod tests {
         let conn = migrated_db();
         let items = compute_work_queue_items(&conn).unwrap();
         assert!(items.is_empty());
+    }
+
+    /// Inserts one specimen that every work-queue rule should flag (quarantined
+    /// with no release date, and never subcultured), filed under `lab`.
+    fn seed_flaggable_specimen(conn: &Connection, id: &str, accession: &str, lab: &str) {
+        conn.execute(
+            "INSERT OR IGNORE INTO species (id, genus, species_name, species_code) \
+             VALUES ('wq_sp', 'Citrus', 'sinensis', 'CIT-WQ')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO specimens \
+             (id, accession_number, species_id, stage, initiation_date, lab_profile, \
+              quarantine_flag, quarantine_release_date, subculture_count, is_archived) \
+             VALUES (?1, ?2, 'wq_sp', 'explant', '2026-01-01', ?3, 1, NULL, 0, 0)",
+            rusqlite::params![id, accession, lab],
+        )
+        .unwrap();
+    }
+
+    fn set_active_lab(conn: &Connection, lab: &str) {
+        conn.execute("UPDATE app_config SET lab_profile = ?1 WHERE id = 1", [lab])
+            .unwrap();
+    }
+
+    #[test]
+    fn work_queue_only_surfaces_the_active_lab() {
+        // The work queue tells an operator what to physically go and do. Listing
+        // another lab's cultures sends them to a bench they do not work at, for
+        // a culture they cannot open in the UI.
+        let conn = migrated_db();
+        seed_flaggable_specimen(&conn, "ptc1", "PTC-0001", "plant_tissue_culture");
+        seed_flaggable_specimen(&conn, "myc1", "MYC-0001", "mycology");
+
+        set_active_lab(&conn, "plant_tissue_culture");
+        let ptc = compute_work_queue_items(&conn).unwrap();
+        assert!(!ptc.is_empty(), "the PTC specimen should be flagged");
+        assert!(
+            ptc.iter().all(|i| i.accession_number == "PTC-0001"),
+            "PTC queue leaked another lab: {:?}",
+            ptc.iter().map(|i| &i.accession_number).collect::<Vec<_>>()
+        );
+
+        set_active_lab(&conn, "mycology");
+        let myco = compute_work_queue_items(&conn).unwrap();
+        assert!(!myco.is_empty(), "the mycology specimen should be flagged");
+        assert!(
+            myco.iter().all(|i| i.accession_number == "MYC-0001"),
+            "mycology queue leaked another lab: {:?}",
+            myco.iter().map(|i| &i.accession_number).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn work_queue_falls_back_to_the_default_lab_when_app_config_is_missing() {
+        // The COALESCE in ACTIVE_LAB mirrors vocabulary::active_profile. Without
+        // it the comparison would be against NULL, which matches nothing, and
+        // the queue would silently go empty rather than degrading to the default.
+        let conn = migrated_db();
+        seed_flaggable_specimen(&conn, "ptc1", "PTC-0001", "plant_tissue_culture");
+        conn.execute("DELETE FROM app_config", []).unwrap();
+
+        let items = compute_work_queue_items(&conn).unwrap();
+        assert!(
+            !items.is_empty(),
+            "a missing app_config row must degrade to the default lab, not empty the queue"
+        );
     }
 }

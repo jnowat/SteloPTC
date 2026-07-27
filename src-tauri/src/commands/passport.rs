@@ -55,6 +55,10 @@ pub fn issue_specimen_passport(
     if !user.role.can_write() {
         return Err("Insufficient permissions — a write-capable role is required to issue a passport.".to_string());
     }
+    // A passport is an outward-facing attestation about a specific culture.
+    // Issuing one for another lab's specimen would put this lab's name on
+    // material it does not hold.
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &specimen_id)?;
     let passport = store::issue_passport(&db.conn, &specimen_id, Some(&user.id))?;
     crate::db::queries::log_audit(
         &db.conn,
