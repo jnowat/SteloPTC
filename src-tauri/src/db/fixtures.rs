@@ -64,11 +64,19 @@ pub fn seed_large_fixture(
         )?;
         for p in 0..subcultures_per_specimen {
             let sub_id = format!("fx-sub-{i}-{p}");
+            // Spread passage dates across two years rather than putting every
+            // one in the last few days. The old fixture dated every subculture
+            // `now - (p+1) days`, so with one passage per specimen the entire
+            // corpus fell inside the dashboard's 7-day window — which made the
+            // "recent subcultures" benchmark measure a 100% selective query and
+            // hid the fact that it had no usable index. A real lab's passages
+            // are mostly historical.
+            let age_days = (i % 730) + p + 1;
             tx.execute(
                 "INSERT INTO subcultures \
                  (id, specimen_id, passage_number, date, event_type, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, date('now', '-' || ?3 || ' days'), 'passage', datetime('now'), datetime('now'))",
-                params![sub_id, id, p + 1],
+                 VALUES (?1, ?2, ?3, date('now', '-' || ?4 || ' days'), 'passage', datetime('now'), datetime('now'))",
+                params![sub_id, id, p + 1, age_days],
             )?;
         }
     }

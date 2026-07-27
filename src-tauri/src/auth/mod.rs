@@ -90,6 +90,26 @@ pub fn validate_password(password: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Hashes a session token for storage.
+///
+/// A session token is a bearer credential: whoever holds it *is* the user until
+/// it expires. Storing it verbatim meant the `sessions` table handed out working
+/// credentials to anyone who could read the database file — a stolen laptop, a
+/// synced home directory, a support bundle — which is precisely why
+/// `users.password_hash` is not stored in the clear either.
+///
+/// Plain SHA-256 is the right primitive here, not bcrypt or Argon2. Those exist
+/// to make *low-entropy* secrets expensive to guess; a token is 256 bits of
+/// CSPRNG output, so there is nothing to brute-force, and a slow KDF would only
+/// add ~100ms to every single authenticated command.
+pub fn hash_token(token: &str) -> String {
+    use sha2::{Digest, Sha256};
+    base64::Engine::encode(
+        &base64::engine::general_purpose::URL_SAFE_NO_PAD,
+        Sha256::digest(token.as_bytes()),
+    )
+}
+
 pub fn create_session(db: &Database, user_id: &str) -> Result<String, String> {
     let token = generate_token();
     let id = uuid::Uuid::new_v4().to_string();
@@ -99,9 +119,11 @@ pub fn create_session(db: &Database, user_id: &str) -> Result<String, String> {
         .format("%Y-%m-%d %H:%M:%S")
         .to_string();
 
+    // Only the digest is persisted. The raw token exists in this function's
+    // return value and in the client's possession, never on disk.
     db.conn.execute(
         "INSERT INTO sessions (id, user_id, token, expires_at) VALUES (?1, ?2, ?3, ?4)",
-        params![id, user_id, token, expires],
+        params![id, user_id, hash_token(&token), expires],
     ).map_err(|e| format!("Failed to create session: {}", e))?;
 
     Ok(token)
@@ -145,7 +167,7 @@ pub fn validate_session_allow_password_change(db: &Database, token: &str) -> Res
         "SELECT u.id, u.username, u.password_hash, u.display_name, u.email, u.role, u.is_active, u.must_change_password, u.created_at, u.updated_at
          FROM sessions s JOIN users u ON s.user_id = u.id
          WHERE s.token = ?1 AND s.expires_at > datetime('now') AND u.is_active = 1",
-        params![token],
+        params![hash_token(token)],
         |row| {
             Ok(User {
                 id: row.get(0)?,
@@ -166,7 +188,7 @@ pub fn validate_session_allow_password_change(db: &Database, token: &str) -> Res
 }
 
 pub fn invalidate_session(db: &Database, token: &str) -> Result<(), String> {
-    db.conn.execute("DELETE FROM sessions WHERE token = ?1", params![token])
+    db.conn.execute("DELETE FROM sessions WHERE token = ?1", params![hash_token(token)])
         .map_err(|e| format!("Failed to invalidate session: {}", e))?;
     Ok(())
 }
@@ -347,6 +369,61 @@ mod tests {
             .expect("allow variant must return the user so they can change their password");
         assert_eq!(user.id, "u1");
         assert!(user.must_change_password);
+    }
+
+    // ── Session token storage ─────────────────────────────────────────────
+
+    #[test]
+    fn session_token_is_never_stored_in_plaintext() {
+        // The property that matters: reading the database must not yield a
+        // usable credential.
+        let (db, token) = db_with_session(false);
+        let stored: String = db
+            .conn
+            .query_row("SELECT token FROM sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_ne!(stored, token, "the raw token must not be persisted");
+        assert_eq!(stored, hash_token(&token));
+        // And the stored value must not itself work as a token.
+        assert!(
+            validate_session(&db, &stored).is_err(),
+            "the stored digest must not be accepted as a bearer token"
+        );
+    }
+
+    #[test]
+    fn a_hashed_session_still_validates_and_invalidates() {
+        let (db, token) = db_with_session(false);
+        assert_eq!(validate_session(&db, &token).unwrap().id, "u1");
+        invalidate_session(&db, &token).unwrap();
+        assert!(
+            validate_session(&db, &token).is_err(),
+            "logout must delete the row keyed by the digest"
+        );
+    }
+
+    #[test]
+    fn hash_token_is_deterministic_and_collision_free_across_tokens() {
+        assert_eq!(hash_token("abc"), hash_token("abc"));
+        assert_ne!(hash_token("abc"), hash_token("abd"));
+        // URL-safe base64 of a 32-byte digest, unpadded.
+        assert_eq!(hash_token("abc").len(), 43);
+    }
+
+    #[test]
+    fn tokens_are_unique_across_sessions() {
+        let db = Database::new_in_memory().unwrap();
+        db.run_migrations().unwrap();
+        db.conn.execute(
+            "INSERT INTO users (id, username, password_hash, display_name, role, is_active) \
+             VALUES ('u1', 'tech1', 'x', 'Tech One', 'tech', 1)",
+            [],
+        ).unwrap();
+        let a = create_session(&db, "u1").unwrap();
+        let b = create_session(&db, "u1").unwrap();
+        assert_ne!(a, b, "each login must mint a fresh token");
+        assert!(validate_session(&db, &a).is_ok());
+        assert!(validate_session(&db, &b).is_ok());
     }
 
     // ── Password policy ───────────────────────────────────────────────────

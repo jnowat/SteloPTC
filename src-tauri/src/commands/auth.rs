@@ -214,9 +214,13 @@ pub fn change_password(
 
     // A password change is a revocation event. The caller's own token survives
     // so they are not logged out by their own action.
+    // `sessions.token` holds a digest, not the raw token, so the caller's own
+    // session must be excluded by its digest too — comparing the raw value here
+    // would match nothing and log the user out of their own session while
+    // leaving every other one alive, the exact inverse of the intent.
     let revoked = db.conn.execute(
         "DELETE FROM sessions WHERE user_id = ?1 AND token <> ?2",
-        rusqlite::params![user.id, token],
+        rusqlite::params![user.id, auth_service::hash_token(&token)],
     ).unwrap_or(0);
 
     let detail = if user.must_change_password {
