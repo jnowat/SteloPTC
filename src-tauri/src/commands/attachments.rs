@@ -418,9 +418,9 @@ mod tests {
     fn base64_length_cap_corresponds_to_the_documented_byte_limit() {
         // Guards the arithmetic: the encoded cap must actually admit a 25 MiB
         // file and reject one meaningfully larger, or the limit is cosmetic.
-        let encoded_len_of_max = (MAX_ATTACHMENT_BYTES + 2) / 3 * 4;
+        let encoded_len_of_max = MAX_ATTACHMENT_BYTES.div_ceil(3) * 4;
         assert!(encoded_len_of_max <= MAX_ATTACHMENT_B64_LEN);
-        let encoded_len_of_double = (MAX_ATTACHMENT_BYTES * 2 + 2) / 3 * 4;
+        let encoded_len_of_double = (MAX_ATTACHMENT_BYTES * 2).div_ceil(3) * 4;
         assert!(encoded_len_of_double > MAX_ATTACHMENT_B64_LEN);
     }
 }

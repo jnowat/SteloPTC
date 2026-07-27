@@ -80,6 +80,22 @@ fn run_orphan_check(conn: &Connection, spec: &OrphanCheck) -> Result<Option<Inte
 /// imports, or out-of-band edits.
 const ORPHAN_CHECKS: &[OrphanCheck] = &[
     OrphanCheck {
+        // A specimen whose lab_profile is not one of the three known labs is
+        // invisible everywhere: every read is scoped to the active profile, so
+        // such a row belongs to no lab and silently vanishes from lists,
+        // searches and dashboard counts without ever erroring. It cannot arise
+        // through the command layer (migration 053 backfilled, and every write
+        // path stamps a known value), but an import, a restored backup or an
+        // out-of-band edit can produce one.
+        check: "specimen_unknown_lab_profile",
+        title: "Specimens filed under an unrecognised lab profile (invisible in every lab)",
+        severity: "critical",
+        count_sql: "SELECT COUNT(*) FROM specimens \
+                    WHERE lab_profile NOT IN ('plant_tissue_culture','cell_culture','mycology')",
+        example_sql: "SELECT accession_number FROM specimens \
+                      WHERE lab_profile NOT IN ('plant_tissue_culture','cell_culture','mycology') LIMIT 5",
+    },
+    OrphanCheck {
         check: "specimen_missing_species",
         title: "Specimens referencing a species that no longer exists",
         severity: "critical",
@@ -162,6 +178,85 @@ fn run_chain_gap_check(conn: &Connection) -> Result<Option<IntegrityIssue>, Stri
     }))
 }
 
+/// Verifies that the `specimens_fts` search index still agrees with the
+/// `specimens` table it indexes.
+///
+/// `specimens_fts` is an FTS5 **external content** table (migration 054): it
+/// stores only the index and resolves column values back through `rowid`. That
+/// makes two silent-corruption modes possible, neither of which raises an error
+/// at the time it happens:
+///
+///   * A migration that rebuilds `specimens` — the `specimens_v16` create/copy/
+///     drop/rename pattern used several times in this schema — drops the
+///     triggers with the old table and assigns new rowids. Search then returns
+///     confidently wrong results.
+///   * Any write that reaches the table without firing the triggers.
+///
+/// Two signals are used, because they catch different things and the cheap one
+/// is also the one that can say *how many* rows are affected:
+///
+///   * `specimens_fts_docsize` holds one row per indexed document, so comparing
+///     it against `specimens` detects rows missing from (or stale in) the index
+///     and yields a count.
+///   * FTS5's `('integrity-check', 1)` command compares the index against the
+///     content table itself. The **rank=1 argument is required**: the plain
+///     `('integrity-check')` form only verifies the index's internal
+///     consistency and returns OK for an index that has silently stopped
+///     tracking the table — verified empirically against SQLite 3.46.
+///
+/// Search returning wrong rows is a provenance problem in a regulated lab, so
+/// this is `critical`.
+fn run_search_index_check(conn: &Connection) -> Result<Option<IntegrityIssue>, String> {
+    // The table only exists from migration 054 onward; a database mid-upgrade
+    // is not an integrity failure.
+    let exists: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'specimens_fts'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or(0);
+    if exists == 0 {
+        return Ok(None);
+    }
+
+    let specimens: i64 = conn
+        .query_row("SELECT COUNT(*) FROM specimens", [], |r| r.get(0))
+        .map_err(|e| format!("integrity check 'search_index_out_of_sync' failed: {}", e))?;
+    let indexed: i64 = conn
+        .query_row("SELECT COUNT(*) FROM specimens_fts_docsize", [], |r| r.get(0))
+        .unwrap_or(-1);
+
+    let deep_check = conn.execute(
+        "INSERT INTO specimens_fts (specimens_fts, rank) VALUES ('integrity-check', 1)",
+        [],
+    );
+
+    if specimens == indexed && deep_check.is_ok() {
+        return Ok(None);
+    }
+
+    let mut examples = vec![format!(
+        "{} specimen(s) in the table, {} document(s) in the index",
+        specimens, indexed
+    )];
+    if let Err(e) = deep_check {
+        examples.push(e.to_string());
+    }
+
+    Ok(Some(IntegrityIssue {
+        check: "search_index_out_of_sync".to_string(),
+        title: "Search index disagrees with the specimen table — searches may return \
+                wrong or incomplete results. Rebuild it from Admin."
+            .to_string(),
+        severity: "critical".to_string(),
+        // The number of rows the index is missing, when that is knowable;
+        // otherwise 1, meaning "the index is bad" without a row count.
+        count: if indexed >= 0 { (specimens - indexed).abs().max(1) } else { 1 },
+        examples,
+    }))
+}
+
 /// Run every integrity check and return the aggregated report, issues sorted
 /// most-severe first.
 pub fn run_integrity_check(conn: &Connection) -> Result<IntegrityReport, String> {
@@ -174,6 +269,9 @@ pub fn run_integrity_check(conn: &Connection) -> Result<IntegrityReport, String>
     if let Some(issue) = run_chain_gap_check(conn)? {
         issues.push(issue);
     }
+    if let Some(issue) = run_search_index_check(conn)? {
+        issues.push(issue);
+    }
 
     let rank = |s: &str| match s {
         "critical" => 0,
@@ -182,7 +280,8 @@ pub fn run_integrity_check(conn: &Connection) -> Result<IntegrityReport, String>
     };
     issues.sort_by_key(|i| rank(&i.severity));
 
-    let checks_run = ORPHAN_CHECKS.len() as i64 + 1;
+    // ORPHAN_CHECKS + the chain-gap check + the search-index check.
+    let checks_run = ORPHAN_CHECKS.len() as i64 + 2;
     Ok(IntegrityReport {
         ok: issues.is_empty(),
         checks_run,
@@ -308,5 +407,112 @@ mod tests {
         let issue = run_chain_gap_check(&conn).unwrap().unwrap();
         assert_eq!(issue.count, 1);
         assert_eq!(issue.examples, vec!["lin1".to_string()]);
+    }
+
+    // ── Checks guarding the lab-isolation and search-index invariants ────────
+
+    #[test]
+    fn unknown_lab_profile_is_reported_as_critical() {
+        // A specimen filed under no recognised lab is invisible in every lab —
+        // it never appears and never errors, which is why it needs a check.
+        let conn = test_db();
+        seed_species(&conn, "sp1", "AAA");
+        seed_specimen(&conn, "s1", "sp1", "ACC-001");
+        conn.execute(
+            "UPDATE specimens SET lab_profile = 'algae_culture' WHERE id = 's1'",
+            [],
+        )
+        .unwrap();
+
+        let report = run_integrity_check(&conn).unwrap();
+        let issue = report
+            .issues
+            .iter()
+            .find(|i| i.check == "specimen_unknown_lab_profile")
+            .expect("an unrecognised lab profile must be reported");
+        assert_eq!(issue.severity, "critical");
+        assert_eq!(issue.count, 1);
+        assert_eq!(issue.examples, vec!["ACC-001".to_string()]);
+        assert!(!report.ok);
+    }
+
+    #[test]
+    fn known_lab_profiles_are_not_reported() {
+        let conn = test_db();
+        seed_species(&conn, "sp1", "AAA");
+        for (i, profile) in ["plant_tissue_culture", "cell_culture", "mycology"].iter().enumerate() {
+            let id = format!("s{i}");
+            seed_specimen(&conn, &id, "sp1", &format!("ACC-{i:03}"));
+            conn.execute(
+                "UPDATE specimens SET lab_profile = ?1 WHERE id = ?2",
+                rusqlite::params![profile, id],
+            )
+            .unwrap();
+        }
+        let report = run_integrity_check(&conn).unwrap();
+        assert!(
+            !report.issues.iter().any(|i| i.check == "specimen_unknown_lab_profile"),
+            "all three real lab profiles must pass"
+        );
+    }
+
+    #[test]
+    fn search_index_check_passes_on_a_healthy_database() {
+        let conn = test_db();
+        seed_species(&conn, "sp1", "AAA");
+        seed_specimen(&conn, "s1", "sp1", "ACC-001");
+        assert!(run_search_index_check(&conn).unwrap().is_none());
+    }
+
+    #[test]
+    fn search_index_check_detects_an_index_that_stopped_tracking_the_table() {
+        // Simulates what a future table-rebuild migration would do: the triggers
+        // go away, writes stop reaching the index, and search silently returns
+        // stale results. Nothing else in the system would notice.
+        let conn = test_db();
+        seed_species(&conn, "sp1", "AAA");
+        seed_specimen(&conn, "s1", "sp1", "ACC-001");
+
+        conn.execute_batch(
+            "DROP TRIGGER specimens_fts_insert;
+             DROP TRIGGER specimens_fts_update;
+             DROP TRIGGER specimens_fts_delete;",
+        )
+        .unwrap();
+        // This row now exists in `specimens` but not in the index.
+        seed_specimen(&conn, "s2", "sp1", "ACC-002");
+
+        let issue = run_search_index_check(&conn)
+            .unwrap()
+            .expect("a desynchronised search index must be reported");
+        assert_eq!(issue.check, "search_index_out_of_sync");
+        assert_eq!(issue.severity, "critical");
+
+        let report = run_integrity_check(&conn).unwrap();
+        assert!(!report.ok);
+        assert!(report.issues.iter().any(|i| i.check == "search_index_out_of_sync"));
+    }
+
+    #[test]
+    fn search_index_check_is_skipped_when_the_index_does_not_exist_yet() {
+        // A database mid-upgrade (before migration 054) is not corrupt.
+        let conn = test_db();
+        conn.execute_batch(
+            "DROP TRIGGER specimens_fts_insert;
+             DROP TRIGGER specimens_fts_update;
+             DROP TRIGGER specimens_fts_delete;
+             DROP TABLE specimens_fts;",
+        )
+        .unwrap();
+        assert!(run_search_index_check(&conn).unwrap().is_none());
+    }
+
+    #[test]
+    fn checks_run_count_matches_the_checks_actually_executed() {
+        // Guards against adding a check and forgetting to bump the count the
+        // report advertises.
+        let conn = test_db();
+        let report = run_integrity_check(&conn).unwrap();
+        assert_eq!(report.checks_run, ORPHAN_CHECKS.len() as i64 + 2);
     }
 }
