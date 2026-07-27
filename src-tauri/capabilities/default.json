@@ -3,6 +3,23 @@
   "identifier": "com.steloptc.app",
   "windows": ["main"],
   "platforms": ["android", "iOS", "macOS", "windows", "linux"],
+  "_comment": [
+    "Capabilities are the WebView's permission to call plugin commands. They do",
+    "NOT govern what Rust does — attachments, backups and exports all use",
+    "std::fs on the backend and are unaffected by anything listed here.",
+    "",
+    "The fs:* and dialog:* permissions were removed because nothing calls them.",
+    "The frontend's only @tauri-apps imports are api/core (invoke), api/app",
+    "(getVersion, covered by core:default) and plugin-shell (open, used in",
+    "ErrorLog.svelte); no Rust code calls the dialog or fs plugin APIs either,",
+    "only their init(). Granting unscoped fs:allow-write-file to a WebView that",
+    "never writes files is a standing arbitrary-write primitive for any script",
+    "that gets a foothold there — which is exactly the escalation path the xlsx",
+    "prototype-pollution advisory (GHSA-4r6h-8v6p-xvw6) would otherwise open.",
+    "",
+    "The plugins are still registered in lib.rs, so restoring any of this is a",
+    "one-line change here rather than a code change."
+  ],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -12,19 +29,6 @@
     "core:window:allow-toggle-maximize",
     "core:window:allow-minimize",
     "core:window:allow-set-fullscreen",
-    "dialog:default",
-    "dialog:allow-ask",
-    "dialog:allow-confirm",
-    "dialog:allow-message",
-    "dialog:allow-open",
-    "dialog:allow-save",
-    "fs:default",
-    "fs:allow-exists",
-    "fs:allow-read-file",
-    "fs:allow-write-file",
-    "fs:allow-mkdir",
-    "fs:allow-read-dir",
-    "shell:default",
     "shell:allow-open"
   ]
 }
