@@ -19,7 +19,7 @@ pub fn export_coordination_bundle(
     token: String,
     program_id: String,
 ) -> Result<CoordinationBundle, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions — a write-capable role is required to export a coordination bundle.".to_string());
@@ -50,7 +50,7 @@ pub fn verify_coordination_bundle(
     token: String,
     bundle_json: String,
 ) -> Result<BundleVerification, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::verify_bundle_json(&bundle_json)
 }
@@ -63,7 +63,7 @@ pub fn preview_coordination_import(
     token: String,
     bundle_json: String,
 ) -> Result<store::BundleImportPreview, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::preview_import(&db.conn, &bundle_json)
 }
@@ -77,7 +77,7 @@ pub fn import_coordination_bundle(
     bundle_json: String,
     decisions: Option<Vec<SelectionDecision>>,
 ) -> Result<store::BundleImportResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions — a write-capable role is required to import a coordination bundle.".to_string());
@@ -93,7 +93,7 @@ pub fn list_coordination_bundles(
     token: String,
     direction: Option<String>,
 ) -> Result<Vec<store::BundleRow>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::list_bundles(&db.conn, direction.as_deref())
 }
@@ -105,7 +105,7 @@ pub fn get_coordination_bundle_json(
     token: String,
     row_id: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::get_bundle_json(&db.conn, &row_id)
 }
@@ -117,7 +117,7 @@ pub fn list_coordination_dispositions(
     token: String,
     bundle_row_id: String,
 ) -> Result<Vec<store::AppliedSelection>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::list_dispositions(&db.conn, &bundle_row_id)
 }

@@ -1,6 +1,58 @@
 use rusqlite::Connection;
 use super::DbResult;
 
+/// Runs one migration and stamps its version **atomically**.
+///
+/// Previously the two were separate statements: the migration body ran, and
+/// only then was `schema_version` bumped. SQLite DDL is transactional, but
+/// `execute_batch` is not — it applies statements one at a time — so a failure
+/// partway through left earlier statements committed with the version *not*
+/// advanced. On the next start the migration re-ran, and `ALTER TABLE … ADD
+/// COLUMN` is not idempotent: it fails with "duplicate column name", and the
+/// application can no longer start at all. On a desktop app that is the user's
+/// only copy of their lab records.
+///
+/// Wrapping both in one transaction means a failed migration leaves a clean,
+/// retryable state instead of a half-applied schema.
+fn apply<F>(conn: &Connection, version: i64, migrate: F) -> DbResult<()>
+where
+    F: FnOnce(&Connection) -> DbResult<()>,
+{
+    let tx = conn.unchecked_transaction()?;
+    migrate(&tx)?;
+    tx.execute("INSERT INTO schema_version (version) VALUES (?1)", [version])?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Runs a migration that **cannot** be wrapped in a transaction, stamping its
+/// version afterwards as a separate statement.
+///
+/// Two constructs make a migration transaction-hostile, and both appear in this
+/// file:
+///
+///   * `PRAGMA foreign_keys = OFF/ON` is a documented **no-op inside a
+///     transaction**. The table-rebuild migrations (create `_v2`, copy rows,
+///     drop original, rename) depend on it actually taking effect; running them
+///     under `apply` would silently leave FK enforcement on and either fail the
+///     rebuild or leave dangling references.
+///   * A migration whose `execute_batch` string already contains its own
+///     `BEGIN; … COMMIT;` would error with "cannot start a transaction within a
+///     transaction".
+///
+/// These seven are therefore left as they were. They are all *additive or
+/// rebuild* migrations that predate the current schema, so the retry hazard
+/// `apply` closes is accepted here rather than traded for a correctness bug.
+/// New migrations should use `apply` and avoid both constructs.
+fn apply_untransacted<F>(conn: &Connection, version: i64, migrate: F) -> DbResult<()>
+where
+    F: FnOnce(&Connection) -> DbResult<()>,
+{
+    migrate(conn)?;
+    conn.execute("INSERT INTO schema_version (version) VALUES (?1)", [version])?;
+    Ok(())
+}
+
 pub fn run_all(conn: &Connection) -> DbResult<()> {
     conn.execute_batch("
         CREATE TABLE IF NOT EXISTS schema_version (
@@ -14,268 +66,222 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         .unwrap_or(0);
 
     if current < 1 {
-        migration_001_initial(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])?;
+        apply(conn, 1, migration_001_initial)?;
     }
 
     if current < 2 {
-        migration_002_v019(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 2, migration_002_v019)?;
     }
 
     if current < 3 {
-        migration_003_v0110(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 3, migration_003_v0110)?;
     }
 
     if current < 4 {
-        migration_004_v0114(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])?;
+        apply(conn, 4, migration_004_v0114)?;
     }
 
     if current < 5 {
-        migration_005_contamination_schedule(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (5)", [])?;
+        apply(conn, 5, migration_005_contamination_schedule)?;
     }
 
     if current < 6 {
-        migration_006_force_password_change(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (6)", [])?;
+        apply(conn, 6, migration_006_force_password_change)?;
     }
 
     if current < 7 {
-        migration_007_perf_indexes(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (7)", [])?;
+        apply(conn, 7, migration_007_perf_indexes)?;
     }
 
     if current < 8 {
-        migration_008_audit_hash_chain(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (8)", [])?;
+        apply(conn, 8, migration_008_audit_hash_chain)?;
     }
 
     if current < 9 {
-        migration_009_audit_lineage(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (9)", [])?;
+        apply(conn, 9, migration_009_audit_lineage)?;
     }
 
     if current < 10 {
-        migration_010_specimen_genealogy(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (10)", [])?;
+        apply(conn, 10, migration_010_specimen_genealogy)?;
     }
 
     if current < 11 {
-        migration_011_media_draft(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (11)", [])?;
+        apply(conn, 11, migration_011_media_draft)?;
     }
 
     if current < 12 {
-        migration_012_specimen_contamination(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (12)", [])?;
+        apply(conn, 12, migration_012_specimen_contamination)?;
     }
 
     if current < 13 {
-        migration_013_audit_checkpoints(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (13)", [])?;
+        apply(conn, 13, migration_013_audit_checkpoints)?;
     }
 
     if current < 14 {
-        migration_014_checkpoint_auto_and_settings(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (14)", [])?;
+        apply(conn, 14, migration_014_checkpoint_auto_and_settings)?;
     }
 
     if current < 15 {
-        migration_015_death_events_and_lab_profile(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (15)", [])?;
+        apply(conn, 15, migration_015_death_events_and_lab_profile)?;
     }
 
     if current < 16 {
-        migration_016_vocabulary_tables(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (16)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 16, migration_016_vocabulary_tables)?;
     }
 
     if current < 17 {
-        migration_017_remaining_vocabularies(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (17)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 17, migration_017_remaining_vocabularies)?;
     }
 
     if current < 18 {
-        migration_018_cell_culture_vocabulary(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (18)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 18, migration_018_cell_culture_vocabulary)?;
     }
 
     if current < 19 {
-        migration_019_strain_model(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (19)", [])?;
+        apply(conn, 19, migration_019_strain_model)?;
     }
 
     if current < 20 {
-        migration_020_expanded_taxonomy(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (20)", [])?;
+        apply(conn, 20, migration_020_expanded_taxonomy)?;
     }
 
     if current < 21 {
-        migration_021_ncbi_sync_log(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (21)", [])?;
+        apply(conn, 21, migration_021_ncbi_sync_log)?;
     }
 
     if current < 22 {
-        migration_022_hybrid_generation_labels(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (22)", [])?;
+        apply(conn, 22, migration_022_hybrid_generation_labels)?;
     }
 
     if current < 23 {
-        migration_023_cell_culture_vocabulary(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (23)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 23, migration_023_cell_culture_vocabulary)?;
     }
 
     if current < 24 {
-        migration_024_pdl_fields(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (24)", [])?;
+        apply(conn, 24, migration_024_pdl_fields)?;
     }
 
     if current < 25 {
-        migration_025_frozen_vials(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (25)", [])?;
+        apply(conn, 25, migration_025_frozen_vials)?;
     }
 
     if current < 26 {
-        migration_026_biosafety_level(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (26)", [])?;
+        apply(conn, 26, migration_026_biosafety_level)?;
     }
 
     if current < 27 {
-        migration_027_mycology_vocabulary(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (27)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 27, migration_027_mycology_vocabulary)?;
     }
 
     if current < 28 {
-        migration_028_colonization_contaminant(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (28)", [])?;
+        apply(conn, 28, migration_028_colonization_contaminant)?;
     }
 
     if current < 29 {
-        migration_029_genetic_lineage_markers(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (29)", [])?;
+        apply(conn, 29, migration_029_genetic_lineage_markers)?;
     }
 
     if current < 30 {
-        migration_030_fruiting_records(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (30)", [])?;
+        apply(conn, 30, migration_030_fruiting_records)?;
     }
 
     if current < 31 {
-        migration_031_taxon_hash_chain(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (31)", [])?;
+        apply(conn, 31, migration_031_taxon_hash_chain)?;
     }
 
     if current < 32 {
-        migration_032_domain_column(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (32)", [])?;
+        apply(conn, 32, migration_032_domain_column)?;
     }
 
     if current < 33 {
-        migration_033_breeding_programs(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (33)", [])?;
+        apply(conn, 33, migration_033_breeding_programs)?;
     }
 
     if current < 34 {
-        migration_034_provisional_taxa(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (34)", [])?;
+        apply(conn, 34, migration_034_provisional_taxa)?;
     }
 
     if current < 35 {
-        migration_035_multiuser_foundation(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (35)", [])?;
+        apply(conn, 35, migration_035_multiuser_foundation)?;
     }
 
     if current < 36 {
-        migration_036_field_permissions(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (36)", [])?;
+        apply(conn, 36, migration_036_field_permissions)?;
     }
 
     if current < 37 {
-        migration_037_environmental_readings(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (37)", [])?;
+        apply(conn, 37, migration_037_environmental_readings)?;
     }
 
     if current < 38 {
-        migration_038_notifications(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (38)", [])?;
+        apply(conn, 38, migration_038_notifications)?;
     }
 
     if current < 39 {
-        migration_039_perf_indexes_v2(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (39)", [])?;
+        apply(conn, 39, migration_039_perf_indexes_v2)?;
     }
 
     if current < 40 {
-        migration_040_locations(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (40)", [])?;
+        apply(conn, 40, migration_040_locations)?;
     }
 
     if current < 41 {
-        migration_041_ai_suggestions(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (41)", [])?;
+        apply(conn, 41, migration_041_ai_suggestions)?;
     }
 
     if current < 42 {
-        migration_042_backup_targets(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (42)", [])?;
+        apply(conn, 42, migration_042_backup_targets)?;
     }
 
     if current < 43 {
-        migration_043_reanchor_events(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (43)", [])?;
+        apply(conn, 43, migration_043_reanchor_events)?;
     }
 
     if current < 44 {
-        migration_044_signing_keys(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (44)", [])?;
+        apply(conn, 44, migration_044_signing_keys)?;
     }
 
     if current < 45 {
-        migration_045_installed_plugins(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (45)", [])?;
+        apply(conn, 45, migration_045_installed_plugins)?;
     }
 
     if current < 46 {
-        migration_046_checkpoint_anchors(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (46)", [])?;
+        apply(conn, 46, migration_046_checkpoint_anchors)?;
     }
 
     if current < 47 {
-        migration_047_signed_events(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (47)", [])?;
+        apply(conn, 47, migration_047_signed_events)?;
     }
 
     if current < 48 {
-        migration_048_regulatory_submissions(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (48)", [])?;
+        apply(conn, 48, migration_048_regulatory_submissions)?;
     }
 
     if current < 49 {
-        migration_049_specimen_passports(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (49)", [])?;
+        apply(conn, 49, migration_049_specimen_passports)?;
     }
 
     if current < 50 {
-        migration_050_taxonomy_registries(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (50)", [])?;
+        apply(conn, 50, migration_050_taxonomy_registries)?;
     }
 
     if current < 51 {
-        migration_051_breeding_bundles(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (51)", [])?;
+        apply(conn, 51, migration_051_breeding_bundles)?;
     }
 
     if current < 52 {
-        migration_052_compliance_flag_waivers(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (52)", [])?;
+        apply(conn, 52, migration_052_compliance_flag_waivers)?;
     }
 
     if current < 53 {
-        migration_053_specimen_lab_profile(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (53)", [])?;
+        apply(conn, 53, migration_053_specimen_lab_profile)?;
     }
 
     Ok(())
@@ -4905,6 +4911,91 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM compliance_flag_waivers WHERE revoked = 0", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    // ── Migration harness atomicity ───────────────────────────────────────────
+
+    #[test]
+    fn apply_rolls_back_the_whole_migration_when_the_body_fails() {
+        // The failure this exists to prevent: a migration that partially applies
+        // and does NOT stamp its version re-runs on the next start, where its
+        // ALTER TABLE fails with "duplicate column name" and the app can never
+        // boot again.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, \
+                 applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE widgets (id TEXT PRIMARY KEY);",
+        )
+        .unwrap();
+
+        let result = apply(&conn, 99, |c| {
+            // First statement succeeds...
+            c.execute("ALTER TABLE widgets ADD COLUMN colour TEXT", [])?;
+            // ...second fails, standing in for a disk-full or constraint error.
+            c.execute("ALTER TABLE widgets ADD COLUMN colour TEXT", [])?;
+            Ok(())
+        });
+        assert!(result.is_err(), "the migration must surface its error");
+
+        // Neither the partial DDL nor the version stamp may survive.
+        assert!(
+            !column_exists(&conn, "widgets", "colour"),
+            "the first ALTER TABLE must have been rolled back"
+        );
+        let stamped: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_version WHERE version = 99", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stamped, 0, "a failed migration must not be recorded as applied");
+    }
+
+    #[test]
+    fn apply_commits_body_and_version_together_on_success() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, \
+                 applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE widgets (id TEXT PRIMARY KEY);",
+        )
+        .unwrap();
+
+        apply(&conn, 99, |c| {
+            c.execute("ALTER TABLE widgets ADD COLUMN colour TEXT", [])?;
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(column_exists(&conn, "widgets", "colour"));
+        let stamped: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_version WHERE version = 99", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stamped, 1);
+    }
+
+    #[test]
+    fn a_retried_run_all_is_a_no_op() {
+        // run_all must be safe to call repeatedly — every app start does.
+        let conn = migrated_db();
+        let before: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        run_all(&conn).expect("re-running migrations must succeed");
+        let after: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(before, after);
+    }
+
+    fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({})", table))
+            .expect("table_info");
+        let found = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .expect("query")
+            .filter_map(|r| r.ok())
+            .any(|name| name == column);
+        found
     }
 
     // ── Migration 053: lab-type isolation ─────────────────────────────────────

@@ -54,7 +54,7 @@ pub struct AiConfigResponse {
 
 #[tauri::command]
 pub fn get_ai_config(state: State<AppState>, token: String) -> Result<AiConfigResponse, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let cfg = load_config(&db.conn);
     Ok(AiConfigResponse {
@@ -74,7 +74,7 @@ pub fn set_ai_config(
     text_model: String,
     vision_model: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can change the AI configuration".to_string());
@@ -138,7 +138,7 @@ pub fn get_ai_status(state: State<AppState>, token: String) -> Result<AiStatusRe
     // holding the app-wide DB mutex across it would freeze every other command
     // until it returns (SKILLS.md §5 — never hold the mutex across a network call).
     let cfg = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         auth_service::validate_session(&db, &token)?;
         load_config(&db.conn)
     };
@@ -212,7 +212,7 @@ pub fn summarize_notes(
     // before calling Ollama (blocking, 120s timeout) so no other command blocks
     // on the app-wide DB mutex. Re-lock only to persist the suggestion.
     let (user_id, cfg, notes) = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         let user = auth_service::validate_session(&db, &token)?;
         if !user.role.can_write() {
             return Err("Insufficient permissions".to_string());
@@ -230,7 +230,7 @@ pub fn summarize_notes(
     );
     let suggestion = ollama::generate(&cfg, &cfg.text_model, &prompt, &[])?;
 
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     insert_suggestion(&db.conn, &request.entity_type, &request.entity_id, "summarize_notes", &cfg.text_model, &prompt, &suggestion, &user_id)
 }
 
@@ -243,7 +243,7 @@ pub fn suggest_passage_comment(state: State<AppState>, token: String, specimen_i
     // Collect the passage history + config under the lock, drop it before the
     // Ollama call (blocking, 120s), then re-lock to persist. See get_ai_status.
     let (user_id, cfg, history) = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         let user = auth_service::validate_session(&db, &token)?;
         if !user.role.can_write() {
             return Err("Insufficient permissions".to_string());
@@ -287,7 +287,7 @@ pub fn suggest_passage_comment(state: State<AppState>, token: String, specimen_i
     );
     let suggestion = ollama::generate(&cfg, &cfg.text_model, &prompt, &[])?;
 
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     insert_suggestion(&db.conn, "specimen", &specimen_id, "suggest_passage_comment", &cfg.text_model, &prompt, &suggestion, &user_id)
 }
 
@@ -305,7 +305,7 @@ pub fn analyze_photo_for_contamination(
     // Resolve the attachment + config under the lock, drop it before the Ollama
     // vision call (blocking, 120s), then re-lock to persist. See get_ai_status.
     let (user_id, cfg, file_path, entity_type, entity_id) = {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         let user = auth_service::validate_session(&db, &token)?;
         if !user.role.can_write() {
             return Err("Insufficient permissions".to_string());
@@ -329,7 +329,7 @@ pub fn analyze_photo_for_contamination(
         .to_string();
     let suggestion = ollama::generate(&cfg, &cfg.vision_model, &prompt, &[image_b64])?;
 
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     insert_suggestion(&db.conn, &entity_type, &entity_id, "analyze_photo", &cfg.vision_model, &prompt, &suggestion, &user_id)
 }
 
@@ -340,7 +340,7 @@ pub fn list_ai_suggestions(
     entity_type: String,
     entity_id: String,
 ) -> Result<Vec<AiSuggestion>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let mut stmt = db.conn.prepare(
         "SELECT * FROM ai_suggestions WHERE entity_type = ?1 AND entity_id = ?2 ORDER BY created_at DESC",
@@ -360,7 +360,7 @@ pub fn list_ai_suggestions(
 /// unaffected — this is just another writer of the same column.
 #[tauri::command]
 pub fn approve_ai_suggestion(state: State<AppState>, token: String, suggestion_id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -408,7 +408,7 @@ pub fn approve_ai_suggestion(state: State<AppState>, token: String, suggestion_i
 
 #[tauri::command]
 pub fn reject_ai_suggestion(state: State<AppState>, token: String, suggestion_id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());

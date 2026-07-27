@@ -17,7 +17,7 @@ pub fn list_compliance_records(
     page: Option<u32>,
     per_page: Option<u32>,
 ) -> Result<PaginatedResponse<ComplianceRecord>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let pg = queries::PaginationParams {
@@ -106,7 +106,7 @@ pub fn create_compliance_record(
     token: String,
     request: CreateComplianceRequest,
 ) -> Result<ComplianceRecord, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -172,7 +172,7 @@ pub fn update_compliance_record(
     token: String,
     request: UpdateComplianceRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -224,7 +224,7 @@ pub fn update_compliance_record(
 
 #[tauri::command]
 pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec<ComplianceFlag>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     // WP-74: the active lab profile decides which rules run. General regulatory
@@ -508,7 +508,7 @@ pub fn waive_compliance_flag(
     reason: String,
     expires_at: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -546,7 +546,7 @@ pub fn list_compliance_waivers(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<ComplianceWaiver>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
@@ -587,7 +587,7 @@ pub fn revoke_compliance_waiver(
     token: String,
     waiver_id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -634,7 +634,7 @@ pub fn list_compliance_rules(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<ActiveComplianceRule>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
 
@@ -657,7 +657,7 @@ pub fn get_mycoplasma_status(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<MycoplasmaStatus>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::list_mycoplasma_status(&db.conn).map_err(|e| e.to_string())
 }

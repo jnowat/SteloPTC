@@ -22,7 +22,7 @@ pub fn preview_checkpoint_anchor_payload(
     checkpoint_id: String,
     chain_name: Option<String>,
 ) -> Result<AnchorPayloadPreview, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -47,7 +47,7 @@ pub fn prepare_checkpoint_anchor(
     checkpoint_id: String,
     chain_name: Option<String>,
 ) -> Result<store::CheckpointAnchor, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -80,7 +80,7 @@ pub fn record_checkpoint_anchor(
     anchor_id: String,
     txid: String,
 ) -> Result<store::CheckpointAnchor, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -109,7 +109,7 @@ pub fn verify_checkpoint_anchor(
     anchor_id: String,
     op_return_hex: String,
 ) -> Result<store::AnchorVerifyResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -136,7 +136,7 @@ pub fn list_checkpoint_anchors(
     token: String,
     checkpoint_id: Option<String>,
 ) -> Result<Vec<store::CheckpointAnchor>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::list_anchors(&db.conn, checkpoint_id.as_deref())
 }

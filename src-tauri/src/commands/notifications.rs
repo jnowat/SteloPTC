@@ -21,7 +21,7 @@ pub fn get_notification_preferences(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<NotificationPreference>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     notif_queries::list_notification_preferences(&db.conn, &user.id).map_err(|e| e.to_string())
 }
@@ -33,7 +33,7 @@ pub fn set_notification_preference(
     token: String,
     request: SetNotificationPreferenceRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     notif_queries::set_notification_preference(
         &db.conn,
@@ -47,7 +47,7 @@ pub fn set_notification_preference(
 
 #[tauri::command]
 pub fn get_smtp_config(state: State<AppState>, token: String) -> Result<SmtpConfig, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can view the SMTP configuration".to_string());
@@ -61,7 +61,7 @@ pub fn set_smtp_config(
     token: String,
     request: SetSmtpConfigRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can change the SMTP configuration".to_string());
@@ -82,7 +82,7 @@ pub fn send_test_desktop_notification(
     state: State<AppState>,
     token: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     drop(db);
 
@@ -102,7 +102,7 @@ pub fn send_test_email(
     token: String,
     to_address: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can send a test email".to_string());
@@ -122,7 +122,7 @@ pub fn list_recent_notifications(
     token: String,
     limit: Option<i64>,
 ) -> Result<Vec<crate::models::audit::AuditEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions".to_string());
@@ -169,7 +169,7 @@ pub fn dispatch_due_notifications_now(
     token: String,
 ) -> Result<DispatchNotificationsResult, String> {
     {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         let user = auth_service::validate_session(&db, &token)?;
         if !user.role.can_manage() {
             return Err("Insufficient permissions".to_string());
@@ -184,7 +184,7 @@ pub fn dispatch_due_notifications(
     app: &tauri::AppHandle,
     state: &AppState,
 ) -> Result<DispatchNotificationsResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let candidates = notif_queries::compute_due_notifications(&db.conn)?;
 
     let mut result = DispatchNotificationsResult {

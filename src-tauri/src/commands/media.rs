@@ -7,7 +7,7 @@ use tauri::State;
 
 #[tauri::command]
 pub fn list_media(state: State<AppState>, token: String) -> Result<Vec<MediaBatch>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
@@ -81,7 +81,7 @@ pub fn list_media(state: State<AppState>, token: String) -> Result<Vec<MediaBatc
 
 #[tauri::command]
 pub fn get_media_batch(state: State<AppState>, token: String, id: String) -> Result<MediaBatch, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut batch = db.conn.query_row(
@@ -153,7 +153,7 @@ pub fn create_media_batch(
     token: String,
     request: CreateMediaBatchRequest,
 ) -> Result<MediaBatch, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -250,7 +250,7 @@ pub fn update_media_batch(
     token: String,
     request: UpdateMediaBatchRequest,
 ) -> Result<MediaBatch, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -319,7 +319,7 @@ pub fn update_media_batch(
 
 #[tauri::command]
 pub fn delete_media_batch(state: State<AppState>, token: String, id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can delete media batches".to_string());
@@ -349,7 +349,7 @@ pub fn create_draft_media_batch(
     token: String,
     name: String,
 ) -> Result<MediaBatch, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());

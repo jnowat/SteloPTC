@@ -23,7 +23,7 @@ pub struct InstalledPlugin {
 
 #[tauri::command]
 pub fn list_installed_plugins(state: State<AppState>, token: String) -> Result<Vec<InstalledPlugin>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let mut stmt = db
         .conn
@@ -51,7 +51,7 @@ pub fn list_installed_plugins(state: State<AppState>, token: String) -> Result<V
 /// confirms installation.
 #[tauri::command]
 pub fn validate_plugin_manifest(state: State<AppState>, token: String, manifest_json: String) -> Result<manifest::PluginManifest, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     manifest::validate_manifest(&manifest_json)
 }
@@ -86,7 +86,7 @@ fn install_from_manifest(db: &crate::db::Database, user: &crate::models::user::U
 
 #[tauri::command]
 pub fn install_plugin(state: State<AppState>, token: String, manifest_json: String) -> Result<InstalledPlugin, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can install plugins".to_string());
@@ -101,7 +101,7 @@ pub fn install_plugin(state: State<AppState>, token: String, manifest_json: Stri
 /// executed — see `plugins::loader`'s module doc comment.
 #[tauri::command]
 pub fn install_plugin_from_zip(state: State<AppState>, token: String, zip_b64: String) -> Result<InstalledPlugin, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can install plugins".to_string());
@@ -123,7 +123,7 @@ pub fn install_plugin_from_zip(state: State<AppState>, token: String, zip_b64: S
 
 #[tauri::command]
 pub fn uninstall_plugin(state: State<AppState>, token: String, plugin_id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can uninstall plugins".to_string());

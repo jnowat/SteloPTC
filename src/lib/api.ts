@@ -401,6 +401,15 @@ export async function loadDemoData() {
   return call<string>('load_demo_data');
 }
 
+/**
+ * Returns a warning when the backend fell back to a temporary in-memory
+ * database, or null in normal operation. Unauthenticated on purpose — the user
+ * has to see this *before* they enter data that will not survive the session.
+ */
+export async function getDegradedReason() {
+  return call<string | null>('get_degraded_reason');
+}
+
 export async function getLabProfile() {
   return call<string>('get_lab_profile');
 }

@@ -3,7 +3,7 @@
   import { get } from 'svelte/store';
   import { isLoggedIn, token, currentUser, clearAuth, initializing, mustChangePassword } from './lib/stores/auth';
   import { currentView, darkMode, navigateTo, setErrorLogger, unreadErrorCount, workQueueCount } from './lib/stores/app';
-  import { getCurrentUser, logout as apiLogout, logError, getUnreadErrorCount, getWorkQueue } from './lib/api';
+  import { getCurrentUser, logout as apiLogout, logError, getUnreadErrorCount, getWorkQueue, getDegradedReason } from './lib/api';
   import { loadLabProfile } from './lib/profile';
   import Login from './lib/components/Login.svelte';
   import ForceChangePassword from './lib/components/ForceChangePassword.svelte';
@@ -34,7 +34,14 @@
   import FruitingOverview from './lib/components/FruitingOverview.svelte';
   import PwaInstallPrompt from './lib/components/PwaInstallPrompt.svelte';
 
-  let startupError = '';
+  // Must be $state: this component uses runes (see degradedReason below), and in
+  // runes mode a plain `let` is not reactive — reassigning it would update the
+  // variable but never re-render, silently hiding the startup-error screen.
+  let startupError = $state('');
+  // Non-empty when the backend is running on a throwaway in-memory database.
+  // Shown before anything else, because data entered in that state is lost on
+  // close and the app would otherwise look like a working, empty lab.
+  let degradedReason = $state('');
 
   // Wire up the fire-and-forget error logger so addNotification can persist errors.
   // This is set once after the app mounts so we have access to the api module.
@@ -68,6 +75,12 @@
   }
 
   onMount(() => {
+    // Checked first and independently of auth: a user must be warned about
+    // temporary-storage mode before they log in and start recording work.
+    getDegradedReason()
+      .then((reason) => { degradedReason = reason ?? ''; })
+      .catch(() => { /* older backend or IPC unavailable — not fatal */ });
+
     try {
       const savedToken = get(token);
       if (savedToken) {
@@ -125,6 +138,12 @@
 <PwaInstallPrompt />
 
 <div class="app" class:dark={$darkMode}>
+  {#if degradedReason}
+    <div class="degraded-banner" role="alert">
+      <strong>Temporary storage — your work will NOT be saved.</strong>
+      <span>{degradedReason}</span>
+    </div>
+  {/if}
   {#if startupError}
     <div class="init-screen">
       <div class="init-content">
@@ -209,6 +228,27 @@
 </div>
 
 <style>
+  .degraded-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 16px;
+    background: #7f1d1d;
+    color: #fff;
+    font-size: 13px;
+    line-height: 1.45;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  }
+  .degraded-banner span {
+    white-space: pre-line;
+    opacity: 0.92;
+  }
+
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
   :global(*) {

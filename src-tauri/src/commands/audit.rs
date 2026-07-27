@@ -17,7 +17,7 @@ pub fn get_audit_log(
     token: String,
     search: AuditSearchParams,
 ) -> Result<PaginatedResponse<AuditEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions".to_string());
@@ -139,7 +139,7 @@ pub fn list_audit_entries_cursor(
     after_seq: Option<i64>,
     limit: i64,
 ) -> Result<queries::CursorPage<AuditEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions".to_string());
@@ -158,7 +158,7 @@ pub fn verify_audit_entry(
     token: String,
     entry_id: String,
 ) -> Result<VerifyEntryResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     // Use Option<> for every nullable column so rusqlite never errors on NULL.
@@ -249,7 +249,7 @@ pub fn verify_audit_lineage(
     token: String,
     lineage_id: String,
 ) -> Result<VerifyChainResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     struct ChainRow {
@@ -379,7 +379,7 @@ pub fn create_audit_checkpoint(
     start_seq: Option<i64>,
     end_seq: Option<i64>,
 ) -> Result<CreateCheckpointResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions — admin or supervisor role required.".to_string());
@@ -471,7 +471,7 @@ pub fn verify_against_checkpoint(
     token: String,
     checkpoint_id: String,
 ) -> Result<VerifyCheckpointResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     struct CpRow {
@@ -640,7 +640,7 @@ pub fn list_audit_checkpoints(
     token: String,
     lineage_id: Option<String>,
 ) -> Result<Vec<AuditCheckpoint>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     let rows: Vec<AuditCheckpoint> = if let Some(ref lid) = lineage_id {
@@ -700,7 +700,7 @@ pub fn export_audit_proof(
     token: String,
     checkpoint_id: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     let cp = db.conn.query_row(
@@ -810,7 +810,7 @@ pub fn verify_exported_proof(
     token: String,
     proof_json: String,
 ) -> Result<VerifyProofResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     let proof: PortableMerkleProof = serde_json::from_str(&proof_json)
@@ -932,7 +932,7 @@ pub fn get_auto_checkpoint_config(
     state: State<AppState>,
     token: String,
 ) -> Result<AutoCheckpointConfig, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     let enabled = queries::read_setting(&db.conn, "auto_checkpoint_enabled", "1") == "1";
@@ -950,7 +950,7 @@ pub fn set_auto_checkpoint_config(
     token: String,
     config: AutoCheckpointConfig,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions — admin or supervisor role required.".to_string());
@@ -988,7 +988,7 @@ pub fn run_auto_checkpoint(
     state: State<AppState>,
     token: String,
 ) -> Result<AutoCheckpointResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions — admin or supervisor role required.".to_string());

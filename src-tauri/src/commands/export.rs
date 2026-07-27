@@ -87,7 +87,7 @@ fn map_export_row(row: &rusqlite::Row) -> rusqlite::Result<ExportSpecimen> {
 
 #[tauri::command]
 pub fn export_specimens_csv(state: State<AppState>, token: String) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(EXPORT_SQL).map_err(|e| e.to_string())?;
@@ -141,7 +141,7 @@ Notes,Employee ID,Created By,Created At,Updated At\n";
 
 #[tauri::command]
 pub fn export_specimens_json(state: State<AppState>, token: String) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(EXPORT_SQL).map_err(|e| e.to_string())?;

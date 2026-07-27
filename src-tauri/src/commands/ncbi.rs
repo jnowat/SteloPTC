@@ -32,7 +32,7 @@ pub fn import_ncbi_taxonomy(
     token: String,
     request: ImportNcbiTaxonomyRequest,
 ) -> Result<ImportNcbiTaxonomyResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can import NCBI taxonomy data".to_string());
@@ -292,7 +292,7 @@ pub fn resolve_ncbi_conflict(
     token: String,
     request: ResolveNcbiConflictRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can resolve NCBI taxonomy conflicts".to_string());
@@ -413,7 +413,7 @@ pub fn sync_ncbi_taxon(
     token: String,
     record: NcbiTaxonRecord,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can sync NCBI taxonomy data".to_string());
@@ -522,7 +522,7 @@ pub fn list_ncbi_sync_log(
     pending_only: bool,
     limit: Option<i64>,
 ) -> Result<Vec<NcbiSyncLog>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let cap = limit.unwrap_or(200).clamp(1, 1000);

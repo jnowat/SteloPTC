@@ -10,7 +10,7 @@ pub fn create_fruiting_record(
     token: String,
     request: CreateFruitingRecordRequest,
 ) -> Result<FruitingRecord, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -33,7 +33,7 @@ pub fn list_fruiting_records(
     token: String,
     specimen_id: String,
 ) -> Result<Vec<FruitingRecord>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::list_fruiting_records(&db.conn, &specimen_id)
         .map_err(|e| format!("Failed to list fruiting records: {}", e))
@@ -46,7 +46,7 @@ pub fn list_all_fruiting_records(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<FruitingRecordWithSpecimen>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::list_all_fruiting_records(&db.conn)
         .map_err(|e| format!("Failed to list fruiting records: {}", e))

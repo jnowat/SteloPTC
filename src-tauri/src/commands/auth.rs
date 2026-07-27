@@ -14,7 +14,7 @@ pub fn login(state: State<AppState>, username: String, password: String) -> Resu
     // Check the lockout BEFORE taking the DB lock and before hashing, so a
     // guessing loop cannot hold the global mutex or burn CPU on bcrypt.
     if let Err(e) = state.login_throttle.check(&username) {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         let remaining = state
             .login_throttle
             .lock_remaining(&username)
@@ -27,7 +27,7 @@ pub fn login(state: State<AppState>, username: String, password: String) -> Resu
         return Err(e);
     }
 
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::authenticate(&db, &username, &password).inspect_err(|e| {
         state.login_throttle.record_failure(&username);
         queries::log_audit(&db.conn, None, "login_failed", "user", None, None, Some(&username), Some(e.as_str())).ok();
@@ -54,7 +54,7 @@ pub fn login(state: State<AppState>, username: String, password: String) -> Resu
 
 #[tauri::command]
 pub fn get_current_user(state: State<AppState>, token: String) -> Result<UserPublic, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     // Allow-password-change variant: a user who still owes a forced change must
     // be able to fetch their own identity so the forced-change screen can render.
     let user = auth_service::validate_session_allow_password_change(&db, &token)?;
@@ -70,13 +70,13 @@ pub fn get_current_user(state: State<AppState>, token: String) -> Result<UserPub
 
 #[tauri::command]
 pub fn logout(state: State<AppState>, token: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::invalidate_session(&db, &token)
 }
 
 #[tauri::command]
 pub fn list_users(state: State<AppState>, token: String) -> Result<Vec<UserPublic>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let caller = auth_service::validate_session(&db, &token)?;
     if !caller.role.can_manage() {
         return Err("Insufficient permissions".to_string());
@@ -104,7 +104,7 @@ pub fn list_users(state: State<AppState>, token: String) -> Result<Vec<UserPubli
 
 #[tauri::command]
 pub fn create_user(state: State<AppState>, token: String, request: CreateUserRequest) -> Result<UserPublic, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let caller = auth_service::validate_session(&db, &token)?;
     if !caller.role.is_admin() {
         return Err("Only admins can create users".to_string());
@@ -177,7 +177,7 @@ pub fn change_password(
     new_password: String,
     current_password: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     // Allow-password-change variant: this is the one endpoint a user under a
     // forced change must reach in order to clear the flag.
     let user = auth_service::validate_session_allow_password_change(&db, &token)?;
@@ -238,7 +238,7 @@ pub fn update_user_role(state: State<AppState>, token: String, user_id: String, 
         return Err(format!("Invalid role '{}'. Must be one of: admin, supervisor, tech, guest", new_role));
     }
 
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let caller = auth_service::validate_session(&db, &token)?;
     if !caller.role.is_admin() {
         return Err("Only admins can change roles".to_string());

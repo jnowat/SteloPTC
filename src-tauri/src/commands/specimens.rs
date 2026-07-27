@@ -22,7 +22,7 @@ pub fn list_specimens(
     page: Option<u32>,
     per_page: Option<u32>,
 ) -> Result<PaginatedResponse<Specimen>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let pg = queries::PaginationParams {
@@ -122,7 +122,7 @@ pub fn list_specimens(
 
 #[tauri::command]
 pub fn get_specimen(state: State<AppState>, token: String, id: String) -> Result<Specimen, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     // A specimen ID that leaked across a profile switch (QR code, bookmark,
     // stale UI state) must not resolve under the wrong lab.
@@ -200,7 +200,7 @@ pub fn create_specimen(
     token: String,
     request: CreateSpecimenRequest,
 ) -> Result<Specimen, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -326,7 +326,7 @@ pub fn update_specimen(
     token: String,
     request: UpdateSpecimenRequest,
 ) -> Result<Specimen, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -406,7 +406,7 @@ pub fn update_specimen(
 
 #[tauri::command]
 pub fn delete_specimen(state: State<AppState>, token: String, id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can delete specimens".to_string());
@@ -445,7 +445,7 @@ pub fn search_specimens(
     token: String,
     params_input: SpecimenSearchParams,
 ) -> Result<PaginatedResponse<Specimen>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let pg = queries::PaginationParams {
@@ -615,7 +615,7 @@ pub fn search_specimens(
 
 #[tauri::command]
 pub fn get_specimen_stats(state: State<AppState>, token: String) -> Result<SpecimenStats, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     // WP-63: served from the materialized dashboard cache (60s TTL, invalidated
@@ -639,7 +639,7 @@ pub fn bulk_archive_specimens(
     if ids.is_empty() {
         return Ok(0);
     }
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can archive specimens".to_string());
@@ -689,7 +689,7 @@ pub fn bulk_update_location(
     if ids.is_empty() {
         return Ok(0);
     }
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -733,7 +733,7 @@ pub fn split_specimen(
         return Err("Split requires at least 2 children".to_string());
     }
 
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -1040,7 +1040,7 @@ pub fn preview_split_accessions(
     if count == 0 || count > 26 {
         return Err("Count must be between 1 and 26".to_string());
     }
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let parent_accession: String = db.conn.query_row(
@@ -1063,7 +1063,7 @@ pub fn get_specimen_family(
     token: String,
     id: String,
 ) -> Result<Vec<FamilyMember>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     crate::db::vocabulary::require_active_lab_profile(&db.conn, &id)?;
 
@@ -1123,7 +1123,7 @@ pub fn bulk_update_stage(
     if ids.is_empty() {
         return Ok(0);
     }
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());

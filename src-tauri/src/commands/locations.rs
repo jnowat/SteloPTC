@@ -21,7 +21,7 @@ fn row_to_location(row: &rusqlite::Row) -> rusqlite::Result<Location> {
 
 #[tauri::command]
 pub fn list_locations(state: State<AppState>, token: String) -> Result<Vec<Location>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let mut stmt = db
         .conn
@@ -37,7 +37,7 @@ pub fn list_locations(state: State<AppState>, token: String) -> Result<Vec<Locat
 
 #[tauri::command]
 pub fn get_location(state: State<AppState>, token: String, id: String) -> Result<Location, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     db.conn
         .query_row("SELECT * FROM locations WHERE id = ?1", [id], row_to_location)
@@ -50,7 +50,7 @@ pub fn create_location(
     token: String,
     request: CreateLocationRequest,
 ) -> Result<Location, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -87,7 +87,7 @@ pub fn update_location(
     token: String,
     request: UpdateLocationRequest,
 ) -> Result<Location, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -130,7 +130,7 @@ pub fn update_location(
 
 #[tauri::command]
 pub fn delete_location(state: State<AppState>, token: String, id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can delete locations".to_string());
@@ -169,7 +169,7 @@ pub fn set_specimen_location_pin(
     specimen_id: String,
     location_id: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -189,7 +189,7 @@ pub fn set_specimen_location_pin(
 /// specimen just to render a heat-map.
 #[tauri::command]
 pub fn get_location_map_data(state: State<AppState>, token: String) -> Result<Vec<LocationMapPoint>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let mut stmt = db
         .conn

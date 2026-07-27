@@ -112,7 +112,7 @@ pub fn create_strain(
     token: String,
     request: CreateStrainRequest,
 ) -> Result<Strain, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -182,7 +182,7 @@ pub fn get_strain(
     token: String,
     id: String,
 ) -> Result<Strain, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     let strain = load_strain(&db.conn, &id)?;
     let perms = crate::db::permissions::FieldPermissionSet::load(&db.conn, user.role.as_str())
@@ -196,7 +196,7 @@ pub fn list_strains_by_species(
     token: String,
     species_id: String,
 ) -> Result<Vec<Strain>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db
@@ -232,7 +232,7 @@ pub fn update_strain(
     token: String,
     request: UpdateStrainRequest,
 ) -> Result<Strain, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -290,7 +290,7 @@ pub fn archive_strain(
     token: String,
     id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -325,7 +325,7 @@ pub fn update_strain_status(
     token: String,
     request: UpdateStrainStatusRequest,
 ) -> Result<Strain, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -378,7 +378,7 @@ pub fn create_hybridization_event(
     token: String,
     request: CreateHybridizationEventRequest,
 ) -> Result<HybridizationResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -648,7 +648,7 @@ pub fn suggest_generation_label(
     parent_a_id: String,
     parent_b_id: String,
 ) -> Result<SuggestGenerationLabelResponse, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     Ok(queries::suggest_generation_label_for_parents(
         &db.conn,
@@ -665,7 +665,7 @@ pub fn get_generational_stats(
     token: String,
     strain_id: String,
 ) -> Result<Vec<GenerationalStats>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::get_generational_stats(&db.conn, &strain_id).map_err(|e| e.to_string())
 }
@@ -681,7 +681,7 @@ pub fn get_strain_ancestry(
     strain_id: String,
     max_depth: Option<u32>,
 ) -> Result<PedigreeNode, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let cap = queries::configured_pedigree_max_depth(&db.conn);
     let depth = max_depth.unwrap_or(5).min(cap);
@@ -697,7 +697,7 @@ pub fn get_strain_descendants(
     strain_id: String,
     max_depth: Option<u32>,
 ) -> Result<PedigreeNode, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let cap = queries::configured_pedigree_max_depth(&db.conn);
     let depth = max_depth.unwrap_or(5).min(cap);
@@ -713,7 +713,7 @@ pub fn get_strain_specimen_tree(
     strain_id: String,
     include_descendants: bool,
 ) -> Result<StrainSpecimenTree, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::get_strain_specimen_tree(&db.conn, &strain_id, include_descendants)
         .map_err(|e| e.to_string())
@@ -728,7 +728,7 @@ pub fn export_strain_pedigree(
     strain_id: String,
     max_depth: Option<u32>,
 ) -> Result<PedigreeExport, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let cap = queries::configured_pedigree_max_depth(&db.conn);
     let depth = max_depth.unwrap_or(5).min(cap);
@@ -738,7 +738,7 @@ pub fn export_strain_pedigree(
 /// Returns the lab's configured pedigree traversal depth cap (1–20, default 10).
 #[tauri::command]
 pub fn get_pedigree_max_depth(state: State<AppState>, token: String) -> Result<u32, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     Ok(queries::configured_pedigree_max_depth(&db.conn))
 }
@@ -751,7 +751,7 @@ pub fn set_pedigree_max_depth(
     token: String,
     max_depth: u32,
 ) -> Result<u32, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can change the pedigree depth limit".to_string());

@@ -137,7 +137,7 @@ pub fn list_attachments(
     entity_type: String,
     entity_id: String,
 ) -> Result<Vec<AttachmentMeta>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db
@@ -172,7 +172,7 @@ pub fn upload_attachment(
     data_b64: String,
     description: Option<String>,
 ) -> Result<AttachmentMeta, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -253,7 +253,7 @@ pub fn get_attachment_data(
     token: String,
     id: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let file_path: String = db
@@ -277,7 +277,7 @@ pub fn delete_attachment(
     token: String,
     id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());

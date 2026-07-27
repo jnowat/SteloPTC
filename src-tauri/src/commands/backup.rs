@@ -9,7 +9,7 @@ pub fn create_backup(
     token: String,
     destination: Option<String>,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can create backups".to_string());
@@ -105,7 +105,7 @@ pub fn create_backup(
 
 #[tauri::command]
 pub fn list_backups(state: State<AppState>, token: String) -> Result<Vec<BackupInfo>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let db_path = crate::db::Database::db_path();
@@ -155,7 +155,7 @@ pub fn restore_backup(
     token: String,
     backup_path: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can restore from a backup".to_string());

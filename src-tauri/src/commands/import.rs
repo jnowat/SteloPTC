@@ -79,7 +79,7 @@ pub fn import_xlsx(
     payload: ImportPayload,
     dry_run: bool,
 ) -> Result<ImportResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Write permission required to import data".to_string());

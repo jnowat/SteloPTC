@@ -22,7 +22,7 @@ const DEFAULT_CHANGE_LIMIT: i64 = 500;
 /// Any authenticated user may see a summary of sync state.
 #[tauri::command]
 pub fn get_sync_status(state: State<AppState>, token: String) -> Result<SyncStatusResponse, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     sync_queries::get_sync_status(&db.conn).map_err(|e| e.to_string())
 }
@@ -37,7 +37,7 @@ pub fn get_changes_since_cursor(
     cursors: Vec<SyncCursor>,
     limit: Option<i64>,
 ) -> Result<ChangeSetResponse, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions".to_string());
@@ -67,7 +67,7 @@ pub fn apply_incoming_changes(
     token: String,
     request: ApplyChangesRequest,
 ) -> Result<ApplyChangesResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can submit incoming sync changes".to_string());
@@ -122,7 +122,7 @@ pub fn list_sync_conflicts(
     token: String,
     unresolved_only: Option<bool>,
 ) -> Result<Vec<SyncConflict>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions".to_string());
@@ -141,7 +141,7 @@ pub fn resolve_sync_conflict(
     conflict_id: String,
     resolution_note: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can resolve sync conflicts".to_string());
@@ -176,7 +176,7 @@ pub fn register_sync_peer(
     device_id: String,
     device_name: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can register sync peers".to_string());
@@ -190,7 +190,7 @@ pub fn register_sync_peer(
 /// Supervisor+: lists known sync peers.
 #[tauri::command]
 pub fn list_sync_peers(state: State<AppState>, token: String) -> Result<Vec<SyncPeer>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Insufficient permissions".to_string());

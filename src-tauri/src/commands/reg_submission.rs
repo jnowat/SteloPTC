@@ -89,7 +89,7 @@ pub fn evaluate_submission_readiness(
     kind: String,
     scope: serde_json::Value,
 ) -> Result<reg_submission::Readiness, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -107,7 +107,7 @@ pub fn create_submission(
     scope: serde_json::Value,
     auto_generate: Option<bool>,
 ) -> Result<reg_submission::Submission, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -127,7 +127,7 @@ pub fn reevaluate_submission(
     token: String,
     submission_id: String,
 ) -> Result<reg_submission::Submission, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -141,7 +141,7 @@ pub fn generate_submission_package(
     token: String,
     submission_id: String,
 ) -> Result<reg_submission::Submission, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -168,7 +168,7 @@ pub fn mark_submission_submitted(
     submission_id: String,
     reference: String,
 ) -> Result<reg_submission::Submission, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -184,7 +184,7 @@ pub fn mark_submission_submitted(
 
 #[tauri::command]
 pub fn list_submissions(state: State<AppState>, token: String) -> Result<Vec<reg_submission::Submission>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());
@@ -226,7 +226,7 @@ pub fn monitor(conn: &rusqlite::Connection) -> Result<MonitorResult, String> {
 
 #[tauri::command]
 pub fn run_submission_monitor(state: State<AppState>, token: String) -> Result<MonitorResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err(MANAGE_ONLY.to_string());

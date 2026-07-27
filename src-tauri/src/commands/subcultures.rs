@@ -16,7 +16,7 @@ pub fn record_specimen_death(
     token: String,
     request: RecordSpecimenDeathRequest,
 ) -> Result<Subculture, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -171,7 +171,7 @@ pub fn list_subcultures(
     page: Option<u32>,
     per_page: Option<u32>,
 ) -> Result<PaginatedResponse<Subculture>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let pg = queries::PaginationParams {
@@ -217,7 +217,7 @@ pub fn create_subculture(
     token: String,
     request: CreateSubcultureRequest,
 ) -> Result<Subculture, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -351,7 +351,7 @@ pub fn update_subculture(
     token: String,
     request: UpdateSubcultureRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -425,7 +425,7 @@ pub fn list_all_subcultures(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<Subculture>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
@@ -452,7 +452,7 @@ pub fn get_colonization_history(
     token: String,
     specimen_id: String,
 ) -> Result<Vec<ColonizationEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let mut stmt = db.conn.prepare(
         "SELECT id, date, colonization_pct, passage_number, notes
@@ -479,7 +479,7 @@ pub fn get_contamination_stats(
     state: State<AppState>,
     token: String,
 ) -> Result<ContaminationStats, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     // WP-63: same materialized cache as get_specimen_stats — both stats are
@@ -500,7 +500,7 @@ pub fn get_subculture_schedule(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<SubcultureScheduleEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     crate::db::dashboard::query_subculture_schedule(&db.conn, &profile)
@@ -512,7 +512,7 @@ pub fn get_culture_maintenance_alerts(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<CultureMaintenanceAlert>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     crate::db::dashboard::query_culture_maintenance_alerts(&db.conn, &profile)

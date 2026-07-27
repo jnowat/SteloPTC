@@ -14,7 +14,7 @@ use crate::AppState;
 /// Export a signed taxonomy registry for this lab and record it.
 #[tauri::command]
 pub fn export_taxonomy_registry(state: State<AppState>, token: String) -> Result<TaxonomyRegistry, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions — a write-capable role is required to export a registry.".to_string());
@@ -44,7 +44,7 @@ pub fn verify_taxonomy_registry(
     token: String,
     registry_json: String,
 ) -> Result<RegistryVerification, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::verify_registry_json(&registry_json)
 }
@@ -57,7 +57,7 @@ pub fn preview_taxonomy_registry_import(
     token: String,
     registry_json: String,
 ) -> Result<store::RegistryImportPreview, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::preview_import(&db.conn, &registry_json)
 }
@@ -71,7 +71,7 @@ pub fn import_taxonomy_registry(
     registry_json: String,
     decisions: Option<Vec<RecordDecision>>,
 ) -> Result<store::RegistryImportResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions — a write-capable role is required to import a registry.".to_string());
@@ -87,7 +87,7 @@ pub fn list_taxonomy_registries(
     token: String,
     direction: Option<String>,
 ) -> Result<Vec<store::RegistryRecordRow>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::list_registries(&db.conn, direction.as_deref())
 }
@@ -99,7 +99,7 @@ pub fn get_taxonomy_registry_json(
     token: String,
     row_id: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::get_registry_json(&db.conn, &row_id)
 }
@@ -111,7 +111,7 @@ pub fn list_registry_dispositions(
     token: String,
     registry_row_id: String,
 ) -> Result<Vec<store::AppliedRecord>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     store::list_dispositions(&db.conn, &registry_row_id)
 }
