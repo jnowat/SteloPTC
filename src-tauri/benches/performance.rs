@@ -70,6 +70,74 @@ fn bench_list_specimens_100k(c: &mut Criterion) {
 /// benchmarked via the same recursive-CTE shape `get_taxon_descendants` uses
 /// in the command layer, extended to also roll up the specimen count at the
 /// leaf (what a real "descendants" view needs to render).
+/// The free-text specimen search as the command layer issues it: seven
+/// leading-wildcard LIKE predicates ORed across `specimens` and `species`.
+///
+/// A leading `%` defeats every B-tree index, so this is a full scan of both
+/// tables on every keystroke — and the command runs it twice (once for
+/// COUNT(*), once for the page). This benchmark is the baseline the FTS5 index
+/// is measured against.
+fn bench_search_specimens_like_100k(c: &mut Criterion) {
+    let conn = fixture_db(100_000, 1);
+    c.bench_function("search_specimens_like_100k", |b| {
+        b.iter(|| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT s.id FROM specimens s \
+                     LEFT JOIN species sp ON s.species_id = sp.id \
+                     WHERE s.is_archived = 0 AND ( \
+                         s.accession_number LIKE ?1 OR s.notes LIKE ?1 OR s.location LIKE ?1 \
+                         OR s.provenance LIKE ?1 OR s.source_plant LIKE ?1 \
+                         OR sp.genus LIKE ?1 OR sp.species_name LIKE ?1) \
+                     ORDER BY s.created_at DESC LIMIT 50",
+                )
+                .unwrap();
+            let rows: Vec<String> = stmt
+                .query_map(["%QT00042%"], |r| r.get::<_, String>(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
+            criterion::black_box(rows);
+        })
+    });
+}
+
+/// The same search served by the trigram FTS index (migration 054), in exactly
+/// the shape `search_specimens` ships: a MATERIALIZED CTE pinned as the outer
+/// loop by CROSS JOIN.
+///
+/// Compare against `search_specimens_like_100k` — same corpus, same needle,
+/// same result set (equivalence is asserted in the migrations.rs tests).
+fn bench_search_specimens_fts_100k(c: &mut Criterion) {
+    let conn = fixture_db(100_000, 1);
+    c.bench_function("search_specimens_fts_100k", |b| {
+        b.iter(|| {
+            let mut stmt = conn
+                .prepare(
+                    "WITH matches(id) AS MATERIALIZED ( \
+                         SELECT fs.id FROM specimens_fts f \
+                             JOIN specimens fs ON fs.rowid = f.rowid \
+                             WHERE f.specimens_fts MATCH ?1 \
+                         UNION \
+                         SELECT ss.id FROM specimens ss \
+                             WHERE ss.species_id IN ( \
+                                 SELECT id FROM species WHERE genus LIKE ?2 OR species_name LIKE ?2)) \
+                     SELECT s.id FROM matches mt CROSS JOIN specimens s ON s.id = mt.id \
+                     LEFT JOIN species sp ON s.species_id = sp.id \
+                     WHERE s.is_archived = 0 \
+                     ORDER BY s.created_at DESC LIMIT 50",
+                )
+                .unwrap();
+            let rows: Vec<String> = stmt
+                .query_map(rusqlite::params!["\"QT00042\"", "%QT00042%"], |r| r.get::<_, String>(0))
+                .unwrap()
+                .filter_map(|r| r.ok())
+                .collect();
+            criterion::black_box(rows);
+        })
+    });
+}
+
 fn bench_get_taxon_descendants_deep(c: &mut Criterion) {
     let conn = Connection::open_in_memory().expect("in-memory DB");
     migrations::run_all(&conn).expect("run migrations");
@@ -217,6 +285,8 @@ criterion_group!(
     benches,
     bench_list_specimens_10k,
     bench_list_specimens_100k,
+    bench_search_specimens_like_100k,
+    bench_search_specimens_fts_100k,
     bench_get_taxon_descendants_deep,
     bench_build_merkle_root_1000,
     bench_dashboard_aggregate_100k,

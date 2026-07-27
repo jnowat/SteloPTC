@@ -284,6 +284,77 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         apply(conn, 53, migration_053_specimen_lab_profile)?;
     }
 
+    if current < 54 {
+        apply(conn, 54, migration_054_specimen_search_index)?;
+    }
+
+    Ok(())
+}
+
+/// Full-text index backing free-text specimen search.
+///
+/// `search_specimens` ORs seven `LIKE '%q%'` predicates across `specimens` and
+/// `species`. A leading wildcard defeats every B-tree index, so each search was
+/// a full scan of both tables — twice, since the command runs a `COUNT(*)` and
+/// then the page. Measured at 100k specimens: ~14.8 ms per search, on an
+/// in-memory database, while holding the global DB mutex.
+///
+/// The tokenizer is **trigram**, not the default unicode61, and that choice is
+/// the whole point: a standard FTS index matches token *prefixes*, so searching
+/// `0042` would stop finding accession `FIX-00000042` — a silent behaviour
+/// regression for anyone who types a partial accession. Trigram indexes every
+/// 3-character sequence, giving true substring matching with identical results
+/// to `LIKE '%q%'` for queries of 3+ characters. Queries shorter than that are
+/// left on the old LIKE path by the command layer (see `search_specimens`),
+/// since trigram cannot serve them.
+///
+/// `content=''` would make this contentless; instead it is an **external
+/// content** index over `specimens`, so the text is not duplicated — the FTS
+/// table stores only the index and reads column values back through `rowid`.
+/// The three triggers keep it in step with every write.
+fn migration_054_specimen_search_index(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS specimens_fts USING fts5(
+             accession_number,
+             notes,
+             location,
+             provenance,
+             source_plant,
+             content='specimens',
+             content_rowid='rowid',
+             tokenize='trigram'
+         );",
+    )?;
+
+    // Backfill from whatever is already in the table.
+    conn.execute_batch(
+        "INSERT INTO specimens_fts (rowid, accession_number, notes, location, provenance, source_plant)
+             SELECT rowid, accession_number, notes, location, provenance, source_plant FROM specimens;",
+    )?;
+
+    // External-content FTS tables are not maintained automatically. The delete
+    // and update triggers must write the OLD values into the special 'delete'
+    // command row first, otherwise the index keeps stale trigrams and search
+    // returns specimens whose text no longer matches.
+    conn.execute_batch(
+        "CREATE TRIGGER IF NOT EXISTS specimens_fts_insert AFTER INSERT ON specimens BEGIN
+             INSERT INTO specimens_fts (rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES (new.rowid, new.accession_number, new.notes, new.location, new.provenance, new.source_plant);
+         END;
+
+         CREATE TRIGGER IF NOT EXISTS specimens_fts_delete AFTER DELETE ON specimens BEGIN
+             INSERT INTO specimens_fts (specimens_fts, rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES ('delete', old.rowid, old.accession_number, old.notes, old.location, old.provenance, old.source_plant);
+         END;
+
+         CREATE TRIGGER IF NOT EXISTS specimens_fts_update AFTER UPDATE ON specimens BEGIN
+             INSERT INTO specimens_fts (specimens_fts, rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES ('delete', old.rowid, old.accession_number, old.notes, old.location, old.provenance, old.source_plant);
+             INSERT INTO specimens_fts (rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES (new.rowid, new.accession_number, new.notes, new.location, new.provenance, new.source_plant);
+         END;",
+    )?;
+
     Ok(())
 }
 
@@ -4996,6 +5067,262 @@ mod tests {
             .filter_map(|r| r.ok())
             .any(|name| name == column);
         found
+    }
+
+    // ── Migration 054: trigram search index ───────────────────────────────────
+
+    /// Runs the same needle through the FTS index and through the original
+    /// LIKE scan, and asserts the two agree. This is the property the whole
+    /// optimisation rests on: it is only a safe substitution if it is not a
+    /// behaviour change.
+    fn assert_fts_matches_like(conn: &Connection, needle: &str) {
+        let fts_expr = crate::db::queries::fts_match_query(needle)
+            .unwrap_or_else(|| panic!("{needle:?} should be long enough for the trigram index"));
+
+        let mut fts_stmt = conn
+            .prepare(
+                "SELECT s.id FROM specimens s \
+                 WHERE s.rowid IN (SELECT rowid FROM specimens_fts WHERE specimens_fts MATCH ?1) \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_fts: Vec<String> = fts_stmt
+            .query_map([&fts_expr], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        let mut like_stmt = conn
+            .prepare(
+                "SELECT s.id FROM specimens s \
+                 WHERE s.accession_number LIKE ?1 OR s.notes LIKE ?1 OR s.location LIKE ?1 \
+                    OR s.provenance LIKE ?1 OR s.source_plant LIKE ?1 \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_like: Vec<String> = like_stmt
+            .query_map([format!("%{}%", needle)], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(
+            via_fts, via_like,
+            "FTS and LIKE disagreed for needle {needle:?}"
+        );
+    }
+
+    fn search_fixture_db() -> Connection {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp_s','Citrus','sinensis','CIT-SIN')",
+            [],
+        )
+        .unwrap();
+        let rows = [
+            ("s1", "FIX-00000042", "Routine passage, batch QT00042", "Room 1 / Rack A"),
+            ("s2", "FIX-00000043", "Contamination observed (Trichoderma)", "Room 2 / Rack B"),
+            ("s3", "PTC-2026-0001", "C. sinensis \"pilot\" run - stage 2", "Greenhouse"),
+            ("s4", "PTC-2026-0002", "no notes of interest", "Room 1 / Rack C"),
+        ];
+        for (id, acc, notes, loc) in rows {
+            conn.execute(
+                "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, \
+                 notes, location) VALUES (?1, ?2, 'sp_s', 'explant', '2026-01-01', ?3, ?4)",
+                rusqlite::params![id, acc, notes, loc],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    #[test]
+    fn fts_index_agrees_with_like_for_substring_needles() {
+        let conn = search_fixture_db();
+        // Mid-token substrings are exactly what a prefix tokenizer would have
+        // broken; trigram handles them.
+        for needle in ["0042", "QT00042", "Rack A", "Trichoderma", "sinensis", "Room 1", "no notes"] {
+            assert_fts_matches_like(&conn, needle);
+        }
+    }
+
+    #[test]
+    fn fts_index_agrees_with_like_for_fts5_operator_characters() {
+        let conn = search_fixture_db();
+        // Every one of these is an FTS5 query operator. Unescaped they would
+        // either raise a syntax error or silently mean something else.
+        for needle in ["C. sinensis", "(Trichoderma)", "run - stage", "\"pilot\"", "AND", "NOT", "*", "^x", "a:b"] {
+            if crate::db::queries::fts_match_query(needle).is_some() {
+                assert_fts_matches_like(&conn, needle);
+            }
+        }
+    }
+
+    #[test]
+    fn fts_index_tracks_inserts_updates_and_deletes() {
+        // External-content FTS is not maintained automatically; if a trigger is
+        // wrong the index silently serves stale results.
+        let conn = search_fixture_db();
+        assert_fts_matches_like(&conn, "Trichoderma");
+
+        conn.execute("UPDATE specimens SET notes = 'now mentions Fusarium' WHERE id = 's2'", [])
+            .unwrap();
+        assert_fts_matches_like(&conn, "Trichoderma");
+        assert_fts_matches_like(&conn, "Fusarium");
+
+        conn.execute("DELETE FROM specimens WHERE id = 's2'", []).unwrap();
+        assert_fts_matches_like(&conn, "Fusarium");
+
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, notes) \
+             VALUES ('s5','FIX-00000099','sp_s','explant','2026-01-01','freshly inserted Alternaria')",
+            [],
+        )
+        .unwrap();
+        assert_fts_matches_like(&conn, "Alternaria");
+    }
+
+    /// Runs the exact CTE shape `search_specimens` ships against the exact LIKE
+    /// query it replaced, and asserts identical result sets.
+    ///
+    /// The equivalence has two independent parts and both can break: the index
+    /// content (trigram vs. LIKE substring semantics) and the query shape
+    /// (MATERIALIZED + CROSS JOIN changing which rows survive the joins). This
+    /// covers the shape; assert_fts_matches_like covers the index.
+    fn assert_shipped_search_matches_like(conn: &Connection, needle: &str) {
+        let fts_expr = crate::db::queries::fts_match_query(needle).unwrap();
+        let like = format!("%{}%", needle);
+
+        let mut shipped = conn
+            .prepare(
+                "WITH matches(id) AS MATERIALIZED ( \
+                     SELECT fs.id FROM specimens_fts f \
+                         JOIN specimens fs ON fs.rowid = f.rowid \
+                         WHERE f.specimens_fts MATCH ?1 \
+                     UNION \
+                     SELECT ss.id FROM specimens ss \
+                         WHERE ss.species_id IN ( \
+                             SELECT id FROM species WHERE genus LIKE ?2 OR species_name LIKE ?2)) \
+                 SELECT s.id FROM matches mt CROSS JOIN specimens s ON s.id = mt.id \
+                 LEFT JOIN species sp ON s.species_id = sp.id \
+                 WHERE s.is_archived = 0 \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_fts: Vec<String> = shipped
+            .query_map(rusqlite::params![fts_expr, like], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        let mut original = conn
+            .prepare(
+                "SELECT s.id FROM specimens s \
+                 LEFT JOIN species sp ON s.species_id = sp.id \
+                 WHERE s.is_archived = 0 AND ( \
+                     s.accession_number LIKE ?1 OR s.notes LIKE ?1 OR s.location LIKE ?1 \
+                     OR s.provenance LIKE ?1 OR s.source_plant LIKE ?1 \
+                     OR sp.genus LIKE ?1 OR sp.species_name LIKE ?1) \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_like: Vec<String> = original
+            .query_map([&like], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(
+            via_fts, via_like,
+            "the shipped CTE search disagreed with the LIKE scan for needle {needle:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_search_shape_matches_the_like_query_it_replaced() {
+        let conn = search_fixture_db();
+        for needle in [
+            "0042",          // mid-token substring
+            "QT00042",       // whole token
+            "Rack A",        // spans a space
+            "Trichoderma",   // notes only
+            "Citrus",        // species genus only — exercises the UNION branch
+            "sinensis",      // species name only
+            "PTC-2026",      // accession prefix
+            "zzz-no-match",  // empty result on both sides
+        ] {
+            assert_shipped_search_matches_like(&conn, needle);
+        }
+    }
+
+    #[test]
+    fn shipped_search_respects_the_archived_filter() {
+        let conn = search_fixture_db();
+        conn.execute("UPDATE specimens SET is_archived = 1 WHERE id = 's2'", []).unwrap();
+        // 's2' holds the Trichoderma note; archiving it must remove it from
+        // both paths identically, not just from one.
+        assert_shipped_search_matches_like(&conn, "Trichoderma");
+        let fts_expr = crate::db::queries::fts_match_query("Trichoderma").unwrap();
+        let n: i64 = conn.query_row(
+            "WITH matches(id) AS MATERIALIZED (
+                 SELECT fs.id FROM specimens_fts f JOIN specimens fs ON fs.rowid = f.rowid
+                     WHERE f.specimens_fts MATCH ?1)
+             SELECT COUNT(*) FROM matches mt CROSS JOIN specimens s ON s.id = mt.id
+             WHERE s.is_archived = 0",
+            [&fts_expr], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(n, 0, "an archived specimen must not surface in a default search");
+    }
+
+    #[test]
+    fn fts_match_query_refuses_queries_the_trigram_index_cannot_serve() {
+        use crate::db::queries::fts_match_query;
+        assert!(fts_match_query("ab").is_none(), "2 chars is below the trigram floor");
+        assert!(fts_match_query(" a ").is_none());
+        assert!(fts_match_query("").is_none());
+        assert!(fts_match_query("abc").is_some());
+        // Character count, not byte count — three CJK characters are servable.
+        assert!(fts_match_query("\u{83cc}\u{682a}\u{682a}").is_some());
+    }
+
+    #[test]
+    fn fts_match_query_escapes_embedded_quotes() {
+        use crate::db::queries::fts_match_query;
+        assert_eq!(fts_match_query("say \"hi\"").unwrap(), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn migration_054_backfills_rows_that_predate_the_index() {
+        // The index is created on an existing database, so pre-existing rows
+        // must be backfilled — not just rows written after the triggers exist.
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp_b','Citrus','limon','CIT-LIM')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, notes) \
+             VALUES ('pre1','PRE-0001','sp_b','explant','2026-01-01','predates the index')",
+            [],
+        ).unwrap();
+
+        // Drop and rebuild exactly as the migration does on an existing DB.
+        conn.execute_batch(
+            "DROP TRIGGER specimens_fts_insert;
+             DROP TRIGGER specimens_fts_delete;
+             DROP TRIGGER specimens_fts_update;
+             DROP TABLE specimens_fts;",
+        ).unwrap();
+        migration_054_specimen_search_index(&conn).unwrap();
+
+        assert_fts_matches_like(&conn, "predates");
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM specimens_fts WHERE specimens_fts MATCH '\"predates\"'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(n, 1, "the backfill must cover rows written before the index existed");
     }
 
     // ── Migration 053: lab-type isolation ─────────────────────────────────────

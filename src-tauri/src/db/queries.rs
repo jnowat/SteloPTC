@@ -894,6 +894,36 @@ pub fn check_profile_change_allowed(
     }
 }
 
+/// Minimum query length the trigram FTS index can serve.
+///
+/// A trigram tokenizer indexes 3-character sequences, so it simply has no
+/// entries for a 1- or 2-character needle.
+pub const FTS_MIN_QUERY_LEN: usize = 3;
+
+/// Converts a raw user search string into an FTS5 MATCH expression, or `None`
+/// when the trigram index cannot serve it and the caller must fall back to
+/// `LIKE`.
+///
+/// FTS5 MATCH takes a *query language*, not a literal: bare `-`, `*`, `:`, `^`,
+/// `(`, `)`, `AND`/`OR`/`NOT` and quotes are all operators. Passing user text
+/// through unescaped is a query-injection bug — at best a syntax error thrown
+/// in the user's face for searching `C. sinensis (batch 2)`, at worst a query
+/// that silently means something other than what they typed.
+///
+/// Wrapping the whole needle in a double-quoted string makes FTS5 treat it as
+/// one literal phrase, and doubling any embedded quote escapes it — the same
+/// rule as SQL string literals. With the trigram tokenizer a quoted phrase is
+/// matched as a substring, so the result set is identical to `LIKE '%q%'`.
+pub fn fts_match_query(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    // Count characters, not bytes: three accented or CJK characters are three
+    // trigram-indexable characters even though they are more than three bytes.
+    if trimmed.chars().count() < FTS_MIN_QUERY_LEN {
+        return None;
+    }
+    Some(format!("\"{}\"", trimmed.replace('"', "\"\"")))
+}
+
 /// Paginated query helper
 pub struct PaginationParams {
     pub page: u32,
