@@ -5342,6 +5342,59 @@ mod tests {
     }
 
     #[test]
+    fn shipped_search_is_scoped_to_the_active_lab() {
+        // Search runs through the FTS index, which spans every lab by design —
+        // isolation comes from the outer WHERE. That makes this worth asserting
+        // separately from the FTS/LIKE equivalence: a correct index with a
+        // missing lab predicate would pass every other test in this file while
+        // leaking another lab's cultures into the search box.
+        let conn = search_fixture_db();
+        conn.execute(
+            "UPDATE specimens SET lab_profile = 'mycology' WHERE id = 's2'",
+            [],
+        )
+        .unwrap();
+
+        let fts_expr = crate::db::queries::fts_match_query("Trichoderma").unwrap();
+        let like = "%Trichoderma%";
+
+        // The exact shape search_specimens builds, with the lab predicate the
+        // command always pushes as its first condition.
+        const SEARCH_SQL: &str = "WITH matches(id) AS MATERIALIZED ( \
+                 SELECT fs.id FROM specimens_fts f \
+                     JOIN specimens fs ON fs.rowid = f.rowid \
+                     WHERE f.specimens_fts MATCH ?2 \
+                 UNION \
+                 SELECT ss.id FROM specimens ss \
+                     WHERE ss.species_id IN ( \
+                         SELECT id FROM species WHERE genus LIKE ?3 OR species_name LIKE ?3)) \
+             SELECT s.id FROM matches mt CROSS JOIN specimens s ON s.id = mt.id \
+             LEFT JOIN species sp ON s.species_id = sp.id \
+             WHERE s.lab_profile = ?1 AND s.is_archived = 0 \
+             ORDER BY s.id";
+
+        let hits = |lab: &str| -> Vec<String> {
+            conn.prepare(SEARCH_SQL)
+                .unwrap()
+                .query_map(rusqlite::params![lab, fts_expr, like], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+
+        assert_eq!(
+            hits("mycology"),
+            vec!["s2".to_string()],
+            "the mycology lab should find its own culture"
+        );
+        assert!(
+            hits("plant_tissue_culture").is_empty(),
+            "PTC must not find a mycology culture through search"
+        );
+        assert!(hits("cell_culture").is_empty());
+    }
+
+    #[test]
     fn shipped_search_respects_the_archived_filter() {
         let conn = search_fixture_db();
         conn.execute("UPDATE specimens SET is_archived = 1 WHERE id = 's2'", []).unwrap();
