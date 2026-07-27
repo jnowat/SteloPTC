@@ -3,6 +3,26 @@ import App from './App.svelte';
 import './lib/styles/tokens.css';
 import { isTauri } from './lib/isTauri';
 
+// Prototype-pollution hardening, applied before any other module can run.
+//
+// `xlsx` (SheetJS) 0.18.5 carries GHSA-4r6h-8v6p-xvw6, a prototype-pollution
+// flaw reachable from `XLSX.read` on a user-supplied workbook — exactly what
+// the Import screen does. The advisory is fixed in 0.19.3+, but SheetJS stopped
+// publishing to the npm registry at 0.18.5, so `npm update` can never resolve
+// it; the fixed builds live at cdn.sheetjs.com. Until that dependency move
+// happens, freezing the prototype turns the pollution write into a no-op
+// (sloppy mode) or a throw that rejects the malicious file (strict mode, which
+// is what ES modules run in). Either way the payload cannot reach the rest of
+// the app — and this WebView has `withGlobalTauri`, so "the rest of the app"
+// includes the full IPC surface.
+//
+// Verified not to disturb normal operation: a full xlsx write/read/sheet_to_json
+// round-trip passes with the prototype frozen (see exportUtils tests), and no
+// dependency here extends Object.prototype.
+//
+// This is defence in depth, NOT a substitute for updating the dependency.
+Object.freeze(Object.prototype);
+
 // WP-62: register the PWA service worker only when NOT running inside the
 // Tauri desktop webview — the SW must never intercept Tauri's `ipc://`
 // requests. `vite-plugin-pwa` is configured with `injectRegister: false`
