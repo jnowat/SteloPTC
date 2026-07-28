@@ -267,8 +267,11 @@ pub fn verify_ledger(conn: &Connection) -> Result<LedgerVerification, String> {
             ))
         })
         .map_err(|e| e.to_string())?
-        .filter_map(|r| r.ok())
-        .collect();
+        .collect::<rusqlite::Result<Vec<_>>>()
+        // Strict: a row dropped here would shorten the sequence, and the
+        // gapless-seq check below would then report it as a DELETED event.
+        // A mapping bug must not masquerade as tamper evidence.
+        .map_err(|e| format!("Failed to read the signed event ledger: {}", e))?;
 
     let total = rows.len() as i64;
     let mut expected_prev = ZERO_HASH.to_string();

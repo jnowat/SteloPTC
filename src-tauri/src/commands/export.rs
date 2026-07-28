@@ -49,7 +49,7 @@ const EXPORT_SQL: &str =
             s.notes, s.employee_id, s.created_by, s.created_at, s.updated_at
      FROM specimens s
      LEFT JOIN species sp ON s.species_id = sp.id
-     WHERE s.is_archived = 0
+     WHERE s.is_archived = 0 AND s.lab_profile = ?1
      ORDER BY s.accession_number";
 
 fn map_export_row(row: &rusqlite::Row) -> rusqlite::Result<ExportSpecimen> {
@@ -87,9 +87,14 @@ fn map_export_row(row: &rusqlite::Row) -> rusqlite::Result<ExportSpecimen> {
 
 #[tauri::command]
 pub fn export_specimens_csv(state: State<AppState>, token: String) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
+    // Exports carry the active lab only. Without this a mycology lab's CSV
+    // included every plant tissue culture and cell culture specimen in the
+    // database — data its operators cannot see anywhere else in the UI, being
+    // handed to whoever the file is sent to.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     let mut stmt = db.conn.prepare(EXPORT_SQL).map_err(|e| e.to_string())?;
 
     let header = "Accession,Species Code,Species,Stage,Custom Stage,Provenance,Source Plant,\
@@ -100,7 +105,7 @@ Notes,Employee ID,Created By,Created At,Updated At\n";
 
     let mut csv = String::from(header);
 
-    let rows = stmt.query_map([], map_export_row).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([&profile], map_export_row).map_err(|e| e.to_string())?;
 
     for s in rows.flatten() {
         csv.push_str(&format!(
@@ -141,13 +146,18 @@ Notes,Employee ID,Created By,Created At,Updated At\n";
 
 #[tauri::command]
 pub fn export_specimens_json(state: State<AppState>, token: String) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
+    // Exports carry the active lab only. Without this a mycology lab's CSV
+    // included every plant tissue culture and cell culture specimen in the
+    // database — data its operators cannot see anywhere else in the UI, being
+    // handed to whoever the file is sent to.
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     let mut stmt = db.conn.prepare(EXPORT_SQL).map_err(|e| e.to_string())?;
 
     let specimens: Vec<ExportSpecimen> = stmt
-        .query_map([], map_export_row)
+        .query_map([&profile], map_export_row)
         .map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
@@ -155,10 +165,92 @@ pub fn export_specimens_json(state: State<AppState>, token: String) -> Result<St
     serde_json::to_string_pretty(&specimens).map_err(|e| e.to_string())
 }
 
+/// RFC 4180 quoting **plus** spreadsheet formula neutralisation.
+///
+/// Excel, LibreOffice and Google Sheets treat a leading `=`, `+`, `-`, `@`, TAB
+/// or CR as the start of a formula and evaluate it when the file is opened.
+/// Quoting does **not** suppress this — `"=cmd|'/c calc'!A1"` is still executed.
+/// Since specimen notes, provenance and location are free text written by any
+/// user with write access, and exports are the artefact most likely to be sent
+/// outside the lab, the leading character has to be defused explicitly.
+///
+/// Prefixing an apostrophe forces text interpretation in every major
+/// spreadsheet and is not rendered in the cell. The cell must then also be
+/// quoted, or the apostrophe itself can perturb parsing.
 fn escape_csv(s: &str) -> String {
-    if s.contains(',') || s.contains('"') || s.contains('\n') {
-        format!("\"{}\"", s.replace('"', "\"\""))
+    const FORMULA_LEAD: [char; 6] = ['=', '+', '-', '@', '\t', '\r'];
+    let needs_defusing = s.starts_with(FORMULA_LEAD);
+    let needs_quoting = needs_defusing || s.contains(',') || s.contains('"') || s.contains('\n');
+
+    let body = if needs_defusing {
+        format!("'{}", s)
     } else {
         s.to_string()
+    };
+
+    if needs_quoting {
+        format!("\"{}\"", body.replace('"', "\"\""))
+    } else {
+        body
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::escape_csv;
+
+    #[test]
+    fn plain_values_pass_through_unquoted() {
+        assert_eq!(escape_csv("PTC-001"), "PTC-001");
+        assert_eq!(escape_csv("Healthy shoot culture"), "Healthy shoot culture");
+        assert_eq!(escape_csv(""), "");
+    }
+
+    #[test]
+    fn rfc4180_quoting_is_preserved() {
+        assert_eq!(escape_csv("a,b"), "\"a,b\"");
+        assert_eq!(escape_csv("say \"hi\""), "\"say \"\"hi\"\"\"");
+        assert_eq!(escape_csv("line1\nline2"), "\"line1\nline2\"");
+    }
+
+    #[test]
+    fn formula_leads_are_defused() {
+        // The attack: a specimen note that Excel executes on open. Quoting alone
+        // does NOT stop this, which is why the apostrophe prefix is required.
+        assert_eq!(escape_csv("=cmd|'/c calc'!A1"), "\"'=cmd|'/c calc'!A1\"");
+        assert_eq!(escape_csv("=1+1"), "\"'=1+1\"");
+        assert_eq!(escape_csv("+1"), "\"'+1\"");
+        assert_eq!(escape_csv("-2+3"), "\"'-2+3\"");
+        assert_eq!(escape_csv("@SUM(A1:A9)"), "\"'@SUM(A1:A9)\"");
+        assert_eq!(escape_csv("\tTAB"), "\"'\tTAB\"");
+        assert_eq!(escape_csv("\rCR"), "\"'\rCR\"");
+    }
+
+    #[test]
+    fn every_defused_value_is_also_quoted() {
+        // A bare apostrophe prefix without quoting can perturb parsers that
+        // treat a leading quote character specially, so the two go together.
+        for evil in ["=x", "+x", "-x", "@x", "\tx", "\rx"] {
+            let out = escape_csv(evil);
+            assert!(out.starts_with("\"'"), "{evil:?} produced {out:?}");
+            assert!(out.ends_with('"'), "{evil:?} produced {out:?}");
+        }
+    }
+
+    #[test]
+    fn formula_characters_inside_a_value_are_left_alone() {
+        // Only the LEADING character triggers formula parsing, so a legitimate
+        // note containing an equals sign must not be mangled.
+        assert_eq!(escape_csv("pH=5.8"), "pH=5.8");
+        assert_eq!(escape_csv("2 - 3 days"), "2 - 3 days");
+        assert_eq!(escape_csv("stock@4C"), "stock@4C");
+    }
+
+    #[test]
+    fn a_negative_number_is_defused_but_still_readable() {
+        // Accepted trade-off: a genuine negative value gains a leading
+        // apostrophe. It renders identically in the cell, and treating "-" as
+        // safe would reopen the hole for "-2+3+cmd|..." style payloads.
+        assert_eq!(escape_csv("-5"), "\"'-5\"");
     }
 }

@@ -12,7 +12,7 @@ pub fn log_error(
     token: String,
     request: CreateErrorLogRequest,
 ) -> Result<ErrorLog, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     // Allow any authenticated user to log errors; also allow unauthenticated
     // (token may be empty on startup errors) by soft-validating.
     let (user_id, username) = match auth_service::validate_session(&db, &token) {
@@ -52,7 +52,7 @@ pub fn list_error_logs(
     token: String,
     search: ErrorLogSearchParams,
 ) -> Result<PaginatedResponse<ErrorLog>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let pg = queries::PaginationParams {
@@ -122,7 +122,7 @@ pub fn get_unread_error_count(
     state: State<AppState>,
     token: String,
 ) -> Result<i64, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     db.conn.query_row(
@@ -137,7 +137,7 @@ pub fn mark_errors_read(
     state: State<AppState>,
     token: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     db.conn.execute(
@@ -153,7 +153,7 @@ pub fn clear_error_logs(
     state: State<AppState>,
     token: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can clear error logs".to_string());

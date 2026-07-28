@@ -14,7 +14,7 @@ use crate::AppState;
 /// publish the key others verify their signed events against.
 #[tauri::command]
 pub fn get_user_signing_public_key(state: State<AppState>, token: String) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     let (public_key, _) = signed_ledger::load_or_create_user_signing_key(&db.conn, &user.id)?;
     Ok(public_key)
@@ -31,7 +31,7 @@ pub fn record_signed_event(
     entity_id: Option<String>,
     payload: String,
 ) -> Result<signed_ledger::SignedEvent, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions — a write-capable role is required to sign an event.".to_string());
@@ -66,7 +66,7 @@ pub fn list_signed_events(
     entity_id: Option<String>,
     limit: Option<i64>,
 ) -> Result<Vec<signed_ledger::SignedEvent>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     signed_ledger::list_signed_events(&db.conn, entity_id.as_deref(), limit.unwrap_or(100))
 }
@@ -78,7 +78,7 @@ pub fn verify_signed_event_ledger(
     state: State<AppState>,
     token: String,
 ) -> Result<signed_ledger::LedgerVerification, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
     signed_ledger::verify_ledger(&db.conn)
 }

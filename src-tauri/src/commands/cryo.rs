@@ -14,7 +14,7 @@ pub fn create_frozen_vial(
     token: String,
     request: CreateFrozenVialRequest,
 ) -> Result<FrozenVial, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -37,7 +37,7 @@ pub fn list_frozen_vials(
     token: String,
     params: Option<ListFrozenVialsParams>,
 ) -> Result<Vec<FrozenVial>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let p = params.unwrap_or(ListFrozenVialsParams {
         species_id: None,
@@ -55,7 +55,7 @@ pub fn get_frozen_vial(
     token: String,
     id: String,
 ) -> Result<FrozenVial, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::get_frozen_vial(&db.conn, &id)
         .map_err(|e| format!("Frozen vial not found: {}", e))
@@ -67,7 +67,7 @@ pub fn thaw_vial(
     token: String,
     request: ThawVialRequest,
 ) -> Result<ThawVialResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -109,7 +109,7 @@ pub fn discard_frozen_vial(
     token: String,
     request: DiscardFrozenVialRequest,
 ) -> Result<FrozenVial, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -131,7 +131,7 @@ pub fn get_vial_summary_by_line(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<VialLineSummary>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     crate::db::dashboard::query_vial_summary_by_line(&db.conn)
 }

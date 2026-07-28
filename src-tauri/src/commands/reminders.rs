@@ -7,7 +7,7 @@ use tauri::State;
 
 #[tauri::command]
 pub fn list_reminders(state: State<AppState>, token: String) -> Result<Vec<Reminder>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
@@ -48,7 +48,7 @@ pub fn list_reminders(state: State<AppState>, token: String) -> Result<Vec<Remin
 
 #[tauri::command]
 pub fn get_active_reminders(state: State<AppState>, token: String) -> Result<Vec<Reminder>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
@@ -94,7 +94,7 @@ pub fn create_reminder(
     token: String,
     request: CreateReminderRequest,
 ) -> Result<Reminder, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -158,7 +158,7 @@ pub fn update_reminder(
     token: String,
     request: UpdateReminderRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -218,7 +218,7 @@ pub fn update_reminder(
 
 #[tauri::command]
 pub fn dismiss_reminder(state: State<AppState>, token: String, id: String, snooze: bool, snooze_days: Option<u32>) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
 
     if snooze {

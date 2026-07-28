@@ -11,8 +11,10 @@
     e.preventDefault();
     error = '';
 
-    if (newPassword.length < 8) {
-      error = 'Password must be at least 8 characters.';
+    // Mirrors auth::MIN_PASSWORD_LEN on the backend. The backend is the
+    // authority; this check only saves a round-trip.
+    if (newPassword.length < 12) {
+      error = 'Password must be at least 12 characters.';
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -45,7 +47,7 @@
       {/if}
       <div class="form-group">
         <label for="new-password">New Password</label>
-        <input id="new-password" type="password" bind:value={newPassword} placeholder="At least 8 characters" required minlength="8" autocomplete="new-password" />
+        <input id="new-password" type="password" bind:value={newPassword} placeholder="At least 12 characters" required minlength="12" autocomplete="new-password" />
       </div>
       <div class="form-group">
         <label for="confirm-password">Confirm Password</label>

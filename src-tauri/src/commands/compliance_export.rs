@@ -24,7 +24,7 @@ pub(crate) fn load_or_create_signing_key(conn: &rusqlite::Connection) -> Result<
 
 #[tauri::command]
 pub fn get_signing_public_key(state: State<AppState>, token: String) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can view the signing key".to_string());
@@ -59,7 +59,7 @@ pub fn export_fda_part11_bundle(
     to_date: String,
     lab_name: String,
 ) -> Result<ComplianceExportResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can generate a Part 11 export".to_string());
@@ -88,7 +88,7 @@ pub fn export_usda_permit(
     specimen_ids: Vec<String>,
     authorized_scientist: String,
 ) -> Result<ComplianceExportResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can generate a USDA APHIS export".to_string());
@@ -116,7 +116,7 @@ pub fn export_cites_dossier(
     root_specimen_id: String,
     cites_appendix: String,
 ) -> Result<ComplianceExportResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can generate a CITES dossier".to_string());

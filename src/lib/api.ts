@@ -30,8 +30,19 @@ export async function login(username: string, password: string) {
   }
 }
 
-export async function changePassword(newPassword: string) {
-  return call<void>('change_password', { newPassword });
+/**
+ * Change the signed-in user's password.
+ *
+ * `currentPassword` is required for a voluntary change and re-authenticates the
+ * caller. It is omitted only on the forced-change flow (`must_change_password`),
+ * where the user is replacing a credential they were issued rather than chose —
+ * the backend is what enforces this distinction, not the caller.
+ */
+export async function changePassword(newPassword: string, currentPassword?: string) {
+  return call<void>('change_password', {
+    newPassword,
+    currentPassword: currentPassword ?? null,
+  });
 }
 
 export async function getCurrentUser() {
@@ -388,6 +399,15 @@ export async function resetDatabase(confirmation: string) {
 
 export async function loadDemoData() {
   return call<string>('load_demo_data');
+}
+
+/**
+ * Returns a warning when the backend fell back to a temporary in-memory
+ * database, or null in normal operation. Unauthenticated on purpose — the user
+ * has to see this *before* they enter data that will not survive the session.
+ */
+export async function getDegradedReason() {
+  return call<string | null>('get_degraded_reason');
 }
 
 export async function getLabProfile() {

@@ -47,19 +47,36 @@ pub fn seed_large_fixture(
             2 => "shoot",
             _ => "plantlet",
         };
+        // Free-text columns are populated so the search benchmarks exercise a
+        // realistic corpus. An empty `notes`/`location` would make every LIKE
+        // predicate miss immediately and understate the cost of the scan.
+        let location = format!("Room {} / Rack {} / Shelf {}", i % 4 + 1, i % 7 + 1, i % 5 + 1);
+        let notes = format!(
+            "Fixture culture {i}. Routine passage, no contamination observed. Batch tag QT{:05}.",
+            i % 997
+        );
         tx.execute(
             "INSERT INTO specimens \
-             (id, accession_number, species_id, stage, initiation_date, is_archived, created_at, updated_at) \
-             VALUES (?1, ?2, 'fx-sp1', ?3, '2026-01-01', 0, datetime('now'), datetime('now'))",
-            params![id, accession, stage],
+             (id, accession_number, species_id, stage, initiation_date, location, notes, \
+              is_archived, created_at, updated_at) \
+             VALUES (?1, ?2, 'fx-sp1', ?3, '2026-01-01', ?4, ?5, 0, datetime('now'), datetime('now'))",
+            params![id, accession, stage, location, notes],
         )?;
         for p in 0..subcultures_per_specimen {
             let sub_id = format!("fx-sub-{i}-{p}");
+            // Spread passage dates across two years rather than putting every
+            // one in the last few days. The old fixture dated every subculture
+            // `now - (p+1) days`, so with one passage per specimen the entire
+            // corpus fell inside the dashboard's 7-day window — which made the
+            // "recent subcultures" benchmark measure a 100% selective query and
+            // hid the fact that it had no usable index. A real lab's passages
+            // are mostly historical.
+            let age_days = (i % 730) + p + 1;
             tx.execute(
                 "INSERT INTO subcultures \
                  (id, specimen_id, passage_number, date, event_type, created_at, updated_at) \
-                 VALUES (?1, ?2, ?3, date('now', '-' || ?3 || ' days'), 'passage', datetime('now'), datetime('now'))",
-                params![sub_id, id, p + 1],
+                 VALUES (?1, ?2, ?3, date('now', '-' || ?4 || ' days'), 'passage', datetime('now'), datetime('now'))",
+                params![sub_id, id, p + 1, age_days],
             )?;
         }
     }

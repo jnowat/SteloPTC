@@ -15,7 +15,7 @@ pub fn get_specimen_growth_rate(
     token: String,
     time_range: String,
 ) -> Result<Vec<analytics::TimeSeriesPoint>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     analytics::specimen_growth_rate(&db.conn, TimeRange::parse(&time_range)).map_err(|e| e.to_string())
 }
@@ -27,7 +27,7 @@ pub fn get_subculture_frequency_trend(
     time_range: String,
     species_id: Option<String>,
 ) -> Result<Vec<analytics::TimeSeriesPoint>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     analytics::subculture_frequency_trend(&db.conn, TimeRange::parse(&time_range), species_id.as_deref())
         .map_err(|e| e.to_string())
@@ -39,7 +39,7 @@ pub fn get_contamination_rate_trend(
     token: String,
     time_range: String,
 ) -> Result<Vec<analytics::TimeSeriesPoint>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     analytics::contamination_rate_trend(&db.conn, TimeRange::parse(&time_range)).map_err(|e| e.to_string())
 }
@@ -50,7 +50,7 @@ pub fn get_passage_success_rate(
     token: String,
     time_range: String,
 ) -> Result<analytics::PassageSuccessRate, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     analytics::passage_success_rate(&db.conn, TimeRange::parse(&time_range)).map_err(|e| e.to_string())
 }
@@ -61,7 +61,7 @@ pub fn get_media_batch_efficiency(
     token: String,
     time_range: String,
 ) -> Result<Vec<analytics::MediaBatchEfficiency>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     analytics::media_batch_efficiency(&db.conn, TimeRange::parse(&time_range)).map_err(|e| e.to_string())
 }
@@ -72,7 +72,7 @@ pub fn get_strain_performance(
     token: String,
     species_id: String,
 ) -> Result<Vec<analytics::StrainPerformance>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     analytics::strain_performance(&db.conn, &species_id).map_err(|e| e.to_string())
 }
@@ -82,7 +82,7 @@ pub fn get_cryo_utilization(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<analytics::CryoUtilization>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     analytics::cryo_utilization(&db.conn).map_err(|e| e.to_string())
 }
@@ -95,7 +95,7 @@ pub fn get_technician_activity(
     token: String,
     time_range: String,
 ) -> Result<Vec<analytics::TechnicianActivity>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can view technician activity".to_string());
@@ -119,7 +119,7 @@ pub struct AnalyticsKpiSummary {
 
 #[tauri::command]
 pub fn get_analytics_kpi_summary(state: State<AppState>, token: String) -> Result<AnalyticsKpiSummary, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     let total_active_specimens = crate::db::dashboard::get_or_refresh_dashboard_cache(
@@ -165,10 +165,17 @@ pub fn get_analytics_kpi_summary(state: State<AppState>, token: String) -> Resul
         0.0
     };
 
+    // These two KPI tiles sit beside lab-scoped figures, so counting every
+    // lab's accessions here would make the month-over-month comparison
+    // disagree with everything around it.
+    let lab = crate::db::vocabulary::active_lab_sql("specimens");
     let new_specimens_this_month: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM specimens WHERE created_at >= date('now', 'start of month')",
+            &format!(
+                "SELECT COUNT(*) FROM specimens \
+                 WHERE {lab} AND created_at >= date('now', 'start of month')"
+            ),
             [],
             |r| r.get(0),
         )
@@ -176,9 +183,12 @@ pub fn get_analytics_kpi_summary(state: State<AppState>, token: String) -> Resul
     let new_specimens_last_month: i64 = db
         .conn
         .query_row(
-            "SELECT COUNT(*) FROM specimens \
-             WHERE created_at >= date('now', 'start of month', '-1 months') \
-               AND created_at < date('now', 'start of month')",
+            &format!(
+                "SELECT COUNT(*) FROM specimens \
+                 WHERE {lab} \
+                   AND created_at >= date('now', 'start of month', '-1 months') \
+                   AND created_at < date('now', 'start of month')"
+            ),
             [],
             |r| r.get(0),
         )
@@ -202,7 +212,7 @@ pub fn get_analytics_kpi_summary(state: State<AppState>, token: String) -> Resul
 /// authenticated user (the layout is shared, not per-user).
 #[tauri::command]
 pub fn get_analytics_panel_config(state: State<AppState>, token: String) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     Ok(crate::db::queries::read_setting(&db.conn, "analytics_panel_config", "{}"))
 }
@@ -214,7 +224,7 @@ pub fn get_analytics_panel_config(state: State<AppState>, token: String) -> Resu
 /// reshaping the analytics view for the whole lab.
 #[tauri::command]
 pub fn set_analytics_panel_config(state: State<AppState>, token: String, config_json: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can change the shared analytics layout".to_string());

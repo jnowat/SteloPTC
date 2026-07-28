@@ -1,6 +1,58 @@
 use rusqlite::Connection;
 use super::DbResult;
 
+/// Runs one migration and stamps its version **atomically**.
+///
+/// Previously the two were separate statements: the migration body ran, and
+/// only then was `schema_version` bumped. SQLite DDL is transactional, but
+/// `execute_batch` is not — it applies statements one at a time — so a failure
+/// partway through left earlier statements committed with the version *not*
+/// advanced. On the next start the migration re-ran, and `ALTER TABLE … ADD
+/// COLUMN` is not idempotent: it fails with "duplicate column name", and the
+/// application can no longer start at all. On a desktop app that is the user's
+/// only copy of their lab records.
+///
+/// Wrapping both in one transaction means a failed migration leaves a clean,
+/// retryable state instead of a half-applied schema.
+fn apply<F>(conn: &Connection, version: i64, migrate: F) -> DbResult<()>
+where
+    F: FnOnce(&Connection) -> DbResult<()>,
+{
+    let tx = conn.unchecked_transaction()?;
+    migrate(&tx)?;
+    tx.execute("INSERT INTO schema_version (version) VALUES (?1)", [version])?;
+    tx.commit()?;
+    Ok(())
+}
+
+/// Runs a migration that **cannot** be wrapped in a transaction, stamping its
+/// version afterwards as a separate statement.
+///
+/// Two constructs make a migration transaction-hostile, and both appear in this
+/// file:
+///
+///   * `PRAGMA foreign_keys = OFF/ON` is a documented **no-op inside a
+///     transaction**. The table-rebuild migrations (create `_v2`, copy rows,
+///     drop original, rename) depend on it actually taking effect; running them
+///     under `apply` would silently leave FK enforcement on and either fail the
+///     rebuild or leave dangling references.
+///   * A migration whose `execute_batch` string already contains its own
+///     `BEGIN; … COMMIT;` would error with "cannot start a transaction within a
+///     transaction".
+///
+/// These seven are therefore left as they were. They are all *additive or
+/// rebuild* migrations that predate the current schema, so the retry hazard
+/// `apply` closes is accepted here rather than traded for a correctness bug.
+/// New migrations should use `apply` and avoid both constructs.
+fn apply_untransacted<F>(conn: &Connection, version: i64, migrate: F) -> DbResult<()>
+where
+    F: FnOnce(&Connection) -> DbResult<()>,
+{
+    migrate(conn)?;
+    conn.execute("INSERT INTO schema_version (version) VALUES (?1)", [version])?;
+    Ok(())
+}
+
 pub fn run_all(conn: &Connection) -> DbResult<()> {
     conn.execute_batch("
         CREATE TABLE IF NOT EXISTS schema_version (
@@ -14,264 +66,448 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         .unwrap_or(0);
 
     if current < 1 {
-        migration_001_initial(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])?;
+        apply(conn, 1, migration_001_initial)?;
     }
 
     if current < 2 {
-        migration_002_v019(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (2)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 2, migration_002_v019)?;
     }
 
     if current < 3 {
-        migration_003_v0110(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (3)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 3, migration_003_v0110)?;
     }
 
     if current < 4 {
-        migration_004_v0114(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])?;
+        apply(conn, 4, migration_004_v0114)?;
     }
 
     if current < 5 {
-        migration_005_contamination_schedule(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (5)", [])?;
+        apply(conn, 5, migration_005_contamination_schedule)?;
     }
 
     if current < 6 {
-        migration_006_force_password_change(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (6)", [])?;
+        apply(conn, 6, migration_006_force_password_change)?;
     }
 
     if current < 7 {
-        migration_007_perf_indexes(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (7)", [])?;
+        apply(conn, 7, migration_007_perf_indexes)?;
     }
 
     if current < 8 {
-        migration_008_audit_hash_chain(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (8)", [])?;
+        apply(conn, 8, migration_008_audit_hash_chain)?;
     }
 
     if current < 9 {
-        migration_009_audit_lineage(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (9)", [])?;
+        apply(conn, 9, migration_009_audit_lineage)?;
     }
 
     if current < 10 {
-        migration_010_specimen_genealogy(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (10)", [])?;
+        apply(conn, 10, migration_010_specimen_genealogy)?;
     }
 
     if current < 11 {
-        migration_011_media_draft(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (11)", [])?;
+        apply(conn, 11, migration_011_media_draft)?;
     }
 
     if current < 12 {
-        migration_012_specimen_contamination(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (12)", [])?;
+        apply(conn, 12, migration_012_specimen_contamination)?;
     }
 
     if current < 13 {
-        migration_013_audit_checkpoints(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (13)", [])?;
+        apply(conn, 13, migration_013_audit_checkpoints)?;
     }
 
     if current < 14 {
-        migration_014_checkpoint_auto_and_settings(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (14)", [])?;
+        apply(conn, 14, migration_014_checkpoint_auto_and_settings)?;
     }
 
     if current < 15 {
-        migration_015_death_events_and_lab_profile(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (15)", [])?;
+        apply(conn, 15, migration_015_death_events_and_lab_profile)?;
     }
 
     if current < 16 {
-        migration_016_vocabulary_tables(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (16)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 16, migration_016_vocabulary_tables)?;
     }
 
     if current < 17 {
-        migration_017_remaining_vocabularies(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (17)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 17, migration_017_remaining_vocabularies)?;
     }
 
     if current < 18 {
-        migration_018_cell_culture_vocabulary(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (18)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 18, migration_018_cell_culture_vocabulary)?;
     }
 
     if current < 19 {
-        migration_019_strain_model(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (19)", [])?;
+        apply(conn, 19, migration_019_strain_model)?;
     }
 
     if current < 20 {
-        migration_020_expanded_taxonomy(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (20)", [])?;
+        apply(conn, 20, migration_020_expanded_taxonomy)?;
     }
 
     if current < 21 {
-        migration_021_ncbi_sync_log(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (21)", [])?;
+        apply(conn, 21, migration_021_ncbi_sync_log)?;
     }
 
     if current < 22 {
-        migration_022_hybrid_generation_labels(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (22)", [])?;
+        apply(conn, 22, migration_022_hybrid_generation_labels)?;
     }
 
     if current < 23 {
-        migration_023_cell_culture_vocabulary(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (23)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 23, migration_023_cell_culture_vocabulary)?;
     }
 
     if current < 24 {
-        migration_024_pdl_fields(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (24)", [])?;
+        apply(conn, 24, migration_024_pdl_fields)?;
     }
 
     if current < 25 {
-        migration_025_frozen_vials(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (25)", [])?;
+        apply(conn, 25, migration_025_frozen_vials)?;
     }
 
     if current < 26 {
-        migration_026_biosafety_level(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (26)", [])?;
+        apply(conn, 26, migration_026_biosafety_level)?;
     }
 
     if current < 27 {
-        migration_027_mycology_vocabulary(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (27)", [])?;
+        // Transaction-hostile — see apply_untransacted.
+        apply_untransacted(conn, 27, migration_027_mycology_vocabulary)?;
     }
 
     if current < 28 {
-        migration_028_colonization_contaminant(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (28)", [])?;
+        apply(conn, 28, migration_028_colonization_contaminant)?;
     }
 
     if current < 29 {
-        migration_029_genetic_lineage_markers(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (29)", [])?;
+        apply(conn, 29, migration_029_genetic_lineage_markers)?;
     }
 
     if current < 30 {
-        migration_030_fruiting_records(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (30)", [])?;
+        apply(conn, 30, migration_030_fruiting_records)?;
     }
 
     if current < 31 {
-        migration_031_taxon_hash_chain(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (31)", [])?;
+        apply(conn, 31, migration_031_taxon_hash_chain)?;
     }
 
     if current < 32 {
-        migration_032_domain_column(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (32)", [])?;
+        apply(conn, 32, migration_032_domain_column)?;
     }
 
     if current < 33 {
-        migration_033_breeding_programs(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (33)", [])?;
+        apply(conn, 33, migration_033_breeding_programs)?;
     }
 
     if current < 34 {
-        migration_034_provisional_taxa(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (34)", [])?;
+        apply(conn, 34, migration_034_provisional_taxa)?;
     }
 
     if current < 35 {
-        migration_035_multiuser_foundation(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (35)", [])?;
+        apply(conn, 35, migration_035_multiuser_foundation)?;
     }
 
     if current < 36 {
-        migration_036_field_permissions(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (36)", [])?;
+        apply(conn, 36, migration_036_field_permissions)?;
     }
 
     if current < 37 {
-        migration_037_environmental_readings(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (37)", [])?;
+        apply(conn, 37, migration_037_environmental_readings)?;
     }
 
     if current < 38 {
-        migration_038_notifications(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (38)", [])?;
+        apply(conn, 38, migration_038_notifications)?;
     }
 
     if current < 39 {
-        migration_039_perf_indexes_v2(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (39)", [])?;
+        apply(conn, 39, migration_039_perf_indexes_v2)?;
     }
 
     if current < 40 {
-        migration_040_locations(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (40)", [])?;
+        apply(conn, 40, migration_040_locations)?;
     }
 
     if current < 41 {
-        migration_041_ai_suggestions(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (41)", [])?;
+        apply(conn, 41, migration_041_ai_suggestions)?;
     }
 
     if current < 42 {
-        migration_042_backup_targets(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (42)", [])?;
+        apply(conn, 42, migration_042_backup_targets)?;
     }
 
     if current < 43 {
-        migration_043_reanchor_events(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (43)", [])?;
+        apply(conn, 43, migration_043_reanchor_events)?;
     }
 
     if current < 44 {
-        migration_044_signing_keys(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (44)", [])?;
+        apply(conn, 44, migration_044_signing_keys)?;
     }
 
     if current < 45 {
-        migration_045_installed_plugins(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (45)", [])?;
+        apply(conn, 45, migration_045_installed_plugins)?;
     }
 
     if current < 46 {
-        migration_046_checkpoint_anchors(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (46)", [])?;
+        apply(conn, 46, migration_046_checkpoint_anchors)?;
     }
 
     if current < 47 {
-        migration_047_signed_events(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (47)", [])?;
+        apply(conn, 47, migration_047_signed_events)?;
     }
 
     if current < 48 {
-        migration_048_regulatory_submissions(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (48)", [])?;
+        apply(conn, 48, migration_048_regulatory_submissions)?;
     }
 
     if current < 49 {
-        migration_049_specimen_passports(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (49)", [])?;
+        apply(conn, 49, migration_049_specimen_passports)?;
     }
 
     if current < 50 {
-        migration_050_taxonomy_registries(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (50)", [])?;
+        apply(conn, 50, migration_050_taxonomy_registries)?;
     }
 
     if current < 51 {
-        migration_051_breeding_bundles(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (51)", [])?;
+        apply(conn, 51, migration_051_breeding_bundles)?;
     }
 
     if current < 52 {
-        migration_052_compliance_flag_waivers(conn)?;
-        conn.execute("INSERT INTO schema_version (version) VALUES (52)", [])?;
+        apply(conn, 52, migration_052_compliance_flag_waivers)?;
     }
+
+    if current < 53 {
+        apply(conn, 53, migration_053_specimen_lab_profile)?;
+    }
+
+    if current < 54 {
+        apply(conn, 54, migration_054_specimen_search_index)?;
+    }
+
+    if current < 55 {
+        apply(conn, 55, migration_055_purge_plaintext_sessions)?;
+    }
+
+    if current < 56 {
+        apply(conn, 56, migration_056_dashboard_aggregate_indexes)?;
+    }
+
+    if current < 57 {
+        apply(conn, 57, migration_057_media_hormones_batch_index)?;
+    }
+
+    Ok(())
+}
+
+/// Index `media_hormones.media_batch_id`.
+///
+/// The column is a foreign key that every hormone lookup filters on, and it had
+/// no index — so `list_media`'s per-batch hormone query was a full scan of the
+/// table, once per batch. Combined with the N+1 loop (now a single grouped
+/// query) that made the media list quadratic in batch count: 160ms at 1,000
+/// batches, versus 1.2ms with both fixed.
+///
+/// The index also covers the `ON DELETE CASCADE` on this foreign key, which
+/// SQLite otherwise has to resolve with a scan on every media-batch delete.
+fn migration_057_media_hormones_batch_index(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_media_hormones_batch
+             ON media_hormones(media_batch_id);",
+    )?;
+    Ok(())
+}
+
+/// Covering indexes for the dashboard aggregates.
+///
+/// `query_specimen_stats` was the slowest thing in the app by an order of
+/// magnitude — 143ms at 100k specimens, measured — and it runs on every
+/// dashboard load and after every write that invalidates the cache, holding the
+/// global DB mutex throughout. Three of its four aggregate queries had no index
+/// they could use for grouping, so each was a full scan.
+///
+/// Each index is `(lab_profile, is_archived, <grouped column>)`: lab_profile
+/// and is_archived are the two predicates every dashboard query applies, and
+/// the trailing column is what that query groups by, which makes the index
+/// covering and removes the temp B-tree.
+///
+/// The quarantine index is **partial**. Quarantined cultures are a small
+/// minority, so indexing only the matching rows makes it a few pages instead of
+/// one entry per specimen — the measured effect is 10.8ms down to 7µs.
+///
+/// Deliberately NOT accompanied by `ANALYZE`. That was measured too, and it
+/// makes the total *worse*: with `sqlite_stat1` present the planner re-plans the
+/// per-species aggregate onto a different index and it goes from 6.8ms to
+/// 21.3ms, costing more than the 0.1ms it saves elsewhere. Nothing in the app
+/// runs ANALYZE today; if that ever changes, re-measure these four queries
+/// before assuming it is an improvement.
+fn migration_056_dashboard_aggregate_indexes(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_specimens_lab_stage
+             ON specimens(lab_profile, is_archived, stage);
+
+         CREATE INDEX IF NOT EXISTS idx_specimens_lab_species
+             ON specimens(lab_profile, is_archived, species_id);
+
+         CREATE INDEX IF NOT EXISTS idx_specimens_lab_quarantine
+             ON specimens(lab_profile)
+             WHERE quarantine_flag = 1 AND is_archived = 0;",
+    )?;
+    Ok(())
+}
+
+/// Clears every existing session row.
+///
+/// `sessions.token` now stores a SHA-256 digest rather than the raw bearer
+/// token (see `auth::hash_token`). Rows written before that change hold the
+/// token verbatim, and they must not simply be left to expire: they are working
+/// credentials sitting in plaintext on disk for up to 24 more hours, which is
+/// the exact exposure the change exists to remove. They would also never
+/// validate again anyway, since lookup now hashes the incoming token.
+///
+/// The visible effect is that everyone is signed out once, on the upgrade. That
+/// is the correct trade for removing plaintext credentials from disk, and the
+/// login screen is a familiar place to land.
+fn migration_055_purge_plaintext_sessions(conn: &Connection) -> DbResult<()> {
+    conn.execute("DELETE FROM sessions", [])?;
+    Ok(())
+}
+
+/// Full-text index backing free-text specimen search.
+///
+/// `search_specimens` ORs seven `LIKE '%q%'` predicates across `specimens` and
+/// `species`. A leading wildcard defeats every B-tree index, so each search was
+/// a full scan of both tables — twice, since the command runs a `COUNT(*)` and
+/// then the page. Measured at 100k specimens: ~14.8 ms per search, on an
+/// in-memory database, while holding the global DB mutex.
+///
+/// The tokenizer is **trigram**, not the default unicode61, and that choice is
+/// the whole point: a standard FTS index matches token *prefixes*, so searching
+/// `0042` would stop finding accession `FIX-00000042` — a silent behaviour
+/// regression for anyone who types a partial accession. Trigram indexes every
+/// 3-character sequence, giving true substring matching with identical results
+/// to `LIKE '%q%'` for queries of 3+ characters. Queries shorter than that are
+/// left on the old LIKE path by the command layer (see `search_specimens`),
+/// since trigram cannot serve them.
+///
+/// `content=''` would make this contentless; instead it is an **external
+/// content** index over `specimens`, so the text is not duplicated — the FTS
+/// table stores only the index and reads column values back through `rowid`.
+/// The three triggers keep it in step with every write.
+fn migration_054_specimen_search_index(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS specimens_fts USING fts5(
+             accession_number,
+             notes,
+             location,
+             provenance,
+             source_plant,
+             content='specimens',
+             content_rowid='rowid',
+             tokenize='trigram'
+         );",
+    )?;
+
+    // Backfill from whatever is already in the table.
+    conn.execute_batch(
+        "INSERT INTO specimens_fts (rowid, accession_number, notes, location, provenance, source_plant)
+             SELECT rowid, accession_number, notes, location, provenance, source_plant FROM specimens;",
+    )?;
+
+    // External-content FTS tables are not maintained automatically. The delete
+    // and update triggers must write the OLD values into the special 'delete'
+    // command row first, otherwise the index keeps stale trigrams and search
+    // returns specimens whose text no longer matches.
+    conn.execute_batch(
+        "CREATE TRIGGER IF NOT EXISTS specimens_fts_insert AFTER INSERT ON specimens BEGIN
+             INSERT INTO specimens_fts (rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES (new.rowid, new.accession_number, new.notes, new.location, new.provenance, new.source_plant);
+         END;
+
+         CREATE TRIGGER IF NOT EXISTS specimens_fts_delete AFTER DELETE ON specimens BEGIN
+             INSERT INTO specimens_fts (specimens_fts, rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES ('delete', old.rowid, old.accession_number, old.notes, old.location, old.provenance, old.source_plant);
+         END;
+
+         CREATE TRIGGER IF NOT EXISTS specimens_fts_update AFTER UPDATE ON specimens BEGIN
+             INSERT INTO specimens_fts (specimens_fts, rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES ('delete', old.rowid, old.accession_number, old.notes, old.location, old.provenance, old.source_plant);
+             INSERT INTO specimens_fts (rowid, accession_number, notes, location, provenance, source_plant)
+             VALUES (new.rowid, new.accession_number, new.notes, new.location, new.provenance, new.source_plant);
+         END;",
+    )?;
+
+    Ok(())
+}
+
+fn migration_053_specimen_lab_profile(conn: &Connection) -> DbResult<()> {
+    // Hard isolation between lab types (mycology / plant tissue culture / cell
+    // culture).
+    //
+    // Before this migration the active lab type lived in exactly one place —
+    // `app_config.lab_profile` — and no specimen recorded which lab it belonged
+    // to. Profile "scoping" was inferred at read time by joining
+    // `specimens.stage` against `stages.profile`. That proxy is wrong in both
+    // directions:
+    //
+    //   * Stage codes are NOT unique across profiles. `archived`, `custom`,
+    //     `suspension`, `contaminated`, `discarded` and `other` are each defined
+    //     for two or three profiles, so a mycology culture sitting in
+    //     `contaminated` was counted by the cell-culture dashboard, and an
+    //     archived plant explant was counted by the cell-culture dashboard too.
+    //   * `list_specimens` / `search_specimens` never applied the join at all,
+    //     so every specimen from every lab type was returned regardless of the
+    //     active profile — the dashboard and the specimen list disagreed about
+    //     what was in the lab.
+    //
+    // The fix is to make lab membership an explicit, immutable property of the
+    // row, stamped at creation from the profile active at the time. Switching
+    // `app_config.lab_profile` then changes which lab you are *looking at*; it
+    // never re-labels, hides, or merges data that already exists.
+    //
+    // NOTE for future schema work: any migration that rebuilds `specimens`
+    // (the `specimens_v16` pattern used by migration 016) MUST carry
+    // `lab_profile` across, or every existing culture silently collapses back
+    // into the default profile.
+    conn.execute_batch(
+        "ALTER TABLE specimens
+             ADD COLUMN lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture';",
+    )?;
+
+    // Backfill pass 1 — unambiguous stage codes. When a specimen's stage code is
+    // defined for exactly one profile, that profile is a reliable answer and is
+    // strictly better than assuming the currently-active one (a lab that has
+    // switched profiles at some point holds a genuine mix).
+    conn.execute(
+        "UPDATE specimens
+            SET lab_profile = (SELECT st.profile FROM stages st WHERE st.code = specimens.stage)
+          WHERE (SELECT COUNT(DISTINCT st.profile) FROM stages st WHERE st.code = specimens.stage) = 1",
+        [],
+    )?;
+
+    // Backfill pass 2 — ambiguous (shared) or unknown stage codes. There is no
+    // information left to recover, so these fall back to the profile the lab is
+    // currently configured for, which is the best available guess and matches
+    // what the pre-migration dashboard would have shown them under.
+    conn.execute(
+        "UPDATE specimens
+            SET lab_profile = COALESCE(
+                    (SELECT lab_profile FROM app_config WHERE id = 1),
+                    'plant_tissue_culture')
+          WHERE (SELECT COUNT(DISTINCT st.profile) FROM stages st WHERE st.code = specimens.stage) <> 1",
+        [],
+    )?;
+
+    // Every profile-scoped read filters on lab_profile first, so it leads the
+    // index; is_archived/created_at match the ORDER BY of the list and search
+    // queries.
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_specimens_lab_profile
+             ON specimens(lab_profile, is_archived, created_at);",
+    )?;
 
     Ok(())
 }
@@ -4831,5 +5067,526 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM compliance_flag_waivers WHERE revoked = 0", [], |r| r.get(0))
             .unwrap();
         assert_eq!(count, 1);
+    }
+
+    // ── Migration harness atomicity ───────────────────────────────────────────
+
+    #[test]
+    fn apply_rolls_back_the_whole_migration_when_the_body_fails() {
+        // The failure this exists to prevent: a migration that partially applies
+        // and does NOT stamp its version re-runs on the next start, where its
+        // ALTER TABLE fails with "duplicate column name" and the app can never
+        // boot again.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, \
+                 applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE widgets (id TEXT PRIMARY KEY);",
+        )
+        .unwrap();
+
+        let result = apply(&conn, 99, |c| {
+            // First statement succeeds...
+            c.execute("ALTER TABLE widgets ADD COLUMN colour TEXT", [])?;
+            // ...second fails, standing in for a disk-full or constraint error.
+            c.execute("ALTER TABLE widgets ADD COLUMN colour TEXT", [])?;
+            Ok(())
+        });
+        assert!(result.is_err(), "the migration must surface its error");
+
+        // Neither the partial DDL nor the version stamp may survive.
+        assert!(
+            !column_exists(&conn, "widgets", "colour"),
+            "the first ALTER TABLE must have been rolled back"
+        );
+        let stamped: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_version WHERE version = 99", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stamped, 0, "a failed migration must not be recorded as applied");
+    }
+
+    #[test]
+    fn apply_commits_body_and_version_together_on_success() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER PRIMARY KEY, \
+                 applied_at TEXT NOT NULL DEFAULT (datetime('now')));
+             CREATE TABLE widgets (id TEXT PRIMARY KEY);",
+        )
+        .unwrap();
+
+        apply(&conn, 99, |c| {
+            c.execute("ALTER TABLE widgets ADD COLUMN colour TEXT", [])?;
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(column_exists(&conn, "widgets", "colour"));
+        let stamped: i64 = conn
+            .query_row("SELECT COUNT(*) FROM schema_version WHERE version = 99", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(stamped, 1);
+    }
+
+    #[test]
+    fn a_retried_run_all_is_a_no_op() {
+        // run_all must be safe to call repeatedly — every app start does.
+        let conn = migrated_db();
+        let before: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        run_all(&conn).expect("re-running migrations must succeed");
+        let after: i64 = conn
+            .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(before, after);
+    }
+
+    fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({})", table))
+            .expect("table_info");
+        let found = stmt
+            .query_map([], |r| r.get::<_, String>(1))
+            .expect("query")
+            .filter_map(|r| r.ok())
+            .any(|name| name == column);
+        found
+    }
+
+    // ── Migration 054: trigram search index ───────────────────────────────────
+
+    /// Runs the same needle through the FTS index and through the original
+    /// LIKE scan, and asserts the two agree. This is the property the whole
+    /// optimisation rests on: it is only a safe substitution if it is not a
+    /// behaviour change.
+    fn assert_fts_matches_like(conn: &Connection, needle: &str) {
+        let fts_expr = crate::db::queries::fts_match_query(needle)
+            .unwrap_or_else(|| panic!("{needle:?} should be long enough for the trigram index"));
+
+        let mut fts_stmt = conn
+            .prepare(
+                "SELECT s.id FROM specimens s \
+                 WHERE s.rowid IN (SELECT rowid FROM specimens_fts WHERE specimens_fts MATCH ?1) \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_fts: Vec<String> = fts_stmt
+            .query_map([&fts_expr], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        let mut like_stmt = conn
+            .prepare(
+                "SELECT s.id FROM specimens s \
+                 WHERE s.accession_number LIKE ?1 OR s.notes LIKE ?1 OR s.location LIKE ?1 \
+                    OR s.provenance LIKE ?1 OR s.source_plant LIKE ?1 \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_like: Vec<String> = like_stmt
+            .query_map([format!("%{}%", needle)], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(
+            via_fts, via_like,
+            "FTS and LIKE disagreed for needle {needle:?}"
+        );
+    }
+
+    fn search_fixture_db() -> Connection {
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp_s','Citrus','sinensis','CIT-SIN')",
+            [],
+        )
+        .unwrap();
+        let rows = [
+            ("s1", "FIX-00000042", "Routine passage, batch QT00042", "Room 1 / Rack A"),
+            ("s2", "FIX-00000043", "Contamination observed (Trichoderma)", "Room 2 / Rack B"),
+            ("s3", "PTC-2026-0001", "C. sinensis \"pilot\" run - stage 2", "Greenhouse"),
+            ("s4", "PTC-2026-0002", "no notes of interest", "Room 1 / Rack C"),
+        ];
+        for (id, acc, notes, loc) in rows {
+            conn.execute(
+                "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, \
+                 notes, location) VALUES (?1, ?2, 'sp_s', 'explant', '2026-01-01', ?3, ?4)",
+                rusqlite::params![id, acc, notes, loc],
+            )
+            .unwrap();
+        }
+        conn
+    }
+
+    #[test]
+    fn fts_index_agrees_with_like_for_substring_needles() {
+        let conn = search_fixture_db();
+        // Mid-token substrings are exactly what a prefix tokenizer would have
+        // broken; trigram handles them.
+        for needle in ["0042", "QT00042", "Rack A", "Trichoderma", "sinensis", "Room 1", "no notes"] {
+            assert_fts_matches_like(&conn, needle);
+        }
+    }
+
+    #[test]
+    fn fts_index_agrees_with_like_for_fts5_operator_characters() {
+        let conn = search_fixture_db();
+        // Every one of these is an FTS5 query operator. Unescaped they would
+        // either raise a syntax error or silently mean something else.
+        for needle in ["C. sinensis", "(Trichoderma)", "run - stage", "\"pilot\"", "AND", "NOT", "*", "^x", "a:b"] {
+            if crate::db::queries::fts_match_query(needle).is_some() {
+                assert_fts_matches_like(&conn, needle);
+            }
+        }
+    }
+
+    #[test]
+    fn fts_index_tracks_inserts_updates_and_deletes() {
+        // External-content FTS is not maintained automatically; if a trigger is
+        // wrong the index silently serves stale results.
+        let conn = search_fixture_db();
+        assert_fts_matches_like(&conn, "Trichoderma");
+
+        conn.execute("UPDATE specimens SET notes = 'now mentions Fusarium' WHERE id = 's2'", [])
+            .unwrap();
+        assert_fts_matches_like(&conn, "Trichoderma");
+        assert_fts_matches_like(&conn, "Fusarium");
+
+        conn.execute("DELETE FROM specimens WHERE id = 's2'", []).unwrap();
+        assert_fts_matches_like(&conn, "Fusarium");
+
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, notes) \
+             VALUES ('s5','FIX-00000099','sp_s','explant','2026-01-01','freshly inserted Alternaria')",
+            [],
+        )
+        .unwrap();
+        assert_fts_matches_like(&conn, "Alternaria");
+    }
+
+    /// Runs the exact CTE shape `search_specimens` ships against the exact LIKE
+    /// query it replaced, and asserts identical result sets.
+    ///
+    /// The equivalence has two independent parts and both can break: the index
+    /// content (trigram vs. LIKE substring semantics) and the query shape
+    /// (MATERIALIZED + CROSS JOIN changing which rows survive the joins). This
+    /// covers the shape; assert_fts_matches_like covers the index.
+    fn assert_shipped_search_matches_like(conn: &Connection, needle: &str) {
+        let fts_expr = crate::db::queries::fts_match_query(needle).unwrap();
+        let like = format!("%{}%", needle);
+
+        let mut shipped = conn
+            .prepare(
+                "WITH matches(id) AS MATERIALIZED ( \
+                     SELECT fs.id FROM specimens_fts f \
+                         JOIN specimens fs ON fs.rowid = f.rowid \
+                         WHERE f.specimens_fts MATCH ?1 \
+                     UNION \
+                     SELECT ss.id FROM specimens ss \
+                         WHERE ss.species_id IN ( \
+                             SELECT id FROM species WHERE genus LIKE ?2 OR species_name LIKE ?2)) \
+                 SELECT s.id FROM matches mt CROSS JOIN specimens s ON s.id = mt.id \
+                 LEFT JOIN species sp ON s.species_id = sp.id \
+                 WHERE s.is_archived = 0 \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_fts: Vec<String> = shipped
+            .query_map(rusqlite::params![fts_expr, like], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        let mut original = conn
+            .prepare(
+                "SELECT s.id FROM specimens s \
+                 LEFT JOIN species sp ON s.species_id = sp.id \
+                 WHERE s.is_archived = 0 AND ( \
+                     s.accession_number LIKE ?1 OR s.notes LIKE ?1 OR s.location LIKE ?1 \
+                     OR s.provenance LIKE ?1 OR s.source_plant LIKE ?1 \
+                     OR sp.genus LIKE ?1 OR sp.species_name LIKE ?1) \
+                 ORDER BY s.id",
+            )
+            .unwrap();
+        let via_like: Vec<String> = original
+            .query_map([&like], |r| r.get(0))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(
+            via_fts, via_like,
+            "the shipped CTE search disagreed with the LIKE scan for needle {needle:?}"
+        );
+    }
+
+    #[test]
+    fn shipped_search_shape_matches_the_like_query_it_replaced() {
+        let conn = search_fixture_db();
+        for needle in [
+            "0042",          // mid-token substring
+            "QT00042",       // whole token
+            "Rack A",        // spans a space
+            "Trichoderma",   // notes only
+            "Citrus",        // species genus only — exercises the UNION branch
+            "sinensis",      // species name only
+            "PTC-2026",      // accession prefix
+            "zzz-no-match",  // empty result on both sides
+        ] {
+            assert_shipped_search_matches_like(&conn, needle);
+        }
+    }
+
+    #[test]
+    fn shipped_search_is_scoped_to_the_active_lab() {
+        // Search runs through the FTS index, which spans every lab by design —
+        // isolation comes from the outer WHERE. That makes this worth asserting
+        // separately from the FTS/LIKE equivalence: a correct index with a
+        // missing lab predicate would pass every other test in this file while
+        // leaking another lab's cultures into the search box.
+        let conn = search_fixture_db();
+        conn.execute(
+            "UPDATE specimens SET lab_profile = 'mycology' WHERE id = 's2'",
+            [],
+        )
+        .unwrap();
+
+        let fts_expr = crate::db::queries::fts_match_query("Trichoderma").unwrap();
+        let like = "%Trichoderma%";
+
+        // The exact shape search_specimens builds, with the lab predicate the
+        // command always pushes as its first condition.
+        const SEARCH_SQL: &str = "WITH matches(id) AS MATERIALIZED ( \
+                 SELECT fs.id FROM specimens_fts f \
+                     JOIN specimens fs ON fs.rowid = f.rowid \
+                     WHERE f.specimens_fts MATCH ?2 \
+                 UNION \
+                 SELECT ss.id FROM specimens ss \
+                     WHERE ss.species_id IN ( \
+                         SELECT id FROM species WHERE genus LIKE ?3 OR species_name LIKE ?3)) \
+             SELECT s.id FROM matches mt CROSS JOIN specimens s ON s.id = mt.id \
+             LEFT JOIN species sp ON s.species_id = sp.id \
+             WHERE s.lab_profile = ?1 AND s.is_archived = 0 \
+             ORDER BY s.id";
+
+        let hits = |lab: &str| -> Vec<String> {
+            conn.prepare(SEARCH_SQL)
+                .unwrap()
+                .query_map(rusqlite::params![lab, fts_expr, like], |r| r.get(0))
+                .unwrap()
+                .map(|r| r.unwrap())
+                .collect()
+        };
+
+        assert_eq!(
+            hits("mycology"),
+            vec!["s2".to_string()],
+            "the mycology lab should find its own culture"
+        );
+        assert!(
+            hits("plant_tissue_culture").is_empty(),
+            "PTC must not find a mycology culture through search"
+        );
+        assert!(hits("cell_culture").is_empty());
+    }
+
+    #[test]
+    fn shipped_search_respects_the_archived_filter() {
+        let conn = search_fixture_db();
+        conn.execute("UPDATE specimens SET is_archived = 1 WHERE id = 's2'", []).unwrap();
+        // 's2' holds the Trichoderma note; archiving it must remove it from
+        // both paths identically, not just from one.
+        assert_shipped_search_matches_like(&conn, "Trichoderma");
+        let fts_expr = crate::db::queries::fts_match_query("Trichoderma").unwrap();
+        let n: i64 = conn.query_row(
+            "WITH matches(id) AS MATERIALIZED (
+                 SELECT fs.id FROM specimens_fts f JOIN specimens fs ON fs.rowid = f.rowid
+                     WHERE f.specimens_fts MATCH ?1)
+             SELECT COUNT(*) FROM matches mt CROSS JOIN specimens s ON s.id = mt.id
+             WHERE s.is_archived = 0",
+            [&fts_expr], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(n, 0, "an archived specimen must not surface in a default search");
+    }
+
+    #[test]
+    fn fts_match_query_refuses_queries_the_trigram_index_cannot_serve() {
+        use crate::db::queries::fts_match_query;
+        assert!(fts_match_query("ab").is_none(), "2 chars is below the trigram floor");
+        assert!(fts_match_query(" a ").is_none());
+        assert!(fts_match_query("").is_none());
+        assert!(fts_match_query("abc").is_some());
+        // Character count, not byte count — three CJK characters are servable.
+        assert!(fts_match_query("\u{83cc}\u{682a}\u{682a}").is_some());
+    }
+
+    #[test]
+    fn fts_match_query_escapes_embedded_quotes() {
+        use crate::db::queries::fts_match_query;
+        assert_eq!(fts_match_query("say \"hi\"").unwrap(), "\"say \"\"hi\"\"\"");
+    }
+
+    #[test]
+    fn migration_054_backfills_rows_that_predate_the_index() {
+        // The index is created on an existing database, so pre-existing rows
+        // must be backfilled — not just rows written after the triggers exist.
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp_b','Citrus','limon','CIT-LIM')",
+            [],
+        ).unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date, notes) \
+             VALUES ('pre1','PRE-0001','sp_b','explant','2026-01-01','predates the index')",
+            [],
+        ).unwrap();
+
+        // Drop and rebuild exactly as the migration does on an existing DB.
+        conn.execute_batch(
+            "DROP TRIGGER specimens_fts_insert;
+             DROP TRIGGER specimens_fts_delete;
+             DROP TRIGGER specimens_fts_update;
+             DROP TABLE specimens_fts;",
+        ).unwrap();
+        migration_054_specimen_search_index(&conn).unwrap();
+
+        assert_fts_matches_like(&conn, "predates");
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM specimens_fts WHERE specimens_fts MATCH '\"predates\"'",
+            [], |r| r.get(0),
+        ).unwrap();
+        assert_eq!(n, 1, "the backfill must cover rows written before the index existed");
+    }
+
+    // ── Migration 053: lab-type isolation ─────────────────────────────────────
+
+    /// Inserts a specimen without naming `lab_profile`, the way every
+    /// pre-migration-053 row was written.
+    fn insert_legacy_specimen(conn: &Connection, id: &str, acc: &str, stage: &str) {
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) \
+             VALUES ('sp_iso','G','sp','ISO') ON CONFLICT(id) DO NOTHING",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, species_id, stage, initiation_date) \
+             VALUES (?1, ?2, 'sp_iso', ?3, '2026-01-01')",
+            rusqlite::params![id, acc, stage],
+        )
+        .unwrap();
+    }
+
+    fn lab_of(conn: &Connection, id: &str) -> String {
+        conn.query_row(
+            "SELECT lab_profile FROM specimens WHERE id = ?1",
+            rusqlite::params![id],
+            |r| r.get(0),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn migration_053_adds_lab_profile_defaulting_to_ptc() {
+        let conn = migrated_db();
+        insert_legacy_specimen(&conn, "s1", "ACC-ISO-1", "explant");
+        assert_eq!(lab_of(&conn, "s1"), "plant_tissue_culture");
+    }
+
+    #[test]
+    fn migration_053_backfills_unambiguous_stage_codes_to_their_own_lab() {
+        // The whole point of the backfill: a culture sitting in a stage that only
+        // one lab defines is filed under that lab, NOT under whatever profile the
+        // app happens to be set to. 'grain_spawn' is mycology-only and
+        // 'trypsinization' is cell-culture-only.
+        let conn = Connection::open_in_memory().unwrap();
+        // Run every migration except the one under test, so we can seed
+        // pre-migration rows and then apply 053 to them.
+        run_all(&conn).unwrap();
+        seed_defaults(&conn).unwrap();
+        conn.execute("DELETE FROM specimens", []).unwrap();
+        // Drop every index that references the column first — SQLite refuses
+        // DROP COLUMN while any index still names it.
+        for idx in [
+            "idx_specimens_lab_profile",
+            "idx_specimens_lab_stage",
+            "idx_specimens_lab_species",
+            "idx_specimens_lab_quarantine",
+        ] {
+            conn.execute(&format!("DROP INDEX IF EXISTS {idx}"), []).unwrap();
+        }
+        conn.execute("ALTER TABLE specimens DROP COLUMN lab_profile", []).unwrap();
+
+        insert_legacy_specimen(&conn, "myco1", "ACC-M-1", "grain_spawn");
+        insert_legacy_specimen(&conn, "cc1", "ACC-C-1", "adherent");
+        insert_legacy_specimen(&conn, "ptc1", "ACC-P-1", "explant");
+
+        migration_053_specimen_lab_profile(&conn).unwrap();
+
+        assert_eq!(lab_of(&conn, "myco1"), "mycology");
+        assert_eq!(lab_of(&conn, "cc1"), "cell_culture");
+        assert_eq!(lab_of(&conn, "ptc1"), "plant_tissue_culture");
+    }
+
+    #[test]
+    fn migration_053_falls_back_to_active_profile_for_shared_stage_codes() {
+        // 'archived' is defined for BOTH plant_tissue_culture and cell_culture —
+        // exactly the ambiguity that made the old stage-code join leak between
+        // labs. There is no recoverable answer, so such rows go to the lab the
+        // app is currently configured for.
+        let conn = Connection::open_in_memory().unwrap();
+        run_all(&conn).unwrap();
+        seed_defaults(&conn).unwrap();
+        conn.execute("DELETE FROM specimens", []).unwrap();
+        // Drop every index that references the column first — SQLite refuses
+        // DROP COLUMN while any index still names it.
+        for idx in [
+            "idx_specimens_lab_profile",
+            "idx_specimens_lab_stage",
+            "idx_specimens_lab_species",
+            "idx_specimens_lab_quarantine",
+        ] {
+            conn.execute(&format!("DROP INDEX IF EXISTS {idx}"), []).unwrap();
+        }
+        conn.execute("ALTER TABLE specimens DROP COLUMN lab_profile", []).unwrap();
+        conn.execute("UPDATE app_config SET lab_profile = 'mycology' WHERE id = 1", [])
+            .unwrap();
+
+        insert_legacy_specimen(&conn, "amb1", "ACC-A-1", "archived");
+
+        migration_053_specimen_lab_profile(&conn).unwrap();
+
+        assert_eq!(
+            lab_of(&conn, "amb1"),
+            "mycology",
+            "an ambiguous stage code must fall back to the active lab"
+        );
+    }
+
+    #[test]
+    fn shared_stage_codes_really_do_exist_across_profiles() {
+        // Guards the premise of migration 053. If a future vocabulary change made
+        // stage codes unique per profile, this test failing would be the signal
+        // that the ambiguity argument no longer holds — not a reason to drop the
+        // column, but a reason to revisit the backfill comment.
+        let conn = migrated_db();
+        seed_defaults(&conn).unwrap();
+        let shared: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM (SELECT code FROM stages GROUP BY code HAVING COUNT(DISTINCT profile) > 1)",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            shared > 0,
+            "stage codes are expected to be shared across profiles; that is why lab membership \
+             cannot be inferred from the stage"
+        );
     }
 }

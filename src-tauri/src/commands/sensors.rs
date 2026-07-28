@@ -12,7 +12,7 @@ pub fn create_environmental_reading(
     token: String,
     request: CreateEnvironmentalReadingRequest,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -60,7 +60,7 @@ pub fn ingest_sensor_payload(
     source: String,
     raw_payload: String,
 ) -> Result<Vec<String>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -91,7 +91,7 @@ pub fn list_environmental_readings(
     specimen_id: String,
     limit: Option<i64>,
 ) -> Result<Vec<EnvironmentalReading>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     sensor_queries::list_environmental_readings(&db.conn, Some(&specimen_id), limit.unwrap_or(100))
         .map_err(|e| e.to_string())
@@ -99,7 +99,7 @@ pub fn list_environmental_readings(
 
 #[tauri::command]
 pub fn get_environmental_alerts(state: State<AppState>, token: String) -> Result<Vec<EnvironmentalAlert>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     sensor_queries::get_environmental_alerts(&db.conn).map_err(|e| e.to_string())
 }

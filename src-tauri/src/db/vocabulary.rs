@@ -26,6 +26,68 @@ pub fn active_domain(conn: &Connection) -> String {
     .unwrap_or_else(|_| "Plantae".to_string())
 }
 
+/// SQL predicate restricting a `specimens` query to the currently active lab.
+///
+/// `alias` is the table alias used in the query (`"s"`, `"sp"`, or the bare
+/// table name). The returned fragment is a bare condition — the caller supplies
+/// its own `AND`/`WHERE`.
+///
+/// Written as a correlated lookup rather than a bind parameter deliberately.
+/// The queries that need it carry wildly different numbers of positional
+/// parameters, and threading a new `?N` through each is exactly the kind of
+/// index-arithmetic edit that silently binds the wrong value — the failure
+/// would be a lab quietly seeing another lab's data, which is the thing this is
+/// supposed to prevent. The COALESCE mirrors [`active_profile`], so a missing
+/// `app_config` row degrades to the default lab here too, rather than comparing
+/// against NULL and matching nothing.
+///
+/// This is defence in depth, not the primary mechanism: the specimen commands
+/// scope their own reads and guard by-ID access through
+/// [`require_active_lab_profile`]. This exists for the aggregate/report queries
+/// that read `specimens` directly without going through those paths.
+pub fn active_lab_sql(alias: &str) -> String {
+    format!(
+        "{alias}.lab_profile = COALESCE(\
+             (SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')"
+    )
+}
+
+/// Returns the lab profile a specimen belongs to, or `Err` if it does not exist.
+///
+/// Reads the stamped `specimens.lab_profile` column — never re-derives it from
+/// the stage code, which is ambiguous across profiles (see migration 053).
+pub fn specimen_lab_profile(conn: &Connection, specimen_id: &str) -> Result<String, String> {
+    conn.query_row(
+        "SELECT lab_profile FROM specimens WHERE id = ?1",
+        rusqlite::params![specimen_id],
+        |r| r.get(0),
+    )
+    .map_err(|_| "Specimen not found".to_string())
+}
+
+/// Guard: refuse to read or mutate a specimen that belongs to a different lab
+/// than the one currently active.
+///
+/// This is the enforcement point that keeps a mycology lab, a plant tissue
+/// culture lab and a cell culture lab from operating on each other's cultures.
+/// Filtering reads by profile is not sufficient on its own: an ID obtained
+/// under one profile (from a QR scan, a bookmark, a stale UI, or a crafted IPC
+/// call) would otherwise still resolve after switching profiles. Every
+/// by-ID specimen command routes through here, so the block is default-deny.
+pub fn require_active_lab_profile(conn: &Connection, specimen_id: &str) -> Result<(), String> {
+    let active = active_profile(conn);
+    let owner = specimen_lab_profile(conn, specimen_id)?;
+    if owner == active {
+        Ok(())
+    } else {
+        Err(format!(
+            "This specimen belongs to the {} lab, but the {} lab is currently active. \
+             Switch the active lab profile in Settings to work with it.",
+            owner, active
+        ))
+    }
+}
+
 /// Validates that `code` exists in the `stages` table for the given profile and is not
 /// a terminal stage (is_terminal = 0). Returns false on any query error (table missing,
 /// etc.) so unknown codes are always rejected.

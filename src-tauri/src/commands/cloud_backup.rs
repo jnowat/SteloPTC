@@ -50,7 +50,7 @@ fn row_to_summary(row: &rusqlite::Row) -> rusqlite::Result<BackupTargetSummary> 
 
 #[tauri::command]
 pub fn list_backup_targets(state: State<AppState>, token: String) -> Result<Vec<BackupTargetSummary>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can view backup targets".to_string());
@@ -74,7 +74,7 @@ pub fn create_backup_target(
     secret_key: Option<String>,
     schedule_cron: Option<String>,
 ) -> Result<BackupTargetSummary, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can configure backup targets".to_string());
@@ -108,7 +108,7 @@ pub fn create_backup_target(
 
 #[tauri::command]
 pub fn delete_backup_target(state: State<AppState>, token: String, id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can delete backup targets".to_string());
@@ -141,7 +141,7 @@ pub struct CloudBackupResult {
 
 #[tauri::command]
 pub fn cloud_backup(state: State<AppState>, token: String, target_id: String, passphrase: String) -> Result<CloudBackupResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can run a cloud backup".to_string());
@@ -236,7 +236,7 @@ pub fn restore_from_cloud(
     passphrase: String,
     backup_file_name: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can restore from a cloud backup".to_string());
@@ -300,7 +300,7 @@ pub fn reconcile_cloud_sync(
     passphrase: String,
     device_id: String,
 ) -> Result<ReconcileSummary, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can sync with a cloud target".to_string());

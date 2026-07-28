@@ -9,7 +9,7 @@ use tauri::State;
 /// Admin-only: full matrix for the PermissionsEditor UI.
 #[tauri::command]
 pub fn list_field_permissions(state: State<AppState>, token: String) -> Result<Vec<FieldPermission>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     permissions::validate_admin_role(user.role.as_str())?;
     permissions::list_field_permissions(&db.conn).map_err(|e| e.to_string())
@@ -24,7 +24,7 @@ pub fn set_field_permission(
     token: String,
     request: SetFieldPermissionRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     permissions::validate_admin_role(user.role.as_str())?;
 

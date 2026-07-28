@@ -44,7 +44,7 @@ pub fn create_taxon(
     token: String,
     request: CreateTaxonRequest,
 ) -> Result<Taxon, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can manage taxonomy".to_string());
@@ -122,7 +122,7 @@ pub fn create_taxon(
 
 #[tauri::command]
 pub fn get_taxon(state: State<AppState>, token: String, id: String) -> Result<Taxon, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::load_taxon(&db.conn, &id).map_err(|e| e.to_string())
 }
@@ -133,7 +133,7 @@ pub fn update_taxon(
     token: String,
     request: UpdateTaxonRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can manage taxonomy".to_string());
@@ -208,7 +208,7 @@ pub fn list_taxa_by_rank(
     token: String,
     rank: String,
 ) -> Result<Vec<Taxon>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db
@@ -247,7 +247,7 @@ pub fn get_taxon_descendants(
     token: String,
     id: String,
 ) -> Result<TaxonNode, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let taxon = queries::load_taxon(&db.conn, &id).map_err(|e| e.to_string())?;
@@ -262,7 +262,7 @@ pub fn get_taxon_column(
     token: String,
     parent_id: Option<String>,
 ) -> Result<Vec<TaxonColumnItem>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::get_taxon_column_items(&db.conn, parent_id.as_deref())
         .map_err(|e| e.to_string())
@@ -278,7 +278,7 @@ pub fn list_species_for_taxon(
     token: String,
     taxon_id: String,
 ) -> Result<Vec<SpeciesNodeSummary>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::get_species_for_taxon(&db.conn, &taxon_id).map_err(|e| e.to_string())
 }
@@ -295,7 +295,7 @@ pub fn search_taxonomy(
     if query.len() < 2 {
         return Ok(vec![]);
     }
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::search_taxonomy(&db.conn, &query).map_err(|e| e.to_string())
 }
@@ -309,7 +309,7 @@ pub fn create_provisional_taxon(
     token: String,
     request: CreateProvisionalTaxonRequest,
 ) -> Result<Taxon, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can create provisional taxa".to_string());
@@ -333,7 +333,7 @@ pub fn list_provisional_taxa(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<Taxon>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::list_provisional_taxa(&db.conn).map_err(|e| e.to_string())
 }
@@ -345,7 +345,7 @@ pub fn map_provisional_taxon(
     token: String,
     request: CreateTaxonMappingRequest,
 ) -> Result<TaxonMapping, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can map provisional taxa".to_string());
@@ -370,7 +370,7 @@ pub fn list_taxon_mappings(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<TaxonMapping>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::list_taxon_mappings(&db.conn).map_err(|e| e.to_string())
 }
@@ -383,7 +383,7 @@ pub fn export_darwin_core(
     token: String,
     root_id: Option<String>,
 ) -> Result<DarwinCoreExport, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     queries::export_darwin_core(&db.conn, root_id.as_deref()).map_err(|e| e.to_string())
 }
@@ -396,7 +396,7 @@ pub fn reanchor_taxon_chain_dry_run(
     token: String,
     taxon_id: String,
 ) -> Result<queries::ReanchorCounts, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can preview a taxon re-anchor".to_string());
@@ -415,7 +415,7 @@ pub fn reanchor_taxon_chain(
     taxon_id: String,
     reason: String,
 ) -> Result<queries::ReanchorResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.is_admin() {
         return Err("Only admins can re-anchor a taxon's hash chain".to_string());

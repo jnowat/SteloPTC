@@ -15,7 +15,7 @@ pub struct Project {
 
 #[tauri::command]
 pub fn list_species(state: State<AppState>, token: String) -> Result<Vec<Species>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
@@ -49,7 +49,7 @@ pub fn create_species(
     token: String,
     request: CreateSpeciesRequest,
 ) -> Result<Species, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can manage species".to_string());
@@ -101,7 +101,7 @@ pub fn update_species(
     token: String,
     request: UpdateSpeciesRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can manage species".to_string());
@@ -161,7 +161,7 @@ pub fn update_species(
 
 #[tauri::command]
 pub fn list_projects(state: State<AppState>, token: String) -> Result<Vec<Project>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(

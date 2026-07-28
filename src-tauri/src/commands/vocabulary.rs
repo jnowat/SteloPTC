@@ -46,7 +46,7 @@ pub fn list_stages(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<StageEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
 
@@ -79,7 +79,7 @@ pub fn list_propagation_methods(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<VocabEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
@@ -95,7 +95,7 @@ pub fn list_hormone_types(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<VocabEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
@@ -111,7 +111,7 @@ pub fn list_compliance_record_types(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<VocabEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
@@ -127,7 +127,7 @@ pub fn list_compliance_agencies(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<VocabEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(
@@ -143,7 +143,7 @@ pub fn list_inventory_categories(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<VocabEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     query_vocab(

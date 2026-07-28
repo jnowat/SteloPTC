@@ -26,6 +26,41 @@ pub struct AppState {
     // WP-63: in-memory materialized dashboard cache (never persisted — see
     // db::dashboard for the TTL/invalidation logic).
     pub dashboard_cache: Mutex<Option<db::dashboard::DashboardCacheEntry>>,
+    /// Failed-login counters backing the brute-force lockout. In-memory and
+    /// per-process by design (see `auth::LoginThrottle`) — deliberately not
+    /// persisted, so a failed guess never causes a database write.
+    pub login_throttle: auth::LoginThrottle,
+    /// Set when the real database could not be opened and the app fell back to
+    /// an in-memory one. Holds the message the UI must show before the user
+    /// enters anything — see `run()`.
+    pub degraded_reason: Option<String>,
+}
+
+impl AppState {
+    /// Take the database lock, recovering from poisoning.
+    ///
+    /// `Mutex` poisoning is permanent: once any thread panics while holding the
+    /// lock, every later `lock()` returns `Err` forever. Propagating that turns
+    /// a single unanticipated panic into an application that keeps running but
+    /// fails every command with an opaque "poisoned lock" string — strictly
+    /// worse than continuing, and invisible to the user until they notice
+    /// nothing works.
+    ///
+    /// Recovering is sound here because a panic cannot leave the `Connection`
+    /// in an invalid state: rusqlite rolls back any in-flight transaction when
+    /// the `Transaction` guard is dropped during the unwind, and SQLite's own
+    /// state is transactional. The worst case is a half-finished logical
+    /// operation, which is what the panic caused regardless of how we take the
+    /// lock afterwards.
+    pub fn db(&self) -> std::sync::MutexGuard<'_, Database> {
+        self.db.lock().unwrap_or_else(|poisoned| {
+            eprintln!(
+                "WARN: the database mutex was poisoned by an earlier panic; recovering. \
+                 The operation that panicked was rolled back."
+            );
+            poisoned.into_inner()
+        })
+    }
 }
 
 #[cfg(feature = "tauri-commands")]
@@ -34,19 +69,33 @@ use tauri::Manager;
 #[cfg(feature = "tauri-commands")]
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let db = match Database::new() {
-        Ok(db) => db,
+    // Falling back to an in-memory database keeps the app openable for
+    // diagnosis, but it MUST NOT look like a working, empty lab. A user who
+    // records a day of passages, subcultures and compliance records into a
+    // temporary database loses all of it on close — for a system whose value is
+    // an unbroken audit chain, that is the worst possible failure mode. The
+    // reason is carried on AppState and surfaced to the UI below rather than
+    // printed to a stderr nobody sees in a bundled desktop app.
+    let (db, degraded_reason) = match Database::new() {
+        Ok(db) => (db, None),
         Err(e) => {
             eprintln!("Failed to initialize database: {}", e);
-            // Fall back to in-memory database so the app can at least start
-            Database::new_in_memory()
-                .expect("Failed to create even an in-memory database")
+            let reason = format!(
+                "SteloPTC could not open its database ({e}).\n\n\
+                 It is running in TEMPORARY mode: nothing you enter will be saved. \
+                 Close the app and resolve the problem before recording any work."
+            );
+            let db = Database::new_in_memory()
+                .expect("Failed to create even an in-memory database");
+            (db, Some(reason))
         }
     };
 
     let state = AppState {
         db: Mutex::new(db),
         dashboard_cache: Mutex::new(None),
+        login_throttle: auth::LoginThrottle::default(),
+        degraded_reason,
     };
 
     tauri::Builder::default()
@@ -152,6 +201,7 @@ pub fn run() {
             // Admin tools
             commands::admin::reset_database,
             commands::admin::load_demo_data,
+            commands::admin::get_degraded_reason,
             commands::admin::get_lab_profile,
             commands::admin::set_lab_profile,
             // Vocabulary lookups (WP-23 / WP-24)
@@ -369,7 +419,7 @@ pub fn run() {
         ])
         .setup(|app| {
             let state = app.state::<AppState>();
-            let db = state.db.lock().map_err(|e| format!("DB lock error: {}", e))?;
+            let db = state.db();
             db.run_migrations().map_err(|e| format!("Migration error: {}", e))?;
             db.seed_defaults().map_err(|e| format!("Seed error: {}", e))?;
             drop(db);
@@ -383,26 +433,11 @@ pub fn run() {
                 loop {
                     let interval_minutes: i64 = {
                         let state = app_handle.state::<AppState>();
-                        // A panic anywhere else in the app while holding this lock poisons
-                        // it permanently. Previously that silently killed this loop forever
-                        // (`let Ok(db) = ... else { break }`) — the scheduler would just stop
-                        // and nothing would ever indicate why. A poisoned rusqlite Connection
-                        // is still structurally valid (the panic that poisoned it happened in
-                        // unrelated Rust logic, not mid-write to this struct), so recovering
-                        // the guard and continuing is safe; we log so the underlying panic
-                        // still gets investigated.
-                        let db = match state.db.lock() {
-                            Ok(db) => db,
-                            Err(poisoned) => {
-                                eprintln!(
-                                    "Notification scheduler: database mutex was poisoned by a \
-                                     panic elsewhere while holding the lock. Recovering and \
-                                     continuing the scheduler loop, but the underlying panic \
-                                     should be investigated."
-                                );
-                                poisoned.into_inner()
-                            }
-                        };
+                        // A panic elsewhere while holding this lock poisons it
+                        // permanently, which used to kill this loop forever with
+                        // no indication why. `AppState::db()` recovers the guard
+                        // and logs — see its doc comment for why that is sound.
+                        let db = state.db();
                         db::queries::read_setting(&db.conn, "notification_check_interval_minutes", "15")
                             .parse()
                             .unwrap_or(15)
@@ -422,16 +457,16 @@ pub fn run() {
                     // against current compliance state and auto-generate any that
                     // became ready. Best-effort — a poisoned lock or error here
                     // must never stop the scheduler loop.
-                    match state.db.lock() {
-                        Ok(db) => match commands::reg_submission::monitor(&db.conn) {
-                            Ok(r) if r.auto_generated > 0 => {
-                                eprintln!("Submission monitor: auto-generated {} package(s).", r.auto_generated);
-                            }
-                            Ok(_) => {}
-                            Err(e) => eprintln!("Submission monitor failed: {}", e),
-                        },
-                        Err(_) => eprintln!("Submission monitor: db mutex poisoned; skipping this tick."),
-                    };
+                    // Bind the guard: inlining `state.db()` into the call would
+                    // create a temporary that outlives `state`.
+                    let db = state.db();
+                    match commands::reg_submission::monitor(&db.conn) {
+                        Ok(r) if r.auto_generated > 0 => {
+                            eprintln!("Submission monitor: auto-generated {} package(s).", r.auto_generated);
+                        }
+                        Ok(_) => {}
+                        Err(e) => eprintln!("Submission monitor failed: {}", e),
+                    }
                 }
             });
 

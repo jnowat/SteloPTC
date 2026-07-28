@@ -16,7 +16,7 @@ use tauri::State;
 /// Any authenticated user may read the current backend configuration.
 #[tauri::command]
 pub fn get_backend_config(state: State<AppState>, token: String) -> Result<BackendConfigInfo, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let backend_type = backend::current_backend_kind(&db.conn).as_str().to_string();
@@ -37,7 +37,7 @@ pub fn set_backend_type(
     backend_type: String,
     connection_string: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
 
     if !user.role.is_admin() {
@@ -81,7 +81,7 @@ pub fn test_postgres_connection(
     connection_string: String,
 ) -> Result<String, String> {
     {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         let user = auth_service::validate_session(&db, &token)?;
         if !user.role.is_admin() {
             return Err("Only admins can test a PostgreSQL connection".to_string());
@@ -99,7 +99,7 @@ pub fn bootstrap_postgres_schema(
     connection_string: String,
 ) -> Result<Vec<String>, String> {
     {
-        let db = state.db.lock().map_err(|e| e.to_string())?;
+        let db = state.db();
         let user = auth_service::validate_session(&db, &token)?;
         if !user.role.is_admin() {
             return Err("Only admins can bootstrap a PostgreSQL schema".to_string());

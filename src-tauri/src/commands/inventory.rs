@@ -31,7 +31,7 @@ fn row_to_item(row: &rusqlite::Row) -> rusqlite::Result<InventoryItem> {
 
 #[tauri::command]
 pub fn list_inventory(state: State<AppState>, token: String) -> Result<Vec<InventoryItem>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db
@@ -54,7 +54,7 @@ pub fn create_inventory_item(
     token: String,
     request: CreateInventoryItemRequest,
 ) -> Result<InventoryItem, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -99,7 +99,7 @@ pub fn update_inventory_item(
     token: String,
     request: UpdateInventoryItemRequest,
 ) -> Result<InventoryItem, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -175,7 +175,7 @@ pub fn delete_inventory_item(
     token: String,
     id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can delete inventory items".to_string());
@@ -201,7 +201,7 @@ pub fn adjust_stock(
     adjustment: f64,
     reason: Option<String>,
 ) -> Result<InventoryItem, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -252,7 +252,7 @@ pub fn get_low_stock_alerts(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<LowStockAlert>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db
@@ -293,7 +293,7 @@ pub fn list_prepared_solutions(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<PreparedSolution>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
@@ -336,7 +336,7 @@ pub fn create_prepared_solution(
     token: String,
     request: CreatePreparedSolutionRequest,
 ) -> Result<PreparedSolution, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -423,7 +423,7 @@ pub fn update_prepared_solution(
     token: String,
     request: UpdatePreparedSolutionRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -479,7 +479,7 @@ pub fn delete_prepared_solution(
     token: String,
     id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can delete prepared solutions".to_string());

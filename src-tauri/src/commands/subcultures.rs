@@ -16,11 +16,15 @@ pub fn record_specimen_death(
     token: String,
     request: RecordSpecimenDeathRequest,
 ) -> Result<Subculture, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    // A passage is a physical act on a specific culture. Recording one against
+    // a specimen belonging to another lab would write real bench history onto a
+    // culture this operator cannot even see.
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &request.specimen_id)?;
 
     let (current_count, is_archived): (i32, i32) = db.conn.query_row(
         "SELECT subculture_count, is_archived FROM specimens WHERE id = ?1",
@@ -171,7 +175,7 @@ pub fn list_subcultures(
     page: Option<u32>,
     per_page: Option<u32>,
 ) -> Result<PaginatedResponse<Subculture>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let pg = queries::PaginationParams {
@@ -217,11 +221,15 @@ pub fn create_subculture(
     token: String,
     request: CreateSubcultureRequest,
 ) -> Result<Subculture, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
     }
+    // A passage is a physical act on a specific culture. Recording one against
+    // a specimen belonging to another lab would write real bench history onto a
+    // culture this operator cannot even see.
+    crate::db::vocabulary::require_active_lab_profile(&db.conn, &request.specimen_id)?;
 
     let (current_count, is_archived): (i32, i32) = db.conn.query_row(
         "SELECT subculture_count, is_archived FROM specimens WHERE id = ?1",
@@ -351,7 +359,7 @@ pub fn update_subculture(
     token: String,
     request: UpdateSubcultureRequest,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_write() {
         return Err("Insufficient permissions".to_string());
@@ -425,12 +433,18 @@ pub fn list_all_subcultures(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<Subculture>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db.conn.prepare(
+        // Passages belong to the lab their specimen belongs to. The JOIN (not a
+        // LEFT JOIN) is what scopes this: a subculture whose specimen is in
+        // another lab has no business appearing in this lab's passage list.
         "SELECT sc.*, u.display_name as performer_name, mb.name as media_batch_name
          FROM subcultures sc
+         JOIN specimens sp ON sp.id = sc.specimen_id
+             AND sp.lab_profile = COALESCE(
+                 (SELECT lab_profile FROM app_config WHERE id = 1), 'plant_tissue_culture')
          LEFT JOIN users u ON sc.performed_by = u.id
          LEFT JOIN media_batches mb ON sc.media_batch_id = mb.id
          ORDER BY sc.date DESC, sc.passage_number DESC"
@@ -452,7 +466,7 @@ pub fn get_colonization_history(
     token: String,
     specimen_id: String,
 ) -> Result<Vec<ColonizationEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let mut stmt = db.conn.prepare(
         "SELECT id, date, colonization_pct, passage_number, notes
@@ -479,7 +493,7 @@ pub fn get_contamination_stats(
     state: State<AppState>,
     token: String,
 ) -> Result<ContaminationStats, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     // WP-63: same materialized cache as get_specimen_stats — both stats are
@@ -500,7 +514,7 @@ pub fn get_subculture_schedule(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<SubcultureScheduleEntry>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     crate::db::dashboard::query_subculture_schedule(&db.conn, &profile)
@@ -512,7 +526,7 @@ pub fn get_culture_maintenance_alerts(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<CultureMaintenanceAlert>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
     let profile = crate::db::vocabulary::active_profile(&db.conn);
     crate::db::dashboard::query_culture_maintenance_alerts(&db.conn, &profile)

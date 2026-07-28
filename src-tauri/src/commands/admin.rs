@@ -4,13 +4,25 @@ use crate::AppState;
 use rusqlite::{params, Connection};
 use tauri::State;
 
+/// Returns a warning message when the app is running on a fallback in-memory
+/// database, or `None` in normal operation.
+///
+/// Deliberately **unauthenticated**: the whole point is to warn the user before
+/// they trust the app with data, and on a fresh in-memory database the seeded
+/// account may not be the one they expect — requiring a login first would mean
+/// the warning arrives after they have already started working.
+#[tauri::command]
+pub fn get_degraded_reason(state: State<AppState>) -> Option<String> {
+    state.degraded_reason.clone()
+}
+
 /// Returns the current lab profile (any authenticated user can read).
 #[tauri::command]
 pub fn get_lab_profile(
     state: State<AppState>,
     token: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
 
     let profile: String = db.conn
@@ -29,7 +41,7 @@ pub fn set_lab_profile(
     profile: String,
     confirmation: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
 
     if !user.role.is_admin() {
@@ -81,7 +93,7 @@ pub fn reset_database(
     token: String,
     confirmation: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
 
     if !user.role.is_admin() {
@@ -141,7 +153,7 @@ pub fn load_demo_data(
     state: State<AppState>,
     token: String,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
     if !user.role.can_manage() {
         return Err("Only supervisors and admins can load demo data".to_string());
@@ -157,6 +169,10 @@ pub fn load_demo_data(
                 .to_string(),
         );
     }
+
+    // Demo cultures are filed under the lab that is active when they are loaded,
+    // so they appear in that lab and nowhere else.
+    let demo_lab_profile = crate::db::vocabulary::active_profile(&db.conn);
 
     // Resolve seeded species — gracefully skip any that are missing.
     // Vec entries: (species_id, code, stage, location)
@@ -222,10 +238,10 @@ pub fn load_demo_data(
         tx.execute(
             "INSERT INTO specimens \
              (id, accession_number, species_id, stage, initiation_date, location, \
-              health_status, qr_code_data, notes, created_by) \
+              health_status, qr_code_data, notes, created_by, lab_profile) \
              VALUES (?1, ?2, ?3, ?4, '2026-01-10', ?5, 3, ?6, \
-                     'Demo specimen — remove via Admin → Reset Database', ?7)",
-            params![sp_id, acc, species_id, stage, location, qr, user.id],
+                     'Demo specimen — remove via Admin → Reset Database', ?7, ?8)",
+            params![sp_id, acc, species_id, stage, location, qr, user.id, demo_lab_profile],
         ).map_err(|e| format!("Failed to create demo specimen {}: {}", code, e))?;
         // Seed specimen's chain from the species lineage (falls back to ZERO_HASH
         // for the default seeded species which predate the hash chain)
@@ -292,10 +308,12 @@ pub fn load_demo_data(
             tx.execute(
                 "INSERT INTO specimens \
                  (id, accession_number, species_id, stage, initiation_date, location, \
-                  health_status, qr_code_data, parent_specimen_id, notes, created_by) \
+                  health_status, qr_code_data, parent_specimen_id, notes, created_by, \
+                  lab_profile) \
                  VALUES (?1, ?2, ?3, 'shoot', '2026-03-20', ?4, 3, ?5, ?6, \
-                         'Demo split specimen — remove via Admin → Reset Database', ?7)",
-                params![child_id, child_acc, first_species_id, location, child_qr, parent_id, user.id],
+                         'Demo split specimen — remove via Admin → Reset Database', ?7, ?8)",
+                params![child_id, child_acc, first_species_id, location, child_qr, parent_id, user.id,
+                        demo_lab_profile],
             ).map_err(|e| format!("Failed to create demo split specimen {}: {}", child_acc, e))?;
             queries::log_audit_for_child(
                 conn, Some(&user.id), "create", "specimen", Some(&child_id),

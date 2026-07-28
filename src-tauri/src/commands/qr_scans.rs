@@ -21,7 +21,7 @@ pub fn store_qr_scan(
     raw_data: String,
     accession_number: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     let user = auth_service::validate_session(&db, &token)?;
 
     let id = uuid::Uuid::new_v4().to_string();
@@ -43,7 +43,7 @@ pub fn list_qr_scans(
     state: State<AppState>,
     token: String,
 ) -> Result<Vec<QrScan>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = state.db();
     auth_service::validate_session(&db, &token)?;
 
     let mut stmt = db

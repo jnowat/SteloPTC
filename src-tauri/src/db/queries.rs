@@ -884,13 +884,44 @@ pub fn check_profile_change_allowed(
     match confirmation.map(str::trim) {
         Some("CHANGE PROFILE") => Ok(()),
         _ => Err(format!(
-            "This lab has {} specimen{}. \
-             Changing the active lab profile may affect vocabulary lookups and stage \
-             validation for existing data. To confirm the change, type exactly: CHANGE PROFILE",
+            "This lab has {} specimen{}. Switching the active lab profile changes which \
+             lab you are viewing — existing cultures keep the lab they were created in \
+             and will be hidden until you switch back. Nothing is deleted or relabelled. \
+             To confirm the change, type exactly: CHANGE PROFILE",
             specimen_count,
             if specimen_count == 1 { "" } else { "s" }
         )),
     }
+}
+
+/// Minimum query length the trigram FTS index can serve.
+///
+/// A trigram tokenizer indexes 3-character sequences, so it simply has no
+/// entries for a 1- or 2-character needle.
+pub const FTS_MIN_QUERY_LEN: usize = 3;
+
+/// Converts a raw user search string into an FTS5 MATCH expression, or `None`
+/// when the trigram index cannot serve it and the caller must fall back to
+/// `LIKE`.
+///
+/// FTS5 MATCH takes a *query language*, not a literal: bare `-`, `*`, `:`, `^`,
+/// `(`, `)`, `AND`/`OR`/`NOT` and quotes are all operators. Passing user text
+/// through unescaped is a query-injection bug — at best a syntax error thrown
+/// in the user's face for searching `C. sinensis (batch 2)`, at worst a query
+/// that silently means something other than what they typed.
+///
+/// Wrapping the whole needle in a double-quoted string makes FTS5 treat it as
+/// one literal phrase, and doubling any embedded quote escapes it — the same
+/// rule as SQL string literals. With the trigram tokenizer a quoted phrase is
+/// matched as a substring, so the result set is identical to `LIKE '%q%'`.
+pub fn fts_match_query(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    // Count characters, not bytes: three accented or CJK characters are three
+    // trigram-indexable characters even though they are more than three bytes.
+    if trimmed.chars().count() < FTS_MIN_QUERY_LEN {
+        return None;
+    }
+    Some(format!("\"{}\"", trimmed.replace('"', "\"\"")))
 }
 
 /// Paginated query helper
@@ -2209,13 +2240,15 @@ pub fn export_strain_pedigree(
 
     let mut seen_event_ids = std::collections::HashSet::new();
     let mut events: Vec<HybridizationEventRecord> = Vec::new();
+    // Prepared once, outside the loop: the SQL is identical every iteration, so
+    // re-preparing it per strain re-parses and re-plans the same statement.
+    let mut stmt = conn.prepare(
+        "SELECT id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
+                parent_a_chain_seq, parent_b_chain_seq, notes, \
+                generation_label, backcross_depth, created_at \
+         FROM hybridization_events WHERE hybrid_strain_id = ?1",
+    )?;
     for sid in &strain_ids {
-        let mut stmt = conn.prepare(
-            "SELECT id, hybrid_strain_id, parent_a_strain_id, parent_b_strain_id, \
-                    parent_a_chain_seq, parent_b_chain_seq, notes, \
-                    generation_label, backcross_depth, created_at \
-             FROM hybridization_events WHERE hybrid_strain_id = ?1",
-        )?;
         let rows = stmt.query_map(params![sid], |row| {
             Ok(HybridizationEventRecord {
                 id: row.get("id")?,
@@ -2517,6 +2550,23 @@ pub fn thaw_frozen_vial(
     let child_generation = if vial.specimen_id.is_some() { parent_gen + 1 } else { 0 };
     let child_root = parent_root.or_else(|| vial.specimen_id.clone());
 
+    // A thawed vial re-enters the lab its source specimen came from, so the
+    // recovered culture inherits that lab rather than whichever profile happens
+    // to be active at thaw time. Vials with no source specimen (banked stock
+    // imported without lineage) fall back to the active lab.
+    let child_lab_profile: String = vial
+        .specimen_id
+        .as_ref()
+        .and_then(|src_id| {
+            conn.query_row(
+                "SELECT lab_profile FROM specimens WHERE id = ?1",
+                params![src_id],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+        })
+        .unwrap_or_else(|| crate::db::vocabulary::active_profile(conn));
+
     let tx = conn.unchecked_transaction()
         .map_err(|e| DbError::Constraint(format!("Transaction start failed: {}", e)))?;
 
@@ -2534,8 +2584,8 @@ pub fn thaw_frozen_vial(
          (id, accession_number, species_id, stage, initiation_date,
           location, parent_specimen_id, root_specimen_id, generation,
           lineage_passage_offset, cumulative_pdl, qr_code_data,
-          notes, employee_id, created_by)
-         VALUES (?1,?2,?3,'thaw_recovery',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14)",
+          notes, employee_id, created_by, lab_profile)
+         VALUES (?1,?2,?3,'thaw_recovery',?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
         params![
             specimen_id,
             accession,
@@ -2551,6 +2601,7 @@ pub fn thaw_frozen_vial(
             notes,
             employee_id,
             created_by,
+            child_lab_profile,
         ],
     )?;
 
@@ -3015,8 +3066,9 @@ fn compute_reanchor_scope(conn: &Connection, taxon_id: &str) -> DbResult<Reancho
 
     let mut strain_ids = Vec::new();
     let mut specimen_count_by_species = Vec::new();
+    // Prepared once, outside the loop — see export_strain_pedigree.
+    let mut stmt = conn.prepare("SELECT id FROM strains WHERE species_id = ?1 AND is_archived = 0")?;
     for species_id in &species_ids {
-        let mut stmt = conn.prepare("SELECT id FROM strains WHERE species_id = ?1 AND is_archived = 0")?;
         let ids: Vec<String> = stmt
             .query_map([species_id], |r| r.get(0))?
             .filter_map(|r| r.ok())
@@ -5657,6 +5709,7 @@ mod tests {
                 accession_number TEXT NOT NULL UNIQUE,
                 species_id TEXT NOT NULL,
                 stage TEXT NOT NULL DEFAULT 'explant',
+                lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture',
                 initiation_date TEXT NOT NULL,
                 location TEXT,
                 parent_specimen_id TEXT,

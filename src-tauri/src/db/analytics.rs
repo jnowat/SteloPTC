@@ -97,13 +97,20 @@ pub struct TechnicianActivity {
 /// zero-filled blank panel" acceptance criterion for a fully-empty range.
 pub fn specimen_growth_rate(conn: &Connection, time_range: TimeRange) -> DbResult<Vec<TimeSeriesPoint>> {
     let since = time_range.since(conn);
+    // Analytics are per-lab: a mycology lab's growth chart must not be inflated
+    // by plant tissue culture accessions it has no visibility of.
+    let lab = crate::db::vocabulary::active_lab_sql("specimens");
     let sql = match &since {
-        Some(_) => "SELECT strftime('%Y-%W', created_at) AS bucket, COUNT(*) AS cnt \
-                     FROM specimens WHERE created_at >= ?1 GROUP BY bucket ORDER BY bucket ASC",
-        None => "SELECT strftime('%Y-%W', created_at) AS bucket, COUNT(*) AS cnt \
-                  FROM specimens GROUP BY bucket ORDER BY bucket ASC",
+        Some(_) => format!(
+            "SELECT strftime('%Y-%W', created_at) AS bucket, COUNT(*) AS cnt \
+             FROM specimens WHERE {lab} AND created_at >= ?1 GROUP BY bucket ORDER BY bucket ASC"
+        ),
+        None => format!(
+            "SELECT strftime('%Y-%W', created_at) AS bucket, COUNT(*) AS cnt \
+             FROM specimens WHERE {lab} GROUP BY bucket ORDER BY bucket ASC"
+        ),
     };
-    let mut stmt = conn.prepare(sql)?;
+    let mut stmt = conn.prepare(&sql)?;
     let map_row = |r: &rusqlite::Row| -> rusqlite::Result<TimeSeriesPoint> {
         Ok(TimeSeriesPoint { bucket: r.get(0)?, value: r.get::<_, i64>(1)? as f64 })
     };
@@ -126,9 +133,14 @@ pub fn subculture_frequency_trend(
         .map(|_| "AND specimen_id IN (SELECT id FROM specimens WHERE species_id = ?2)")
         .unwrap_or("");
     let date_filter = if since.is_some() { "date >= ?1" } else { "1=1" };
+    // Passages inherit their specimen's lab.
+    let lab_filter = format!(
+        "AND specimen_id IN (SELECT id FROM specimens WHERE {})",
+        crate::db::vocabulary::active_lab_sql("specimens")
+    );
     let sql = format!(
         "SELECT strftime('%Y-%W', date) AS bucket, COUNT(*) AS cnt \
-         FROM subcultures WHERE {date_filter} {species_filter} \
+         FROM subcultures WHERE {date_filter} {species_filter} {lab_filter} \
          GROUP BY bucket ORDER BY bucket ASC"
     );
     let mut stmt = conn.prepare(&sql)?;
@@ -300,23 +312,27 @@ pub fn media_batch_efficiency(conn: &Connection, time_range: TimeRange) -> DbRes
 /// excluded), average days between passages, total specimens ever bound to
 /// the strain, and the fraction flagged `is_best_performer`.
 pub fn strain_performance(conn: &Connection, species_id: &str) -> DbResult<Vec<StrainPerformance>> {
-    let mut stmt = conn.prepare(
+    // Every per-strain aggregate below counts only this lab's cultures, so a
+    // strain shared across labs reports each lab's own performance.
+    let sp_lab = crate::db::vocabulary::active_lab_sql("sp");
+    let sp2_lab = crate::db::vocabulary::active_lab_sql("sp2");
+    let mut stmt = conn.prepare(&format!(
         "SELECT st.id, st.name, \
                 (SELECT AVG(CAST(sp.health_status AS REAL)) FROM specimens sp \
-                  WHERE sp.strain_id = st.id AND sp.health_status IS NOT NULL AND sp.health_status != '-1') AS mean_health, \
-                (SELECT COUNT(*) FROM specimens sp WHERE sp.strain_id = st.id) AS total_specimens, \
+                  WHERE sp.strain_id = st.id AND {sp_lab} AND sp.health_status IS NOT NULL AND sp.health_status != '-1') AS mean_health, \
+                (SELECT COUNT(*) FROM specimens sp WHERE sp.strain_id = st.id AND {sp_lab}) AS total_specimens, \
                 (SELECT AVG(gap) FROM ( \
                     SELECT julianday(sc.date) - julianday(LAG(sc.date) OVER (PARTITION BY sc.specimen_id ORDER BY sc.date)) AS gap \
                     FROM subcultures sc JOIN specimens sp2 ON sc.specimen_id = sp2.id \
-                    WHERE sp2.strain_id = st.id \
+                    WHERE sp2.strain_id = st.id AND {sp2_lab} \
                  ) WHERE gap IS NOT NULL) AS avg_gap, \
                 (SELECT CASE WHEN COUNT(*) = 0 THEN 0.0 \
                              ELSE 100.0 * SUM(CASE WHEN sp.is_best_performer = 1 THEN 1 ELSE 0 END) / COUNT(*) END \
-                 FROM specimens sp WHERE sp.strain_id = st.id) AS best_rate \
+                 FROM specimens sp WHERE sp.strain_id = st.id AND {sp_lab}) AS best_rate \
          FROM strains st \
          WHERE st.species_id = ?1 AND st.is_archived = 0 \
-         ORDER BY mean_health DESC NULLS LAST",
-    )?;
+         ORDER BY mean_health DESC NULLS LAST"
+    ))?;
     let rows = stmt
         .query_map([species_id], |r| {
             Ok(StrainPerformance {
@@ -588,5 +604,69 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].passages_recorded, 2);
         assert_eq!(rows[0].contamination_events, 1);
+    }
+
+    // ── Lab isolation ─────────────────────────────────────────────────────────
+
+    fn set_active_lab(conn: &Connection, lab: &str) {
+        conn.execute("UPDATE app_config SET lab_profile = ?1 WHERE id = 1", [lab])
+            .unwrap();
+    }
+
+    fn put_in_lab(conn: &Connection, specimen_id: &str, lab: &str) {
+        conn.execute(
+            "UPDATE specimens SET lab_profile = ?1 WHERE id = ?2",
+            rusqlite::params![lab, specimen_id],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn specimen_growth_rate_counts_only_the_active_lab() {
+        let conn = analytics_db();
+        seed_species(&conn, "sp1", "AAA");
+        seed_specimen(&conn, "p1", "sp1", "2026-01-05 10:00:00", "4", None);
+        seed_specimen(&conn, "m1", "sp1", "2026-01-05 10:00:00", "4", None);
+        put_in_lab(&conn, "p1", "plant_tissue_culture");
+        put_in_lab(&conn, "m1", "mycology");
+
+        set_active_lab(&conn, "plant_tissue_culture");
+        let ptc: f64 = specimen_growth_rate(&conn, TimeRange::All).unwrap().iter().map(|p| p.value).sum();
+        set_active_lab(&conn, "mycology");
+        let myco: f64 = specimen_growth_rate(&conn, TimeRange::All).unwrap().iter().map(|p| p.value).sum();
+        set_active_lab(&conn, "cell_culture");
+        let cc: f64 = specimen_growth_rate(&conn, TimeRange::All).unwrap().iter().map(|p| p.value).sum();
+
+        assert_eq!(ptc, 1.0, "PTC must count only its own specimen");
+        assert_eq!(myco, 1.0, "mycology must count only its own specimen");
+        assert_eq!(cc, 0.0, "a lab with no specimens must report none");
+        assert_eq!(ptc + myco + cc, 2.0, "labs must partition the table, not overlap");
+    }
+
+    #[test]
+    fn strain_performance_counts_only_the_active_lab() {
+        let conn = analytics_db();
+        seed_species(&conn, "sp1", "AAA");
+        conn.execute(
+            "INSERT INTO strains (id, species_id, code, name, is_archived) \
+             VALUES ('st1', 'sp1', 'ST-1', 'Shared Strain', 0)",
+            [],
+        )
+        .unwrap();
+        seed_specimen(&conn, "p1", "sp1", "2026-01-05 10:00:00", "4", Some("st1"));
+        seed_specimen(&conn, "m1", "sp1", "2026-01-05 10:00:00", "4", Some("st1"));
+        put_in_lab(&conn, "p1", "plant_tissue_culture");
+        put_in_lab(&conn, "m1", "mycology");
+
+        // A strain can legitimately be referenced from more than one lab; each
+        // lab's performance figures must describe its own cultures only.
+        set_active_lab(&conn, "plant_tissue_culture");
+        let ptc = strain_performance(&conn, "sp1").unwrap();
+        assert_eq!(ptc.len(), 1);
+        assert_eq!(ptc[0].total_specimens, 1, "PTC counted another lab's specimen");
+
+        set_active_lab(&conn, "mycology");
+        let myco = strain_performance(&conn, "sp1").unwrap();
+        assert_eq!(myco[0].total_specimens, 1, "mycology counted another lab's specimen");
     }
 }
