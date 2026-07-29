@@ -93,6 +93,20 @@ still say `1.53.2` because that is what shipped.
   app has no HTTP client in the backend and no network permission in its Tauri capabilities, and that
   is deliberate.
 
+**Fixed — lab isolation and dark mode**
+
+- **`get_location_map_data` counted other labs' specimens.** It reads `specimens` directly as an
+  aggregate without the lab predicate every other such query applies, so a mycology session's map
+  was shaded by a plant-tissue-culture lab's cultures. Both it and the new `get_location_occupancy`
+  now go through `vocabulary::active_lab_sql`. The predicate lives in the map query's `LEFT JOIN`
+  condition, not its `WHERE` clause: in `WHERE` it would turn the outer join into an inner one and
+  drop every location holding nothing — exactly the empty shelf someone opens the map to find.
+- **Eleven components set colours inline as literal hex.** Near-black text (`#1e293b`, `#374151`)
+  and near-white panels and borders (`#f8fafc`, `#e2e8f0`) rendered as invisible text or a white
+  block in dark mode, `SpecimenDetail` and `Dashboard` worst of all. They now use the theme tokens.
+  Only values actually broken in one theme were touched; mid-tone greys and the ternary fill colours
+  driving progress bars and SVG are untouched.
+
 **Fixed — smaller things**
 
 - **The Google Fonts `@import` in `App.svelte` was dead code.** CSS requires `@import` to precede
@@ -119,8 +133,11 @@ still say `1.53.2` because that is what shipped.
 - A first-hour walkthrough: what to set up, in what order, and why — profile, species, room plan,
   first specimen, first passage — with the reasoning behind the parts that surprise people.
 
-**Verified:** `cargo test --lib` (**758 passing**, full `tauri-commands` feature) · `npm test`
-(**203 passing**) · `npm run check` (**0 errors / 0 warnings**) · `npm run build` (succeeds).
+**Verified:** `cargo test --lib` (**766 passing**, full `tauri-commands` feature) · `npm test`
+(**203 passing**) · `npm run check` (**0 errors / 0 warnings**) · `npm run build` (succeeds). The
+room designer and the NCBI import panel were additionally mounted in a browser harness and driven
+with Playwright — which is how the plan's dead pane space, the overflowing furniture labels, and a
+subject-verb disagreement in the below-genus note were found.
 
 ---
 
