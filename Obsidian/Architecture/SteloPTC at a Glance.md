@@ -52,7 +52,7 @@ graph TD
     C --> A
   end
 
-  A -->|"invoke(cmd, {token, ...args})"| IPC["Tauri IPC"]
+  A -->|"invoke(cmd, token + args)"| IPC["Tauri IPC"]
   IPC -->|"Result&lt;T, String&gt;"| A
 
   subgraph Rust["Rust process — crate stelo-ptc / lib stelo_ptc_lib"]
@@ -96,7 +96,7 @@ graph TD
 | Measure | Value |
 |---|---|
 | Tauri commands defined / registered | 263 / 263 — no orphans, verified by diffing `#[tauri::command]` against the `generate_handler!` list |
-| Migrations applied | through **59** (`migration_059_location_layout`); the numbering has gaps, so there are fewer than 59 `apply()` calls |
+| Migrations applied | **59**, numbered 1–59 with no gaps, head `migration_059_location_layout`. 52 go through the transactional `apply()` harness; 7 legacy ones use `apply_untransacted` |
 | Application tables | 61 (plus the `specimens_fts` virtual table and its four FTS5 shadow tables) |
 | Rust tests | `cargo test --lib` **758 passing** under the full `tauri-commands` feature |
 | TypeScript tests | `npm test` **203 passing** across 8 files |

@@ -174,8 +174,9 @@ Rules the code actually holds itself to:
 - **Multi-statement writes use `conn.unchecked_transaction()`**, not `conn.transaction()`, because
   the `Connection` sits behind a `MutexGuard`. `Transaction` derefs to `Connection`, so `log_audit`
   can be handed `&tx`.
-- **Audit writes are fire-and-forget by default** — `queries::log_audit(...).ok();` at roughly 89
-  sites — but are `?`-propagated inside a transaction where atomicity matters.
+- **Audit writes are fire-and-forget by default** — of the 104 `queries::log_audit*` calls in
+  `commands/`, 83 end in `.ok();`, so a failed audit write does not fail the command. The rest are
+  `?`-propagated inside a transaction where atomicity matters.
   `create_specimen` wraps INSERT + audit in one transaction precisely so a specimen without an
   audit entry can never be committed.
 - **Validation is factored into pure functions** so it tests without a DB:
