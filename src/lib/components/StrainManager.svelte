@@ -434,7 +434,7 @@
         <div class="modal-header">
           <h3 id="archive-strain-title">Archive Strain?</h3>
         </div>
-        <p style="margin-bottom:16px;color:#6b7280;font-size:13px;">
+        <p style="margin-bottom:16px;color:var(--color-text-muted);font-size:13px;">
           Archive <strong>{archiveTarget.name}</strong> ({archiveTarget.code})? It will be hidden from active lists but preserved in audit history.
         </p>
         <div class="modal-footer">
@@ -461,7 +461,7 @@
         </div>
         <form onsubmit={handleStatusUpdate}>
           <div class="current-status-row">
-            <span style="font-size:12px;color:#6b7280;">Current:</span>
+            <span style="font-size:12px;color:var(--color-text-muted);">Current:</span>
             <span class="status-badge status-{statusTarget.status}">
               {statusTarget.status === 'unverified' ? 'Unverified' :
                statusTarget.status === 'claimed' ? 'Claimed' :

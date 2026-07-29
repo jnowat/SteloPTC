@@ -154,7 +154,7 @@
     <div class="card" style="margin-bottom:16px;">
       <form onsubmit={submitWaive}>
         <h3 style="margin-bottom:8px;">Waive compliance flag</h3>
-        <p style="font-size:13px;color:#6b7280;margin-bottom:12px;">
+        <p style="font-size:13px;color:var(--color-text-muted);margin-bottom:12px;">
           Suppress <strong>{waiveTarget.flag_type.replace(/_/g, ' ')}</strong> for
           <strong>{waiveTarget.accession_number}</strong>. The flag stops appearing until the
           waiver expires or is revoked; the underlying condition is unchanged.

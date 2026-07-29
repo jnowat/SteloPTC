@@ -51,7 +51,7 @@
 {#if loading}
   <div class="empty-state"><div class="spinner"></div><p>Loading fruiting records…</p></div>
 {:else if error}
-  <div class="empty-state"><p style="color:#dc2626">{error}</p></div>
+  <div class="empty-state"><p style="color:var(--color-danger)">{error}</p></div>
 {:else if records.length === 0}
   <div class="empty-state">
     <p>No fruiting records yet. Record a flush from a specimen's detail page to see it here.</p>

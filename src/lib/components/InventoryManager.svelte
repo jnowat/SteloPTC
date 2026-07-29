@@ -410,7 +410,7 @@
       <input type="checkbox" title="Toggle to show only low-stock items" bind:checked={filterLowStock} style="width:auto;" />
       Low stock only
     </label>
-    <span style="font-size:12px; color:#6b7280;">
+    <span style="font-size:12px; color:var(--color-text-muted);">
       {filtered.length} item{filtered.length !== 1 ? 's' : ''}
       {#if lowStockCount > 0}
         &middot; <span class="low-stock-count" title="{lowStockCount} item{lowStockCount !== 1 ? 's are' : ' is'} at or below their minimum stock or reorder point — check inventory">{lowStockCount} low stock</span>
@@ -477,7 +477,7 @@
               <td>
                 <strong>{item.name}</strong>
                 {#if item.catalog_number}
-                  <div style="font-size:11px; color:#6b7280;" title="Supplier catalog number: {item.catalog_number} — use for reordering">{item.catalog_number}</div>
+                  <div style="font-size:11px; color:var(--color-text-muted);" title="Supplier catalog number: {item.catalog_number} — use for reordering">{item.catalog_number}</div>
                 {/if}
               </td>
               <td><span class="badge badge-gray" title="Category: {getCategoryLabel(item.category)}">{getCategoryLabel(item.category)}</span></td>
@@ -489,7 +489,7 @@
                   {item.physical_state === 'liquid' ? 'Liquid' : 'Solid'}
                 </span>
                 {#if item.physical_state === 'liquid' && item.concentration}
-                  <div style="font-size:11px; color:#6b7280; margin-top:2px;" title="Stock solution concentration: {item.concentration} {item.concentration_unit || ''}">{item.concentration} {item.concentration_unit || ''}</div>
+                  <div style="font-size:11px; color:var(--color-text-muted); margin-top:2px;" title="Stock solution concentration: {item.concentration} {item.concentration_unit || ''}">{item.concentration} {item.concentration_unit || ''}</div>
                 {/if}
               </td>
               <td
@@ -677,10 +677,10 @@
                 <td>
                   <strong>{sol.name}</strong>
                   {#if sol.lot_number}
-                    <div style="font-size:11px; color:#6b7280;" title="Lot number of the source reagent used to prepare this solution: {sol.lot_number}">Lot: {sol.lot_number}</div>
+                    <div style="font-size:11px; color:var(--color-text-muted);" title="Lot number of the source reagent used to prepare this solution: {sol.lot_number}">Lot: {sol.lot_number}</div>
                   {/if}
                   {#if sol.storage_conditions}
-                    <div style="font-size:11px; color:#6b7280;" title="Storage conditions: {sol.storage_conditions}">{sol.storage_conditions}</div>
+                    <div style="font-size:11px; color:var(--color-text-muted);" title="Storage conditions: {sol.storage_conditions}">{sol.storage_conditions}</div>
                   {/if}
                 </td>
                 <td title={sol.source_item_id ? 'Raw inventory item used as the starting material for this solution' : 'No source inventory item linked to this solution'}>
@@ -708,7 +708,7 @@
                       oninput={(e) => { solutionVolumeInputs[sol.id] = (e.target as HTMLInputElement).value; }}
                       placeholder="mL"
                     />
-                    <span style="font-size:12px; color:#6b7280;">mL</span>
+                    <span style="font-size:12px; color:var(--color-text-muted);">mL</span>
                     {#if $currentUser?.role !== 'guest'}
                       <button class="btn btn-sm" title="Save the updated remaining volume for {sol.name}" onclick={() => handleSolutionUpdate(sol, solutionVolumeInputs[sol.id] ?? '')}>Update</button>
                     {/if}

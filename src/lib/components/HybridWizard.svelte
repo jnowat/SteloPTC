@@ -270,7 +270,7 @@
             </div>
             <div class="form-group">
               <fieldset style="border:none;padding:0;margin:0;">
-              <legend style="font-size:12px;font-weight:600;color:#6b7280;margin-bottom:4px;">Role of Parent A</legend>
+              <legend style="font-size:12px;font-weight:600;color:var(--color-text-muted);margin-bottom:4px;">Role of Parent A</legend>
               <div class="role-group">
                 {#each (['maternal', 'paternal', 'parent'] as const) as role}
                   <label class="role-option">
