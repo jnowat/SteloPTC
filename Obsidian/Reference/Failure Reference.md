@@ -32,7 +32,7 @@ flowchart LR
 |---|---|---|
 | `db::*` pure helpers | `DbResult<T>` = `Result<T, DbError>` | `#[from] rusqlite::Error` |
 | Some `db::*` (dashboard, work_queue, sensors, notifications) | `Result<T, String>` | Already user-facing text |
-| Every `#[tauri::command]` | **always** `Result<T, String>` | `.map_err(|e| format!("Failed to …: {e}"))` |
+| Every `#[tauri::command]` | **always** `Result<T, String>` | `.map_err(\|e\| format!("Failed to …: {e}"))` |
 
 `DbError`'s four `Display` forms — `SQLite error: {0}` · `Database not found at {0}` ·
 `Migration failed: {0}` · `Constraint violation: {0}` — are what the `{}` in most wrapper messages
@@ -388,6 +388,10 @@ listener that swap the boot spinner for a red box:
 > *{message}*
 >
 > *Try restarting the app. If the problem persists, contact support.*
+
+`main.ts` also throws `Mount target #app not found in DOM` if the container is missing, catches its
+own mount failure, logs `SteloPTC failed to start:` to the console, and calls the global
+`showAppError` directly in case the window handler missed it.
 
 This is the only handler that catches a **module import failure**, when `App.svelte` never mounts at
 all. The `#app-loader` overlay is hidden only by `body.app-ready`, which `main.ts` adds after

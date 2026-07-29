@@ -443,7 +443,7 @@ Distribution across the 263: **129** any · **54** `tech`+ · **52** `supervisor
 | `set_smtp_config` | `setSmtpConfig` | `request: SetSmtpConfigRequest` | `()` | `admin` |
 | `send_test_desktop_notification` | `sendTestDesktopNotification` | — | `()` | any |
 | `send_test_email` | `sendTestEmail` | `to_address: String` | `()` | `admin` |
-| `list_recent_notifications` | **none** | `limit: Option<i64>` | `Vec<crate::models::audit::AuditEntry>` | `supervisor`+ |
+| `list_recent_notifications` | **none** | `limit: Option<i64>` | `Vec<AuditEntry>` | `supervisor`+ |
 | `dispatch_due_notifications_now` | `dispatchDueNotificationsNow` | — | `DispatchNotificationsResult` | `supervisor`+ |
 
 ### `commands/analytics.rs`
