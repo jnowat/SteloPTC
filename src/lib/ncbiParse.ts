@@ -558,10 +558,12 @@ export function parseNcbiInput(input: string): ParseResult {
 
   const belowGenus = deduped.filter((r) => !isBackboneRank(r.rank));
   if (belowGenus.length > 0) {
+    const one = belowGenus.length === 1;
     notes.push(
-      `${belowGenus.length} record${belowGenus.length === 1 ? '' : 's'} sit below genus ` +
+      `${belowGenus.length} record${one ? '' : 's'} ${one ? 'sits' : 'sit'} below genus ` +
         '(species, subspecies, "no rank"). The taxonomy backbone stores kingdom through genus ' +
-        'only — species belong in the Species Registry — so these are excluded by default.'
+        `only — species belong in the Species Registry — so ${one ? 'it is' : 'these are'} ` +
+        'excluded by default.'
     );
   }
 
