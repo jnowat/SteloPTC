@@ -358,6 +358,19 @@
     return `${used}/${cap}`;
   }
 
+  /// Trim a label to what will actually fit inside the rectangle.
+  ///
+  /// SVG text does not wrap and does not clip, so a long name on a 1x1 dewar
+  /// painted itself straight across the neighbouring furniture. Roughly 5px per
+  /// character at the 9px label size; below three characters there is no useful
+  /// label left, so drop it and let the hover title carry the name.
+  function fittedLabel(item: FurnitureItem): string {
+    const maxChars = Math.floor((item.w * CELL - 8) / 5);
+    if (maxChars < 3) return '';
+    if (item.label.length <= maxChars) return item.label;
+    return `${item.label.slice(0, Math.max(1, maxChars - 1))}…`;
+  }
+
   function slotCount(item: FurnitureItem, tier: number, row: number, col: number): number {
     return slotOccupancy.get(slotAddress(roomName, item, tier, row, col).toLowerCase()) ?? 0;
   }
@@ -457,8 +470,7 @@
           class="plan"
           class:arming={!!armedKind}
           viewBox="0 0 {layout.gridCols * CELL} {layout.gridRows * CELL}"
-          width={layout.gridCols * CELL}
-          height={layout.gridRows * CELL}
+          style="min-width: {layout.gridCols * CELL}px; aspect-ratio: {layout.gridCols} / {layout.gridRows};"
           role="application"
           aria-label="Room floor plan — {layout.items.length} items"
           onpointerdown={handleCanvasPointerDown}
@@ -503,7 +515,7 @@
                 y={item.y * CELL + item.h * CELL / 2 + 11}
                 text-anchor="middle"
                 class="item-label"
-              >{item.label}</text>
+              >{fittedLabel(item)}</text>
               {#if capacityOf(item) > 0}
                 <text
                   x={item.x * CELL + item.w * CELL - 4}
@@ -735,7 +747,18 @@
   }
   :global(.dark) .plan-scroll { background: #0b1220; border-color: #334155; }
 
-  .plan { display: block; touch-action: none; color: var(--color-text-muted, #94a3b8); }
+  /* Scales up to fill the pane and never below the natural cell size, so a small
+     room does not sit in a corner of a wide screen and a large one scrolls
+     instead of shrinking to unusable cells. `cellFromEvent` converts pointer
+     coordinates through the rendered width, so the scaling costs nothing in
+     hit-testing accuracy. */
+  .plan {
+    display: block;
+    width: 100%;
+    height: auto;
+    touch-action: none;
+    color: var(--color-text-muted, #94a3b8);
+  }
   .plan.arming { cursor: copy; }
   .grid-bg { pointer-events: none; }
 
