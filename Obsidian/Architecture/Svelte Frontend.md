@@ -1,6 +1,6 @@
 ---
 title: Svelte Frontend
-aliases: [Frontend, src/]
+aliases: [Frontend, "src/"]
 tags: [architecture, svelte, frontend, typescript, accessibility]
 type: architecture
 status: shipped
@@ -128,7 +128,7 @@ so it renders regardless of auth.
 ```mermaid
 flowchart LR
   A["1 · stores/app.ts<br/>add the literal to the View union"] --> B["2 · components/NewThing.svelte"]
-  B --> C["3 · App.svelte<br/>import + {:else if} branch"]
+  B --> C["3 · App.svelte<br/>import + a new else-if branch"]
   C --> D["4 · Sidebar.svelte<br/>navItems entry"]
   D --> E["5 · Sidebar.svelte<br/>aria-label ternary + title ternary"]
   E --> F["6 · optional: Ctrl/Cmd+N shortcut in App.svelte"]
@@ -312,8 +312,8 @@ with `role="presentation"`, and an Escape `onkeydown` handler.
 flowchart TD
   E["event handler / onMount / $effect"] -->|typed wrapper| API["lib/api.ts export"]
   API -->|"call(cmd, args)"| CALL["call&lt;T&gt;()"]
-  CALL -->|"invoke(cmd, {token, ...args})"| IPC["Tauri IPC → Rust command"]
-  IPC -->|"Ok(T) | Err(String)"| CALL
+  CALL -->|"invoke(cmd, token + args)"| IPC["Tauri IPC → Rust command"]
+  IPC -->|"Ok(T) or Err(String)"| CALL
   CALL -->|"new Error(msg)"| E
   CALL -->|"msg contains 'Session expired'"| CLEAR["clearAuth() → &lt;Login/&gt;"]
   E -->|catch| N["addNotification(msg, 'error')"]

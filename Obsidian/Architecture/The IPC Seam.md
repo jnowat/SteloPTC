@@ -10,7 +10,7 @@ updated: 2026-07-29
 ---
 
 > [!abstract] In one sentence
-> Every byte that crosses between the WebView and Rust goes through one 21-line `call<T>()` wrapper
+> Every byte that crosses between the WebView and Rust goes through one small `call<T>()` wrapper
 > in `src/lib/api.ts` that injects the session token, normalises Tauri's string rejections into
 > `Error` objects, and clears auth on one exact error substring — and the single most common way to
 > break a new command is getting camelCase-versus-snake_case wrong on one side of it.

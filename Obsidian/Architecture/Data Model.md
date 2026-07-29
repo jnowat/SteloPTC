@@ -40,7 +40,6 @@ erDiagram
   USERS ||--o{ SESSIONS : ""
   USERS ||--o{ AUDIT_LOG : "user_id"
   AUDIT_LOG ||--o{ AUDIT_CHECKPOINTS : "lineage_id / seq range"
-  APP_CONFIG ||--|| SPECIMENS : "lab_profile scoping"
 ```
 
 The two things that diagram cannot show, and that matter most:
