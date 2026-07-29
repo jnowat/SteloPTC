@@ -480,11 +480,29 @@
     }, 50);
   }
 
+  /// Name a column after what is actually in it.
+  ///
+  /// The root column used to be hardcoded "Kingdom" and every deeper taxon
+  /// column carried no rank at all, so it rendered a blank header. Neither was
+  /// ever right for real data: the taxonomy backbone is derived from species, so
+  /// a lab that never hand-built a Kingdom → … → Genus chain has *genera* at the
+  /// root, sitting under a heading that says Kingdom. Reading the rank off the
+  /// items is both correct and self-maintaining.
   function colHeaderLabel(col: Column): string {
     if (col.kind === 'species') return 'Species';
     if (col.kind === 'strain') return 'Strains';
-    const r = col.rank ?? '';
-    return r.charAt(0).toUpperCase() + r.slice(1);
+
+    const ranks = new Set(col.items.map((i) => i.rank).filter(Boolean) as string[]);
+    if (ranks.size === 1) {
+      const rank = [...ranks][0];
+      return rank.charAt(0).toUpperCase() + rank.slice(1);
+    }
+    // Mixed ranks are legitimate — NCBI lineages and hand-built chains can put a
+    // family and a genus under the same parent — and so is an empty column while
+    // it loads. "Taxa" is honest for both; the declared rank is only a fallback.
+    if (ranks.size > 1) return 'Taxa';
+    const declared = col.rank ?? '';
+    return declared ? declared.charAt(0).toUpperCase() + declared.slice(1) : 'Taxa';
   }
 
   function statusBadgeClass(key: string): string {

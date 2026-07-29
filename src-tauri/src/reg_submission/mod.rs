@@ -25,7 +25,6 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 
 use crate::compliance_export::bundle;
-use crate::db::queries;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SubmissionKind {
@@ -165,7 +164,7 @@ fn usda_checks(conn: &Connection, scope: &serde_json::Value) -> Result<Vec<Readi
         .unwrap_or_default();
     let mut checks = Vec::new();
 
-    let profile = queries::read_setting(conn, "lab_profile", "plant_tissue_culture");
+    let profile = crate::db::vocabulary::active_profile(conn);
     checks.push(check(
         "profile_ptc",
         "Lab profile is plant tissue culture (USDA APHIS PPQ 526 scope)",
@@ -373,6 +372,9 @@ pub fn mark_submitted(conn: &Connection, id: &str, reference: &str) -> Result<Su
 
 #[cfg(test)]
 mod tests {
+    // Only the tests need this now: the profile lookup moved to
+    // `db::vocabulary::active_profile`, which reads app_config.
+    use crate::db::queries;
     use super::*;
     use crate::db::migrations::run_all;
 

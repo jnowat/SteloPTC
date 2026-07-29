@@ -11,6 +11,18 @@ pub fn active_profile(conn: &Connection) -> String {
     .unwrap_or_else(|_| "plant_tissue_culture".to_string())
 }
 
+/// Returns the biological domain for the active lab profile from app_config.
+///
+/// `active_profile` above is the **only** correct way to read the lab profile.
+/// Reaching for `queries::read_setting(conn, "lab_profile", …)` looks equivalent
+/// and is not: that reads the `app_settings` key-value table, and nothing has
+/// ever written `lab_profile` into it. Such a call silently returns the default
+/// on every database — which is how the WP-74 compliance gating spent a release
+/// running plant-tissue-culture rules in mycology and cell-culture labs while
+/// its own comment claimed the opposite.
+///
+/// Original doc comment follows.
+///
 /// Returns the biological domain for the active lab profile from app_config,
 /// defaulting to 'Plantae' if the `domain` column is absent or the query fails.
 ///
@@ -113,6 +125,56 @@ pub fn require_selectable_stage(conn: &Connection, profile: &str, code: &str) ->
         Ok(())
     } else {
         Err(format!("'{}' is not a valid or selectable stage", code))
+    }
+}
+
+#[cfg(test)]
+mod profile_source_tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn db_with_both_tables() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE app_config (
+                 id INTEGER PRIMARY KEY CHECK (id = 1),
+                 lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture',
+                 domain TEXT NOT NULL DEFAULT 'Plantae'
+             );
+             INSERT INTO app_config (id, lab_profile, domain) VALUES (1, 'mycology', 'Fungi');
+             CREATE TABLE app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn active_profile_reads_the_table_the_profile_is_actually_stored_in() {
+        let conn = db_with_both_tables();
+        assert_eq!(active_profile(&conn), "mycology");
+    }
+
+    #[test]
+    fn app_settings_never_carries_the_lab_profile() {
+        // The regression this pins: `read_setting(conn, "lab_profile", …)` looks
+        // like a profile lookup and is not — nothing writes that key, so it
+        // returns the default on every database. Three callers did exactly that,
+        // which ran plant-tissue-culture compliance rules in mycology and
+        // cell-culture labs for a whole release. If a future change starts
+        // writing the key, this test failing is the signal to revisit the
+        // comment on `active_profile` rather than to delete the assertion.
+        let conn = db_with_both_tables();
+        let via_settings =
+            crate::db::queries::read_setting(&conn, "lab_profile", "plant_tissue_culture");
+        assert_eq!(
+            via_settings, "plant_tissue_culture",
+            "app_settings has no lab_profile key, so this can only ever return the default"
+        );
+        assert_ne!(
+            via_settings,
+            active_profile(&conn),
+            "and that default silently disagrees with the real profile"
+        );
     }
 }
 
