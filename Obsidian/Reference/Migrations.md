@@ -304,10 +304,12 @@ Harness tests already covering the machinery — do not duplicate them:
 | `apply_rolls_back_the_whole_migration_when_the_body_fails` | A failed body leaves neither partial DDL nor a version stamp |
 | `apply_commits_body_and_version_together_on_success` | Both land, or neither |
 
-> [!caution] Migration 059 shipped with no tests
-> `migration_059_location_layout` has no test of its own — it is covered only by
-> `all_migrations_run_on_empty_db`. It is a single nullable `ALTER TABLE … ADD COLUMN`, which is
-> about as low-risk as a migration gets, but the file's own convention was not followed.
+> [!success] Migration 059 is covered
+> `migration_059_adds_layout_json_to_locations`,
+> `migration_059_leaves_existing_locations_with_no_plan`, and
+> `migration_059_round_trips_a_plan` run against the full `migrated_db()` chain, so the
+> column, its nullability, and the round trip are all asserted against the real schema
+> rather than a hand-written test fixture.
 
 ### 5. Verify
 

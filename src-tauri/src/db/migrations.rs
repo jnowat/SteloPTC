@@ -5757,6 +5757,51 @@ mod tests {
         assert_eq!(second, (0, 0), "a second pass must find nothing left to do");
     }
 
+    // ── migration 059: locations gain a drawn floor plan ──────────────────────
+
+    #[test]
+    fn migration_059_adds_layout_json_to_locations() {
+        let conn = migrated_db();
+        let cols: Vec<String> = conn
+            .prepare("PRAGMA table_info(locations)")
+            .unwrap()
+            .query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+        assert!(
+            cols.contains(&"layout_json".to_string()),
+            "locations must carry the drawn plan; columns were {cols:?}"
+        );
+    }
+
+    #[test]
+    fn migration_059_leaves_existing_locations_with_no_plan() {
+        // Additive and nullable: a lab that never opens the room designer must
+        // be completely unaffected.
+        let conn = migrated_db();
+        conn.execute("INSERT INTO locations (id, name) VALUES ('l1', 'Growth Room B')", [])
+            .unwrap();
+        let plan: Option<String> = conn
+            .query_row("SELECT layout_json FROM locations WHERE id = 'l1'", [], |r| r.get(0))
+            .unwrap();
+        assert!(plan.is_none());
+    }
+
+    #[test]
+    fn migration_059_round_trips_a_plan() {
+        let conn = migrated_db();
+        conn.execute("INSERT INTO locations (id, name) VALUES ('l1', 'Growth Room B')", [])
+            .unwrap();
+        let plan = r#"{"version":1,"gridCols":18,"gridRows":11,"items":[]}"#;
+        conn.execute("UPDATE locations SET layout_json = ?1 WHERE id = 'l1'", [plan])
+            .unwrap();
+        let back: String = conn
+            .query_row("SELECT layout_json FROM locations WHERE id = 'l1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(back, plan);
+    }
+
     #[test]
     fn migration_058_skips_a_species_with_a_blank_genus() {
         // A blank genus cannot name a taxon. Skipping it is right; erroring would
