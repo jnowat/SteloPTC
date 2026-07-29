@@ -53,7 +53,7 @@ splits later.
 **Cross-cutting features** *(Phase F — v1.38.0–v1.41.0)*
 
 19. [Local AI Assistant (Ollama & LocalAI)](#19-local-ai-assistant-ollama--localai)
-20. [Interactive Lab Map](#20-interactive-lab-map)
+20. [Interactive Lab Map](#20-interactive-lab-map) *(incl. the v0.54.0 room designer)*
 21. [Analytics Dashboard](#21-analytics-dashboard)
 22. [Encrypted Cloud Backup & Multi-Device Sync](#22-encrypted-cloud-backup--multi-device-sync)
 23. [Regulatory Compliance Exports (FDA / USDA / CITES)](#23-regulatory-compliance-exports-fda--usda--cites)
@@ -617,14 +617,58 @@ Prefer an existing OpenAI-compatible server? Choose the **LocalAI** runtime inst
 
 ## 20. Interactive Lab Map
 
-The lab map gives you a visual floor plan of your lab with a pin for each location.
+The Lab Map has two tabs, answering two different questions.
 
-- Upload a floor-plan image and drop a pin for each **location** (this is purely additive — your existing free-text Room / Rack / Shelf / Tray fields keep working exactly as before).
+### Pins & heat-map — *where is this room?*
+
+- Upload a floor-plan image and drop a pin for each **location**.
 - Toggle a **heat map** to shade pins by specimen **density**, **contamination risk**, or **age**, so hotspots are obvious at a glance.
 - Click a pin to manage the specimens at that location.
 - A compact lab-map overview also appears as a **Dashboard** widget.
 
-The map is optional; if you don't configure a floor plan, nothing changes about how you enter locations.
+### Room designer — *what is inside it, and where exactly does a culture go?* (v0.54.0)
+
+Draw the room. Pick a piece from the palette — culture rack, shelf unit, cabinet, incubator, growth
+chamber, fridge, freezer, cryo dewar, flow hood, bench, autoclave, sink, door, wall — then click the
+plan to drop one. Drag to move, drag the corner to resize, and:
+
+| Key | Does |
+|---|---|
+| `R` | Rotate (swaps width and height) |
+| `Delete` | Remove the selected piece |
+| Arrow keys | Nudge one cell |
+| `Ctrl`+`D` | Duplicate beside the original |
+| `Ctrl`+`Z` / `Ctrl`+`Shift`+`Z` | Undo / redo |
+| `Esc` | Put the palette down, deselect |
+
+Overlapping pieces are outlined in red rather than forbidden — real rooms have a rack tucked under
+a bench, and you should be able to draw that.
+
+**The part that matters: shelves.** A five-shelf rack is *one rectangle on the floor* but *five
+places you can put a culture*, and each shelf holds a grid of trays. So every piece has both a
+footprint and a shelf breakdown — **Shelves**, **Rows**, **Columns** in the inspector. Select a piece
+and the inspector shows its **elevation**: the shelves stacked top to bottom, each a small grid of
+trays, each tray labelled with the address a culture would carry if it lived there
+(`Growth Room B / Rack A / Shelf 3 / B2`). Trays already holding specimens are shaded, and furniture
+tints toward red as it fills.
+
+A bench, a flow hood, an autoclave, a sink, a door and a wall are the other extreme — real floor
+space, nothing stored on them. Set **Shelves** to 0 for anything else that just occupies space.
+
+Press **Save plan** when you are done. Each location keeps its own plan.
+
+### What the drawing changes
+
+Once a room has a plan, the **Location** dropdowns in **Add Specimen** are generated from it —
+room, unit, shelf, position — instead of the fixed Room 1–5 / Rack A–D / Shelf 1–5 / Tray A–F
+placeholder list. The address they compose is the same `A / B / C` path the form has always written,
+so nothing about existing records changes meaning.
+
+> **Current limitation.** Locations recorded under the placeholder list are not rewritten to match a
+> plan drawn afterwards — they stay exactly as typed. Draw your rooms before you log much, or accept
+> that older records use the old names.
+
+Both tabs are optional. A lab that never opens either keeps the fixed dropdowns and loses nothing.
 
 ---
 
