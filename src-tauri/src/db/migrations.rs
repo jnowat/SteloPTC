@@ -304,6 +304,10 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         apply(conn, 58, migration_058_relink_orphan_species)?;
     }
 
+    if current < 59 {
+        apply(conn, 59, migration_059_location_layout)?;
+    }
+
     Ok(())
 }
 
@@ -334,6 +338,23 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
 /// species deliberately classified under a deeper hand-built backbone keeps it.
 fn migration_058_relink_orphan_species(conn: &Connection) -> DbResult<()> {
     super::queries::rebuild_species_taxonomy(conn)?;
+    Ok(())
+}
+
+/// Give each location somewhere to keep its drawn floor plan.
+///
+/// The lab map could previously only hold an uploaded *image* plus one pin per
+/// location, which says where a room is but nothing about what is inside it.
+/// The plan drawn by the layout editor lives here: a JSON document holding the
+/// grid size and the furniture, each with a footprint and a shelf breakdown.
+///
+/// One nullable TEXT column and nothing else, because the layout is read and
+/// written whole and never queried across rooms. Specimen placement stays in
+/// the existing `specimens.location` path string — the layout's job is to
+/// generate those paths, not to replace them, so no existing record changes
+/// meaning and a lab that never draws anything is completely unaffected.
+fn migration_059_location_layout(conn: &Connection) -> DbResult<()> {
+    conn.execute_batch("ALTER TABLE locations ADD COLUMN layout_json TEXT;")?;
     Ok(())
 }
 

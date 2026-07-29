@@ -345,6 +345,8 @@ pub fn run() {
             commands::locations::delete_location,
             commands::locations::set_specimen_location_pin,
             commands::locations::get_location_map_data,
+            commands::locations::save_location_layout,
+            commands::locations::get_location_occupancy,
             // Local AI analysis (WP-56, WP-56b)
             commands::ai::get_ai_config,
             commands::ai::set_ai_config,

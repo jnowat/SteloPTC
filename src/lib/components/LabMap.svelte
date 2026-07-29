@@ -3,11 +3,14 @@
   import {
     listLocations, createLocation, updateLocation, deleteLocation,
     setSpecimenLocationPin, getLocationMapData, listSpecimens,
-    type Location,
+    saveLocationLayout, getLocationOccupancy,
+    type Location, type LocationOccupancy,
   } from '../api';
   import { addNotification } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import DataState from './DataState.svelte';
+  import LabLayoutEditor from './LabLayoutEditor.svelte';
+  import { parseLayout, totalCapacity } from '../labLayout';
 
   type MapPoint = {
     location_id: string; name: string; floor_plan_x: number | null; floor_plan_y: number | null;
@@ -47,6 +50,30 @@
   const canWrite = $derived($currentUser?.role !== 'guest');
   const canManage = $derived($currentUser?.role === 'admin' || $currentUser?.role === 'supervisor');
 
+  // ── Layout designer ──────────────────────────────────────────────────────
+  //
+  // The uploaded-image map answers "where is this room"; the drawn plan answers
+  // "what is inside it, and where exactly does a culture go". They are different
+  // questions, so they are different modes rather than a merged view.
+  type MapMode = 'floor-plan' | 'designer';
+  let mode = $state<MapMode>('floor-plan');
+  let designerLocationId = $state<string | null>(null);
+  let occupancy = $state<LocationOccupancy[]>([]);
+
+  const designerLocation = $derived(
+    locations.find((l) => l.id === designerLocationId) ?? locations[0] ?? null
+  );
+
+  /// Locations that already have a drawn plan, and how many positions it holds.
+  const layoutSummaries = $derived.by(() => {
+    const out = new Map<string, number>();
+    for (const loc of locations) {
+      const parsed = parseLayout(loc.layout_json);
+      if (parsed) out.set(loc.id, totalCapacity(parsed));
+    }
+    return out;
+  });
+
   // Locations that have their own floor plan image — each is rendered as its
   // own mini floor-plan/map section.
   const locationsWithMap = $derived(locations.filter((l) => !!l.floor_plan_image));
@@ -73,11 +100,23 @@
     loading = true;
     error = null;
     try {
-      const [locs, md] = await Promise.all([listLocations(), getLocationMapData()]);
+      const [locs, md, occ] = await Promise.all([
+        listLocations(),
+        getLocationMapData(),
+        // Occupancy shades the drawn plan. It must not be able to break the map:
+        // an older backend without the command should still render the pins.
+        getLocationOccupancy().catch(() => [] as LocationOccupancy[]),
+      ]);
       locations = locs;
       mapData = md;
+      occupancy = occ;
       if (!selectedLocationId && locs.some((l) => l.floor_plan_image)) {
         selectedLocationId = locs.find((l) => l.floor_plan_image)!.id;
+      }
+      if (!designerLocationId && locs.length > 0) {
+        // Prefer a room that already has a plan, so switching to the designer
+        // lands on something rather than a blank grid.
+        designerLocationId = (locs.find((l) => l.layout_json) ?? locs[0]).id;
       }
     } catch (e: any) {
       error = e.message;
@@ -292,6 +331,17 @@
     }
   }
 
+  async function handleSaveLayout(json: string) {
+    if (!designerLocation) return;
+    try {
+      await saveLocationLayout(designerLocation.id, json);
+      addNotification(`Floor plan saved for ${designerLocation.name}`, 'success');
+      await load();
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    }
+  }
+
   async function handleUnpinSpecimen(specimenId: string) {
     try {
       await setSpecimenLocationPin(specimenId, null);
@@ -315,6 +365,29 @@
         {showForm ? 'Cancel' : '+ New Location'}
       </button>
     {/if}
+  </div>
+
+  <div class="mode-tabs" role="tablist" aria-label="Lab map view">
+    <button
+      role="tab"
+      class="mode-tab"
+      class:active={mode === 'floor-plan'}
+      aria-selected={mode === 'floor-plan'}
+      onclick={() => (mode = 'floor-plan')}
+      title="Pins on an uploaded floor-plan image, with density, contamination, and age heat-maps"
+    >
+      📍 Pins &amp; heat-map
+    </button>
+    <button
+      role="tab"
+      class="mode-tab"
+      class:active={mode === 'designer'}
+      aria-selected={mode === 'designer'}
+      onclick={() => (mode = 'designer')}
+      title="Draw what is inside a room — racks, cabinets, hoods — and the shelves and trays each piece holds"
+    >
+      ✏️ Room designer
+    </button>
   </div>
 
   {#if showForm}
@@ -391,6 +464,47 @@
     onemptyaction={canWrite ? openNewForm : undefined}
     onretry={load}
   >
+    {#if mode === 'designer'}
+      <div class="card">
+        <div class="designer-head">
+          <div class="form-group" style="margin-bottom:0; min-width: 240px;">
+            <label for="labmap-designer-room" title="Which room you are drawing — each location keeps its own plan">Room</label>
+            <select
+              id="labmap-designer-room"
+              value={designerLocation?.id}
+              onchange={(e) => (designerLocationId = (e.target as HTMLSelectElement).value)}
+              title="Select the location whose interior you want to draw"
+            >
+              {#each locations as loc}
+                <option value={loc.id}>
+                  {loc.name}{layoutSummaries.has(loc.id) ? ` — ${layoutSummaries.get(loc.id)} positions` : ' — no plan yet'}
+                </option>
+              {/each}
+            </select>
+          </div>
+          <p class="designer-lede">
+            Draw what is actually in the room. A five-shelf rack is one rectangle on the floor but
+            five levels of trays, so each piece carries its own shelf breakdown — and those shelves
+            are what generate the storage addresses the <strong>Add Specimen</strong> form offers,
+            instead of the fixed Room&nbsp;1–5 / Rack&nbsp;A–D list it used before.
+          </p>
+        </div>
+
+        {#if designerLocation}
+          {#key designerLocation.id}
+            <LabLayoutEditor
+              initialJson={designerLocation.layout_json}
+              roomName={designerLocation.name}
+              {occupancy}
+              canEdit={canWrite}
+              onsave={handleSaveLayout}
+            />
+          {/key}
+        {:else}
+          <p class="empty-state">Add a location first — a plan belongs to a room.</p>
+        {/if}
+      </div>
+    {:else}
     <div class="map-layout">
       <div class="map-main card">
         {#if locationsWithMap.length === 0}
@@ -535,6 +649,7 @@
         {/if}
       </div>
     </div>
+    {/if}
   </DataState>
 </div>
 
@@ -549,6 +664,44 @@
     margin-bottom: 4px;
   }
   :global(.dark) .group-label { color: #94a3b8; }
+
+  .mode-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: var(--space-4, 16px);
+    border-bottom: 1px solid var(--color-border, #e2e8f0);
+  }
+  .mode-tab {
+    padding: 8px 16px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: none;
+    color: var(--color-text-muted, #6b7280);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .mode-tab:hover { color: var(--color-text, #1e293b); }
+  :global(.dark) .mode-tab:hover { color: #e2e8f0; }
+  .mode-tab.active {
+    color: var(--color-accent, #2563eb);
+    border-bottom-color: var(--color-accent, #2563eb);
+  }
+
+  .designer-head {
+    display: flex;
+    gap: var(--space-4, 16px);
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: var(--space-4, 16px);
+  }
+  .designer-lede {
+    flex: 1;
+    min-width: 260px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--color-text-muted, #6b7280);
+  }
 
   .map-layout {
     display: grid;

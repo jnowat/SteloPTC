@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { createSpecimen, listSpecies, listMedia, listStages, listPropagationMethods, listStrainsBySpecies, createStrain } from '../api';
+  import { createSpecimen, listSpecies, listMedia, listStages, listPropagationMethods, listStrainsBySpecies, createStrain, listLocations, type Location } from '../api';
+  import { parseLayout, storageItems, slotAddress, positionLabel, type LabLayout, type FurnitureItem } from '../labLayout';
   import { addNotification, addErrorWithContext, navigateTo } from '../stores/app';
   import { currentUser } from '../stores/auth';
   import { effectiveHealth } from '../utils';
@@ -47,12 +48,73 @@
   let stages = $state<any[]>([]);
   let propagationMethods = $state<any[]>([]);
 
+  // Fallback lists, used only when no room has been drawn yet. These were the
+  // *only* option before the room designer existed — five rooms, four racks,
+  // five shelves, six trays, invented rather than measured — so a lab whose
+  // racks are lettered E and F simply could not record where anything was.
   const rooms = ['1', '2', '3', '4', '5'];
   const racks = ['A', 'B', 'C', 'D'];
   const shelves = ['1', '2', '3', '4', '5'];
   const trays = ['A', 'B', 'C', 'D', 'E', 'F'];
 
+  // ── Location from the drawn layout ────────────────────────────────────────
+  //
+  // When a room has a floor plan, its furniture *is* the address list: pick the
+  // room, the piece, the shelf, the position, and the composed string matches
+  // the plan exactly. Falls back to the fixed lists above when nothing is drawn,
+  // so an existing lab that never opens the designer sees no change at all.
+
+  let drawnRooms = $state<Array<{ location: Location; layout: LabLayout }>>([]);
+  let layoutRoomId = $state(localStorage.getItem('spec_lastLayoutRoom') || '');
+  let layoutItemId = $state(localStorage.getItem('spec_lastLayoutItem') || '');
+  let layoutTier = $state(0);
+  let layoutSlot = $state('');
+
+  const hasDrawnRooms = $derived(drawnRooms.length > 0);
+  const activeRoom = $derived(drawnRooms.find((r) => r.location.id === layoutRoomId) ?? drawnRooms[0] ?? null);
+  const activeItems = $derived<FurnitureItem[]>(activeRoom ? storageItems(activeRoom.layout) : []);
+  const activeItem = $derived(activeItems.find((i) => i.id === layoutItemId) ?? activeItems[0] ?? null);
+
+  /// Every position on the selected shelf, as `{ value, label }`.
+  const activeSlots = $derived.by(() => {
+    if (!activeItem || activeItem.rows <= 0 || activeItem.cols <= 0) return [];
+    const out: Array<{ value: string; label: string }> = [];
+    for (let r = 0; r < activeItem.rows; r++) {
+      for (let c = 0; c < activeItem.cols; c++) {
+        out.push({ value: `${r}:${c}`, label: positionLabel(r, c) });
+      }
+    }
+    return out;
+  });
+
+  const layoutAddress = $derived.by(() => {
+    if (!activeRoom || !activeItem) return '';
+    const [r, c] = layoutSlot ? layoutSlot.split(':').map(Number) : [0, 0];
+    return slotAddress(activeRoom.location.name, activeItem, layoutTier, r || 0, c || 0);
+  });
+
+  // Selecting a different room or piece invalidates the shelf and position
+  // beneath it — shelf 5 of a two-shelf cabinet is not a place.
+  $effect(() => {
+    const item = activeItem;
+    if (!item) return;
+    if (layoutTier >= item.tiers) layoutTier = 0;
+    if (!activeSlots.some((s) => s.value === layoutSlot)) layoutSlot = activeSlots[0]?.value ?? '';
+  });
+
   onMount(() => {
+    listLocations()
+      .then((locs) => {
+        drawnRooms = locs
+          .map((location) => ({ location, layout: parseLayout(location.layout_json) }))
+          .filter((r): r is { location: Location; layout: LabLayout } => r.layout !== null && storageItems(r.layout).length > 0);
+        if (drawnRooms.length > 0 && !drawnRooms.some((r) => r.location.id === layoutRoomId)) {
+          layoutRoomId = drawnRooms[0].location.id;
+        }
+      })
+      // A lab with no locations is the normal starting state, not an error.
+      .catch(() => { drawnRooms = []; });
+
     listSpecies().then(s => species = s).catch(() => {});
     listMedia().then(m => mediaBatches = m).catch(() => {});
     listStages().then(s => {
@@ -138,6 +200,7 @@
   }
 
   function composeLocation(): string {
+    if (hasDrawnRooms) return layoutAddress;
     const parts: string[] = [];
     if (locRoom) parts.push(`Room ${locRoom}`);
     if (locRack) parts.push(`Rack ${locRack}`);
@@ -159,6 +222,10 @@
     localStorage.setItem('spec_lastRack', locRack);
     localStorage.setItem('spec_lastShelf', locShelf);
     localStorage.setItem('spec_lastTray', locTray);
+    if (hasDrawnRooms && activeRoom && activeItem) {
+      localStorage.setItem('spec_lastLayoutRoom', activeRoom.location.id);
+      localStorage.setItem('spec_lastLayoutItem', activeItem.id);
+    }
     localStorage.setItem('spec_lastHealth', String(healthValue));
     localStorage.setItem('spec_lastHealthUnknown', String(healthUnknown));
     localStorage.setItem('spec_lastSpecies', form.species_id);
@@ -363,9 +430,59 @@
     </div>
   </div>
 
-  <!-- Location as structured dropdowns -->
+  <!-- Location: from the drawn room plan when there is one -->
+  {#if hasDrawnRooms}
+    <div class="form-group">
+      <label>
+        Location
+        <Tooltip text="Taken from the room plans drawn in Lab Map → Room designer, so the address matches real shelves rather than a fixed list." />
+      </label>
+      <div class="location-row">
+        <div class="loc-group">
+          <span class="loc-label" title="Which drawn room this specimen sits in">Room</span>
+          <select bind:value={layoutRoomId} title="Select the room — only rooms with a drawn plan appear here">
+            {#each drawnRooms as r}
+              <option value={r.location.id}>{r.location.name}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="loc-group">
+          <span class="loc-label" title="Which piece of furniture in that room">Unit</span>
+          <select bind:value={layoutItemId} title="Select the rack, cabinet, incubator, or other unit">
+            {#each activeItems as it}
+              <option value={it.id}>{it.label}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="loc-group">
+          <span class="loc-label" title="Which shelf of that unit">Shelf</span>
+          <select bind:value={layoutTier} disabled={!activeItem} title="Select the shelf — the list comes from how many shelves this unit was given">
+            {#each Array.from({ length: activeItem?.tiers ?? 0 }, (_, i) => i) as t}
+              <option value={t}>Shelf {t + 1}</option>
+            {/each}
+          </select>
+        </div>
+        <div class="loc-group">
+          <span class="loc-label" title="Which tray position on that shelf">Position</span>
+          <select bind:value={layoutSlot} disabled={activeSlots.length === 0} title="Select the tray position on the shelf">
+            {#each activeSlots as s}
+              <option value={s.value}>{s.label}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
+      {#if layoutAddress}
+        <div class="location-preview">{layoutAddress}</div>
+      {/if}
+      <p class="inline-hint">
+        These options come from <strong>Lab Map → Room designer</strong>. Draw or edit a room there
+        and this list follows.
+      </p>
+    </div>
+  {:else}
+  <!-- Fallback: the fixed lists, used until a room has been drawn -->
   <div class="form-group">
-    <label>Location <Tooltip text="Physical storage location within the facility. Select Room, Rack, Shelf, and Tray to compose the full address (e.g., Room 2 / Rack B / Shelf 3 / Tray C)" /></label>
+    <label>Location <Tooltip text="Physical storage location within the facility. Select Room, Rack, Shelf, and Tray to compose the full address (e.g., Room 2 / Rack B / Shelf 3 / Tray C). Draw your rooms in Lab Map → Room designer to replace this fixed list with your real racks and shelves." /></label>
     <div class="location-row">
       <div class="loc-group">
         <span class="loc-label" title="Growth room number where the specimen is stored">Room</span>
@@ -407,7 +524,12 @@
     {#if locRoom || locRack || locShelf || locTray}
       <div class="location-preview">{composeLocation()}</div>
     {/if}
+    <p class="inline-hint">
+      This is a fixed placeholder list. Draw your rooms in <strong>Lab Map → Room designer</strong>
+      and these become your real racks, shelves, and trays.
+    </p>
   </div>
+  {/if}
 
   <!-- Health Status slider -->
   <div class="form-group">

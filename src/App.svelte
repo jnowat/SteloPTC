@@ -249,7 +249,18 @@
     opacity: 0.92;
   }
 
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+  /* The Google Fonts @import that used to sit here was dead code: CSS requires
+     @import to precede every other statement, and this block opens with the
+     .degraded-banner rules, so PostCSS dropped it with a warning on every build.
+     Nothing has been loading Inter from the network — the system stack below has
+     been doing the work all along.
+
+     Removed rather than moved to the top. SteloPTC is local-first and ships to
+     desktop and Android; "fixing" the import would add a blocking request to a
+     third-party CDN on every launch, fail on the offline machines this app is
+     built for, and change the typeface people are used to. The font-family
+     declaration keeps Inter first, so a system that has it installed still uses
+     it. */
 
   :global(*) {
     margin: 0;

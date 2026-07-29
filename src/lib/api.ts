@@ -288,6 +288,24 @@ export async function createSpecies(request: any) {
   return call<any>('create_species', { request });
 }
 
+/// Save the drawn floor plan for a location. Pass `null` to clear it.
+/// Deliberately separate from `updateLocation` so the editor's autosave can
+/// never clobber a concurrent name or image edit.
+export async function saveLocationLayout(locationId: string, layoutJson: string | null) {
+  return call<void>('save_location_layout', { locationId, layoutJson });
+}
+
+export interface LocationOccupancy {
+  location: string;
+  specimen_count: number;
+  contaminated_count: number;
+}
+
+/// Specimen counts per recorded location path, for shading the drawn plan.
+export async function getLocationOccupancy() {
+  return call<LocationOccupancy[]>('get_location_occupancy');
+}
+
 export async function updateSpecies(request: any) {
   return call<void>('update_species', { request });
 }
@@ -1568,6 +1586,9 @@ export interface Location {
   floor_plan_image: string | null;
   floor_plan_x: number | null;
   floor_plan_y: number | null;
+  /// The drawn floor plan, as serialised by `src/lib/labLayout.ts`.
+  /// `null` until someone draws one.
+  layout_json: string | null;
   created_at: string;
   updated_at: string;
 }
