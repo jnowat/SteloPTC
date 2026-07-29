@@ -116,8 +116,10 @@ still say `1.53.2` because that is what shipped.
   launch and fail on the offline machines it is built for. The system font stack was already doing
   the work.
 - **`npm install` failed on a clean checkout.** `@sveltejs/vite-plugin-svelte@^4` peer-depends on
-  Vite 5 against this project's Vite 6; CI was papering over it with `--legacy-peer-deps`. Upgraded
-  to v5, which supports Vite 6 properly.
+  Vite 5 against this project's Vite 6; all five CI workflows papered over it with
+  `--legacy-peer-deps`. Upgraded to v5, which supports Vite 6 properly, and dropped the flag from
+  CI — it tells npm to ignore *every* peer conflict, so it would have hidden the next one just as
+  silently.
 - **`NcbiSyncPanel` hardcoded light-mode colours** (`#f9fafb`, `#fffbeb`, `#6b7280`) inline, so the
   whole panel rendered light-on-light in dark mode. Every colour now goes through a token.
 
