@@ -300,6 +300,10 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
         apply(conn, 57, migration_057_media_hormones_batch_index)?;
     }
 
+    if current < 58 {
+        apply(conn, 58, migration_058_relink_orphan_species)?;
+    }
+
     Ok(())
 }
 
@@ -313,6 +317,26 @@ pub fn run_all(conn: &Connection) -> DbResult<()> {
 ///
 /// The index also covers the `ON DELETE CASCADE` on this foreign key, which
 /// SQLite otherwise has to resolve with a scan on every media-batch delete.
+/// Re-link species that have no genus taxon.
+///
+/// `migration_020` back-filled the genus backbone once, from the species that
+/// existed at the time, and `create_species` never picked the job up — so every
+/// species added through the Species Registry since then has been sitting with
+/// `taxon_path = NULL`. The Taxonomy Navigator resolves *everything* through
+/// `species.taxon_path`, so those species have no genus column to appear under,
+/// and a lab that entered all of its species through the UI sees a completely
+/// empty taxonomy tree while the registry is full. That is the reported
+/// symptom: "there is no existing taxonomy even where there are existing
+/// species".
+///
+/// `create_species` now links on write; this repairs the databases that already
+/// drifted. Idempotent, and it only touches rows whose path is missing, so a
+/// species deliberately classified under a deeper hand-built backbone keeps it.
+fn migration_058_relink_orphan_species(conn: &Connection) -> DbResult<()> {
+    super::queries::rebuild_species_taxonomy(conn)?;
+    Ok(())
+}
+
 fn migration_057_media_hormones_batch_index(conn: &Connection) -> DbResult<()> {
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_media_hormones_batch
@@ -5588,5 +5612,143 @@ mod tests {
             "stage codes are expected to be shared across profiles; that is why lab membership \
              cannot be inferred from the stage"
         );
+    }
+
+    // ── migration 058: orphan species get their genus taxon back ──────────────
+
+    /// Inserts a species the way `create_species` did before it linked genus
+    /// taxa: no `taxon_path`, so nothing in the Taxonomy Navigator can find it.
+    fn insert_orphan_species(conn: &Connection, id: &str, genus: &str, epithet: &str, code: &str) {
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![id, genus, epithet, code],
+        )
+        .expect("insert species");
+    }
+
+    #[test]
+    fn migration_058_links_species_that_have_no_taxon_path() {
+        let conn = migrated_db();
+        insert_orphan_species(&conn, "sp1", "Citrus", "sinensis", "CIT-SIN");
+
+        super::super::queries::rebuild_species_taxonomy(&conn).unwrap();
+
+        let path: Option<String> = conn
+            .query_row("SELECT taxon_path FROM species WHERE id = 'sp1'", [], |r| r.get(0))
+            .unwrap();
+        let path = path.expect("species must be classified after the rebuild");
+        let genus_id: String = conn
+            .query_row(
+                "SELECT id FROM taxa WHERE rank = 'genus' AND name = 'Citrus'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("a genus taxon must have been created");
+        assert!(
+            path.contains(&genus_id),
+            "taxon_path {path} must end at the Citrus genus taxon {genus_id}"
+        );
+    }
+
+    #[test]
+    fn migration_058_puts_two_species_of_a_genus_under_one_taxon() {
+        let conn = migrated_db();
+        insert_orphan_species(&conn, "sp1", "Citrus", "sinensis", "CIT-SIN");
+        insert_orphan_species(&conn, "sp2", "Citrus", "limon", "CIT-LIM");
+
+        super::super::queries::rebuild_species_taxonomy(&conn).unwrap();
+
+        let genera: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM taxa WHERE rank = 'genus' AND name = 'Citrus'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(genera, 1, "both species must share a single Citrus genus taxon");
+    }
+
+    #[test]
+    fn migration_058_is_case_insensitive_on_genus() {
+        // "citrus" and "Citrus" are the same genus; two sibling columns in the
+        // navigator for one genus would be worse than the empty tree we started
+        // with.
+        let conn = migrated_db();
+        insert_orphan_species(&conn, "sp1", "Citrus", "sinensis", "CIT-SIN");
+        insert_orphan_species(&conn, "sp2", "citrus", "limon", "CIT-LIM");
+
+        super::super::queries::rebuild_species_taxonomy(&conn).unwrap();
+
+        let genera: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM taxa WHERE rank = 'genus' AND name = 'Citrus' COLLATE NOCASE",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(genera, 1, "genus matching must be case-insensitive");
+    }
+
+    #[test]
+    fn migration_058_leaves_an_already_classified_species_alone() {
+        // A species deliberately re-parented under a hand-built
+        // Kingdom → … → Genus backbone must keep its full path.
+        let conn = migrated_db();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, parent_id, local_override, taxon_path)
+             VALUES ('k1', 'kingdom', 'Plantae', NULL, 0, '[\"k1\"]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO taxa (id, rank, name, parent_id, local_override, taxon_path)
+             VALUES ('g1', 'genus', 'Citrus', 'k1', 0, '[\"k1\",\"g1\"]')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path)
+             VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-SIN', '[\"k1\",\"g1\"]')",
+            [],
+        )
+        .unwrap();
+
+        super::super::queries::rebuild_species_taxonomy(&conn).unwrap();
+
+        let path: String = conn
+            .query_row("SELECT taxon_path FROM species WHERE id = 'sp1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            path, "[\"k1\",\"g1\"]",
+            "an already-classified species must not be flattened back to a bare genus"
+        );
+    }
+
+    #[test]
+    fn migration_058_is_idempotent() {
+        let conn = migrated_db();
+        insert_orphan_species(&conn, "sp1", "Citrus", "sinensis", "CIT-SIN");
+
+        let first = super::super::queries::rebuild_species_taxonomy(&conn).unwrap();
+        let second = super::super::queries::rebuild_species_taxonomy(&conn).unwrap();
+
+        assert_eq!(first, (1, 1), "first pass creates the genus and links the species");
+        assert_eq!(second, (0, 0), "a second pass must find nothing left to do");
+    }
+
+    #[test]
+    fn migration_058_skips_a_species_with_a_blank_genus() {
+        // A blank genus cannot name a taxon. Skipping it is right; erroring would
+        // stop the whole migration and take the app down on startup.
+        let conn = migrated_db();
+        insert_orphan_species(&conn, "sp1", "   ", "unknown", "UNK-001");
+
+        let (created, linked) = super::super::queries::rebuild_species_taxonomy(&conn).unwrap();
+
+        assert_eq!((created, linked), (0, 0));
+        let path: Option<String> = conn
+            .query_row("SELECT taxon_path FROM species WHERE id = 'sp1'", [], |r| r.get(0))
+            .unwrap();
+        assert!(path.is_none(), "a blank-genus species stays unclassified rather than breaking startup");
     }
 }

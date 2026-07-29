@@ -2,10 +2,11 @@
   import { onMount } from 'svelte';
   import {
     getTaxonColumn, listSpeciesForTaxon, listStrainsBySpecies,
-    searchSpecimens, searchTaxonomy, getStrain,
+    searchSpecimens, searchTaxonomy, getStrain, locateSpecies, rebuildSpeciesTaxonomy,
     type TaxonColumnItem, type SpeciesNodeSummary, type TaxonomySearchResult,
   } from '../api';
-  import { addNotification, navigateTo, selectedSpecimenId, selectedStrainId } from '../stores/app';
+  import { addNotification, navigateTo, selectedSpecimenId, selectedStrainId, focusSpeciesId } from '../stores/app';
+  import { currentUser } from '../stores/auth';
   import StrainManager from './StrainManager.svelte';
   import StrainDetail from './StrainDetail.svelte';
 
@@ -528,13 +529,68 @@
 
   let kingdoms = $derived(columns[0]?.items ?? []);
 
+  // ── Empty-tree recovery ────────────────────────────────────────────────────
+
+  // The navigator resolves every column through `species.taxon_path`. A lab that
+  // entered its species through the registry before that column was written on
+  // create ends up here: a full species list and a root column with nothing in
+  // it. Rather than showing a bare "None", offer the one action that fixes it.
+  let rootIsEmpty = $derived(
+    columns.length === 1 && !columns[0].loading && columns[0].items.length === 0
+  );
+  let rebuilding = $state(false);
+  const canManage = $derived($currentUser?.role === 'admin' || $currentUser?.role === 'supervisor');
+
+  async function handleRebuild() {
+    rebuilding = true;
+    try {
+      const result = await rebuildSpeciesTaxonomy();
+      if (result.species_linked === 0) {
+        addNotification('No unclassified species found — add a species first.', 'info');
+      } else {
+        addNotification(
+          `Taxonomy built — ${result.genera_created} genus taxa created, ${result.species_linked} species classified.`,
+          'success'
+        );
+      }
+      await loadKingdomColumn();
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    } finally {
+      rebuilding = false;
+    }
+  }
+
   // ── Mount ──────────────────────────────────────────────────────────────────
+
+  /// Walk down to a species handed over from another view (Species Registry).
+  /// Reuses the search-result navigation so there is one code path that knows
+  /// how to open a column chain.
+  async function focusOnSpecies(speciesId: string) {
+    try {
+      const located = await locateSpecies(speciesId);
+      if (!located) {
+        addNotification('That species is not classified yet — build the taxonomy first.', 'warning');
+        return;
+      }
+      await navigateToSearchResult(located);
+    } catch (e: any) {
+      addNotification(e.message, 'error');
+    }
+  }
 
   onMount(async () => {
     await loadKingdomColumn();
 
+    // Consume the hand-off exactly once. Leaving it set would re-hijack the view
+    // every time the user came back to this tab.
+    const focusSpecies = $focusSpeciesId;
     const preselect = $selectedStrainId;
-    if (preselect) {
+
+    if (focusSpecies) {
+      focusSpeciesId.set(null);
+      await focusOnSpecies(focusSpecies);
+    } else if (preselect) {
       selectedStrainId.set(null);
       await openStrainPanel(preselect);
     } else {
@@ -662,6 +718,44 @@
       </button>
     {/each}
   </nav>
+
+  <!-- ── Empty tree recovery ────────────────────────────────────────────── -->
+  {#if rootIsEmpty}
+    <div class="tx-empty" role="status">
+      <div class="tx-empty-icon" aria-hidden="true">🌳</div>
+      <h2>The taxonomy tree is empty</h2>
+      <p>
+        This view browses <strong>Kingdom → Phylum → Class → Order → Family → Genus → Species →
+        Strains</strong>. A species only appears once it is filed under a genus, and species added
+        to the registry before this release were never filed.
+      </p>
+      {#if canManage}
+        <p class="tx-empty-sub">
+          Building the backbone reads the genus already recorded on each species and creates the
+          matching genus taxa. It changes nothing else, and it is safe to run again later.
+        </p>
+        <button
+          class="btn btn-primary"
+          onclick={handleRebuild}
+          disabled={rebuilding}
+          title="Create genus taxa from the genus names on your existing species"
+        >
+          {rebuilding ? 'Building…' : 'Build taxonomy from species'}
+        </button>
+        <button
+          class="btn"
+          onclick={() => navigateTo('species')}
+          title="Go to the Species Registry to add a species"
+        >
+          Go to Species Registry
+        </button>
+      {:else}
+        <p class="tx-empty-sub">
+          Ask a supervisor or admin to build the taxonomy from the Species Registry.
+        </p>
+      {/if}
+    </div>
+  {/if}
 
   <!-- ── Column browser ─────────────────────────────────────────────────── -->
   <div
@@ -844,6 +938,24 @@
 </div>
 
 <style>
+  /* ── Empty tree recovery ─────────────────────────────────────────────── */
+  .tx-empty {
+    text-align: center;
+    padding: 32px 24px 24px;
+    border-bottom: 1px solid var(--color-border, #e2e8f0);
+  }
+  .tx-empty-icon { font-size: 34px; line-height: 1; margin-bottom: 8px; }
+  .tx-empty h2 { font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+  .tx-empty p {
+    font-size: 13px;
+    color: var(--color-text-muted, #6b7280);
+    max-width: 640px;
+    margin: 0 auto 8px;
+    line-height: 1.6;
+  }
+  .tx-empty-sub { margin-bottom: 14px !important; }
+  .tx-empty .btn + .btn { margin-left: 8px; }
+
   /* ── Layout ──────────────────────────────────────────────────────────── */
   .tx-nav {
     display: flex;

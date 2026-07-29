@@ -300,6 +300,21 @@ pub fn search_taxonomy(
     queries::search_taxonomy(&db.conn, &query).map_err(|e| e.to_string())
 }
 
+/// Resolve a species to its position in the taxonomy tree, in the same shape a
+/// search hit uses. `Ok(None)` means the species is not classified yet, which
+/// the Species Registry surfaces as a prompt to rebuild the genus backbone
+/// rather than a dead-end click.
+#[tauri::command]
+pub fn locate_species(
+    state: State<AppState>,
+    token: String,
+    species_id: String,
+) -> Result<Option<TaxonomySearchResult>, String> {
+    let db = state.db();
+    let _user = auth_service::validate_session(&db, &token)?;
+    queries::locate_species(&db.conn, &species_id).map_err(|e| e.to_string())
+}
+
 // ── WP-49: Provisional taxa & Darwin Core export ──────────────────────────────
 
 /// Create a provisional (lab-internal) taxon.  Requires supervisor or admin role.

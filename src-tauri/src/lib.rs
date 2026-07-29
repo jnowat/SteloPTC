@@ -162,6 +162,7 @@ pub fn run() {
             commands::species::list_species,
             commands::species::create_species,
             commands::species::update_species,
+            commands::species::rebuild_species_taxonomy,
             commands::species::list_projects,
             // Audit
             commands::audit::get_audit_log,
@@ -239,6 +240,7 @@ pub fn run() {
             // Advanced taxonomy navigator (WP-39)
             commands::taxa::get_taxon_column,
             commands::taxa::list_species_for_taxon,
+            commands::taxa::locate_species,
             commands::taxa::search_taxonomy,
             // Provisional taxa & Darwin Core export (WP-49)
             commands::taxa::create_provisional_taxon,

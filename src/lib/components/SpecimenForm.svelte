@@ -1,10 +1,11 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { createSpecimen, listSpecies, listMedia, listStages, listPropagationMethods, listStrainsBySpecies } from '../api';
-  import { addNotification, addErrorWithContext } from '../stores/app';
+  import { createSpecimen, listSpecies, listMedia, listStages, listPropagationMethods, listStrainsBySpecies, createStrain } from '../api';
+  import { addNotification, addErrorWithContext, navigateTo } from '../stores/app';
+  import { currentUser } from '../stores/auth';
   import { effectiveHealth } from '../utils';
   import Tooltip from './Tooltip.svelte';
-  import { labProfile, ORIGIN_TYPE_META } from '../profile';
+  import { labProfile, ORIGIN_TYPE_META, PROFILE_DOMAIN, DOMAIN_MANIFESTS } from '../profile';
 
   let { onclose, onsave }: { onclose: () => void; onsave: () => void } = $props();
 
@@ -81,6 +82,60 @@
   });
 
   let selectedStrain = $derived(strains.find(s => s.id === selectedStrainId) ?? null);
+
+  // ── Inline strain creation ────────────────────────────────────────────────
+  //
+  // Registering a strain used to be reachable only from the Taxonomy Navigator's
+  // species column — which itself only appears once the taxonomy tree has been
+  // built. A technician logging a specimen of a brand-new strain had nowhere to
+  // put it and had to leave the form. Creating one here keeps them in the flow
+  // and selects the result, which is what they were going to do next anyway.
+  let showNewStrain = $state(false);
+  let newStrain = $state({ name: '', code: '', strain_type: '' });
+  let newStrainSaving = $state(false);
+
+  // Strain types are domain data, not a fixed plant list — same derivation the
+  // StrainManager uses, so Mycology and Cell Culture get their own vocabulary.
+  let strainTypes = $derived(
+    Object.entries(DOMAIN_MANIFESTS[PROFILE_DOMAIN[$labProfile]].strainTypeLabels)
+      .map(([value, label]) => ({ value, label }))
+  );
+
+  const canCreateStrain = $derived($currentUser?.role === 'admin' || $currentUser?.role === 'supervisor');
+
+  function openNewStrain() {
+    newStrain = { name: '', code: '', strain_type: strainTypes[0]?.value ?? '' };
+    showNewStrain = true;
+  }
+
+  async function handleCreateStrain() {
+    if (!form.species_id) return;
+    if (!newStrain.name.trim() || !newStrain.code.trim()) {
+      addNotification('Strain name and code are both required', 'warning');
+      return;
+    }
+    newStrainSaving = true;
+    try {
+      const created = await createStrain({
+        species_id: form.species_id,
+        name: newStrain.name.trim(),
+        code: newStrain.code.trim(),
+        strain_type: newStrain.strain_type || undefined,
+      });
+      addNotification(`Strain "${created.name}" created`, 'success');
+      strains = await listStrainsBySpecies(form.species_id);
+      // Select what was just created — the reason to create it here was to use it.
+      selectedStrainId = created.id;
+      showNewStrain = false;
+    } catch (e: any) {
+      addErrorWithContext('Failed to Create Strain', e.message, 'strains.create', {
+        species_id: form.species_id,
+        ...newStrain,
+      });
+    } finally {
+      newStrainSaving = false;
+    }
+  }
 
   function composeLocation(): string {
     const parts: string[] = [];
@@ -172,6 +227,14 @@
           <option value={sp.id}>{sp.species_code} - {sp.genus} {sp.species_name}</option>
         {/each}
       </select>
+      {#if species.length === 0}
+        <p class="inline-hint">
+          No species registered yet — every specimen needs one.
+          <button type="button" class="link-btn" onclick={() => navigateTo('species')} title="Open the Species Registry to add a species">
+            Open the Species Registry →
+          </button>
+        </p>
+      {/if}
     </div>
     <div class="form-group">
       <label for="stage">Stage * <Tooltip text="Current development stage: Explant (initial tissue), Callus, Suspension, Shoot, Plantlet, etc." /></label>
@@ -190,20 +253,77 @@
   <!-- Strain selector (lazy-loads after species is selected) -->
   {#if form.species_id}
     <div class="form-group">
-      <label for="strain">Strain <Tooltip text="Optionally assign this specimen to a known strain. Strains are managed in the Taxonomy view." /></label>
+      <label for="strain">Strain <Tooltip text="Optionally assign this specimen to a known strain. You can register a new one here, or manage them all from the Species Registry and the Taxonomy view." /></label>
       {#if strainsLoading}
         <select id="strain" disabled><option>Loading strains…</option></select>
       {:else}
-        <select id="strain" bind:value={selectedStrainId} title="Assign this specimen to a strain — leave blank if strain is unknown">
-          <option value="">No strain assigned</option>
-          {#each strains as s}
-            <option value={s.id}>
-              {s.code} — {s.name}
-              {#if s.status === 'unverified'}(Unverified){:else if s.status === 'claimed'}(Claimed){:else if s.status === 'confirmed_manual'}(⚠ Manual ID){:else if s.status === 'confirmed_genomic'}(✓ Genomic){/if}
-            </option>
-          {/each}
-        </select>
+        <div class="strain-select-row">
+          <select id="strain" bind:value={selectedStrainId} title="Assign this specimen to a strain — leave blank if strain is unknown">
+            <option value="">No strain assigned</option>
+            {#each strains as s}
+              <option value={s.id}>
+                {s.code} — {s.name}
+                {#if s.status === 'unverified'}(Unverified){:else if s.status === 'claimed'}(Claimed){:else if s.status === 'confirmed_manual'}(⚠ Manual ID){:else if s.status === 'confirmed_genomic'}(✓ Genomic){/if}
+              </option>
+            {/each}
+          </select>
+          {#if canCreateStrain}
+            <button
+              type="button"
+              class="btn btn-sm"
+              onclick={() => (showNewStrain ? (showNewStrain = false) : openNewStrain())}
+              title={showNewStrain ? 'Cancel registering a new strain' : 'Register a new strain for this species without leaving the form'}
+            >
+              {showNewStrain ? 'Cancel' : '+ New strain'}
+            </button>
+          {/if}
+        </div>
+        {#if strains.length === 0 && !showNewStrain}
+          <p class="inline-hint">
+            No strains registered for this species yet.
+            {#if canCreateStrain}Use <strong>+ New strain</strong> to add one.{:else}Ask a supervisor to add one.{/if}
+          </p>
+        {/if}
       {/if}
+
+      {#if showNewStrain}
+        <div class="new-strain-panel">
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:8px;">
+              <label for="new-strain-name" title="Display name for the strain or cultivar">Strain Name *</label>
+              <input id="new-strain-name" type="text" bind:value={newStrain.name} placeholder="e.g., Valencia Select" title="Enter the strain or cultivar name" />
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <label for="new-strain-code" title="Short unique code for this strain">Strain Code *</label>
+              <input id="new-strain-code" type="text" bind:value={newStrain.code} placeholder="e.g., VAL-01" title="Enter a short unique code for this strain" />
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:8px;">
+            <label for="new-strain-type" title="Kind of strain, from the active lab profile's vocabulary">Strain Type</label>
+            <select id="new-strain-type" bind:value={newStrain.strain_type} title="Select the strain type for the active lab profile">
+              {#each strainTypes as t}
+                <option value={t.value}>{t.label}</option>
+              {/each}
+            </select>
+          </div>
+          <p class="inline-hint">
+            New strains start as <strong>Unverified</strong>. Promote them to Claimed or Confirmed
+            from the Species Registry once you have evidence for the identity.
+          </p>
+          <div style="text-align:right;">
+            <button
+              type="button"
+              class="btn btn-primary btn-sm"
+              onclick={handleCreateStrain}
+              disabled={newStrainSaving}
+              title="Create this strain and assign it to the specimen"
+            >
+              {newStrainSaving ? 'Creating…' : 'Create & select'}
+            </button>
+          </div>
+        </div>
+      {/if}
+
       {#if selectedStrain}
         <div class="strain-status-hint strain-status-hint-{selectedStrain.status}">
           {#if selectedStrain.status === 'unverified'}
@@ -473,4 +593,40 @@
     border: 1px solid #e2e8f0;
   }
   .strain-hint-icon { flex-shrink: 0; opacity: 0.6; }
+
+  .strain-select-row {
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+  }
+  .strain-select-row select { flex: 1; }
+  .strain-select-row .btn { white-space: nowrap; }
+
+  .new-strain-panel {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px dashed var(--color-border, #cbd5e1);
+    border-radius: var(--radius-md, 6px);
+    background: var(--color-surface-raised, #f8fafc);
+  }
+  :global(.dark) .new-strain-panel {
+    background: #0f172a;
+    border-color: #475569;
+  }
+
+  .inline-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--color-text-muted, #6b7280);
+    line-height: 1.5;
+  }
+  .link-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--color-accent, #2563eb);
+    text-decoration: underline;
+    cursor: pointer;
+  }
 </style>

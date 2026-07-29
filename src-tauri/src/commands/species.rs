@@ -64,6 +64,20 @@ pub fn create_species(
                 request.species_code, request.default_subculture_interval_days, request.notes],
     ).map_err(|e| format!("Failed to create species: {}", e))?;
 
+    // Classify the species under its genus taxon, creating that taxon if this is
+    // the first species in the genus. Without this the species has a NULL
+    // taxon_path and is invisible everywhere in the Taxonomy Navigator, which
+    // keys entirely off that column — the registry fills up while the tree stays
+    // empty. A failure here must not lose the species itself, so it is logged
+    // into the audit trail rather than propagated; `rebuild_species_taxonomy`
+    // repairs anything that slipped through.
+    if let Err(e) = queries::link_species_to_genus(&db.conn, &id, &request.genus) {
+        queries::log_audit(
+            &db.conn, Some(&user.id), "warn", "species", Some(&id),
+            None, None, Some(&format!("Genus taxon link failed: {}", e)),
+        ).ok();
+    }
+
     // EXPERIMENTAL (WP-45): Seed the species genesis entry from the genus taxon's
     // current entry_hash (if the genus has participated in the hash chain), extending
     // the provenance chain upward: Kingdom → … → Genus → Species. Falls back to
@@ -151,12 +165,66 @@ pub fn update_species(
     db.conn.execute(&sql, bind_refs.as_slice())
         .map_err(|e| format!("Failed to update species: {}", e))?;
 
+    // Renaming the genus moves the species to a different branch of the tree, so
+    // re-link it. Only done when `genus` was actually part of the update — an
+    // edit that touches only the common name must not disturb a species that an
+    // operator has deliberately classified under a deeper hand-built backbone.
+    if let Some(ref genus) = request.genus {
+        if let Err(e) = queries::link_species_to_genus(&db.conn, &request.id, genus) {
+            queries::log_audit(
+                &db.conn, Some(&user.id), "warn", "species", Some(&request.id),
+                None, None, Some(&format!("Genus taxon re-link failed: {}", e)),
+            ).ok();
+        }
+    }
+
     queries::log_audit(
         &db.conn, Some(&user.id), "update", "species", Some(&request.id),
         None, None, None,
     ).ok();
 
     Ok(())
+}
+
+/// Repair the genus backbone for a lab whose species were created before
+/// `create_species` linked genus taxa (any species added between the WP-35
+/// backfill and this release). Idempotent: species that are already classified
+/// are left untouched, so it is safe to run from the UI at any time.
+///
+/// Exposed as an explicit action rather than run silently at startup because it
+/// creates `taxa` rows, and a supervisor should be the one to decide that.
+#[tauri::command]
+pub fn rebuild_species_taxonomy(
+    state: State<AppState>,
+    token: String,
+) -> Result<RebuildTaxonomyResult, String> {
+    let db = state.db();
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_manage() {
+        return Err("Only supervisors and admins can rebuild the taxonomy".to_string());
+    }
+
+    let (genera_created, species_linked) =
+        queries::rebuild_species_taxonomy(&db.conn).map_err(|e| e.to_string())?;
+
+    if species_linked > 0 {
+        queries::log_audit(
+            &db.conn, Some(&user.id), "update", "taxon", None,
+            None, None,
+            Some(&format!(
+                "Rebuilt species taxonomy: {} genus taxa created, {} species linked",
+                genera_created, species_linked
+            )),
+        ).ok();
+    }
+
+    Ok(RebuildTaxonomyResult { genera_created, species_linked })
+}
+
+#[derive(Debug, Serialize)]
+pub struct RebuildTaxonomyResult {
+    pub genera_created: i64,
+    pub species_linked: i64,
 }
 
 #[tauri::command]

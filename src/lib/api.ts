@@ -292,6 +292,17 @@ export async function updateSpecies(request: any) {
   return call<void>('update_species', { request });
 }
 
+export interface RebuildTaxonomyResult {
+  genera_created: number;
+  species_linked: number;
+}
+
+/// Creates the genus taxon for every species that has no `taxon_path` yet.
+/// Idempotent — species already classified under a deeper backbone are skipped.
+export async function rebuildSpeciesTaxonomy() {
+  return call<RebuildTaxonomyResult>('rebuild_species_taxonomy');
+}
+
 // Audit
 export async function getAuditLog(search: any = {}) {
   return call<any>('get_audit_log', { search });
@@ -721,6 +732,13 @@ export async function searchTaxonomy(query: string) {
   return call<TaxonomySearchResult[]>('search_taxonomy', { query });
 }
 
+/// Resolve a species to its place in the taxonomy tree, in the same shape a
+/// search hit uses, so the navigator can reuse one navigation path. Resolves to
+/// `null` when the species has no genus taxon yet.
+export async function locateSpecies(speciesId: string) {
+  return call<TaxonomySearchResult | null>('locate_species', { speciesId });
+}
+
 // NCBI Taxonomy (WP-36) — import & ongoing sync.
 
 export interface NcbiTaxonRecord {
@@ -751,11 +769,25 @@ export interface NcbiConflictSummary {
   conflict_details: string;
 }
 
+/// A record the import could not use, with the reason. Previously these were
+/// dropped silently, which made a paste of species-rank records look like the
+/// import had simply done nothing.
+export interface NcbiSkippedRecord {
+  ncbi_taxon_id: number;
+  name: string;
+  rank: string;
+  reason: string;
+}
+
 export interface ImportNcbiTaxonomyResult {
   imported: number;
   updated: number;
   skipped_overrides: number;
   conflicts: NcbiConflictSummary[];
+  skipped_records: NcbiSkippedRecord[];
+  /// Parent links resolved from `parent_ncbi_id` — how much of a tree the
+  /// import actually built, as opposed to how many rows it inserted.
+  parents_linked: number;
   dry_run: boolean;
 }
 
