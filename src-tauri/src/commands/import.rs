@@ -134,6 +134,11 @@ pub fn import_xlsx(
                          VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
                         params![sid, genus, sp_name, species_code, ts],
                     ).ok();
+                    // Species stubs created by an import must land in the
+                    // taxonomy like any other species; skipping this is how a
+                    // lab that imports a spreadsheet ends up with a full
+                    // registry and an empty tree.
+                    crate::db::queries::link_species_to_genus(conn, &sid, genus).ok();
                     Some(sid)
                 }
                 Err(_) => None,

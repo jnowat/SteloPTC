@@ -162,6 +162,7 @@ pub fn run() {
             commands::species::list_species,
             commands::species::create_species,
             commands::species::update_species,
+            commands::species::rebuild_species_taxonomy,
             commands::species::list_projects,
             // Audit
             commands::audit::get_audit_log,
@@ -239,6 +240,7 @@ pub fn run() {
             // Advanced taxonomy navigator (WP-39)
             commands::taxa::get_taxon_column,
             commands::taxa::list_species_for_taxon,
+            commands::taxa::locate_species,
             commands::taxa::search_taxonomy,
             // Provisional taxa & Darwin Core export (WP-49)
             commands::taxa::create_provisional_taxon,
@@ -343,6 +345,8 @@ pub fn run() {
             commands::locations::delete_location,
             commands::locations::set_specimen_location_pin,
             commands::locations::get_location_map_data,
+            commands::locations::save_location_layout,
+            commands::locations::get_location_occupancy,
             // Local AI analysis (WP-56, WP-56b)
             commands::ai::get_ai_config,
             commands::ai::set_ai_config,

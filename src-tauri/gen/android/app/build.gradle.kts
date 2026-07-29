@@ -13,8 +13,8 @@ android {
         applicationId = "com.steloptc.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 28
-        versionName = "1.53.2"
+        versionCode = 29
+        versionName = "0.54.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

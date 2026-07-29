@@ -544,7 +544,7 @@
       <h3 style="font-size: 14px; font-weight: 700; color: #dc2626; margin: 20px 0 8px;">
         ⚠ Restore from "{restoreTarget.name}"
       </h3>
-      <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+      <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;">
         Replaces all current data with the state contained in the selected cloud backup.
         <strong>This cannot be undone.</strong>
       </p>
@@ -586,7 +586,7 @@
         <p style="font-size:13px; margin-bottom:10px;">
           You are about to restore:<br />
           <strong style="font-family:monospace; font-size:11px;">{restoreFileName.trim()}</strong><br />
-          <span style="color:#dc2626;">All current data will be permanently replaced.</span>
+          <span style="color:var(--color-danger);">All current data will be permanently replaced.</span>
         </p>
         <p style="font-size:12px; font-weight:600; margin-bottom:8px;">
           Final confirmation — type <code>RESTORE</code> to proceed:

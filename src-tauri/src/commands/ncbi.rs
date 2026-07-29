@@ -1,9 +1,10 @@
 use crate::auth as auth_service;
 use crate::db::queries;
 use crate::models::taxon::{
-    ImportNcbiTaxonomyRequest, ImportNcbiTaxonomyResult, NcbiConflictSummary, NcbiSyncLog,
-    NcbiTaxonRecord, ResolveNcbiConflictRequest,
+    ImportNcbiTaxonomyRequest, ImportNcbiTaxonomyResult, NcbiConflictSummary, NcbiSkippedRecord,
+    NcbiSyncLog, NcbiTaxonRecord, ResolveNcbiConflictRequest,
 };
+use std::collections::{HashMap, HashSet};
 use crate::AppState;
 use rusqlite::params;
 use tauri::State;
@@ -23,6 +24,14 @@ use tauri::State;
 /// - **Update** if a local taxon matches by `ncbi_taxon_id` with no field
 ///   differences, or matches by `name + rank` and needs its `ncbi_taxon_id` linked.
 /// - **Import** if no matching local taxon is found → inserts a new taxon row.
+///
+/// Records whose rank is outside the backbone (species, subspecies, no rank, …)
+/// are reported in `skipped_records` rather than discarded silently, and
+/// `parent_ncbi_id` is honoured: after the inserts, each taxon is linked to its
+/// parent — whether that parent arrived in the same paste or was already in the
+/// database — and its `taxon_path` is rewritten to the full ancestor chain.
+/// Without that step an imported lineage came out flat, with every taxon sitting
+/// at the root of the navigator regardless of its rank.
 ///
 /// When `dry_run = true` the result describes what *would* happen without any
 /// writes to the database or the sync log.
@@ -60,11 +69,39 @@ pub fn import_ncbi_taxonomy(
     }
 
     let mut actions: Vec<Action> = Vec::new();
+    let mut skipped_records: Vec<NcbiSkippedRecord> = Vec::new();
+    // A paste that carries a full lineage repeats shared ancestors on every
+    // line. Importing the same taxid twice in one batch would create two rows
+    // the second of which is immediately a conflict with the first, so collapse
+    // duplicates here and say so.
+    let mut seen_ids: HashSet<i64> = HashSet::new();
 
     for record in request.taxa {
+        if !seen_ids.insert(record.ncbi_taxon_id) {
+            skipped_records.push(NcbiSkippedRecord {
+                ncbi_taxon_id: record.ncbi_taxon_id,
+                name: record.name.clone(),
+                rank: record.rank.clone(),
+                reason: "duplicate of an earlier record in this batch".to_string(),
+            });
+            continue;
+        }
+
         let rank = match queries::normalize_ncbi_rank(&record.rank) {
             Some(r) => r,
-            None => continue,
+            None => {
+                skipped_records.push(NcbiSkippedRecord {
+                    ncbi_taxon_id: record.ncbi_taxon_id,
+                    name: record.name.clone(),
+                    rank: record.rank.clone(),
+                    reason: format!(
+                        "rank '{}' is outside the taxonomy backbone (kingdom, phylum, class, \
+                         order, family, genus) — species and below belong in the Species Registry",
+                        record.rank
+                    ),
+                });
+                continue;
+            }
         };
 
         // Primary lookup: match by ncbi_taxon_id.
@@ -148,6 +185,7 @@ pub fn import_ncbi_taxonomy(
     let mut imported: i64 = 0;
     let mut updated: i64 = 0;
     let mut skipped_overrides: i64 = 0;
+    let mut parents_linked: i64 = 0;
     let mut conflicts: Vec<NcbiConflictSummary> = Vec::new();
 
     if !request.dry_run {
@@ -243,9 +281,82 @@ pub fn import_ncbi_taxonomy(
             }
         }
 
+        // Phase 3 — wire up parents now that every taxon in the batch exists.
+        //
+        // `parent_ncbi_id` was previously read off the wire and thrown away, so
+        // an imported Kingdom → Phylum → … → Genus chain came out as N separate
+        // roots: the navigator's first column filled with genera, and drilling
+        // into any of them found nothing. Resolving parents here — first against
+        // taxa created in this same batch, then against taxa already in the
+        // database — is what turns the paste into an actual tree.
+        //
+        // A local_override taxon is deliberately left alone: overriding is the
+        // operator saying "my classification wins", and re-parenting it would
+        // move it under NCBI's hierarchy anyway.
+        let mut by_ncbi_id: HashMap<i64, String> = HashMap::new();
+        for action in &actions {
+            if let (ActionKind::Import | ActionKind::Update, Some(tid)) =
+                (&action.kind, action.taxon_id.as_deref())
+            {
+                by_ncbi_id.insert(action.record.ncbi_taxon_id, tid.to_string());
+            }
+        }
+
+        let mut touched: Vec<String> = Vec::new();
+        for action in &actions {
+            let (Some(parent_ncbi), Some(child_id)) =
+                (action.record.parent_ncbi_id, action.taxon_id.as_deref())
+            else {
+                continue;
+            };
+            if !matches!(action.kind, ActionKind::Import | ActionKind::Update) {
+                continue;
+            }
+            // A taxon that is its own parent is how NCBI marks the root (taxid
+            // 1). Linking it to itself would build a cycle.
+            if parent_ncbi == action.record.ncbi_taxon_id {
+                continue;
+            }
+
+            let parent_id = match by_ncbi_id.get(&parent_ncbi) {
+                Some(id) => Some(id.clone()),
+                None => queries::find_taxon_by_ncbi_id(&tx, parent_ncbi)
+                    .map_err(|e| e.to_string())?
+                    .map(|t| t.id),
+            };
+            let Some(parent_id) = parent_id else { continue };
+            if parent_id == child_id {
+                continue;
+            }
+
+            queries::set_taxon_parent(&tx, child_id, &parent_id).map_err(|e| e.to_string())?;
+            parents_linked += 1;
+            touched.push(child_id.to_string());
+        }
+
+        // Recompute paths once per touched subtree root, after every link is in
+        // place — doing it per-link would rewrite descendants repeatedly and
+        // could read a half-built chain.
+        //
+        // `species.taxon_path` is a copy of its genus taxon's path, so moving a
+        // taxon has to move the species hanging off it too. Skipping this left
+        // ancestor columns counting zero and broke "Open in Taxonomy", because
+        // the species still claimed a one-element lineage that no longer began
+        // at a root.
+        for id in &touched {
+            queries::recompute_taxon_path(&tx, id).map_err(|e| e.to_string())?;
+            queries::resync_species_paths_under(&tx, id).map_err(|e| e.to_string())?;
+        }
+
         tx.commit().map_err(|e| format!("Failed to commit import: {}", e))?;
     } else {
         // Dry-run: tally without writing.
+        let batch_ids: HashSet<i64> = actions
+            .iter()
+            .filter(|a| matches!(a.kind, ActionKind::Import | ActionKind::Update))
+            .map(|a| a.record.ncbi_taxon_id)
+            .collect();
+
         for action in &actions {
             match action.kind {
                 ActionKind::Import => imported += 1,
@@ -265,6 +376,23 @@ pub fn import_ncbi_taxonomy(
                     });
                 }
             }
+
+            // Predict the parent links the real run would make, using the same
+            // rules, so the preview count matches what actually happens.
+            if !matches!(action.kind, ActionKind::Import | ActionKind::Update) {
+                continue;
+            }
+            let Some(parent_ncbi) = action.record.parent_ncbi_id else { continue };
+            if parent_ncbi == action.record.ncbi_taxon_id {
+                continue;
+            }
+            let resolvable = batch_ids.contains(&parent_ncbi)
+                || queries::find_taxon_by_ncbi_id(&db.conn, parent_ncbi)
+                    .map_err(|e| e.to_string())?
+                    .is_some();
+            if resolvable {
+                parents_linked += 1;
+            }
         }
     }
 
@@ -273,6 +401,8 @@ pub fn import_ncbi_taxonomy(
         updated,
         skipped_overrides,
         conflicts,
+        skipped_records,
+        parents_linked,
         dry_run: request.dry_run,
     })
 }

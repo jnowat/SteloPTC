@@ -34,7 +34,18 @@
       await loadLabProfile();
       selected = $labProfile;
       const stats = await getSpecimenStats();
-      hasData = (stats?.total ?? 0) > 0;
+      // `SpecimenStats` has no `total` — the field is `total_specimens`
+      // (src-tauri/src/models/specimen.rs). Reading the wrong name always
+      // yielded `undefined ?? 0`, so `hasData` was permanently false: the
+      // confirmation field was hidden, `set_lab_profile` was then called with no
+      // phrase, and the backend — which counts specimens itself and refuses
+      // without it — rejected the call. A dead end, on any lab with a single
+      // specimen in it. Falls back to the other counts so a future rename
+      // degrades to "ask for confirmation" rather than "don't".
+      const total =
+        stats?.total_specimens ??
+        (stats ? (stats.active_specimens ?? 0) + (stats.archived ?? 0) : undefined);
+      hasData = (total ?? 1) > 0;
     } catch {
       // On any error keep hasData = true so the confirmation phrase is still required.
     } finally {

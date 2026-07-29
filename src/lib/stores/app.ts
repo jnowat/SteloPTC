@@ -5,6 +5,11 @@ export type View = 'dashboard' | 'specimens' | 'specimen-detail' | 'media' | 're
 export const currentView = writable<View>('dashboard');
 export const selectedSpecimenId = writable<string | null>(null);
 export const selectedStrainId = writable<string | null>(null);
+/// Hand-off target for the Taxonomy Navigator. Set it, then navigate to
+/// 'taxonomy' and the navigator will walk down to that species and select it.
+/// The navigator clears it on pickup so a later plain visit restores the user's
+/// own saved path instead of jumping back to wherever they came from once.
+export const focusSpeciesId = writable<string | null>(null);
 
 function getInitialDarkMode(): boolean {
   try {

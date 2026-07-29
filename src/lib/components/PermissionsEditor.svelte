@@ -73,7 +73,7 @@
 </script>
 
 <div class="pe-wrap">
-  <p style="font-size:13px;color:#6b7280;margin-bottom:14px;">
+  <p style="font-size:13px;color:var(--color-text-muted);margin-bottom:14px;">
     Controls which roles can see sensitive fields. A field hidden from a role shows a
     <strong>🔒 Restricted</strong> indicator there instead of its real value — it is never omitted, and it
     never affects what gets written to the audit trail. Changes take effect immediately.
@@ -82,7 +82,7 @@
   {#if loading}
     <div class="pe-loading" aria-busy="true" aria-label="Loading field permissions"></div>
   {:else if rows.length === 0}
-    <p style="font-size:13px;color:#6b7280;">No gated fields are configured.</p>
+    <p style="font-size:13px;color:var(--color-text-muted);">No gated fields are configured.</p>
   {:else}
     <table class="pe-table">
       <thead>

@@ -84,7 +84,7 @@
 {#if loading}
   <div class="empty-state"><div class="spinner"></div><p>Loading work queue…</p></div>
 {:else if error}
-  <div class="empty-state"><p style="color:#dc2626">{error}</p></div>
+  <div class="empty-state"><p style="color:var(--color-danger)">{error}</p></div>
 {:else if items.length === 0}
   <div class="empty-state">
     <div class="checkmark">&#10003;</div>

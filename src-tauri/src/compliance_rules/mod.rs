@@ -22,7 +22,7 @@
 // `--no-default-features` and can never fail a command.
 
 /// The three built-in lab profiles. Kept as `&str` constants (mirroring
-/// `app_settings.lab_profile` values) rather than an enum so the module stays
+/// `app_config.lab_profile` values) rather than an enum so the module stays
 /// decoupled from the frontend `LabProfile` type and forward-compatible with
 /// plugin-supplied profiles.
 pub const PLANT_TISSUE_CULTURE: &str = "plant_tissue_culture";

@@ -819,7 +819,7 @@
     // ── Specimen info grid ─────────────────────────────────────────────────────
     const infoRows = [
       ['Accession',          `<b>${esc(specimen.accession_number)}</b>`],
-      ['Species',            `${esc(specimen.species_name)} <span style="color:#64748b">(${esc(specimen.species_code)})</span>`],
+      ['Species',            `${esc(specimen.species_name)} <span style="color:var(--color-text-muted)">(${esc(specimen.species_code)})</span>`],
       ['Stage',              `<span class="b-blue">${stageFmt(specimen.stage)}</span>`],
       ['Health Status',      healthLabel(specimen.health_status)],
       ['Initiated',          esc(specimen.initiation_date)],
@@ -840,7 +840,7 @@
 
     const realPassages = subcultures.filter((sc: any) => !sc.isSplitEvent && sc.event_type !== 'death');
     const passageTable = realPassages.length === 0
-      ? '<p style="color:#64748b;font-size:9.5px;margin-top:4px;">No passages recorded yet.</p>'
+      ? '<p style="color:var(--color-text-muted);font-size:9.5px;margin-top:4px;">No passages recorded yet.</p>'
       : `<table><thead><tr>
            <th>#</th><th>Date</th><th>Media Batch</th><th>Vessel</th>
            <th>Transfer To</th><th>Health</th><th>Contamination</th><th>Notes</th>
@@ -926,7 +926,7 @@ ${footnotesHtml}
       <div>
         <h1 style="margin-bottom:3px;">{specimen?.accession_number || 'Loading...'}</h1>
         {#if specimen}
-          <span style="font-size:13px;color:#6b7280;">{specimen.species_code} — {specimen.species_name}</span>
+          <span style="font-size:13px;color:var(--color-text-muted);">{specimen.species_code} — {specimen.species_name}</span>
         {/if}
       </div>
       {#if specimen}
@@ -1106,9 +1106,9 @@ ${footnotesHtml}
           {#if specimen.generation > 0}
             {@const totalFromRoot = specimen.lineage_passage_offset + specimen.subculture_count}
             {#if specimen.subculture_count === 0}
-              <span class="info-value"><span style="color:#6b7280;font-size:12px;" title="P{specimen.lineage_passage_offset} = split event counted as this passage — no further passages recorded yet">P{specimen.lineage_passage_offset} from root (no passages yet)</span></span>
+              <span class="info-value"><span style="color:var(--color-text-muted);font-size:12px;" title="P{specimen.lineage_passage_offset} = split event counted as this passage — no further passages recorded yet">P{specimen.lineage_passage_offset} from root (no passages yet)</span></span>
             {:else}
-              <span class="info-value">{specimen.subculture_count} <span style="color:#6b7280;font-size:12px;" title="P{totalFromRoot} = {specimen.lineage_passage_offset} passages before this specimen + {specimen.subculture_count} own passages">(P{totalFromRoot} from root)</span></span>
+              <span class="info-value">{specimen.subculture_count} <span style="color:var(--color-text-muted);font-size:12px;" title="P{totalFromRoot} = {specimen.lineage_passage_offset} passages before this specimen + {specimen.subculture_count} own passages">(P{totalFromRoot} from root)</span></span>
             {/if}
           {:else}
             <span class="info-value">{specimen.subculture_count}</span>
@@ -1117,7 +1117,7 @@ ${footnotesHtml}
         {#if $labProfile === 'cell_culture' && specimen.cumulative_pdl != null}
           <div class="info-item">
             <span class="info-label" title="Cumulative population doubling level — total PDL accumulated across all passages in this lineage, including inherited PDL from ancestors">Cumulative PDL</span>
-            <span class="info-value">{specimen.cumulative_pdl.toFixed(2)} <span style="color:#6b7280;font-size:12px;">doublings</span></span>
+            <span class="info-value">{specimen.cumulative_pdl.toFixed(2)} <span style="color:var(--color-text-muted);font-size:12px;">doublings</span></span>
           </div>
         {/if}
         {#if specimen.biosafety_level}
@@ -1167,16 +1167,16 @@ ${footnotesHtml}
         {/if}
       </div>
       {#if specimen.notes}
-        <div style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;">
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--color-border);">
           <span class="info-label" title="General notes recorded for this specimen">Notes</span>
-          <p style="margin-top:4px;font-size:13px;white-space:pre-wrap;color:#374151;">{specimen.notes}</p>
+          <p style="margin-top:4px;font-size:13px;white-space:pre-wrap;color:var(--color-text);">{specimen.notes}</p>
         </div>
       {/if}
 
       <!-- WP-56: Local AI analysis — every suggestion below requires explicit
            approval before it touches the real notes field. All processing
            happens against a local Ollama instance only. -->
-      <div class="ai-assist-block" style="margin-top:14px;padding-top:12px;border-top:1px solid #e2e8f0;">
+      <div class="ai-assist-block" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--color-border);">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <span class="info-label" title="On-device AI assistance — nothing leaves this machine">🤖 AI Assist (local, optional)</span>
           <div style="display:flex;gap:8px;">
@@ -1189,14 +1189,14 @@ ${footnotesHtml}
           </div>
         </div>
         {#if aiError}
-          <p style="margin-top:8px;font-size:12.5px;color:#b91c1c;">{aiError}</p>
+          <p style="margin-top:8px;font-size:12.5px;color:var(--color-contam-high);">{aiError}</p>
         {/if}
         {#each aiSuggestions.filter(s => s.status === 'pending') as suggestion (suggestion.id)}
-          <div class="ai-suggestion-card" style="margin-top:10px;padding:10px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
-            <div style="font-size:11px;color:#64748b;margin-bottom:4px;">
+          <div class="ai-suggestion-card" style="margin-top:10px;padding:10px 12px;background:var(--color-surface-raised);border:1px solid var(--color-border);border-radius:8px;">
+            <div style="font-size:11px;color:var(--color-text-muted);margin-bottom:4px;">
               {suggestion.kind === 'summarize_notes' ? 'Summary suggestion' : 'Passage comment suggestion'} — model: {suggestion.model_name}
             </div>
-            <p style="font-size:13px;white-space:pre-wrap;color:#1e293b;margin:0 0 8px;">{suggestion.suggestion}</p>
+            <p style="font-size:13px;white-space:pre-wrap;color:var(--color-text);margin:0 0 8px;">{suggestion.suggestion}</p>
             <div style="display:flex;gap:8px;">
               <button class="btn btn-primary" type="button" disabled={aiBusy} onclick={() => approveSuggestion(suggestion.id)}>Approve — add to notes</button>
               <button class="btn btn-secondary" type="button" disabled={aiBusy} onclick={() => rejectSuggestion(suggestion.id)}>Reject</button>
@@ -1274,7 +1274,7 @@ ${footnotesHtml}
                     {/each}
                   </select>
                   {#if mediaDateWarning}
-                    <div style="color:#dc2626;font-size:12px;margin-top:4px;">
+                    <div style="color:var(--color-danger);font-size:12px;margin-top:4px;">
                       ⚠ Warning: this media batch was prepared AFTER the passage date — please verify.
                     </div>
                   {/if}
@@ -1519,7 +1519,7 @@ ${footnotesHtml}
                     <div class="split-card-header">
                       <span class="split-letter-badge">{letter}</span>
                       <div class="form-group" style="flex:1;margin-bottom:0;">
-                        <label for="split-{i}-accession" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Accession Number</label>
+                        <label for="split-{i}-accession" style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--color-text-muted);letter-spacing:.4px;">Accession Number</label>
                         <input
                           id="split-{i}-accession"
                           type="text"
@@ -1530,7 +1530,7 @@ ${footnotesHtml}
                         />
                       </div>
                       <div class="form-group" style="flex:0 0 160px;margin-bottom:0;">
-                        <label for="split-{i}-stage" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Stage</label>
+                        <label for="split-{i}-stage" style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--color-text-muted);letter-spacing:.4px;">Stage</label>
                         <select id="split-{i}-stage" bind:value={child.stage} title="Stage for child {letter}">
                           {#each stageOptions.filter(opt => !opt.is_terminal) as opt}
                             <option value={opt.code}>{opt.label}</option>
@@ -1541,7 +1541,7 @@ ${footnotesHtml}
 
                     <!-- Health -->
                     <div class="form-group" style="margin-bottom:8px;">
-                      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;margin-bottom:4px;">Health Status</div>
+                      <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--color-text-muted);letter-spacing:.4px;margin-bottom:4px;">Health Status</div>
                       <div class="split-health-row">
                         <label class="unknown-toggle" title="Mark health as unknown">
                           <input type="checkbox" bind:checked={child.health_unknown} style="width:auto;" />
@@ -1596,7 +1596,7 @@ ${footnotesHtml}
                     <!-- Media + Vessel -->
                     <div class="form-row" style="margin-bottom:8px;">
                       <div class="form-group" style="flex:2;">
-                        <label for="split-{i}-media" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Media Batch</label>
+                        <label for="split-{i}-media" style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--color-text-muted);letter-spacing:.4px;">Media Batch</label>
                         <select id="split-{i}-media" bind:value={child.media_batch_id} title="Media batch for child {letter}">
                           <option value="">No media / not recorded</option>
                           {#each mediaBatches as mb}
@@ -1614,7 +1614,7 @@ ${footnotesHtml}
                         {/if}
                       </div>
                       <div class="form-group" style="flex:2;">
-                        <label for="split-{i}-vessel" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Vessel Type</label>
+                        <label for="split-{i}-vessel" style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--color-text-muted);letter-spacing:.4px;">Vessel Type</label>
                         {#if child.custom_vessel}
                           <div style="display:flex;gap:4px;">
                             <input type="text" bind:value={child.vessel_input} placeholder="Custom vessel name…" style="flex:1;" />
@@ -1642,11 +1642,11 @@ ${footnotesHtml}
                     <!-- Notes + Reminder -->
                     <div class="form-row" style="margin-bottom:0;">
                       <div class="form-group" style="flex:2;">
-                        <label for="split-{i}-notes" style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;">Notes (optional)</label>
+                        <label for="split-{i}-notes" style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--color-text-muted);letter-spacing:.4px;">Notes (optional)</label>
                         <input id="split-{i}-notes" type="text" bind:value={child.notes} placeholder="Per-container notes…" title="Notes for child {letter}" />
                       </div>
                       <div class="form-group split-reminder-group">
-                        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:#6b7280;letter-spacing:.4px;margin-bottom:4px;">Check-in Reminder</div>
+                        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--color-text-muted);letter-spacing:.4px;margin-bottom:4px;">Check-in Reminder</div>
                         <div class="split-reminder-row">
                           <label class="unknown-toggle">
                             <input type="checkbox" bind:checked={child.reminder_enabled} style="width:auto;" />
@@ -1659,7 +1659,7 @@ ${footnotesHtml}
                             style="width:60px;padding:4px 6px;font-size:12px;"
                             title="Days after split date to create a check-in reminder"
                           />
-                          <span style="font-size:12px;color:#6b7280;">days</span>
+                          <span style="font-size:12px;color:var(--color-text-muted);">days</span>
                         </div>
                       </div>
                     </div>
@@ -1671,7 +1671,7 @@ ${footnotesHtml}
                   <div class="split-summary-title">Split Preview</div>
                   <div class="split-summary-row">
                     <span class="split-summary-label">Parent (archived):</span>
-                    <span class="split-summary-value" style="font-family:monospace;color:#dc2626;">{specimen?.accession_number}</span>
+                    <span class="split-summary-value" style="font-family:monospace;color:var(--color-danger);">{specimen?.accession_number}</span>
                   </div>
                   <div class="split-summary-row">
                     <span class="split-summary-label">Creating {splitCount} children:</span>
@@ -1720,9 +1720,9 @@ ${footnotesHtml}
             </button>
             {#if showAncestralHistory && !ancestralLoading && parentSpecimen}
               {#if ancestralSubcultures.length > 0}
-                <span style="font-size:12px;color:#6b7280;">Showing passages from {parentSpecimen.accession_number}</span>
+                <span style="font-size:12px;color:var(--color-text-muted);">Showing passages from {parentSpecimen.accession_number}</span>
               {:else}
-                <span style="font-size:12px;color:#9ca3af;">{parentSpecimen.accession_number} has no recorded passages</span>
+                <span style="font-size:12px;color:var(--color-text-faint);">{parentSpecimen.accession_number} has no recorded passages</span>
               {/if}
             {/if}
           </div>
@@ -2015,8 +2015,8 @@ ${footnotesHtml}
   <div class="modal-overlay" onclick={() => showDeathConfirm = false} onkeydown={(e) => e.key === 'Escape' && (showDeathConfirm = false)} role="presentation">
     <div class="modal-box confirm-dialog" role="dialog" aria-modal="true" aria-label="Confirm death record" tabindex="-1" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()}>
       <div class="confirm-header">
-        <span class="confirm-icon" style="color:#dc2626;">&#9760;</span>
-        <h3 class="confirm-title" style="color:#dc2626;">Record Death &amp; Archive</h3>
+        <span class="confirm-icon" style="color:var(--color-danger);">&#9760;</span>
+        <h3 class="confirm-title" style="color:var(--color-danger);">Record Death &amp; Archive</h3>
       </div>
       <div class="confirm-warning" style="background:#fff1f2;border-color:#fca5a5;color:#7f1d1d;">
         <strong>This action is permanent and cannot be undone:</strong>

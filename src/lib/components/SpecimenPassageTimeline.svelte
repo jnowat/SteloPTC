@@ -92,7 +92,7 @@
 {#if subcultures.length === 0}
   <div class="empty-state" style="padding:40px 0;">
     No passages recorded yet.<br/>
-    <span style="font-size:12px;color:#9ca3af;">Use "Record Passage" above to log the first subculture event.</span>
+    <span style="font-size:12px;color:var(--color-text-faint);">Use "Record Passage" above to log the first subculture event.</span>
   </div>
 {:else}
   <div class="timeline">
@@ -293,7 +293,7 @@
                   <span class="tl-pill death-pill" title="Specimen was permanently archived">Archived</span>
                 </div>
               </div>
-              <span class="tl-chevron" style="color:#dc2626;">{isExpanded ? '▴' : '▾'}</span>
+              <span class="tl-chevron" style="color:var(--color-danger);">{isExpanded ? '▴' : '▾'}</span>
             </div>
             {#if isExpanded}
               <div class="tl-card-body tl-death-body">

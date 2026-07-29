@@ -418,7 +418,7 @@
                 <div class="flag-item">
                   <span class="badge badge-red" title="Passage number {ev.passage_number} at which contamination was recorded">P{ev.passage_number}</span>
                   <div>
-                    <div class="flag-accession">{ev.accession_number} <span style="font-weight:400;color:#6b7280;">({ev.species_code})</span></div>
+                    <div class="flag-accession">{ev.accession_number} <span style="font-weight:400;color:var(--color-text-muted);">({ev.species_code})</span></div>
                     <div class="flag-message">{ev.date}{ev.vessel_type ? ` · ${ev.vessel_type}` : ''}{ev.contamination_notes ? ` · ${ev.contamination_notes}` : ''}</div>
                   </div>
                 </div>
@@ -535,7 +535,7 @@
                 <div class="flag-item">
                   <span class="badge badge-yellow" title="Missing or overdue mycoplasma test">!</span>
                   <div>
-                    <div class="flag-accession">{f.accession_number} <span style="font-weight:400;color:#6b7280;">({f.species_code})</span></div>
+                    <div class="flag-accession">{f.accession_number} <span style="font-weight:400;color:var(--color-text-muted);">({f.species_code})</span></div>
                     <div class="flag-message">
                       {#if f.last_test_date}
                         Last tested: {f.last_test_date}
@@ -590,7 +590,7 @@
                 <div class="flag-item">
                   <span class="badge" class:badge-red={alert.days_since_passage !== null && alert.days_since_passage >= 14} class:badge-yellow={alert.days_since_passage !== null && alert.days_since_passage < 14} title="{alert.days_since_passage ?? '?'}d since last passage">{alert.days_since_passage ?? '?'}d</span>
                   <div>
-                    <div class="flag-accession">{alert.accession_number} <span style="font-weight:400;color:#6b7280;">({alert.species_code})</span></div>
+                    <div class="flag-accession">{alert.accession_number} <span style="font-weight:400;color:var(--color-text-muted);">({alert.species_code})</span></div>
                     <div class="flag-message">
                       {alert.stage_label}{alert.last_passage_date ? ` · Last passage: ${alert.last_passage_date}` : ' · Never passaged'}
                     </div>
@@ -623,14 +623,14 @@
                     title="Flag: {f.flag_type.replace(/_/g, ' ')}"
                   >{f.severity}</span>
                   <div>
-                    <div class="flag-accession">{f.accession_number} <span style="font-weight:400;color:#6b7280;">({f.species_code})</span></div>
+                    <div class="flag-accession">{f.accession_number} <span style="font-weight:400;color:var(--color-text-muted);">({f.species_code})</span></div>
                     <div class="flag-message">{f.message}</div>
                   </div>
                 </div>
               {/each}
             </div>
             {#if mycoQcFlags.length > 8}
-              <p style="font-size:12px;color:#6b7280;margin-top:6px;">+{mycoQcFlags.length - 8} more — see full list below</p>
+              <p style="font-size:12px;color:var(--color-text-muted);margin-top:6px;">+{mycoQcFlags.length - 8} more — see full list below</p>
             {/if}
             <button class="btn btn-sm" style="margin-top:12px" onclick={() => navigateTo('compliance')} title="View all compliance flags">
               View compliance
@@ -657,7 +657,7 @@
               {/each}
             </div>
             {#if environmentalAlerts.length > 8}
-              <p style="font-size:12px;color:#6b7280;margin-top:6px;">+{environmentalAlerts.length - 8} more</p>
+              <p style="font-size:12px;color:var(--color-text-muted);margin-top:6px;">+{environmentalAlerts.length - 8} more</p>
             {/if}
           {/if}
         </div>
@@ -665,7 +665,7 @@
 
       <div class="panel">
         <h3 title="Create a snapshot backup of the entire database to the configured backup directory">Database Backup</h3>
-        <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+        <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;">
           Create a backup of the database to the default backup directory.
           For security, the SMTP password (if configured) is not included in
           the backup file — you'll need to re-enter it after restoring.
@@ -675,14 +675,14 @@
             {backingUp ? 'Backing up...' : 'Backup Now'}
           </button>
         {:else}
-          <p style="font-size:12px; color:#6b7280;">Supervisor or admin access required.</p>
+          <p style="font-size:12px; color:var(--color-text-muted);">Supervisor or admin access required.</p>
         {/if}
       </div>
 
       {#if $currentUser?.role === 'admin'}
         <div class="panel danger-panel">
-          <h3 style="color:#dc2626;" title="Replace the current database with a previously created backup — this cannot be undone">⚠ Restore from Backup</h3>
-          <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+          <h3 style="color:var(--color-danger);" title="Replace the current database with a previously created backup — this cannot be undone">⚠ Restore from Backup</h3>
+          <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;">
             Replaces all current data with the state at the time of the selected backup.
             <strong>This cannot be undone.</strong>
           </p>
@@ -693,9 +693,9 @@
           {:else}
             <div class="reset-confirm">
               {#if loadingBackups}
-                <p style="font-size:13px; color:#6b7280;">Loading backups…</p>
+                <p style="font-size:13px; color:var(--color-text-muted);">Loading backups…</p>
               {:else if backups.length === 0}
-                <p style="font-size:13px; color:#6b7280;">No backups found. Create a backup first.</p>
+                <p style="font-size:13px; color:var(--color-text-muted);">No backups found. Create a backup first.</p>
                 <button class="btn btn-sm" onclick={cancelRestore} style="margin-top:8px;" title="Close the restore panel">Cancel</button>
               {:else if !restoreTarget}
                 <p style="font-size:12px; font-weight:600; margin-bottom:8px;">Select a backup to restore:</p>
@@ -716,7 +716,7 @@
                 <p style="font-size:13px; margin-bottom:10px;">
                   You are about to restore:<br />
                   <strong style="font-family:monospace; font-size:11px;">{restoreTarget.file_name}</strong><br />
-                  <span style="color:#dc2626;">All current data will be permanently replaced.</span>
+                  <span style="color:var(--color-danger);">All current data will be permanently replaced.</span>
                 </p>
                 <div style="display:flex; gap:8px;">
                   <button class="btn btn-sm" onclick={cancelRestore} title="Cancel the restore">Cancel</button>
@@ -752,13 +752,13 @@
 
       {#if $currentUser?.role === 'admin'}
         <div class="panel danger-panel">
-          <h3 style="color:#dc2626;" title="Admin-only developer tools for editing protected records">⚠ Dev Tools — Developer Mode</h3>
-          <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+          <h3 style="color:var(--color-danger);" title="Admin-only developer tools for editing protected records">⚠ Dev Tools — Developer Mode</h3>
+          <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;">
             Enables in-app editing of passages and other protected records.
             Visible only to admins. Toggle persists across sessions.
           </p>
           <label style="display:inline-flex; align-items:center; gap:10px; cursor:pointer; font-size:14px;" title="Toggle developer mode to enable editing of passages and other protected records">
-            <input type="checkbox" bind:checked={$devMode} style="width:auto; accent-color:#dc2626;" title="Enable or disable developer mode" />
+            <input type="checkbox" bind:checked={$devMode} style="width:auto; accent-color:var(--color-danger);" title="Enable or disable developer mode" />
             <span style="font-weight:600; color:{$devMode ? '#dc2626' : '#6b7280'};">
               Dev Mode {$devMode ? 'ON' : 'OFF'}
             </span>
@@ -766,8 +766,8 @@
         </div>
 
         <div class="panel danger-panel">
-          <h3 style="color:#dc2626;" title="Permanently wipe all specimen data, media, subcultures, compliance records, inventory, and audit logs — this cannot be undone">⚠ Dev Tools — Reset Database</h3>
-          <p style="font-size:13px; color:#6b7280; margin-bottom:12px;">
+          <h3 style="color:var(--color-danger);" title="Permanently wipe all specimen data, media, subcultures, compliance records, inventory, and audit logs — this cannot be undone">⚠ Dev Tools — Reset Database</h3>
+          <p style="font-size:13px; color:var(--color-text-muted); margin-bottom:12px;">
             Permanently deletes all specimens, media batches, subcultures, compliance records,
             inventory, and audit logs. Users and species definitions are preserved.
             <strong>This cannot be undone.</strong>

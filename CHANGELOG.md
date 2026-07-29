@@ -10,7 +10,153 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 > [`README.md`](README.md) for the product overview. Entries are append-only: a shipped entry is
 > never rewritten, so a stated figure reflects what was true *at that release*, not today.
 >
-> **Current release: [v1.53.2](#1532---2026-07-25).** Phases A–H complete.
+> **Current release: [v0.54.0](#0540---2026-07-29).** Phases A–H complete.
+>
+> **Version numbering changed at v0.54.0.** Everything up to and including `1.53.2` shipped under
+> a `1.x` series. The project is pre-1.0 by the maintainer's judgement, so numbering continues at
+> `0.54.0` — the minor number carries on from `1.53` unbroken and only the major drops. Older
+> entries below keep the version they actually shipped under.
+
+---
+
+## [0.54.0] - 2026-07-29
+
+### Room designer, a taxonomy tree that is not empty, and an NCBI import that explains itself
+
+**Renumbered to a pre-1.0 series.** `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`,
+`Cargo.lock`, `tauri.conf.json`, and the Android `build.gradle.kts` all read `0.54.0`. The Android
+`versionCode` still *increases* (28 → 29) — it is independent of the version name, and a decreasing
+one would break upgrades for anyone already running a build. No history was rewritten: entries below
+still say `1.53.2` because that is what shipped.
+
+**Fixed — a full species registry with an empty taxonomy tree**
+
+- **`create_species` never filed a species under its genus.** The Taxonomy Navigator resolves every
+  column through `species.taxon_path`; `migration_020` back-filled that column once, from the
+  species that existed at the time, and nothing kept doing it. Every species added through the
+  registry since then landed with a `NULL` path and was invisible in the tree — so a lab that
+  entered all of its species through the UI saw a full registry and no taxonomy at all. Species are
+  now linked on create, and on the genus half of an update.
+- **`migration_058`** repairs databases that already drifted, and `rebuild_species_taxonomy`
+  exposes the same repair as a supervisor action from both the Species Registry and the navigator's
+  (previously bare) empty state. Idempotent; genus matching is case-insensitive so `citrus` and
+  `Citrus` are one genus; a species deliberately classified under a deeper hand-built
+  Kingdom → … → Genus backbone is never flattened back to a bare genus.
+
+**Added — reaching strains and taxonomy from where you actually are**
+
+- **Species Registry rows are selectable**, leading to that species' strains or into the Taxonomy
+  tab focused on it (`locate_species` resolves a species into the shape the navigator already knows
+  how to walk, so there is one navigation path rather than two).
+- **Add Specimen can register a strain inline.** The only previous route was the navigator's species
+  column — which needs a taxonomy that, per the bug above, did not exist. Also links to the Species
+  Registry when a lab has no species yet, instead of offering an empty required dropdown.
+
+**Added — the lab-map room designer**
+
+- Draw a room on a grid: racks, shelf units, cabinets, incubators, growth chambers, fridges,
+  freezers, cryo dewars, flow hoods, benches, autoclaves, sinks, doors, walls. Arm a stamp, click to
+  drop, drag to move, corner to resize, `R` rotates, `Delete` removes, arrows nudge, `Ctrl+Z`
+  undoes. Overlaps are tinted rather than forbidden.
+- **Furniture carries a shelf breakdown, not just a footprint.** A five-shelf rack is one rectangle
+  on the floor and five levels of trays; the inspector shows that elevation, each tray labelled with
+  the address a specimen would record if it lived there. Pieces shade toward red as they fill, from
+  live specimen counts (`get_location_occupancy`).
+- **Add Specimen's location dropdowns now come from the drawing** — room, unit, shelf, position —
+  composing the same `A / B / C` path the form has always written. They were previously a hardcoded
+  Room 1–5 / Rack A–D / Shelf 1–5 / Tray A–F list, invented rather than measured, so a lab whose
+  racks are lettered E and F could not record where anything was. Labs that never open the designer
+  keep the old lists unchanged.
+- **`migration_059`** adds one nullable `locations.layout_json` column. The geometry is a document —
+  read whole, written whole, never queried across rooms — so it is stored as a blob; specimen
+  placement stays in `specimens.location`, which the layout generates rather than replaces.
+
+**Fixed — NCBI import silently discarding its input**
+
+- **Records outside the kingdom→genus backbone were dropped with a bare `continue`.** Pasting a page
+  of species-rank records reported "0 imported, 0 updated, 0 conflicts" and gave no clue why. They
+  are now returned in `skipped_records` with a reason, alongside duplicates collapsed within a batch.
+- **`parent_ncbi_id` was read off the wire and thrown away.** Every imported taxon got
+  `parent_id = NULL`, so an imported lineage came out as N flat roots: the navigator's first column
+  filled with genera and drilling into any of them found nothing. Parents are now resolved against
+  the batch and against existing taxa, and `taxon_path` is recomputed over the affected subtrees
+  (cycle-safe — a hand-edited parent link must not hang the app holding the DB lock).
+
+**Added — an import box that takes what you actually have**
+
+- Recognises E-utilities `esummary` JSON, `efetch` XML (expanding `LineageEx`, so one record brings
+  its whole backbone), `taxdump` `nodes.dmp`/`names.dmp` rows, CSV/TSV with a header, and plain JSON
+  records under any of the usual field spellings. A preview table shows exactly what will be written,
+  with per-row include/exclude and a "backbone only" default.
+- A bare list of taxon IDs or scientific names cannot be resolved offline, so instead of an error the
+  screen builds the E-utilities URL to open and paste back. **Nothing here calls the network** — the
+  app has no HTTP client in the backend and no network permission in its Tauri capabilities, and that
+  is deliberate.
+
+**Fixed — three defects the documentation pass turned up**
+
+- **Compliance rules ran against the wrong lab profile, always.** `get_compliance_flags`,
+  `list_compliance_rules` and the WP-68 submission gating read the profile with
+  `read_setting(conn, "lab_profile", …)`, which reads the `app_settings` key-value table — and
+  nothing has ever written `lab_profile` into it. Every database got the default. The result is the
+  exact bug the code's own comment claims WP-74 fixed: the citrus HLB rule fires in mycology and
+  cell-culture labs, and their own rules do not. All three now call
+  `db::vocabulary::active_profile`, which reads `app_config.lab_profile`, and two tests pin it.
+- **The Taxonomy Navigator's root column was hardcoded "Kingdom"** and deeper taxon columns carried
+  no rank at all, so they rendered a blank header. Neither was ever right for real data — a backbone
+  derived from species has *genera* at the root. Columns are now named after the ranks in them.
+- **Switching lab profile was a dead end on any database with a specimen in it.** `Settings.svelte`
+  read `stats?.total`, but `SpecimenStats` has no `total` field — it is `total_specimens` — so the
+  "CHANGE PROFILE" confirmation input was never shown, and the backend (which counts specimens
+  itself) then refused the call for want of the phrase.
+
+**Fixed — lab isolation and dark mode**
+
+- **`get_location_map_data` counted other labs' specimens.** It reads `specimens` directly as an
+  aggregate without the lab predicate every other such query applies, so a mycology session's map
+  was shaded by a plant-tissue-culture lab's cultures. Both it and the new `get_location_occupancy`
+  now go through `vocabulary::active_lab_sql`. The predicate lives in the map query's `LEFT JOIN`
+  condition, not its `WHERE` clause: in `WHERE` it would turn the outer join into an inner one and
+  drop every location holding nothing — exactly the empty shelf someone opens the map to find.
+- **Eleven components set colours inline as literal hex.** Near-black text (`#1e293b`, `#374151`)
+  and near-white panels and borders (`#f8fafc`, `#e2e8f0`) rendered as invisible text or a white
+  block in dark mode, `SpecimenDetail` and `Dashboard` worst of all. They now use the theme tokens.
+  Only values actually broken in one theme were touched; mid-tone greys and the ternary fill colours
+  driving progress bars and SVG are untouched.
+
+**Fixed — smaller things**
+
+- **The Google Fonts `@import` in `App.svelte` was dead code.** CSS requires `@import` to precede
+  every other statement and that block opens with `.degraded-banner`, so PostCSS dropped it with a
+  warning on every build — Inter was never loading. Removed rather than moved to the top: this app is
+  local-first and ships to Android, so "fixing" it would add a blocking third-party request on every
+  launch and fail on the offline machines it is built for. The system font stack was already doing
+  the work.
+- **`npm install` failed on a clean checkout.** `@sveltejs/vite-plugin-svelte@^4` peer-depends on
+  Vite 5 against this project's Vite 6; all five CI workflows papered over it with
+  `--legacy-peer-deps`. Upgraded to v5, which supports Vite 6 properly, and dropped the flag from
+  CI — it tells npm to ignore *every* peer conflict, so it would have hidden the next one just as
+  silently.
+- **`NcbiSyncPanel` hardcoded light-mode colours** (`#f9fafb`, `#fffbeb`, `#6b7280`) inline, so the
+  whole panel rendered light-on-light in dark mode. Every colour now goes through a token.
+
+**Added — `Obsidian/`**
+
+- An Obsidian vault documenting how the backend and frontend actually work, structured after the
+  companion vault in [jnowat/gruper](https://github.com/jnowat/gruper/tree/main/Obsidian): `Home.md`
+  as the directory, `00_Meta/` for conventions and maps of content, and domain folders for
+  architecture, core concepts, workflows, and reference.
+
+**Added — `UserManual.md` §0, "New User — Start Here"**
+
+- A first-hour walkthrough: what to set up, in what order, and why — profile, species, room plan,
+  first specimen, first passage — with the reasoning behind the parts that surprise people.
+
+**Verified:** `cargo test --lib` (**774 passing**, full `tauri-commands` feature) · `npm test`
+(**203 passing**) · `npm run check` (**0 errors / 0 warnings**) · `npm run build` (succeeds). The
+room designer and the NCBI import panel were additionally mounted in a browser harness and driven
+with Playwright — which is how the plan's dead pane space, the overflowing furniture labels, and a
+subject-verb disagreement in the below-genus note were found.
 
 ---
 

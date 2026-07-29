@@ -106,6 +106,23 @@ pub struct NcbiConflictSummary {
     pub conflict_details: String,
 }
 
+/// A record the import could not use, and why.
+///
+/// These used to be dropped with a bare `continue`, so pasting a page of
+/// species-rank records produced "0 imported, 0 updated, 0 conflicts" and no
+/// clue as to what happened. Reporting them is the difference between the
+/// import looking broken and it telling you what it did.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NcbiSkippedRecord {
+    pub ncbi_taxon_id: i64,
+    pub name: String,
+    /// The rank exactly as supplied, so the operator can see what was rejected.
+    pub rank: String,
+    /// Human-readable explanation, e.g. "rank 'species' is not part of the
+    /// taxonomy backbone — species live in the Species Registry".
+    pub reason: String,
+}
+
 /// Result returned by `import_ncbi_taxonomy` (dry-run or real).
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ImportNcbiTaxonomyResult {
@@ -113,6 +130,12 @@ pub struct ImportNcbiTaxonomyResult {
     pub updated: i64,
     pub skipped_overrides: i64,
     pub conflicts: Vec<NcbiConflictSummary>,
+    /// Records that were not usable — unsupported rank, or a duplicate of an
+    /// earlier record in the same paste.
+    pub skipped_records: Vec<NcbiSkippedRecord>,
+    /// How many parent links were resolved from `parent_ncbi_id`, either to a
+    /// taxon in the same batch or to one already in the database.
+    pub parents_linked: i64,
     pub dry_run: bool,
 }
 

@@ -3,7 +3,9 @@ use rusqlite::params;
 use tauri::State;
 
 use crate::auth as auth_service;
-use crate::models::location::{CreateLocationRequest, Location, LocationMapPoint, UpdateLocationRequest};
+use crate::models::location::{
+    CreateLocationRequest, Location, LocationMapPoint, LocationOccupancy, UpdateLocationRequest,
+};
 use crate::AppState;
 
 fn row_to_location(row: &rusqlite::Row) -> rusqlite::Result<Location> {
@@ -14,10 +16,20 @@ fn row_to_location(row: &rusqlite::Row) -> rusqlite::Result<Location> {
         floor_plan_image: row.get("floor_plan_image")?,
         floor_plan_x: row.get("floor_plan_x")?,
         floor_plan_y: row.get("floor_plan_y")?,
+        layout_json: row.get("layout_json")?,
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
 }
+
+/// Upper bound on a stored floor plan, in bytes.
+///
+/// The layout is written on every edit, so an unbounded column is an unbounded
+/// write amplification on the single global DB mutex. 512 KiB is roughly two
+/// orders of magnitude above a fully furnished room (the editor caps the grid at
+/// 60×60 and furniture at 30 shelves), so it can only be hit by a client
+/// sending something it should not.
+const MAX_LAYOUT_BYTES: usize = 512 * 1024;
 
 #[tauri::command]
 pub fn list_locations(state: State<AppState>, token: String) -> Result<Vec<Location>, String> {
@@ -184,17 +196,127 @@ pub fn set_specimen_location_pin(
     Ok(())
 }
 
+/// Save the drawn floor plan for a location.
+///
+/// Kept separate from `update_location` for the same reason
+/// `set_specimen_location_pin` is: it touches exactly one column, so an autosave
+/// from the layout editor can never race a name or image edit and clobber it.
+/// Passing `None` clears the plan.
+#[tauri::command]
+pub fn save_location_layout(
+    state: State<AppState>,
+    token: String,
+    location_id: String,
+    layout_json: Option<String>,
+) -> Result<(), String> {
+    let db = state.db();
+    let user = auth_service::validate_session(&db, &token)?;
+    if !user.role.can_write() {
+        return Err("Insufficient permissions".to_string());
+    }
+
+    if let Some(ref json) = layout_json {
+        if json.len() > MAX_LAYOUT_BYTES {
+            return Err(format!(
+                "Floor plan is too large ({} KB). The limit is {} KB.",
+                json.len() / 1024,
+                MAX_LAYOUT_BYTES / 1024
+            ));
+        }
+        // Reject anything that is not JSON here rather than at read time: a bad
+        // blob written now is a Lab Map that fails to open later, with nothing
+        // pointing at when it broke.
+        serde_json::from_str::<serde_json::Value>(json)
+            .map_err(|e| format!("Floor plan is not valid JSON: {}", e))?;
+    }
+
+    let changed = db
+        .conn
+        .execute(
+            "UPDATE locations SET layout_json = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![layout_json, location_id],
+        )
+        .map_err(|e| format!("Failed to save floor plan: {}", e))?;
+    if changed == 0 {
+        return Err("Location not found".to_string());
+    }
+
+    crate::db::queries::log_audit(
+        &db.conn, Some(&user.id), "update", "location", Some(&location_id),
+        None, None,
+        Some(if layout_json.is_some() { "Floor plan saved" } else { "Floor plan cleared" }),
+    ).ok();
+
+    Ok(())
+}
+
+/// Specimen counts per recorded location path, for shading the drawn plan.
+///
+/// Groups the free-text `specimens.location` strings the Add Specimen form
+/// composes — which is what the layout editor generates addresses in — so the
+/// client can colour furniture by how full it is without pulling every
+/// specimen. Archived specimens are excluded: a rack full of archived cultures
+/// is an empty rack.
+///
+/// Scoped to the active lab profile. This reads `specimens` directly as an
+/// aggregate, which is exactly the case `active_lab_sql` exists for — without it
+/// a mycology session would shade its racks with a plant-tissue-culture lab's
+/// cultures.
+#[tauri::command]
+pub fn get_location_occupancy(
+    state: State<AppState>,
+    token: String,
+) -> Result<Vec<LocationOccupancy>, String> {
+    let db = state.db();
+    let _user = auth_service::validate_session(&db, &token)?;
+    let lab = crate::db::vocabulary::active_lab_sql("sp");
+    let mut stmt = db
+        .conn
+        .prepare(&format!(
+            "SELECT sp.location AS location, \
+                    COUNT(sp.id) AS specimen_count, \
+                    SUM(CASE WHEN sp.quarantine_flag = 1 \
+                              OR EXISTS (SELECT 1 FROM subcultures sc \
+                                         WHERE sc.specimen_id = sp.id AND sc.contamination_flag = 1) \
+                             THEN 1 ELSE 0 END) AS contaminated_count \
+             FROM specimens sp \
+             WHERE sp.is_archived = 0 AND sp.location IS NOT NULL AND TRIM(sp.location) != '' \
+               AND {lab} \
+             GROUP BY sp.location"
+        ))
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(LocationOccupancy {
+                location: r.get(0)?,
+                specimen_count: r.get(1)?,
+                contaminated_count: r.get::<_, Option<i64>>(2)?.unwrap_or(0),
+            })
+        })
+        .map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(rows)
+}
+
 /// Data feed for `LabMap.svelte` and the Dashboard map widget: every
 /// location's pin position plus specimen density / contamination / age
 /// aggregates, computed server-side so the client never has to fetch every
 /// specimen just to render a heat-map.
+///
+/// Scoped to the active lab profile, like every other aggregate that reads
+/// `specimens` directly. The predicate belongs in the `LEFT JOIN` condition, not
+/// the `WHERE` clause: moving it to `WHERE` would turn the outer join into an
+/// inner one and drop every location that currently holds nothing, which is
+/// exactly the empty shelf someone is looking for when they open the map.
 #[tauri::command]
 pub fn get_location_map_data(state: State<AppState>, token: String) -> Result<Vec<LocationMapPoint>, String> {
     let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
+    let lab = crate::db::vocabulary::active_lab_sql("sp");
     let mut stmt = db
         .conn
-        .prepare(
+        .prepare(&format!(
             "SELECT l.id, l.name, l.floor_plan_x, l.floor_plan_y, \
                     COUNT(sp.id) AS specimen_count, \
                     SUM(CASE WHEN sp.quarantine_flag = 1 \
@@ -203,10 +325,10 @@ pub fn get_location_map_data(state: State<AppState>, token: String) -> Result<Ve
                              THEN 1 ELSE 0 END) AS contaminated_count, \
                     AVG(julianday('now') - julianday(sp.initiation_date)) AS avg_age_days \
              FROM locations l \
-             LEFT JOIN specimens sp ON sp.location_id = l.id AND sp.is_archived = 0 \
+             LEFT JOIN specimens sp ON sp.location_id = l.id AND sp.is_archived = 0 AND {lab} \
              GROUP BY l.id \
-             ORDER BY l.name ASC",
-        )
+             ORDER BY l.name ASC"
+        ))
         .map_err(|e| e.to_string())?;
     let rows = stmt
         .query_map([], |r| {
@@ -236,15 +358,26 @@ mod tests {
             "CREATE TABLE locations (
                 id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, description TEXT,
                 floor_plan_image TEXT, floor_plan_x REAL, floor_plan_y REAL,
+                layout_json TEXT,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
             CREATE TABLE specimens (
                 id TEXT PRIMARY KEY, accession_number TEXT NOT NULL UNIQUE,
-                location_id TEXT, is_archived INTEGER NOT NULL DEFAULT 0,
+                location_id TEXT, location TEXT, is_archived INTEGER NOT NULL DEFAULT 0,
                 quarantine_flag INTEGER NOT NULL DEFAULT 0, disease_status TEXT,
+                lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture',
                 initiation_date TEXT NOT NULL DEFAULT '2026-01-01'
-            );",
+            );
+            CREATE TABLE subcultures (
+                id TEXT PRIMARY KEY, specimen_id TEXT NOT NULL,
+                contamination_flag INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE app_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                lab_profile TEXT NOT NULL DEFAULT 'plant_tissue_culture'
+            );
+            INSERT INTO app_config (id, lab_profile) VALUES (1, 'plant_tissue_culture');",
         )
         .expect("create tables");
         conn
@@ -277,5 +410,183 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM specimens WHERE location_id = 'l1'", [], |r| r.get(0))
             .unwrap();
         assert_eq!(pinned_count, 1, "delete_location must refuse when this is > 0");
+    }
+
+    // ── Layout persistence and occupancy ──────────────────────────────────
+
+    #[test]
+    fn layout_json_starts_null_and_round_trips() {
+        let conn = setup_db();
+        conn.execute("INSERT INTO locations (id, name) VALUES ('l1', 'Growth Room B')", []).unwrap();
+
+        let before: Option<String> = conn
+            .query_row("SELECT layout_json FROM locations WHERE id = 'l1'", [], |r| r.get(0))
+            .unwrap();
+        assert!(before.is_none(), "a location with no drawn plan must read as NULL");
+
+        let plan = r#"{"version":1,"gridCols":20,"gridRows":14,"items":[]}"#;
+        conn.execute("UPDATE locations SET layout_json = ?1 WHERE id = 'l1'", [plan]).unwrap();
+        let after: Option<String> = conn
+            .query_row("SELECT layout_json FROM locations WHERE id = 'l1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(after.as_deref(), Some(plan));
+    }
+
+    /// Mirrors the SQL in `get_location_occupancy` so the grouping, the lab
+    /// scoping, and the archived/contaminated rules are covered without a Tauri
+    /// State.
+    fn occupancy(conn: &Connection) -> Vec<(String, i64, i64)> {
+        let lab = crate::db::vocabulary::active_lab_sql("sp");
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT sp.location AS location, \
+                        COUNT(sp.id) AS specimen_count, \
+                        SUM(CASE WHEN sp.quarantine_flag = 1 \
+                                  OR EXISTS (SELECT 1 FROM subcultures sc \
+                                             WHERE sc.specimen_id = sp.id AND sc.contamination_flag = 1) \
+                                 THEN 1 ELSE 0 END) AS contaminated_count \
+                 FROM specimens sp \
+                 WHERE sp.is_archived = 0 AND sp.location IS NOT NULL AND TRIM(sp.location) != '' \
+                   AND {lab} \
+                 GROUP BY sp.location"
+            ))
+            .unwrap();
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get::<_, Option<i64>>(2)?.unwrap_or(0)))
+            })
+            .unwrap();
+        let mut out: Vec<(String, i64, i64)> = rows.filter_map(|r| r.ok()).collect();
+        out.sort();
+        out
+    }
+
+    fn insert_specimen(conn: &Connection, id: &str, location: Option<&str>, archived: i64, quarantine: i64) {
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, location, is_archived, quarantine_flag)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![id, format!("ACC-{id}"), location, archived, quarantine],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn occupancy_groups_specimens_by_their_location_path() {
+        let conn = setup_db();
+        insert_specimen(&conn, "s1", Some("Room 1 / Rack A / Shelf 1 / A1"), 0, 0);
+        insert_specimen(&conn, "s2", Some("Room 1 / Rack A / Shelf 1 / A1"), 0, 0);
+        insert_specimen(&conn, "s3", Some("Room 1 / Rack A / Shelf 2 / B1"), 0, 0);
+
+        let rows = occupancy(&conn);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0], ("Room 1 / Rack A / Shelf 1 / A1".to_string(), 2, 0));
+        assert_eq!(rows[1], ("Room 1 / Rack A / Shelf 2 / B1".to_string(), 1, 0));
+    }
+
+    #[test]
+    fn occupancy_ignores_archived_specimens() {
+        // A rack full of archived cultures is an empty rack; shading it as full
+        // would send someone to a shelf that has space on it.
+        let conn = setup_db();
+        insert_specimen(&conn, "s1", Some("Room 1 / Rack A / Shelf 1 / A1"), 1, 0);
+        assert!(occupancy(&conn).is_empty());
+    }
+
+    #[test]
+    fn occupancy_skips_specimens_with_no_recorded_location() {
+        let conn = setup_db();
+        insert_specimen(&conn, "s1", None, 0, 0);
+        insert_specimen(&conn, "s2", Some("   "), 0, 0);
+        assert!(occupancy(&conn).is_empty());
+    }
+
+    #[test]
+    fn occupancy_is_scoped_to_the_active_lab_profile() {
+        // Reading `specimens` directly as an aggregate is exactly the case
+        // `active_lab_sql` exists for: without it a mycology session would shade
+        // its racks with another discipline's cultures.
+        let conn = setup_db();
+        insert_specimen(&conn, "s1", Some("Room 1 / Rack A / Shelf 1 / A1"), 0, 0);
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, location, lab_profile)
+             VALUES ('s2', 'ACC-s2', 'Room 1 / Rack A / Shelf 1 / A1', 'mycology')",
+            [],
+        )
+        .unwrap();
+
+        let rows = occupancy(&conn);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].1, 1, "only the active profile's specimen is counted");
+
+        conn.execute("UPDATE app_config SET lab_profile = 'mycology' WHERE id = 1", []).unwrap();
+        let rows = occupancy(&conn);
+        assert_eq!(rows[0].1, 1, "switching profiles switches which specimen is counted");
+    }
+
+    /// Mirrors `get_location_map_data`, including where the lab predicate sits.
+    fn map_data(conn: &Connection) -> Vec<(String, i64)> {
+        let lab = crate::db::vocabulary::active_lab_sql("sp");
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT l.id, COUNT(sp.id) AS specimen_count \
+                 FROM locations l \
+                 LEFT JOIN specimens sp ON sp.location_id = l.id AND sp.is_archived = 0 AND {lab} \
+                 GROUP BY l.id ORDER BY l.name ASC"
+            ))
+            .unwrap();
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        rows.filter_map(|r| r.ok()).collect()
+    }
+
+    #[test]
+    fn map_data_keeps_empty_locations_when_the_lab_filter_applies() {
+        // The lab predicate has to live in the LEFT JOIN condition. In the WHERE
+        // clause it would turn the outer join into an inner one and drop every
+        // location holding nothing — which is exactly the empty shelf someone is
+        // looking for when they open the map.
+        let conn = setup_db();
+        conn.execute("INSERT INTO locations (id, name) VALUES ('l1', 'Empty Room')", []).unwrap();
+        conn.execute("INSERT INTO locations (id, name) VALUES ('l2', 'Full Room')", []).unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, location_id) VALUES ('s1', 'ACC-1', 'l2')",
+            [],
+        )
+        .unwrap();
+
+        let rows = map_data(&conn);
+        assert_eq!(rows.len(), 2, "an empty location must still appear on the map");
+        assert_eq!(rows.iter().find(|(id, _)| id == "l1").unwrap().1, 0);
+        assert_eq!(rows.iter().find(|(id, _)| id == "l2").unwrap().1, 1);
+    }
+
+    #[test]
+    fn map_data_does_not_count_another_labs_specimens() {
+        let conn = setup_db();
+        conn.execute("INSERT INTO locations (id, name) VALUES ('l1', 'Room A')", []).unwrap();
+        conn.execute(
+            "INSERT INTO specimens (id, accession_number, location_id, lab_profile)
+             VALUES ('s1', 'ACC-1', 'l1', 'mycology')",
+            [],
+        )
+        .unwrap();
+
+        let rows = map_data(&conn);
+        assert_eq!(rows[0].1, 0, "a mycology culture must not show on a PTC lab's map");
+    }
+
+    #[test]
+    fn occupancy_counts_quarantined_and_contaminated_specimens() {
+        let conn = setup_db();
+        insert_specimen(&conn, "s1", Some("Room 1 / Rack A / Shelf 1 / A1"), 0, 1);
+        insert_specimen(&conn, "s2", Some("Room 1 / Rack A / Shelf 1 / A1"), 0, 0);
+        conn.execute(
+            "INSERT INTO subcultures (id, specimen_id, contamination_flag) VALUES ('sc1', 's2', 1)",
+            [],
+        )
+        .unwrap();
+
+        let rows = occupancy(&conn);
+        assert_eq!(rows[0].1, 2, "both specimens occupy the slot");
+        assert_eq!(rows[0].2, 2, "one quarantined plus one with a contaminated subculture");
     }
 }

@@ -232,7 +232,7 @@ pub fn get_compliance_flags(state: State<AppState>, token: String) -> Result<Vec
     // mycology QC, cell-culture mycoplasma) are gated to their profile via the
     // `compliance_rules` catalog, so e.g. the citrus HLB rule no longer fires in
     // a mycology or cell-culture lab that happens to code a species "CIT-*".
-    let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
     let active = |flag_type: &str| crate::compliance_rules::is_rule_active(flag_type, &profile);
 
     let mut flags = Vec::new();
@@ -641,7 +641,7 @@ pub fn list_compliance_rules(
 ) -> Result<Vec<ActiveComplianceRule>, String> {
     let db = state.db();
     let _user = auth_service::validate_session(&db, &token)?;
-    let profile = queries::read_setting(&db.conn, "lab_profile", "plant_tissue_culture");
+    let profile = crate::db::vocabulary::active_profile(&db.conn);
 
     Ok(crate::compliance_rules::rules_for_profile(&profile)
         .into_iter()

@@ -6,10 +6,10 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.53.2-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.54.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-679%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-774%20Rust%20·%20203%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -75,6 +75,14 @@ standalone verifier ships for each. See
 First-class strain/cultivar registry with a four-value verification model, a hybridization
 wizard (F1–F4 / backcross labeling), a full Kingdom→Species→Strain taxonomy navigator,
 multi-generational pedigree tools, breeding programs, and Darwin Core export.
+
+**🗺️ Room designer & physical addressing**
+Draw each room on a grid — culture racks, shelf units, cabinets, incubators, growth chambers,
+fridges, freezers, cryo dewars, flow hoods, benches — where every piece carries a floor footprint
+**and** its shelf breakdown, because a five-shelf rack is one rectangle on the floor and five levels
+of trays. The drawing generates the storage addresses (`Growth Room B / Rack A / Shelf 3 / B2`) that
+**Add Specimen** then offers, so the plan and the records describe the same building. Furniture
+shades toward red as it fills, from live specimen counts.
 
 **🧪 Media, inventory & cryostorage**
 MS/WPM/B5/etc. media batches with auto-calculated salts and hormone tracking, full supply
@@ -275,15 +283,15 @@ SteloPTC ships with backend (Rust) and frontend (TypeScript) test suites, both r
 every push and required to pass before merge.
 
 ```bash
-npm test                                                 # frontend (Vitest) — 113 assertions
+npm test                                                 # frontend (Vitest) — 203 assertions
 npm run check                                            # svelte-check + TypeScript — 0/0
-cd src-tauri && cargo test --lib --no-default-features   # backend, fast — 642 tests
-cd src-tauri && cargo test --lib                         # backend, full — 679 tests (CI gate)
+cd src-tauri && cargo test --lib --no-default-features   # backend, fast — 705 tests
+cd src-tauri && cargo test --lib                         # backend, full — 774 tests (CI gate)
 ```
 
-> `--no-default-features` runs the 642 pure-logic tests without GTK/WebKit — convenient, but it
+> `--no-default-features` runs the 705 pure-logic tests without GTK/WebKit — convenient, but it
 > **skips the entire Tauri command layer**. The full build (what CI runs) adds those tests for
-> **679** in total. On Ubuntu, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` are all it needs; see
+> **774** in total. On Ubuntu, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` are all it needs; see
 > [`SKILLS.md` §3](SKILLS.md) before pushing changes under `src-tauri/src/commands/`.
 
 CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-android.yml`
@@ -306,6 +314,7 @@ CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-androi
 | [Regulatory exports](docs/regulatory-exports.md) | FDA / USDA / CITES export bundles |
 | [Plugin authoring](docs/plugin-authoring.md) | `.steloplugin` vocabulary-pack format |
 | [Vocabulary system](docs/vocabulary-system.md) | How lab-profile vocabularies work |
+| **[Obsidian vault](Obsidian/Home.md)** | **How the backend and frontend actually work — the developer-facing map, as an Obsidian vault** |
 
 ---
 
