@@ -9,7 +9,7 @@
 [![Version](https://img.shields.io/badge/version-0.54.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
-[![Tests](https://img.shields.io/badge/tests-679%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)
+[![Tests](https://img.shields.io/badge/tests-774%20Rust%20·%20203%20TS-4caf50.svg)](#testing--quality)
 [![License](https://img.shields.io/badge/license-proprietary-lightgrey.svg)](LICENSE)
 
 **Start here:** [User Manual](UserManual.md) · [Roadmap](ROADMAP.md) · [Changelog](CHANGELOG.md) · [Local AI setup](docs/local-ai.md)
@@ -283,15 +283,15 @@ SteloPTC ships with backend (Rust) and frontend (TypeScript) test suites, both r
 every push and required to pass before merge.
 
 ```bash
-npm test                                                 # frontend (Vitest) — 113 assertions
+npm test                                                 # frontend (Vitest) — 203 assertions
 npm run check                                            # svelte-check + TypeScript — 0/0
-cd src-tauri && cargo test --lib --no-default-features   # backend, fast — 642 tests
-cd src-tauri && cargo test --lib                         # backend, full — 679 tests (CI gate)
+cd src-tauri && cargo test --lib --no-default-features   # backend, fast — 705 tests
+cd src-tauri && cargo test --lib                         # backend, full — 774 tests (CI gate)
 ```
 
-> `--no-default-features` runs the 642 pure-logic tests without GTK/WebKit — convenient, but it
+> `--no-default-features` runs the 705 pure-logic tests without GTK/WebKit — convenient, but it
 > **skips the entire Tauri command layer**. The full build (what CI runs) adds those tests for
-> **679** in total. On Ubuntu, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` are all it needs; see
+> **774** in total. On Ubuntu, `libgtk-3-dev` + `libwebkit2gtk-4.1-dev` are all it needs; see
 > [`SKILLS.md` §3](SKILLS.md) before pushing changes under `src-tauri/src/commands/`.
 
 CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-android.yml`

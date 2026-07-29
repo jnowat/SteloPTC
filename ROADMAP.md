@@ -27,10 +27,17 @@ contamination-overview dashboard panel.
 behind a forced password change on first login (WP-01, enforced server-side since v1.48.0).
 
 <details>
-<summary><b>Schema history — all 52 migrations</b> (click to expand)</summary>
+<summary><b>Schema history — all 59 migrations</b> (click to expand)</summary>
 
 | # | What it added | Work packet | Release |
 |---|---|---|---|
+| 059 | `locations.layout_json` — the drawn room plan | — | v0.54.0 |
+| 058 | Re-linked species with no genus taxon (repair pass, no schema change) | — | v0.54.0 |
+| 057 | `idx_media_hormones_batch` | — | v1.53.2 |
+| 056 | Dashboard aggregate covering indexes | — | v1.53.2 |
+| 055 | Purged plaintext sessions | — | v1.53.2 |
+| 054 | Specimen FTS search index | — | v1.53.2 |
+| 053 | `specimens.lab_profile` | — | v1.53.0 |
 | 052 | `compliance_flag_waivers` table | WP-77 | v1.52.0 |
 | 051 | `breeding_bundles` + `breeding_bundle_dispositions`; `breeding_records.origin_lab` | WP-72 | v1.47.0 |
 | 050 | `taxonomy_registries` + `registry_record_dispositions` | WP-71 | v1.46.0 |

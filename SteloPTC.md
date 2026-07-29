@@ -29,9 +29,9 @@ lab_profiles:
   - plant_tissue_culture
   - cell_culture
   - mycology
-tests_rust: 642
-tests_ts: 113
-migrations: 52
+tests_rust: 705
+tests_ts: 203
+migrations: 59
 created: 2026-07-11
 updated: 2026-07-25
 cssclasses:
@@ -97,7 +97,7 @@ SteloPTC manages the full lifecycle of tissue-culture specimens for commercial a
 | **Disciplines** | Plant Tissue Culture · Cell Culture · Mycology (+ plugin packs) |
 | **Integrity** | Per-lineage SHA-256 hash chain · Merkle checkpoints & proofs · Dogecoin `OP_RETURN` anchoring · Ed25519 signed ledger |
 | **Backend surface** | ~230 `#[tauri::command]` handlers · 52 DB migrations |
-| **Tests** | 642 Rust (`--no-default-features`) · 679 with the full `tauri-commands` feature · 113 TypeScript |
+| **Tests** | 705 Rust (`--no-default-features`) · 774 with the full `tauri-commands` feature · 203 TypeScript |
 | **License** | Proprietary — `licensing@stelolab.local` |
 
 ---
@@ -401,9 +401,9 @@ npm run android:build            # release APK (needs signing env vars)
 
 > [!todo] Verification gates — run before every commit (these are the CI gates)
 > ```bash
-> npm test            # Vitest — 113 assertions
+> npm test            # Vitest — 203 assertions
 > npm run check       # svelte-check + TypeScript — 0 errors / 0 warnings
-> cd src-tauri && cargo test --lib --no-default-features      # 642 pure-logic tests
+> cd src-tauri && cargo test --lib --no-default-features      # 705 pure-logic tests
 > cargo clippy --lib --no-default-features -- -D warnings     # warnings are HARD errors in CI
 > ```
 > `--no-default-features` runs the pure-logic tests without GTK/WebKit; the full `tauri-commands` build (CI) adds the command-layer tests. See [[SKILLS]] §3.

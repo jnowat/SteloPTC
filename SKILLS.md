@@ -41,7 +41,7 @@ Plant Tissue Culture (Plantae), Cell Culture (Animalia), and Mycology (Fungi).
 | Tauri command registry | `src-tauri/src/lib.rs` | Every `#[tauri::command]` is registered here in `invoke_handler![]`. Add new commands here. |
 | Commands (API layer) | `src-tauri/src/commands/*.rs` | One file per domain area. Pattern: lock DB → `validate_session` → permission check → do work → `log_audit`. |
 | Queries (SQL) | `src-tauri/src/db/queries.rs` | Large shared query module (~6.8k lines). Most raw SQL lives here. |
-| Migrations | `src-tauri/src/db/migrations.rs` | Append-only, numbered. **52 migrations today; next is 053.** Never edit a shipped migration — add a new one. |
+| Migrations | `src-tauri/src/db/migrations.rs` | Append-only, numbered. **59 migrations today; next is 060.** Never edit a shipped migration — add a new one. |
 | Models | `src-tauri/src/models/*.rs` | serde structs. **Field names here are the API contract** the frontend receives (no `#[serde(rename)]` in use). |
 | Profiles / vocabulary | `src-tauri/src/db/vocabulary.rs` + `src/lib/profile.ts` | The domain-separation machinery. See §4. |
 | Frontend API bridge | `src/lib/api.ts` | Single `call()` wrapper around Tauri `invoke` — catches/normalizes/rethrows as `Error`. All UI calls go through it. |
@@ -75,8 +75,8 @@ cargo clippy --lib --no-default-features -- -D warnings   # warnings are HARD er
   **Do this before pushing anything that touches `src-tauri/src/commands/`.** Code behind
   `tauri-commands` is invisible to `--no-default-features`, so a type error there passes every
   local gate and only fails in CI — exactly how v1.53.1 shipped with a broken `master`.
-- Current baseline: **642 Rust tests** (`--no-default-features`) / **679** with the full
-  `tauri-commands` feature, **113 TS tests**, clippy clean, svelte-check clean (418 files).
+- Current baseline: **705 Rust tests** (`--no-default-features`) / **774** with the full
+  `tauri-commands` feature, **203 TS tests**, clippy clean, svelte-check clean.
 - `cargo test`/`clippy` compile from scratch is slow (~40–60s). Compile once, batch your edits.
 
 ## 4. THE GOLDEN RULE: domain separation
@@ -128,8 +128,12 @@ vocabulary pack (see `docs/plugin-authoring.md`) when you don't need new columns
 ## 6. Conventions
 
 - **Work packets.** History is `WP-xx` packets, one per release. A change should update
-  `CHANGELOG.md`, bump the version in `package.json` **and** `src-tauri/tauri.conf.json`
-  (keep them in sync), and reflect status in `ROADMAP.md`.
+  `CHANGELOG.md`, bump the version in **all six** carriers — `package.json`,
+  `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`,
+  `src-tauri/tauri.conf.json`, and `src-tauri/gen/android/app/build.gradle.kts` (whose
+  `versionCode` must also *increase*, independently of the version name — a decreasing one
+  breaks Android upgrades) — and reflect status in `ROADMAP.md`. The full drift table is §10;
+  CI only checks three of the six.
 - **Docs must match reality.** When you ship a feature, move it from "planned" to "shipped" in
   ROADMAP/UserManual and update counts. When you change the test count, update the README
   badge **and** the prose in the Testing section (they drift apart — grep for the old number).
@@ -234,6 +238,7 @@ carry a number forward from a previous doc.**
 | `package.json` · `src-tauri/Cargo.toml` · `src-tauri/tauri.conf.json` | The version. All three must match. |
 | `src-tauri/gen/android/app/build.gradle.kts` | `versionName` + `versionCode`, which must match `tauri.conf.json`. |
 | `package-lock.json` | Its `version` field only refreshes on an `npm install` — bump the version and it silently lags. |
+| `src-tauri/Cargo.lock` | Same hazard: the `stelo-ptc` `[[package]] version` only refreshes on a `cargo` invocation, and **CI does not check it**. |
 | `README.md` | The version badge, the **test-count badge**, and the same counts repeated in prose under *Testing & quality*. |
 | `ROADMAP.md` | Header table (version, schema, tests, phases), *Status at a glance*, *Foundation-only*, and §10 *Versioning plan*. |
 | `UserManual.md` | The "Applies to" version, the TOC, and §18 — features move from "planned" to "shipped" and the list is easy to forget. |
@@ -248,9 +253,10 @@ release and is never corrected in place — record the correction in the new ent
 Quick self-check before pushing:
 
 ```bash
-# 1. All four manifests carry the same version
-grep -rn "$(node -p "require('./package.json').version")" package.json src-tauri/Cargo.toml \
-  src-tauri/tauri.conf.json src-tauri/gen/android/app/build.gradle.kts
+# 1. All six version carriers agree (CI's gate only covers the first three)
+grep -rn "$(node -p "require('./package.json').version")" package.json package-lock.json \
+  src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json \
+  src-tauri/gen/android/app/build.gradle.kts
 
 # 2. No stale test counts anywhere
 grep -rnE "[0-9]{3} (Rust|pure-logic) tests?" README.md SKILLS.md SteloPTC.md ROADMAP.md
