@@ -6,7 +6,7 @@
 
 **A desktop & mobile lab platform for tracking tissue-culture specimens through their entire lifecycle — initiation, subculture, splitting, cryopreservation, and compliance — on a tamper-evident, cryptographically verifiable record.**
 
-[![Version](https://img.shields.io/badge/version-1.53.2-2e7d32.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.54.0-2e7d32.svg)](CHANGELOG.md)
 [![Platforms](https://img.shields.io/badge/platforms-Windows%20·%20Linux%20·%20macOS%20·%20Android-1565c0.svg)](#platform-support--maturity)
 [![Built with](https://img.shields.io/badge/Rust%20·%20Tauri%202%20·%20Svelte%205-informational.svg)](#tech-stack)
 [![Tests](https://img.shields.io/badge/tests-679%20Rust%20·%20113%20TS-4caf50.svg)](#testing--quality)

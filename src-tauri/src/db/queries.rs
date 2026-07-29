@@ -1552,6 +1552,62 @@ pub fn recompute_taxon_path(conn: &Connection, taxon_id: &str) -> DbResult<()> {
     Ok(())
 }
 
+/// Re-copy `taxa.taxon_path` onto every species classified under `taxon_id` or
+/// any of its descendants. Returns how many species were rewritten.
+///
+/// `species.taxon_path` is a denormalised copy of its genus taxon's path, and it
+/// had exactly one writer and no invalidation. Re-parenting a taxon — which is
+/// precisely what the NCBI import now does when it wires up `parent_ncbi_id` —
+/// moved the taxon without moving the species hanging off it, leaving the two
+/// tables disagreeing about the same lineage.
+///
+/// The species stayed *visible* (the navigator matches species to a genus on the
+/// last path element, which does not change), so the damage was quieter than a
+/// blank screen: ancestor columns counted zero strains and zero specimens
+/// because those counts match the whole path, and `locate_species` handed the
+/// navigator a one-element chain that no longer began at a root — so "Open in
+/// Taxonomy" from the Species Registry walked into nothing.
+///
+/// Matching on `LIKE '%"<id>"]'` — the id as the *last* element — is what makes
+/// this a re-copy rather than a reclassification: only species whose most
+/// specific ancestor is this taxon are touched.
+pub fn resync_species_paths_under(conn: &Connection, taxon_id: &str) -> DbResult<i64> {
+    let mut rewritten = 0i64;
+    let mut stack = vec![taxon_id.to_string()];
+    let mut seen: HashSet<String> = HashSet::new();
+
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id.clone()) {
+            continue;
+        }
+
+        let path: Option<String> = conn
+            .query_row(
+                "SELECT taxon_path FROM taxa WHERE id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .ok()
+            .flatten();
+        if let Some(path) = path {
+            rewritten += conn.execute(
+                "UPDATE species SET taxon_path = ?1
+                 WHERE taxon_path LIKE '%\"' || ?2 || '\"]' AND taxon_path IS NOT ?1",
+                params![path, id],
+            )? as i64;
+        }
+
+        let children: Vec<String> = {
+            let mut stmt = conn.prepare("SELECT id FROM taxa WHERE parent_id = ?1")?;
+            let rows = stmt.query_map(params![id], |r| r.get(0))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+        stack.extend(children);
+    }
+
+    Ok(rewritten)
+}
+
 /// Set a taxon's parent without touching anything else. Used by the NCBI import
 /// to wire up `parent_ncbi_id` once every record in the batch exists.
 pub fn set_taxon_parent(conn: &Connection, taxon_id: &str, parent_id: &str) -> DbResult<()> {
@@ -3753,6 +3809,114 @@ mod taxon_path_tests {
         recompute_taxon_path(&conn, "k").unwrap();
 
         assert_eq!(path_of(&conn, "k"), r#"["k"]"#);
+    }
+
+    fn taxa_and_species_conn() -> Connection {
+        let conn = taxa_conn();
+        conn.execute_batch(
+            "CREATE TABLE species (
+                id TEXT PRIMARY KEY,
+                genus TEXT NOT NULL,
+                species_name TEXT NOT NULL,
+                species_code TEXT,
+                taxon_path TEXT
+            );",
+        )
+        .expect("create species table");
+        conn
+    }
+
+    fn insert_species(conn: &Connection, id: &str, genus: &str, path: &str) {
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path)
+             VALUES (?1, ?2, 'sp', ?3, ?4)",
+            params![id, genus, id, path],
+        )
+        .expect("insert species");
+    }
+
+    fn species_path(conn: &Connection, id: &str) -> String {
+        conn.query_row("SELECT taxon_path FROM species WHERE id = ?1", params![id], |r| {
+            r.get(0)
+        })
+        .expect("species exists")
+    }
+
+    #[test]
+    fn resync_moves_species_paths_when_their_genus_is_reparented() {
+        // The NCBI import's phase 3 end to end: a flat genus gains a kingdom,
+        // and the species hanging off it must follow.
+        let conn = taxa_and_species_conn();
+        insert(&conn, "k", "kingdom", "Fungi", None);
+        insert(&conn, "g", "genus", "Pleurotus", None);
+        insert_species(&conn, "sp1", "Pleurotus", r#"["g"]"#);
+
+        set_taxon_parent(&conn, "g", "k").unwrap();
+        recompute_taxon_path(&conn, "g").unwrap();
+        let moved = resync_species_paths_under(&conn, "k").unwrap();
+
+        assert_eq!(moved, 1);
+        assert_eq!(
+            species_path(&conn, "sp1"),
+            r#"["k","g"]"#,
+            "the species must carry the whole new lineage, or ancestor columns count zero and \
+             'Open in Taxonomy' walks into nothing"
+        );
+    }
+
+    #[test]
+    fn resync_leaves_species_under_a_different_genus_alone() {
+        let conn = taxa_and_species_conn();
+        insert(&conn, "k", "kingdom", "Fungi", None);
+        insert(&conn, "g", "genus", "Pleurotus", Some("k"));
+        insert(&conn, "other", "genus", "Citrus", None);
+        insert_species(&conn, "sp1", "Pleurotus", r#"["g"]"#);
+        insert_species(&conn, "sp2", "Citrus", r#"["other"]"#);
+
+        recompute_taxon_path(&conn, "k").unwrap();
+        resync_species_paths_under(&conn, "k").unwrap();
+
+        assert_eq!(species_path(&conn, "sp2"), r#"["other"]"#);
+    }
+
+    #[test]
+    fn resync_only_touches_species_whose_last_ancestor_is_the_taxon() {
+        // A species classified deeper than the genus being resynced must not be
+        // yanked up to it — the match is on the path's *last* element.
+        let conn = taxa_and_species_conn();
+        insert(&conn, "k", "kingdom", "Fungi", None);
+        insert(&conn, "g", "genus", "Pleurotus", Some("k"));
+        insert_species(&conn, "sp1", "Pleurotus", r#"["k","g"]"#);
+
+        recompute_taxon_path(&conn, "k").unwrap();
+        let moved = resync_species_paths_under(&conn, "k").unwrap();
+
+        assert_eq!(moved, 0, "an already-correct species is not rewritten");
+        assert_eq!(species_path(&conn, "sp1"), r#"["k","g"]"#);
+    }
+
+    #[test]
+    fn resync_is_idempotent() {
+        let conn = taxa_and_species_conn();
+        insert(&conn, "k", "kingdom", "Fungi", None);
+        insert(&conn, "g", "genus", "Pleurotus", None);
+        insert_species(&conn, "sp1", "Pleurotus", r#"["g"]"#);
+
+        set_taxon_parent(&conn, "g", "k").unwrap();
+        recompute_taxon_path(&conn, "g").unwrap();
+
+        assert_eq!(resync_species_paths_under(&conn, "k").unwrap(), 1);
+        assert_eq!(resync_species_paths_under(&conn, "k").unwrap(), 0);
+    }
+
+    #[test]
+    fn resync_terminates_on_a_taxon_cycle() {
+        let conn = taxa_and_species_conn();
+        insert(&conn, "a", "family", "A", None);
+        insert(&conn, "b", "genus", "B", Some("a"));
+        conn.execute("UPDATE taxa SET parent_id = 'b' WHERE id = 'a'", []).unwrap();
+
+        resync_species_paths_under(&conn, "a").expect("must return rather than loop forever");
     }
 
     #[test]

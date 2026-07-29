@@ -16,7 +16,7 @@ tags:
   - topic/provenance
   - topic/cryptography
   - topic/compliance
-version: 1.53.2
+version: 0.54.0
 status: released
 license: proprietary
 platforms:
@@ -92,7 +92,7 @@ SteloPTC manages the full lifecycle of tissue-culture specimens for commercial a
 
 | | |
 |---|---|
-| **Current version** | `v1.53.2` (Phase H complete — operational integrity & compliance hardening, plus a critical fix pass and a build fix) |
+| **Current version** | `v0.54.0` (lab-map room designer, taxonomy backbone repair, tolerant NCBI import — and the renumbering back to a pre-1.0 series; see the note below) |
 | **Stack** | Rust 1.75+ · Tauri 2 · Svelte 5 · TypeScript · Vite 6 · SQLite (WAL) |
 | **Disciplines** | Plant Tissue Culture · Cell Culture · Mycology (+ plugin packs) |
 | **Integrity** | Per-lineage SHA-256 hash chain · Merkle checkpoints & proofs · Dogecoin `OP_RETURN` anchoring · Ed25519 signed ledger |
@@ -436,7 +436,15 @@ npm run android:build            # release APK (needs signing env vars)
 | `1.48.0` | **WP-73** — domain-congruence & security hardening (no schema change) |
 | `1.49–1.53` | **Phase H** — profile-pluggable compliance rule engine (WP-74), signed lifecycle events across passages & splits (WP-75), data-integrity self-check (WP-76), compliance flag waivers (WP-77, migration 052), environmental out-of-range monitoring (WP-78) |
 | `1.53.1` | Critical fix pass — Excel round-trip data loss, AI-command app-wide freeze, non-atomic federated imports, ~10 frontend correctness bugs |
-| `1.53.2` | *(current)* Build fix (`i32`/`i64` in the `tauri-commands`-only path had `master` red), 2 high-severity npm advisories closed, full documentation pass |
+| `1.53.2` | Build fix (`i32`/`i64` in the `tauri-commands`-only path had `master` red), 2 high-severity npm advisories closed, full documentation pass |
+| `0.54.0` | *(current)* **Renumbered to a pre-1.0 series** — see below. Lab-map room designer, species→genus taxonomy repair, tolerant NCBI import, `Obsidian/` vault |
+
+> **On the version numbers.** Releases up to and including `1.53.2` were published under a
+> `1.x` series. The project is pre-1.0 by the maintainer's judgement — the API surface,
+> the schema, and several subsystems are still moving — so numbering continues at `0.54.0`:
+> the minor number carries on from `1.53` unbroken, and only the major drops. Earlier entries
+> in this table and in `CHANGELOG.md` keep the version they actually shipped under; rewriting
+> them would make the history disagree with the tags.
 
 ---
 

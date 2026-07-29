@@ -180,6 +180,17 @@ pub fn update_taxon(
         .execute(&sql, bind_refs.as_slice())
         .map_err(|e| format!("Failed to update taxon: {}", e))?;
 
+    // Moving a taxon changes the lineage of everything beneath it, and nothing
+    // used to rewrite those paths: `taxon_path` kept describing where the taxon
+    // *was*. The navigator resolves columns and every aggregate count through
+    // those paths, so a reclassification left the tree quietly wrong — the taxon
+    // appeared in its new place while its counts and its species still answered
+    // for the old one.
+    if request.parent_id.is_some() {
+        queries::recompute_taxon_path(&db.conn, &request.id).map_err(|e| e.to_string())?;
+        queries::resync_species_paths_under(&db.conn, &request.id).map_err(|e| e.to_string())?;
+    }
+
     // EXPERIMENTAL (WP-45): Append an update entry to the taxon's audit chain.
     //
     // RECLASSIFICATION WARNING: If `name`, `rank`, or `parent_id` changed, this update

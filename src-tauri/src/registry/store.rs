@@ -512,6 +512,14 @@ fn insert_species(conn: &Connection, genus: &str, species_name: &str, code: &str
         params![id, genus, species_name, common_name, final_code],
     )
     .map_err(|e| e.to_string())?;
+
+    // Deliberately does NOT link a genus taxon here. Records are applied in
+    // `source_key` order, so `species|…` runs before `taxon|…`: creating the
+    // genus at this point would beat the registry's own taxon record to it, and
+    // that record would then find a match and skip, silently turning a 3-record
+    // import into 2. `import_registry` runs one classification pass after every
+    // record is applied instead — see the call to `rebuild_species_taxonomy`.
+
     Ok(id)
 }
 
@@ -793,6 +801,20 @@ pub fn import_registry(
         .map_err(|e| e.to_string())?;
         applied.push(outcome);
     }
+
+    // Classify anything the import left unfiled, now that every record — taxa
+    // included — exists. Species accepted from a partner lab used to land with a
+    // NULL `taxon_path`, which makes them invisible in the Taxonomy Navigator:
+    // exactly the drift `migration_058` exists to repair, arriving through a
+    // different door.
+    //
+    // One pass at the end rather than per-insert, because records are applied in
+    // `source_key` order and `species|…` sorts before `taxon|…` — linking during
+    // the species insert would create the genus before the registry's own taxon
+    // record got to it, and that record would then skip as a duplicate. Runs
+    // inside the transaction so a later failure rolls it back with everything
+    // else. Idempotent, and it never touches an already-classified species.
+    crate::db::queries::rebuild_species_taxonomy(&tx).map_err(|e| e.to_string())?;
 
     tx.commit().map_err(|e| e.to_string())?;
 

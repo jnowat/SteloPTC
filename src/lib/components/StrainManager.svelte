@@ -2,11 +2,17 @@
   import { onMount } from 'svelte';
   import { listStrainsBySpecies, createStrain, updateStrain, archiveStrain, updateStrainStatus, RESTRICTED_MARKER } from '../api';
   import { addNotification, addErrorWithContext } from '../stores/app';
+  import { currentUser } from '../stores/auth';
   import { labProfile, PROFILE_DOMAIN, DOMAIN_MANIFESTS } from '../profile';
   import HybridWizard from './HybridWizard.svelte';
   import StrainDetail from './StrainDetail.svelte';
 
   let { speciesId, speciesName = '' }: { speciesId: string; speciesName?: string } = $props();
+
+  // Mirrors the backend's `can_write()` on `create_strain`. The create buttons
+  // were previously ungated, so a guest was offered them and got the raw
+  // "Insufficient permissions" string back from the IPC layer.
+  const canWrite = $derived(!!$currentUser && $currentUser.role !== 'guest');
 
   let strains = $state<any[]>([]);
   let loading = $state(true);
@@ -233,8 +239,10 @@
       <p class="sm-sub">Manage and track strain identities for this species.</p>
     </div>
     <div class="sm-actions">
-      <button class="btn btn-sm" onclick={() => (showHybridWizard = true)}>+ New Hybrid Strain</button>
-      <button class="btn btn-sm btn-primary" onclick={() => { createForm.strain_type = strainTypes[0]?.value ?? ''; showCreate = true; }}>+ New Strain</button>
+      {#if canWrite}
+        <button class="btn btn-sm" onclick={() => (showHybridWizard = true)} title="Create a strain by crossing two existing strains">+ New Hybrid Strain</button>
+        <button class="btn btn-sm btn-primary" onclick={() => { createForm.strain_type = strainTypes[0]?.value ?? ''; showCreate = true; }} title="Register a new strain for this species">+ New Strain</button>
+      {/if}
     </div>
   </div>
 

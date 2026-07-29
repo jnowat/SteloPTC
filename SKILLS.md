@@ -8,7 +8,8 @@ A single-page operating guide for anyone editing this repository — human or AI
 Grok, etc.). Read this before touching code. It captures the architecture, the golden
 rules, the exact verification gates, and the known traps that have bitten this codebase.
 
-> **North star:** SteloPTC is a released, local-first lab-provenance app (v1.53.2) with a
+> **North star:** SteloPTC is a released, local-first lab-provenance app (v0.54.0 — pre-1.0;
+> releases through v1.53.2 used a 1.x series, see `CHANGELOG.md`) with a
 > fully green test suite. It is **mature, not greenfield.** Prefer surgical, verified changes
 > over sweeping refactors. Every change must keep the audit hash chain, the test suite, and
 > clippy green.

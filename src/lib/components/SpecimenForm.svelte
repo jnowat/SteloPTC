@@ -163,7 +163,11 @@
       .map(([value, label]) => ({ value, label }))
   );
 
-  const canCreateStrain = $derived($currentUser?.role === 'admin' || $currentUser?.role === 'supervisor');
+  // Matches the backend gate exactly: `create_strain` requires `can_write()`,
+  // which is Admin | Supervisor | **Tech**. Gating this on can_manage would hide
+  // the button from the technician logging the specimen — the one person the
+  // inline form exists for — while the backend would have accepted the call.
+  const canCreateStrain = $derived(!!$currentUser && $currentUser.role !== 'guest');
 
   function openNewStrain() {
     newStrain = { name: '', code: '', strain_type: strainTypes[0]?.value ?? '' };

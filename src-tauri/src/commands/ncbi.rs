@@ -337,8 +337,15 @@ pub fn import_ncbi_taxonomy(
         // Recompute paths once per touched subtree root, after every link is in
         // place — doing it per-link would rewrite descendants repeatedly and
         // could read a half-built chain.
+        //
+        // `species.taxon_path` is a copy of its genus taxon's path, so moving a
+        // taxon has to move the species hanging off it too. Skipping this left
+        // ancestor columns counting zero and broke "Open in Taxonomy", because
+        // the species still claimed a one-element lineage that no longer began
+        // at a root.
         for id in &touched {
             queries::recompute_taxon_path(&tx, id).map_err(|e| e.to_string())?;
+            queries::resync_species_paths_under(&tx, id).map_err(|e| e.to_string())?;
         }
 
         tx.commit().map_err(|e| format!("Failed to commit import: {}", e))?;
