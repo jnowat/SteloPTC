@@ -93,6 +93,23 @@ still say `1.53.2` because that is what shipped.
   app has no HTTP client in the backend and no network permission in its Tauri capabilities, and that
   is deliberate.
 
+**Fixed — three defects the documentation pass turned up**
+
+- **Compliance rules ran against the wrong lab profile, always.** `get_compliance_flags`,
+  `list_compliance_rules` and the WP-68 submission gating read the profile with
+  `read_setting(conn, "lab_profile", …)`, which reads the `app_settings` key-value table — and
+  nothing has ever written `lab_profile` into it. Every database got the default. The result is the
+  exact bug the code's own comment claims WP-74 fixed: the citrus HLB rule fires in mycology and
+  cell-culture labs, and their own rules do not. All three now call
+  `db::vocabulary::active_profile`, which reads `app_config.lab_profile`, and two tests pin it.
+- **The Taxonomy Navigator's root column was hardcoded "Kingdom"** and deeper taxon columns carried
+  no rank at all, so they rendered a blank header. Neither was ever right for real data — a backbone
+  derived from species has *genera* at the root. Columns are now named after the ranks in them.
+- **Switching lab profile was a dead end on any database with a specimen in it.** `Settings.svelte`
+  read `stats?.total`, but `SpecimenStats` has no `total` field — it is `total_specimens` — so the
+  "CHANGE PROFILE" confirmation input was never shown, and the backend (which counts specimens
+  itself) then refused the call for want of the phrase.
+
 **Fixed — lab isolation and dark mode**
 
 - **`get_location_map_data` counted other labs' specimens.** It reads `specimens` directly as an
@@ -135,7 +152,7 @@ still say `1.53.2` because that is what shipped.
 - A first-hour walkthrough: what to set up, in what order, and why — profile, species, room plan,
   first specimen, first passage — with the reasoning behind the parts that surprise people.
 
-**Verified:** `cargo test --lib` (**766 passing**, full `tauri-commands` feature) · `npm test`
+**Verified:** `cargo test --lib` (**774 passing**, full `tauri-commands` feature) · `npm test`
 (**203 passing**) · `npm run check` (**0 errors / 0 warnings**) · `npm run build` (succeeds). The
 room designer and the NCBI import panel were additionally mounted in a browser harness and driven
 with Playwright — which is how the plan's dead pane space, the overflowing furniture labels, and a
