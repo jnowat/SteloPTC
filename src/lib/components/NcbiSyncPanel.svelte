@@ -37,16 +37,14 @@
 
   let selected = $derived(parsed.records.filter(isIncluded));
 
-  // Changing the input invalidates a dry run computed from the previous text.
-  // Without this the "Confirm Import" button stays live and would import
-  // something other than what the preview described.
+  // Changing the input, or the row selection, invalidates a dry run computed
+  // from the previous set. Derived rather than an effect that nulls the result:
+  // an effect would have to write the same state it reads, and the honest
+  // statement is "this dry run no longer describes the current selection", not
+  // "delete the dry run".
   let dryRunFor = $state('');
-  $effect(() => {
-    const signature = JSON.stringify(selected.map((r) => r.ncbi_taxon_id));
-    if (dryRunResult && signature !== dryRunFor) {
-      dryRunResult = null;
-    }
-  });
+  const selectionSignature = $derived(JSON.stringify(selected.map((r) => r.ncbi_taxon_id)));
+  const dryRunIsCurrent = $derived(!!dryRunResult && selectionSignature === dryRunFor);
 
   // ── Sync log state ────────────────────────────────────────────────────────
 
@@ -110,7 +108,7 @@
     dryRunResult = null;
     try {
       dryRunResult = await importNcbiTaxonomy(toRecords(selected), true);
-      dryRunFor = JSON.stringify(selected.map((r) => r.ncbi_taxon_id));
+      dryRunFor = selectionSignature;
     } catch (e: any) {
       addNotification(e.message ?? 'Dry run failed.', 'error');
     } finally {
@@ -401,7 +399,7 @@
         >
           {importing && !dryRunResult ? 'Checking…' : `Dry run (${selected.length})`}
         </button>
-        {#if dryRunResult}
+        {#if dryRunIsCurrent}
           <button
             class="btn btn-primary"
             onclick={handleImport}
@@ -410,6 +408,10 @@
           >
             {importing ? 'Importing…' : 'Confirm import'}
           </button>
+        {:else if dryRunResult}
+          <span class="stale-note" role="status">
+            Selection changed — run the dry run again before importing.
+          </span>
         {/if}
       </div>
 
@@ -690,7 +692,12 @@
   .row-check { width: auto; min-height: 0; }
   tr.excluded { opacity: 0.45; }
 
-  .action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .action-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; align-items: center; }
+  .stale-note {
+    font-size: 12px;
+    color: var(--color-warning, #d97706);
+    font-weight: 600;
+  }
 
   .result-box {
     margin-top: 16px;

@@ -83,8 +83,8 @@
   // re-rendering the palette sixty times a second to move one rectangle is
   // wasted work. Only the layout it produces is reactive.
   type Drag =
-    | { mode: 'move'; id: string; grabDx: number; grabDy: number }
-    | { mode: 'resize'; id: string; originX: number; originY: number }
+    | { mode: 'move'; id: string; grabDx: number; grabDy: number; before: string }
+    | { mode: 'resize'; id: string; originX: number; originY: number; before: string }
     | null;
   let drag: Drag = null;
   let svgEl: SVGSVGElement | undefined = $state();
@@ -229,9 +229,16 @@
     if (!canEdit || armedKind) return;
     const cell = cellFromEvent(e);
     if (!cell) return;
-    drag = { mode: 'move', id: item.id, grabDx: cell.x - item.x, grabDy: cell.y - item.y };
-    past = [...past.slice(-(UNDO_LIMIT - 1)), serializeLayout(layout)];
-    future = [];
+    // Snapshot now, but only push it on pointerup *if the drag changed
+    // something*. Pushing on pointerdown would fill the undo stack with a no-op
+    // entry every time someone clicks an item to select it.
+    drag = {
+      mode: 'move',
+      id: item.id,
+      grabDx: cell.x - item.x,
+      grabDy: cell.y - item.y,
+      before: serializeLayout(layout),
+    };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   }
 
@@ -239,9 +246,13 @@
     e.stopPropagation();
     if (!canEdit) return;
     selectedId = item.id;
-    drag = { mode: 'resize', id: item.id, originX: item.x, originY: item.y };
-    past = [...past.slice(-(UNDO_LIMIT - 1)), serializeLayout(layout)];
-    future = [];
+    drag = {
+      mode: 'resize',
+      id: item.id,
+      originX: item.x,
+      originY: item.y,
+      before: serializeLayout(layout),
+    };
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
   }
 
@@ -266,7 +277,13 @@
 
   function handlePointerUp() {
     if (!drag) return;
+    const { before } = drag;
     drag = null;
+    // A click that selected an item without moving it is not an edit: it must
+    // not become an undo step, and it must not mark the plan unsaved.
+    if (serializeLayout(layout) === before) return;
+    past = [...past.slice(-(UNDO_LIMIT - 1)), before];
+    future = [];
     dirty = true;
   }
 
