@@ -76,6 +76,14 @@ First-class strain/cultivar registry with a four-value verification model, a hyb
 wizard (F1–F4 / backcross labeling), a full Kingdom→Species→Strain taxonomy navigator,
 multi-generational pedigree tools, breeding programs, and Darwin Core export.
 
+**🗺️ Room designer & physical addressing**
+Draw each room on a grid — culture racks, shelf units, cabinets, incubators, growth chambers,
+fridges, freezers, cryo dewars, flow hoods, benches — where every piece carries a floor footprint
+**and** its shelf breakdown, because a five-shelf rack is one rectangle on the floor and five levels
+of trays. The drawing generates the storage addresses (`Growth Room B / Rack A / Shelf 3 / B2`) that
+**Add Specimen** then offers, so the plan and the records describe the same building. Furniture
+shades toward red as it fills, from live specimen counts.
+
 **🧪 Media, inventory & cryostorage**
 MS/WPM/B5/etc. media batches with auto-calculated salts and hormone tracking, full supply
 inventory with reorder alerts, prepared stock solutions, and an LN₂ cryostorage inventory
@@ -306,6 +314,7 @@ CI: `test.yml` (Vitest + cargo), `build-windows.yml` (signed MSI), `build-androi
 | [Regulatory exports](docs/regulatory-exports.md) | FDA / USDA / CITES export bundles |
 | [Plugin authoring](docs/plugin-authoring.md) | `.steloplugin` vocabulary-pack format |
 | [Vocabulary system](docs/vocabulary-system.md) | How lab-profile vocabularies work |
+| **[Obsidian vault](Obsidian/Home.md)** | **How the backend and frontend actually work — the developer-facing map, as an Obsidian vault** |
 
 ---
 
