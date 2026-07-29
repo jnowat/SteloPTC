@@ -6,9 +6,9 @@
 
 | | |
 |---|---|
-| **Version** | **v1.53.2** — aligned across `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`, `build.gradle.kts` |
+| **Version** | **v0.54.0** — aligned across `package.json`, `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, `src-tauri/tauri.conf.json`, `build.gradle.kts`. Renumbered from the 1.x series at this release; the project is pre-1.0, so the minor carries on from `1.53` and only the major drops |
 | **Stack** | Tauri 2 · Svelte 5 + TypeScript · Rust + SQLite (optional PostgreSQL connector, foundation-only) |
-| **Schema** | 52 migrations (latest: **052** — `compliance_flag_waivers`, WP-77) · next is 053 |
+| **Schema** | 59 migrations (latest: **059** — `locations.layout_json`, the drawn room plan) · next is 060 |
 | **Tests** | 642 Rust (`--no-default-features`) · **679** with the full `tauri-commands` feature · 113 Vitest · `svelte-check` 0 errors / 0 warnings |
 | **CI** | Windows + Android release builds · Tests + Lint · non-blocking Criterion benches · iOS scaffold (experimental, unverified) |
 | **Phases complete** | A · B · C · TX-1 · TX-2 · TX-3 · D · E · F · Trust Layer 1–3 · G · H |
@@ -118,6 +118,10 @@ and line-by-line in [`CHANGELOG.md`](CHANGELOG.md). This is the two-minute versi
 - **v1.53.2** — build fix (`master` had been red since v1.53.1 — an `i32`/`i64` mismatch in code
   only the full-feature build compiles), two high-severity npm advisories closed, and a full
   documentation pass.
+- **v0.54.0** — **renumbered to a pre-1.0 series** (see the header note). The lab-map room designer;
+  the species→genus taxonomy repair that ended the "full registry, empty tree" symptom; a tolerant
+  NCBI import that honours `parent_ncbi_id` and reports what it could not use; lab-isolation and
+  dark-mode fixes; and the `Obsidian/` vault.
 
 </details>
 
@@ -142,6 +146,7 @@ and line-by-line in [`CHANGELOG.md`](CHANGELOG.md). This is the two-minute versi
 | **H — Operational integrity & compliance** | Profile-pluggable compliance rule engine, signed lifecycle events across mutations, data-integrity self-check, compliance flag waivers, environmental out-of-range monitoring | ✅ v1.49–v1.53 (WP-74–78) — **Phase H complete** |
 | **Stabilization** | Critical fix pass — Excel round-trip data loss, AI-command app-wide freeze, non-atomic federated imports, frontend correctness | ✅ v1.53.1 |
 | **Build fix & docs pass** | Restored a red `master` (`i32`/`i64` in the `tauri-commands`-only path), closed 2 high-severity npm advisories, refreshed the whole doc set | ✅ v1.53.2 |
+| **Room designer, taxonomy repair & NCBI import** | Drawn room plans that generate specimen addresses (migration 059), species filed under their genus on write plus a repair pass (migration 058), a multi-format NCBI import that builds a real tree, lab-scoped map aggregates, dark-mode token pass | ✅ v0.54.0 |
 
 **Foundation-only today (shipped but intentionally not fully wired — disclosed in-app and in the relevant WP):**
 
@@ -1484,14 +1489,21 @@ Phase H turned inward: rather than adding a new domain or a new federation surfa
 
 *This roadmap is maintained against the live repository.*
 
-**Current release: v1.53.2.** 52 migrations (latest **052**, `compliance_flag_waivers`, WP-77) ·
-**642** Rust tests with `--no-default-features` and **679** with the full `tauri-commands` feature ·
-**113** Vitest assertions across 5 files · `svelte-check` clean across 418 files.
+**Current release: v0.54.0.** 59 migrations (latest **059**, `locations.layout_json`) ·
+**766** Rust tests with the full `tauri-commands` feature · **203** Vitest assertions across 8 files ·
+`svelte-check` clean.
+
+> **On the version numbers.** Releases through `1.53.2` shipped under a `1.x` series. The project is
+> pre-1.0 by the maintainer's judgement, so numbering continues at `0.54.0` — the minor carries on
+> from `1.53` unbroken and only the major drops. Historical entries keep the version they shipped
+> under; rewriting them would make this file disagree with the tags.
 
 Phase H (WP-74–78, v1.49.0–v1.53.0) added the profile-pluggable compliance rule engine, signed
 lifecycle events across mutations, the data-integrity self-check, compliance flag waivers, and
 environmental out-of-range monitoring. v1.53.1 was a critical fix pass; v1.53.2 restored a red
-`master` and refreshed the documentation set.
+`master` and refreshed the documentation set. v0.54.0 renumbered the series, added the lab-map room
+designer, and repaired the species→genus taxonomy link that had left the Taxonomy Navigator empty
+for any lab that entered its species through the UI.
 
 The full per-migration history is in the **Schema history** table at the top of this document
 (collapsed by default); the per-release detail is in
