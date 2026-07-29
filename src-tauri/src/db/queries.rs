@@ -3910,6 +3910,56 @@ mod taxon_path_tests {
     }
 
     #[test]
+    fn locate_species_returns_the_chain_the_navigator_walks() {
+        let conn = taxa_and_species_conn();
+        conn.execute(
+            "ALTER TABLE species ADD COLUMN common_name TEXT",
+            [],
+        )
+        .ok();
+        insert(&conn, "k", "kingdom", "Fungi", None);
+        insert(&conn, "g", "genus", "Pleurotus", Some("k"));
+        recompute_taxon_path(&conn, "k").unwrap();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code, taxon_path)
+             VALUES ('sp1', 'Pleurotus', 'ostreatus', 'PLE-OST', '[\"k\",\"g\"]')",
+            [],
+        )
+        .unwrap();
+
+        let hit = locate_species(&conn, "sp1").unwrap().expect("classified species resolves");
+        assert_eq!(hit.result_type, "species");
+        assert_eq!(hit.display_name, "Pleurotus ostreatus");
+        assert_eq!(hit.secondary, "PLE-OST");
+        assert_eq!(
+            hit.taxon_ids,
+            vec!["k".to_string(), "g".to_string()],
+            "the navigator selects one column per id, so the chain must start at a root"
+        );
+        assert_eq!(hit.species_id.as_deref(), Some("sp1"));
+    }
+
+    #[test]
+    fn locate_species_returns_none_for_an_unclassified_species() {
+        // The Species Registry uses this to offer the taxonomy rebuild instead
+        // of navigating into an empty tree.
+        let conn = taxa_and_species_conn();
+        conn.execute(
+            "INSERT INTO species (id, genus, species_name, species_code) VALUES ('sp1', 'Citrus', 'sinensis', 'CIT-SIN')",
+            [],
+        )
+        .unwrap();
+
+        assert!(locate_species(&conn, "sp1").unwrap().is_none());
+    }
+
+    #[test]
+    fn locate_species_returns_none_for_an_unknown_id() {
+        let conn = taxa_and_species_conn();
+        assert!(locate_species(&conn, "nope").unwrap().is_none());
+    }
+
+    #[test]
     fn resync_terminates_on_a_taxon_cycle() {
         let conn = taxa_and_species_conn();
         insert(&conn, "a", "family", "A", None);
