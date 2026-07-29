@@ -6,7 +6,7 @@
 
 | | |
 |---|---|
-| **Applies to** | **v1.53.2** (July 2026) |
+| **Applies to** | **v0.54.0** (July 2026) — versions through `1.53.2` used a 1.x series; see [`CHANGELOG.md`](CHANGELOG.md) |
 | **Covers** | The complete shipped product — core workflows, the Trust Layer, Phase F cross-cutting features, Phase G federated exchange, and Phase H compliance & integrity |
 | **Audience** | Lab technicians, supervisors, and lab admins |
 
@@ -24,6 +24,10 @@ splits later.
 ---
 
 ## Table of Contents
+
+**Start here**
+
+0. [New User — Start Here](#0-new-user--start-here) *(your first hour, in order)*
 
 **Core workflows**
 
@@ -57,7 +61,7 @@ splits later.
 25. [Notifications & Environmental Monitoring](#25-notifications--environmental-monitoring)
 26. [Installable Web App (PWA)](#26-installable-web-app-pwa)
 
-**Trust Layer, federated exchange & compliance** *(v1.42.0–v1.53.2)*
+**Trust Layer, federated exchange & compliance** *(v1.42.0–v0.54.0)*
 
 27. [On-Chain Anchoring & the Signed Event Ledger](#27-on-chain-anchoring--the-signed-event-ledger)
 28. [Working with Partner Labs — Passports, Taxonomy Registry & Breeding Coordination](#28-working-with-partner-labs--passports-taxonomy-registry--breeding-coordination)
@@ -65,6 +69,125 @@ splits later.
 30. [The Regulatory Submission Pipeline](#30-the-regulatory-submission-pipeline)
 31. [Data Integrity Self-Check](#31-data-integrity-self-check)
 32. [Mycology: The Fruiting Overview](#32-mycology-the-fruiting-overview)
+
+---
+
+## 0. New User — Start Here
+
+> **Your first hour with SteloPTC, in the order that makes the rest of the app make sense.**
+> If you read nothing else in this manual, read this section. It is deliberately short on
+> features and long on *why* — the parts of SteloPTC that surprise people surprise them because
+> the reason was never explained.
+
+### What this program is, in one paragraph
+
+SteloPTC is a **lab notebook that cannot quietly change its own past.** Every meaningful action —
+registering a species, accessioning a culture, recording a passage, splitting a flask, flagging
+contamination — is written into a cryptographic hash chain, where each entry carries a fingerprint
+of the one before it. Edit or delete an entry after the fact and every later entry stops matching.
+That is the whole product. Everything else — the specimen list, the reminders, the lab map, the
+exports — exists to make recording work *easy enough that people actually do it*, because a
+provenance record with gaps proves nothing.
+
+It runs entirely on your machine. There is no server, no account, and no telephone home; the app
+makes **no network requests at all** in normal operation. Your data lives in a SQLite file on your
+own disk, which also means: **if you do not back it up, nobody else has a copy.** See
+[§22](#22-encrypted-cloud-backup--multi-device-sync).
+
+### The five things to do first
+
+Do these in this order. Each one depends on the last, and doing them out of order is the single
+most common way a first day goes badly.
+
+| # | Do this | Where | Why it has to be first |
+|---|---|---|---|
+| 1 | **Change the default admin password** | Settings → Users | The first login uses a known default. Until you change it, "who did this" in the audit trail means nothing. |
+| 2 | **Pick your lab profile** | Settings → Lab Profile | Plant Tissue Culture, Cell Culture, or Mycology. This re-vocabularies the *entire* app — stages, propagation methods, strain types. Changing it later does not retroactively fix records already written under the old vocabulary. |
+| 3 | **Register your species** | Species Registry → + Add Species | Every specimen must belong to one, and a species is the root of its own hash chain. You cannot create a culture without one. |
+| 4 | **Draw your rooms** | Lab Map → Room designer | Optional, but do it now rather than later — see below. |
+| 5 | **Accession one real specimen** | Specimens → + New Specimen | Do a real one, not a test one. The first record is the one that teaches you what the form wants. |
+
+> **On loading demo data.** The First-Run panel offers it, and it is genuinely useful for finding
+> your way around. Load it into a throwaway database, not the one you intend to keep — demo
+> specimens are indistinguishable from real ones a month later, and archiving them all is tedious.
+
+### Why to draw your rooms before you log anything
+
+A specimen's physical location is recorded as a path: `Growth Room B / Rack A / Shelf 3 / B2`.
+
+Before you draw anything, the app offers a **generic placeholder list** for that path — Room 1–5,
+Rack A–D, Shelf 1–5, Tray A–F. Those numbers are not your lab. If your racks are lettered E and F,
+or your incubator has three shelves rather than five, there is no honest option in the list.
+
+**Lab Map → Room designer** replaces that list with your actual building. You draw a room on a grid,
+drop in the furniture — culture racks, cabinets, incubators, growth chambers, fridges, freezers,
+cryo dewars, flow hoods, benches — and tell each piece how many shelves it has and how many trays
+sit on a shelf. From then on, the location dropdowns in **Add Specimen** are generated from the
+drawing, so the address on a record and the shelf in the room are the same thing.
+
+> **The bit worth understanding.** A five-shelf rack is *one rectangle on the floor* and *five
+> levels of storage*. That is why every piece of furniture has both a footprint and a shelf
+> breakdown, and why selecting a rack shows an "elevation" — its shelves stacked, each a small grid
+> of trays, each tray labelled with the address a culture would carry if it lived there. A flow hood
+> or a bench is the other extreme: real floor space, nothing stored on it.
+
+Doing this first matters because locations recorded under the placeholder list do not automatically
+become drawn addresses. Full walkthrough: [§20](#20-interactive-lab-map).
+
+### Why the Taxonomy tab might look empty
+
+The **Taxonomy Navigator** browses Kingdom → Phylum → Class → Order → Family → Genus → Species →
+Strains. A species only appears there once it is **filed under a genus**, and the genus is created
+from the genus name you typed on the species record.
+
+From `v0.54.0` onward that filing happens automatically when you add a species. If you are opening
+an **older database** and the tree looks empty while your Species Registry is full, that is the
+known cause — and both the Species Registry and the empty Taxonomy view offer a
+**"Build taxonomy from species"** button that fixes it in one click. It only creates the genus taxa
+your species already imply; it changes nothing else, and it is safe to run twice.
+
+Details: [§6](#6-taxonomy-navigator-phase-tx-fully-shipped--v1170v1220).
+
+### The four words that trip people up
+
+| Word | What it means here | The mistake to avoid |
+|---|---|---|
+| **Species** | The organism — *Citrus sinensis*. A protected root of the hash chain. | Do not create a new species for a new cultivar. That is a strain. |
+| **Strain** | A named line *within* a species — a cultivar, an isolate, a clone. | A strain's identity starts as **Unverified**. That is honest, not a defect: promote it to Claimed or Confirmed only when you have grounds. |
+| **Passage** | Moving a culture to fresh media. Same culture, one generation on. | Recording a split as a passage loses the branch in the lineage. |
+| **Split** | Dividing a culture into multiple new ones. Creates *children*. | Recording a passage as a split invents cultures that do not exist. |
+
+Passage versus split is the distinction most worth getting right on day one, because the lineage
+tree is built from it and correcting it later means writing correction entries rather than editing
+history. There is a decision table at [§2](#quick-reference-passage-vs-split) and worked examples at
+[§8](#8-splitting-cultures-detailed).
+
+### What to do when something goes wrong
+
+- **A button is greyed out.** Almost always your role. Admins and supervisors can manage species,
+  strains, and taxonomy; technicians can record work; guests can only read. See
+  [§16](#16-troubleshooting--common-issues).
+- **Something failed and you want the detail.** **Error Log** in the sidebar keeps the full message
+  and the form contents at the time — enough to retry without retyping.
+- **A red banner says "Temporary storage".** Stop. The app could not open its real database and is
+  running in memory; anything you enter now is lost when you close it. Do not work through it.
+- **You need to prove a record is untampered.** **Audit Log → Verify**, and for the whole database,
+  **Data Integrity** ([§31](#31-data-integrity-self-check)).
+
+### Where to go next
+
+| If you want to… | Read |
+|---|---|
+| Understand the vocabulary properly | [§2 Core Concepts](#2-core-concepts) |
+| Get set up step by step | [§3 Getting Started](#3-getting-started) |
+| Do the daily work | [§7](#7-working-with-specimens), [§8](#8-splitting-cultures-detailed), [§9](#9-recording-passages--subcultures) |
+| Draw the lab properly | [§20 Interactive Lab Map](#20-interactive-lab-map) |
+| Know what is *not* finished | [§18 Future Features & Roadmap](#18-future-features--roadmap) |
+
+> **A note on honesty.** A handful of capabilities ship deliberately incomplete and are labelled
+> **Current limitation** wherever they appear. Nothing in this manual describes something that does
+> not work as though it does. If you find a place where it does, that is a documentation bug worth
+> reporting.
 
 ---
 
